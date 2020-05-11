@@ -1,0 +1,21 @@
+site_name: regenie
+theme:
+  name: null
+  custom_dir: 'cinder'
+
+nav:
+  - Home: index.md
+  - Overview: overview.md
+  - Install: install.md
+  - Documentation: options.md
+  - Performance: performance.md
+  - UKBB Analysis: recommendations.md
+
+markdown_extensions:
+  - mdx_math
+  - attr_list
+  
+google_analytics:
+  - UA-166859683-2
+  - auto
+  

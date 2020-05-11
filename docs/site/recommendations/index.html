@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    
+    
+    <link rel="shortcut icon" href="../img/favicon.ico">
+
+    
+    <title>UKBB Analysis - regenie</title>
+    
+
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/v4-shims.css">
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.min.css">
+    <link href='//rsms.me/inter/inter.css' rel='stylesheet' type='text/css'>
+    <link href='//fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,700italic,400,300,600,700&subset=latin-ext,latin' rel='stylesheet' type='text/css'>
+    <link href="../css/bootstrap-custom.min.css" rel="stylesheet">
+    <link href="../css/base.min.css" rel="stylesheet">
+    <link href="../css/cinder.min.css" rel="stylesheet">
+
+    
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+            <script src="https://cdn.jsdelivr.net/npm/html5shiv@3.7.3/dist/html5shiv.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/respond.js@1.4.2/dest/respond.min.js"></script>
+        <![endif]-->
+
+    
+    <script>
+    (function(i, s, o, g, r, a, m) {
+        i['GoogleAnalyticsObject'] = r;
+        i[r] = i[r] || function() {
+            (i[r].q = i[r].q || []).push(arguments)
+        }, i[r].l = 1 * new Date();
+        a = s.createElement(o),
+        m = s.getElementsByTagName(o)[0];
+        a.async = 1;
+        a.src = g;
+        m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-166859683-2', 'auto');
+    ga('send', 'pageview');
+    </script>
+    
+
+     
+</head>
+
+<body>
+
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+
+        <!-- Collapsed navigation -->
+        <div class="navbar-header">
+            <!-- Expander button -->
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            
+
+            <!-- Main title -->
+
+            <a class="navbar-brand" href="..">regenie</a>
+        </div>
+
+        <!-- Expanded navigation -->
+        <div class="navbar-collapse collapse">
+                <!-- Main navigation -->
+                <ul class="nav navbar-nav">
+                
+                
+                    <li >
+                        <a href="..">Home</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../overview/">Overview</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../install/">Install</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../options/">Documentation</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../performance/">Performance</a>
+                    </li>
+                
+                
+                
+                    <li class="active">
+                        <a href="./">UKBB Analysis</a>
+                    </li>
+                
+                
+                </ul>
+
+            <ul class="nav navbar-nav navbar-right">
+                    <li>
+                        <a href="#" data-toggle="modal" data-target="#mkdocs_search_modal">
+                            <i class="fas fa-search"></i> Search
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="prev" href="../performance/">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </a>
+                    </li>
+                    <li class="disabled">
+                        <a rel="next" >
+                            Next <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+    <div class="container">
+        
+        
+        <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
+    <ul class="nav bs-sidenav">
+        <li class="first-level active"><a href="#recommendations-for-uk-biobank-analysis">Recommendations for UK Biobank analysis</a></li>
+            <li class="second-level"><a href="#pre-processing">Pre-processing</a></li>
+                
+                <li class="third-level"><a href="#selection-of-traits">Selection of traits</a></li>
+                <li class="third-level"><a href="#preparing-genotype-file">Preparing genotype file</a></li>
+                <li class="third-level"><a href="#exclusion-files">Exclusion files</a></li>
+            <li class="second-level"><a href="#step-1">Step 1</a></li>
+                
+            <li class="second-level"><a href="#step-2">Step 2</a></li>
+                
+                <li class="third-level"><a href="#sample-mismatch">Sample mismatch</a></li>
+    </ul>
+</div></div>
+        <div class="col-md-9" role="main">
+
+<h2 id="recommendations-for-uk-biobank-analysis">Recommendations for UK Biobank analysis</h2>
+<p><strong>regenie</strong> is ideally suited for large-scale analyses such as 500K UK
+Biobank (UKBB) data, where records are available for thousands of phenotypes.</p>
+<p>We provide below a few guidelines on how to perform such analysis on
+the UKBB files that all UKBB approved researchers have access to.</p>
+<h3 id="pre-processing">Pre-processing</h3>
+<p>We will first go over important steps to consider before running <strong>regenie</strong>.</p>
+<h4 id="selection-of-traits">Selection of traits</h4>
+<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once, which is where
+higher computational gains are obtained.</p>
+<p>As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
+to handle missing data.
+From the real data applications we have performed so far with traits having up to ~20% (for quantitative) 
+and ~5% (for binary) missing observations, our imputation scheme resulted in 
+nearly identical results as from discarding missing observations when analyzing each trait 
+separately (see the <a href="https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1">BioRxiv pre-print</a> for details). 
+Hence, we recommend to analyze traits in groups that have similar missingness patterns with resonably 
+low amount of missingness (&lt;15%).</p>
+<p>The number of phenotypes in a group will affect the computational resources required
+and the table below shows typical computational requirements based on using 
+500,000 markers in step 1 split in blocks of 1000 and using blocks of size 200 when 
+testing SNPs in step 2. The estimates are shown when step 1 of <strong>regenie</strong> is run in low-memory mode 
+so that within-block predictions are temporarily stored on disk (see Documentation).</p>
+<p><img alt="Rflow" src="../img/comp_req_largeP.png" style="text-align:center;padding: 10px;width:50%;display: block;margin-left: auto;margin-right: auto" /></p>
+<p>In the following sections, we'll assume traits (let's say binary) and covariates 
+used in the analysis have been chosen and data are in files
+<code>ukb_phenotypes_BT.txt</code> and <code>ukv_covariates.txt</code>,
+which follow the format requirement for <strong>regenie</strong> (see Documentation).</p>
+<h4 id="preparing-genotype-file">Preparing genotype file</h4>
+<p>Step 1 of a <strong>regenie</strong> run requires a single genotype file as input. 
+The UKBB genotype files are split by chromosome, so we recommend using
+<a href="http://www.cog-genomics.org/plink/">PLINK</a> to merge the files using the following code.</p>
+<p><em>NOTE</em>: please change <strong>XXX</strong> to you own UKBB application ID number</p>
+<pre><code>rm -f list_beds.txt
+for chr in {2..22}; do echo &quot;ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukbXXX_int_chr1_v2_s488373.fam\n&quot; &gt;&gt; list_beds.txt; done
+
+plink \
+  --bed ukb_cal_chr1_v2.bed \
+  --bim ukb_snp_chr1_v2.bim \
+  --fam ukbXXX_int_chr1_v2_s488373.fam\
+  --merge-list list_beds.txt \
+  --make-bed --out ukb_cal_allChrs
+</code></pre>
+
+<h4 id="exclusion-files">Exclusion files</h4>
+<p>Quality control filters can be applied using <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> to filter out samples and
+markers in the genotype file prior to step 1 of <strong>regenie</strong>. For example, to filter out SNPs with MAF below 5%, genotype missingess 
+above 10% and Hardy-Weinberg equilibrium p-value exceeding <script type="math/tex">10^{-15}</script>, and 
+samples with more than 10% missingness,</p>
+<pre><code>plink2 \
+  --bfile ukb_cal_allChrs \
+  --maf 0.05 --geno 0.1 --hwe 1e-15 \
+  --mind 0.1 \
+  --write-snplist --write-samples --no-id-header \
+  --out qc_pass
+
+expand -t 1 qc_pass.id &gt; qc_pass_space.id   # space-separated file
+</code></pre>
+
+<h3 id="step-1">Step 1</h3>
+<p>We recommend to run <strong>regenie</strong> using multi-threading (8+ threads) which will 
+decrease the overall runtime of the program. 
+As this step can be quite memory intensive (due to storing block predictions), 
+we recommend to use option <code>--lowmem</code>, where the number of phenotypes analyzed
+will determine how much disk space is required (see table above).</p>
+<p>Running step 1 of <strong>regenie</strong> (by default, all available threads are used)</p>
+<pre><code>./regenie \
+  --step 1 \
+  --bed ukb_cal_allChrs \
+  --extract qc_pass.snplist \
+  --keep qc_pass_space.id \
+  --p ukb_phenotypes_BT.txt \
+  --c ukv_covariates.txt \
+  --bt \
+  --b 1000 \
+  --lowmem tmpdir/regenie_tmp_preds \
+  --o ukb_step1_BT
+</code></pre>
+
+<p>For P phenotypes analyzed, this will generate a set of $P$ files ending with <code>.loco</code>
+which contain the genetic predictions using a LOCO scheme that will be needed for step 2,
+as well as a prediction list file <code>regenie_step1_BT_pred.list</code>, which lists 
+the names of these predictions files and can be used as input for step 2.</p>
+<h3 id="step-2">Step 2</h3>
+<p>As step 1 and 2 are completely decoupled in <strong>regenie</strong>, you could either use all 
+the traits for testing in step 2 or select a subset of the traits to perform association testing.</p>
+<p>Step 2 of <strong>regenie</strong> has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data) and PLINK bed/bim/fam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
+machines, we recommend to split the runs over chromosomes (using 4+ threads).</p>
+<h4 id="sample-mismatch">Sample mismatch</h4>
+<p>It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 or contains additional samples not used in step 1. 
+In such a case, you could for example used the following code to only retain samples that are 
+contained in both data sets (we assume that you are testing on BGEN input file)</p>
+<pre><code>grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.keep
+</code></pre>
+
+<p>Running <strong>regenie</strong> tesing on a single chromosome (here chr 1) and using fast Firth correction as fallback,</p>
+<pre><code>./regenie \
+  --step 2 \
+  --bgen ukb_imp_chr1_v2.bgen \
+  --keep fid_iid_step2.keep \
+  --p ukb_phenotypes_BT.txt \
+  --c ukv_covariates.txt \
+  --bt \
+  --firth 0.01 --approx \
+  --pred regenie_step1_BT_pred.list \
+  --b 400 \
+  --split \
+  --o ukb_step2_BT_chr1
+
+</code></pre>
+
+<p>This will create separate association results files for each phenotype as <code>ukb_step2_BT_chr1_*.regenie</code>.</p></div>
+        
+        
+    </div>
+
+    <footer class="col-md-12 text-center">
+        
+        <hr>
+        <p>
+        <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
+        </p>
+
+        
+        
+    </footer>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="../js/bootstrap-3.0.3.min.js"></script>
+    
+    <script>var base_url = ".."</script>
+    
+    <script src="../js/base.js"></script>
+    <script src="../search/main.js"></script>
+
+  <script type="text/javascript"
+          src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML"></script>
+
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+tex2jax: {
+inlineMath: [['$','$'], ['\\(','\\)']],
+processEscapes: true},
+jax: ["input/TeX","input/MathML","input/AsciiMath","output/CommonHTML"],
+extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js","MathZoom.js","AssistiveMML.js", "[Contrib]/a11y/accessibility-menu.js"],
+TeX: {
+extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"],
+equationNumbers: {
+autoNumber: "AMS"
+}
+}
+});
+  </script>
+
+    <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                    <span class="sr-only">Close</span>
+                </button>
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+            </div>
+            <div class="modal-body">
+                <p>
+                    From here you can search these documents. Enter
+                    your search terms below.
+                </p>
+                <form>
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+    </body>
+
+
+</html>
