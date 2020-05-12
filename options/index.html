@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    
+    
+    <link rel="shortcut icon" href="../img/favicon.ico">
+
+    
+    <title>Documentation - regenie</title>
+    
+
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/v4-shims.css">
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.min.css">
+    <link href='//rsms.me/inter/inter.css' rel='stylesheet' type='text/css'>
+    <link href='//fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,700italic,400,300,600,700&subset=latin-ext,latin' rel='stylesheet' type='text/css'>
+    <link href="../css/bootstrap-custom.min.css" rel="stylesheet">
+    <link href="../css/base.min.css" rel="stylesheet">
+    <link href="../css/cinder.min.css" rel="stylesheet">
+
+    
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+            <script src="https://cdn.jsdelivr.net/npm/html5shiv@3.7.3/dist/html5shiv.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/respond.js@1.4.2/dest/respond.min.js"></script>
+        <![endif]-->
+
+    
+
+     
+</head>
+
+<body>
+
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+
+        <!-- Collapsed navigation -->
+        <div class="navbar-header">
+            <!-- Expander button -->
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            
+
+            <!-- Main title -->
+
+            <a class="navbar-brand" href="..">regenie</a>
+        </div>
+
+        <!-- Expanded navigation -->
+        <div class="navbar-collapse collapse">
+                <!-- Main navigation -->
+                <ul class="nav navbar-nav">
+                
+                
+                    <li >
+                        <a href="..">Home</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../overview/">Overview</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../install/">Install</a>
+                    </li>
+                
+                
+                
+                    <li class="active">
+                        <a href="./">Documentation</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../performance/">Performance</a>
+                    </li>
+                
+                
+                </ul>
+
+            <ul class="nav navbar-nav navbar-right">
+                    <li>
+                        <a href="#" data-toggle="modal" data-target="#mkdocs_search_modal">
+                            <i class="fas fa-search"></i> Search
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="prev" href="../install/">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="next" href="../performance/">
+                            Next <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+    <div class="container">
+        
+        
+        <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
+    <ul class="nav bs-sidenav">
+        <li class="first-level active"><a href="#documentation">Documentation</a></li>
+        <li class="first-level "><a href="#getting-started">Getting started</a></li>
+        <li class="first-level "><a href="#input">Input</a></li>
+            <li class="second-level"><a href="#genetic-data-file-format">Genetic data file format</a></li>
+                
+            <li class="second-level"><a href="#covariate-file-format">Covariate file format</a></li>
+                
+            <li class="second-level"><a href="#phenotype-file-format">Phenotype file format</a></li>
+                
+            <li class="second-level"><a href="#predictions-file-format">Predictions file format</a></li>
+                
+        <li class="first-level "><a href="#options">Options</a></li>
+        <li class="first-level "><a href="#output">Output</a></li>
+    </ul>
+</div></div>
+        <div class="col-md-9" role="main">
+
+<h2 id="documentation">Documentation</h2>
+<h2 id="getting-started">Getting started</h2>
+<p>To run <strong>regenie</strong> use the command <code>./regenie</code> on the command line,
+followed by options and flags as needed.</p>
+<p>To get a full list of options use</p>
+<pre><code>./regenie --help
+</code></pre>
+
+<p>The directory <code>/examples</code> contains some small example files that are
+useful when getting started. A test run on a set of binary traits can be achieved by the
+following 2 commands.</p>
+<p>In <strong>Step 1</strong> the whole genome regression model is fit to the traits, and
+a set of genomic predictions are produced as output</p>
+<pre><code>./regenie \
+--step 1 \
+--bed example/example \
+--c example/covariates.txt \
+--p example/phenotype_bin.txt \
+--b 100 -cv 4 \
+--l0 4 --l1 4 \
+--bt --lowmem \
+--o fit_bin_out
+</code></pre>
+
+<p>In <strong>Step 2</strong> a set of imputed SNPs are tested for association using a
+Firth logistic regression model</p>
+<pre><code>./regenie \
+--step 2 \
+--bgen example/example.bgen \
+--c example/covariates.txt \
+--p example/phenotype_bin.txt \
+--b 100 \
+--firth 0.01 --approx \
+--pred fit_bin_out_pred.list \
+--bt \
+--split \
+--o test_bin_out_firth
+</code></pre>
+
+<h2 id="input">Input</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--bgen, --bed</code></td>
+<td>FILE</td>
+<td>Required</td>
+<td>Input genetic data file. Either bgen file eg. <code>file.bgen</code>, or bed/bim/fam prefix that assumes<code>file.bed</code>, <code>file.fam</code>, <code>file.bim</code> exist</td>
+</tr>
+<tr>
+<td><code>--p</code></td>
+<td>FILE</td>
+<td>Required</td>
+<td>Phenotypes file</td>
+</tr>
+<tr>
+<td><code>--phenoCol</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Use for each phenotype you want to include in the analysis</td>
+</tr>
+<tr>
+<td><code>--c</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Covariates file</td>
+</tr>
+<tr>
+<td><code>--covarCol</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Use for each covariate you want to include in the analysis</td>
+</tr>
+<tr>
+<td><code>--pred</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>File containing predictions from Step 1 (see Overview). <strong>Required for <code>--step 2</code></strong></td>
+</tr>
+</tbody>
+</table>
+<h4 id="genetic-data-file-format">Genetic data file format</h4>
+<p><strong>regenie</strong> can read BGEN files or bed/bim/fam files in Step 1 and
+Step 2</p>
+<p>The BGEN file format is described
+<a href="https://www.well.ox.ac.uk/~gav/bgen_format/">here</a></p>
+<p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a></p>
+<p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink2">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a></p>
+<h4 id="covariate-file-format">Covariate file format</h4>
+<pre><code>FID IID V1 V2 V3
+1 1 1.46837294454993 1.93779743016325 0.152887004505393
+2 2 -1.2234390803815 -1.63408619199948 -0.190201446835255
+3 3 0.0711531925667286 0.0863906292357564 0.14254739715665
+.
+</code></pre>
+
+<p>Line 1 : Header with FID, IID and <script type="math/tex">C</script> covariate names.</p>
+<p>Followed by <script type="math/tex">N</script> lines of <script type="math/tex">C+2</script> values. Space separated.</p>
+<p>Each line contains individual FID and IID followed by <script type="math/tex">C</script> covariate
+values.</p>
+<p>Samples in this file must match with those in bgen/bed file.</p>
+<p>No missing values are allowed.</p>
+<p>If <code>--step 2</code> is specified, then the covariate file should be the same
+as that used in Step 1.</p>
+<h4 id="phenotype-file-format">Phenotype file format</h4>
+<pre><code>FID IID Y1 Y2
+1 1 1.64818554321186 2.2765234736685
+2 2 -2.67352013711554 -1.53680421614647
+3 3 0.217542851471485 0.437289912695016
+.
+</code></pre>
+
+<p>Line 1 : Header with FID, IID and <script type="math/tex">P</script> phenotypes names.</p>
+<p>Followed by <script type="math/tex">N</script> lines of <script type="math/tex">P+2</script> values. Space separated. Each line contains individual FID and IID followed by P phenotype values.</p>
+<p>Samples must be present in the bgen/bed file.</p>
+<p>Missing values must be coded as NA</p>
+<p>With QTs, missing values are mean-imputed in Step 1 and they are dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
+<p>With BTs, missing values are mean-imputed in Step 1 when fitting the
+level 0 linear ridge regression and 
+they are dropped when fitting the level 1 logistic ridge regression for each trait . 
+In Step 2, missing values are dropped when testing each trait.</p>
+<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA).</p>
+<h4 id="predictions-file-format">Predictions file format</h4>
+<p>Running <code>--step 1 --o foo</code> will produce</p>
+<ol>
+<li>A set of files containing genomic predictions for each phenotype
+   from Step 1 (see Output files).</li>
+<li>A file called <code>foo_pred.list</code> listing the locations of the prediction files</li>
+</ol>
+<p>The file list is needed as an input file when using <code>--step 2</code>
+via the <code>--pred</code> option. The file list has one line per phenotype (in
+any order) that specifies the name of the phenotype and its
+corresponding prediction file name. Each phenotype must have
+only one prediction file and phenotype names must match with those in the phenotype file.</p>
+<p>Each prediction file contains the LOCO predictions for the phenotype</p>
+<p>Line 1 : FID_IID sample identifier and chromosome number (1-23)</p>
+<p>Followed by <script type="math/tex">N</script> lines of 24 values representing FID_IID and leave-one chromosome out (LOCO) predictions for each individual.</p>
+<h2 id="options">Options</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--step</code></td>
+<td>1/2</td>
+<td>Required</td>
+<td>Specify Step 1 or Step 2 of regenie run (see Overview)</td>
+</tr>
+<tr>
+<td><code>--bt</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>specify that traits are binary (default is quantitative)</td>
+</tr>
+<tr>
+<td><code>--b</code></td>
+<td>INT</td>
+<td>Required</td>
+<td>block size</td>
+</tr>
+<tr>
+<td><code>--nb</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>number of blocks (determined from block size if not provided)</td>
+</tr>
+<tr>
+<td><code>--cv</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>number of cross validation (CV) folds [default is 5]</td>
+</tr>
+<tr>
+<td><code>--loocv</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to use leave-one out cross validation</td>
+</tr>
+<tr>
+<td><code>--lowmem</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to reduce memory usage by writing level 0 predictions to disk. This is very useful if the number of traits is large (e.g. greater than 10)</td>
+</tr>
+<tr>
+<td><code>--strict</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to removing samples with missing data at any of the phenotypes</td>
+</tr>
+<tr>
+<td><code>--ignore-pred</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>skip reading the file specified by <code>--pred</code> (corresponds to simple linear/logistic regression)</td>
+</tr>
+<tr>
+<td><code>--split</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to split asssociation results into separate files for each trait.</td>
+</tr>
+<tr>
+<td><code>--force-impute</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to keep and impute missing observations for QTs in step 2</td>
+</tr>
+<tr>
+<td><code>--firth</code></td>
+<td>FLOAT</td>
+<td>Optional</td>
+<td>flag to use Firth likelihood ratio test as fallback for p-values less than threshold [default is 0.05]</td>
+</tr>
+<tr>
+<td><code>--approx</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to use approximation to Firth LRT for computational speedup (only works when option <code>-firth</code> is used)</td>
+</tr>
+<tr>
+<td><code>--spa</code></td>
+<td>FLOAT</td>
+<td>Optional</td>
+<td>flag to use Saddlepoint approximation as fallback for p-values less than threshold [default is 0.05]</td>
+</tr>
+<tr>
+<td><code>--chr</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>specify which chromosomes to test in step 2 (use for each chromosome)</td>
+</tr>
+<tr>
+<td><code>--minMAC</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.</td>
+</tr>
+<tr>
+<td><code>--niter</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>maximum number of iterations for logistic regression [default is 30]</td>
+</tr>
+<tr>
+<td><code>--threads</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>number of computational threads to use [default=all]</td>
+</tr>
+<tr>
+<td><code>--debug</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>debug flag (for use by developers)</td>
+</tr>
+<tr>
+<td><code>--v</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>verbose screen output</td>
+</tr>
+<tr>
+<td><code>--help</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>Prints usage and options list to screen</td>
+</tr>
+</tbody>
+</table>
+<h2 id="output">Output</h2>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--o</code></td>
+<td>FILE PREFIX</td>
+<td>Required</td>
+<td>Output file that depends on <code>--step</code></td>
+</tr>
+</tbody>
+</table>
+<p>A log file <code>file.log</code> of the output is generated.</p>
+<p><strong>Using <code>--step 1 --o file</code></strong></p>
+<p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
+per-chromosome LOCO predictions as columns of the files.</p>
+<p>The first row of the files lists FID_IID and the chromosomes output.</p>
+<p>The list of blup files needed for the association testing mode is written to file <code>file_pred.list</code>.</p>
+<p><strong>Using<code>--step 2 --o file</code></strong> </p>
+<p>Results written to a single file <code>file.test</code>, which has one line per
+SNP along with a header line.</p>
+<p>The first 6 entries of each row specify chromosome, posistion, ID, allele 0, allele 1
+and the frequency of allele 1.</p>
+<p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics and <script type="math/tex">-\log_{10}</script> p-values for each phenotype.</p>
+<p>When using option <code>--split</code>, the results are written in separate files for
+each phenotype
+<code>file_&lt;phenotype1_name&gt;.test,...,file_&lt;phenotypeP_name&gt;.test</code> 
+with the same format.</p></div>
+        
+        
+    </div>
+
+    <footer class="col-md-12 text-center">
+        
+        <hr>
+        <p>
+        <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
+        </p>
+
+        
+        
+    </footer>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="../js/bootstrap-3.0.3.min.js"></script>
+    
+    <script>var base_url = ".."</script>
+    
+    <script src="../js/base.js"></script>
+    <script src="../search/main.js"></script>
+
+  <script type="text/javascript"
+          src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML"></script>
+
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+tex2jax: {
+inlineMath: [['$','$'], ['\\(','\\)']],
+processEscapes: true},
+jax: ["input/TeX","input/MathML","input/AsciiMath","output/CommonHTML"],
+extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js","MathZoom.js","AssistiveMML.js", "[Contrib]/a11y/accessibility-menu.js"],
+TeX: {
+extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"],
+equationNumbers: {
+autoNumber: "AMS"
+}
+}
+});
+  </script>
+
+    <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                    <span class="sr-only">Close</span>
+                </button>
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+            </div>
+            <div class="modal-body">
+                <p>
+                    From here you can search these documents. Enter
+                    your search terms below.
+                </p>
+                <form>
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+    </body>
+
+
+</html>

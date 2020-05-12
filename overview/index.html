@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    
+    
+    <link rel="shortcut icon" href="../img/favicon.ico">
+
+    
+    <title>Overview - regenie</title>
+    
+
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/v4-shims.css">
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.min.css">
+    <link href='//rsms.me/inter/inter.css' rel='stylesheet' type='text/css'>
+    <link href='//fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,700italic,400,300,600,700&subset=latin-ext,latin' rel='stylesheet' type='text/css'>
+    <link href="../css/bootstrap-custom.min.css" rel="stylesheet">
+    <link href="../css/base.min.css" rel="stylesheet">
+    <link href="../css/cinder.min.css" rel="stylesheet">
+
+    
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+            <script src="https://cdn.jsdelivr.net/npm/html5shiv@3.7.3/dist/html5shiv.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/respond.js@1.4.2/dest/respond.min.js"></script>
+        <![endif]-->
+
+    
+
+     
+</head>
+
+<body>
+
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+
+        <!-- Collapsed navigation -->
+        <div class="navbar-header">
+            <!-- Expander button -->
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            
+
+            <!-- Main title -->
+
+            <a class="navbar-brand" href="..">regenie</a>
+        </div>
+
+        <!-- Expanded navigation -->
+        <div class="navbar-collapse collapse">
+                <!-- Main navigation -->
+                <ul class="nav navbar-nav">
+                
+                
+                    <li >
+                        <a href="..">Home</a>
+                    </li>
+                
+                
+                
+                    <li class="active">
+                        <a href="./">Overview</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../install/">Install</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../options/">Documentation</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../performance/">Performance</a>
+                    </li>
+                
+                
+                </ul>
+
+            <ul class="nav navbar-nav navbar-right">
+                    <li>
+                        <a href="#" data-toggle="modal" data-target="#mkdocs_search_modal">
+                            <i class="fas fa-search"></i> Search
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="prev" href="..">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="next" href="../install/">
+                            Next <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+    <div class="container">
+        
+        
+        <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
+    <ul class="nav bs-sidenav">
+        <li class="first-level active"><a href="#overview">Overview</a></li>
+            <li class="second-level"><a href="#step-1-whole-genome-model">Step 1 : Whole genome model</a></li>
+                
+                <li class="third-level"><a href="#ridge-regression-level-0">Ridge regression (level 0)</a></li>
+                <li class="third-level"><a href="#cross-validation-level-1">Cross-validation (level 1)</a></li>
+                <li class="third-level"><a href="#genetic-predictors-and-loco">Genetic predictors and LOCO</a></li>
+                <li class="third-level"><a href="#multiple-phenotypes">Multiple phenotypes</a></li>
+                <li class="third-level"><a href="#covariates">Covariates</a></li>
+            <li class="second-level"><a href="#step-2-association-testing">Step 2 : Association testing</a></li>
+                
+                <li class="third-level"><a href="#quantitative-traits">Quantitative traits</a></li>
+                <li class="third-level"><a href="#binary-traits">Binary traits</a></li>
+            <li class="second-level"><a href="#missing-phenotype-data">Missing Phenotype data</a></li>
+                
+            <li class="second-level"><a href="#references">References</a></li>
+                
+    </ul>
+</div></div>
+        <div class="col-md-9" role="main">
+
+<h2 id="overview">Overview</h2>
+<p>This page provides an overview of the models and methods implemented in
+<strong>regenie</strong>.</p>
+<p><strong>regenie</strong> carries out genome-wide association tests for both
+  quantitative and binary (case-control) phenotypes. It is designed to handle</p>
+<ol>
+<li>A large number of samples. For example, it is ideally suited to the
+<a href="https://www.ukbiobank.ac.uk/">UK Biobank</a> dataset with 500,000 samples.</li>
+<li>A combination of genetic data from a micro-array, imputation and
+exome sequencing.</li>
+<li>A large number of either quantitative traits (QTs) or binary
+(case-control) traits (BTs)
+phenotypes.</li>
+<li>Accounting for a set of covariates</li>
+</ol>
+<p>The program is run in 2 steps</p>
+<ol>
+<li>In the first step a subset of genetic markers are used to fit a
+whole genome regression model that captures a good fraction of the
+phenotype variance attributable to genetic effects.</li>
+<li>In the second step, a larger set of genetic markers (ie. imputed
+markers) are tested for association with the phenotype <em>conditional
+upon</em> the prediction from the regression model in Step 1, using the
+leave one chromosome out (LOCO) scheme, that avoids proximal
+contamination.</li>
+</ol>
+<h3 id="step-1-whole-genome-model">Step 1 : Whole genome model</h3>
+<p>In Step 1 a whole genome regression model is fit at a subset of the
+total set of available genetic markers. These are typically a set of
+several hundred thousand (<script type="math/tex">M</script>) common markers from a micro-array. </p>
+<h4 id="ridge-regression-level-0">Ridge regression (level 0)</h4>
+<p><strong>regenie</strong> reads in the <script type="math/tex">M</script> markers in blocks of <script type="math/tex">B</script> consecutive markers (<code>--b</code> option).</p>
+<p>In each block, a set of ridge regression
+  predictors are calculated for a small range of <script type="math/tex">J</script> shrinkage
+  parameters <script type="math/tex"> \{\tau_1,\ldots, \tau_J\} </script> (using <code>--l0</code> option [default is 5]) .</p>
+<p>For a block of SNPs in a <script type="math/tex">N\times B</script> matrix <script type="math/tex">X</script> and <script type="math/tex">N\times 1</script>
+phenotype vector <script type="math/tex">Y</script> we calculate  <script type="math/tex">J</script>  predictors</p>
+<p>
+<script type="math/tex"> X\widehat{\beta}_1 \ldots, X\widehat{\beta}_J </script>
+</p>
+<p>where</p>
+<p>
+<script type="math/tex"> \widehat{\beta}_j = (X^TX+\tau_j I)^{-1}X^T Y</script>
+</p>
+<p>The idea behind using a range of shrinkage
+  values is to capture the unknown number and size of truly
+  associated genetic markers within each window. The ridge regression takes account of Linkage disequilibrium (LD) within each block.</p>
+<p>These predictors are stored in place of the
+  genetic markers in matrix <script type="math/tex">W</script>, providing a large reduction in data size. 
+For example, if
+  <script type="math/tex">M=500,000</script> and <script type="math/tex">B=1,000</script> and <script type="math/tex">J=5</script> shrinkage parameters are used, then the
+  reduced dataset will have <script type="math/tex">JM/B=2,500</script> predictors.</p>
+<p>Ridge regression is used in this step for both quantitative and binary
+traits. </p>
+<h4 id="cross-validation-level-1">Cross-validation (level 1)</h4>
+<p>The predictors generated by the ridge regression step will all be
+positively correlated with the phenotype. Thus, it is important to
+account for that correlation when building a whole genome wide
+regression model.</p>
+<p>When analyzing a quantitative trait we use a second level of ridge
+regression on the full set of <script type="math/tex">JM/B</script> predictors in <script type="math/tex">W</script>. This
+approach is inspired by the method of stacked regressions [1].</p>
+<p>We fit the ridge regression for a range of shrinkage parameters (<code>--l1</code> option) and choose a single
+best value using K-fold cross validation scheme. This assesses the
+predictive performance of the model using held out sets of data, and aims to control
+any over-fitting induced by using the first level of ridge regression
+to derive the predictors.</p>
+<p>In other words, we fit the model</p>
+<p>
+<script type="math/tex; mode=display">Y = W\alpha + \epsilon</script>
+</p>
+<p>where <script type="math/tex">\alpha</script> is estimated as <script type="math/tex">\widehat{\alpha} = (W^TW + \phi\,I)^{-1}W^TY</script>
+and the parameter <script type="math/tex">\phi</script> is chosen
+via K-fold cross-validation. </p>
+<p>For binary traits, we use a logistic ridge regression model to combine
+the predictors in <script type="math/tex">W</script>
+</p>
+<p>
+<script type="math/tex; mode=display">\text{logit}(p) = \mu + W\alpha</script>
+where <script type="math/tex">p</script> is the probability of being a case and <script type="math/tex">\mu</script> captures the effects of non-genetic covariates.</p>
+<h4 id="genetic-predictors-and-loco">Genetic predictors and LOCO</h4>
+<p>Once <script type="math/tex">\alpha</script> has been estimated we can construct the genetic prediction</p>
+<p>
+<script type="math/tex; mode=display">Z = W\widehat{\alpha}</script>
+</p>
+<p>Also, since each column of the matrix <script type="math/tex">W</script> will be associated with a
+chromosome we can can also construct a genetic prediction ignoring any
+one chromosome, by simply ignoring those columns when calculating the
+prediction. This is known as the Leave One Chromosome Out (LOCO)
+approach. These LOCO predictions are valuable at Step 2 of <strong>regenie</strong>
+when each marker is tested for associated (see below).</p>
+<p>For binary traits, it is the linear predictor in a logistic regression
+model using LOCO that is saved,
+and used as an offset when fitting logistic regression models to test
+for association.</p>
+<h4 id="multiple-phenotypes">Multiple phenotypes</h4>
+<p>The dimension reduction step using ridge regression can be used very
+efficiently to model multiple phenotypes at once. The ridge regression
+equations for a block of SNPs in a <script type="math/tex">N\times B</script> matrix <script type="math/tex">X</script> and a single phenotype
+in a <script type="math/tex">N\times 1</script> matrix <script type="math/tex">Y</script> take the form</p>
+<p>
+<script type="math/tex"> \widehat{\beta} = AY </script> where <script type="math/tex">A = (X^TX+\tau I)^{-1}X^T</script>
+<strong>does not depend on <script type="math/tex">Y</script></strong></p>
+<p>If instead <script type="math/tex">P</script> phenotypes are stored in columns of a <script type="math/tex">N\times P</script> matrix <script type="math/tex">Y</script>, then the matrix <script type="math/tex">A</script>
+can be applied jointly to calculate the matrix of estimates <script type="math/tex">\widehat{\beta} = AY</script>,
+and this can take advantage of parallel linear algebra
+implementations in the Eigen matrix library.</p>
+<h4 id="covariates">Covariates</h4>
+<p>Covariates, such as age and sex and batch effect variables can be
+included in the <strong>regenie</strong> model.</p>
+<p>For quantitative traits, any covariates are regressed out of
+phenotypes and genotypes before fitting the model.</p>
+<p>For binary traits, we fit a null model with only covariates, and use
+predictions from that model as an offset when fitting the logistic
+regression model.</p>
+<h3 id="step-2-association-testing">Step 2 : Association testing</h3>
+<p>In Step 2 a larger set of markers are tested for association with the
+trait (or traits). As with Step 1, these markers are also read in
+blocks of <script type="math/tex">B</script> markers, and tested for association. This avoids having
+to have all markers stored in memory at once.</p>
+<h4 id="quantitative-traits">Quantitative traits</h4>
+<p>For quantitative traits, we use a linear regression model for
+association testing.</p>
+<ul>
+<li>Covariates are regressed out of the phenotypes and genetic markers.</li>
+<li>The LOCO predictions from Step 1 are removed from the phenotypes.</li>
+<li>Linear regression is then used to test association of the residualized
+phenotype and the genetic marker.</li>
+<li>Parallel linear algebra operations in the Eigen library are used
+  where possible.</li>
+</ul>
+<h4 id="binary-traits">Binary traits</h4>
+<p>For binary traits, logistic regression is used to test association of
+the phenotype and the genetic marker.</p>
+<p>The logistic regression model includes the LOCO predictions from
+  Step 1 <em>as an offset</em>. Covariates are included in the linear
+  predictor in the usual way.</p>
+<p>When the case-control ratio is imbalanced, standard association tests
+don't control Type I error well at rare genetic markers. <strong>regenie</strong>
+has two options to handle this</p>
+<h5 id="firth-logistic-regression">Firth logistic regression</h5>
+<p>Standard maximum likelihood estimates are generally biased. The Firth
+correction [2]
+removes much of the bias, and results in better calibrated test
+statistics. The correction involves adding a penalty term to the
+log-likelihood,</p>
+<p>
+<script type="math/tex; mode=display"> \widetilde{l}(\theta) = l(\theta) + {1 \over 2} \log I|\theta| </script>
+</p>
+<p>where the penalty term corresponds to the use of Jeffrey's Prior. 
+This prior has the effect of shrinking the effect size towards zero.</p>
+<p><strong>regenie</strong> uses a Firth correction when the p-value from the standard
+  logistic regression test is below a threshold (default 0.05). See
+  the option <code>--firth</code>. </p>
+<h5 id="saddle-point-approxiation-spa-test">Saddle point approxiation (SPA) test</h5>
+<p>The SPA test approximates the null distribution of the test statistic
+by approximating the cumulant generating function of the
+test  statistic,  which  involves  all  of  the  higher  order
+moments [3,4]. This provides a better estimation of the tail probabilities compared to using
+standard asymptotic theory which relies on the normal approximation and uses only the
+first two moments of the dsitribution. A tail probability is obtained as </p>
+<p>
+<script type="math/tex; mode=display">  
+\begin{align*}  
+P&(T < t_{\text{obs}}) \approx
+    \Phi(z), \text{ where,}\\
+    z &= w + \frac{1}{w}\log{\frac{v}{w}}\\
+    w &= \text{sign}(\delta^*)\sqrt{ 2 [ t_{\text{obs}}\, \delta^* - K(\delta^*)}],\,
+    v = \delta^*\sqrt{K''(\delta^*)}
+\end{align*}
+</script>
+</p>
+<p>and <script type="math/tex">K(\delta)</script> is the cumulant generating function of the test statistic and <script type="math/tex">\delta^*</script> is obtained by using a root-finding algorithm for <script type="math/tex">K'(\delta)=t_{\text{obs}}</script>. As this approximation
+has been found not too work very well for ultra-rare variants, a minimum minor allele count (MAC)
+is used to filter out these variants before testing (option <code>--minMAC</code>).</p>
+<h3 id="missing-phenotype-data">Missing Phenotype data</h3>
+<p>With QTs, missing values are mean-imputed in Step 1 and they are dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
+<p>With BTs, missing values are mean-imputed in Step 1 when fitting the
+level 0 linear ridge regression and they are dropped when fitting the
+level 1 logistic ridge regression for each trait. In Step 2, missing values are dropped when testing each trait.</p>
+<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script>
+phenotypes, use option <code>--strict</code> in step 1 and 2. This is also useful
+when analyzing a single trait to avoid making a new bed/bgen file just
+for the complete data set of individuals (so setting the phenotype
+values of individuals to remove to NA).</p>
+<h3 id="references">References</h3>
+<p>[1] L. Breiman (1996) Stacked Regressions. Machine Learning, 24,
+49-64.</p>
+<p>[2] D. Firth (1993) Bias reduction of maximum likelihood estimates. Biometrika 80,  27–38.</p>
+<p>[3] R. Butler (2007) Saddlepoint Approximations with Applications. CUP</p>
+<p>[4] R. Dey et al. (2017) A Fast and Accurate Algorithm to Test for Binary
+Phenotypes and Its Application to PheWAS.The American Journal of Human
+Genetics 101, 37–49.</p></div>
+        
+        
+    </div>
+
+    <footer class="col-md-12 text-center">
+        
+        <hr>
+        <p>
+        <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
+        </p>
+
+        
+        
+    </footer>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="../js/bootstrap-3.0.3.min.js"></script>
+    
+    <script>var base_url = ".."</script>
+    
+    <script src="../js/base.js"></script>
+    <script src="../search/main.js"></script>
+
+  <script type="text/javascript"
+          src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML"></script>
+
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+tex2jax: {
+inlineMath: [['$','$'], ['\\(','\\)']],
+processEscapes: true},
+jax: ["input/TeX","input/MathML","input/AsciiMath","output/CommonHTML"],
+extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js","MathZoom.js","AssistiveMML.js", "[Contrib]/a11y/accessibility-menu.js"],
+TeX: {
+extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"],
+equationNumbers: {
+autoNumber: "AMS"
+}
+}
+});
+  </script>
+
+    <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                    <span class="sr-only">Close</span>
+                </button>
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+            </div>
+            <div class="modal-body">
+                <p>
+                    From here you can search these documents. Enter
+                    your search terms below.
+                </p>
+                <form>
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+    </body>
+
+
+</html>
