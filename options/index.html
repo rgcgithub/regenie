@@ -125,6 +125,8 @@
         <li class="first-level "><a href="#input">Input</a></li>
             <li class="second-level"><a href="#genetic-data-file-format">Genetic data file format</a></li>
                 
+            <li class="second-level"><a href="#sample-exclusion-file-format">Sample exclusion file format</a></li>
+                
             <li class="second-level"><a href="#covariate-file-format">Covariate file format</a></li>
                 
             <li class="second-level"><a href="#phenotype-file-format">Phenotype file format</a></li>
@@ -194,6 +196,12 @@ Firth logistic regression model</p>
 <td>Input genetic data file. Either bgen file eg. <code>file.bgen</code>, or bed/bim/fam prefix that assumes<code>file.bed</code>, <code>file.fam</code>, <code>file.bim</code> exist</td>
 </tr>
 <tr>
+<td><code>--remove</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Sample exclusion file that lists individuals to ignore in the analysis</td>
+</tr>
+<tr>
 <td><code>--p</code></td>
 <td>FILE</td>
 <td>Required</td>
@@ -232,6 +240,14 @@ Step 2</p>
 <a href="https://www.well.ox.ac.uk/~gav/bgen_format/">here</a></p>
 <p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a></p>
 <p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink2">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a></p>
+<h4 id="sample-exclusion-file-format">Sample exclusion file format</h4>
+<pre><code>2 2 
+5 5 
+.
+</code></pre>
+
+<p>No header. Each line starts with individual FID IID.</p>
+<p>The samples listed in this file must be a subset of the <script type="math/tex">N</script> samples in bgen/bed file.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
 1 1 1.46837294454993 1.93779743016325 0.152887004505393
