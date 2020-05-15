@@ -247,7 +247,7 @@ Step 2</p>
 </code></pre>
 
 <p>No header. Each line starts with individual FID IID.</p>
-<p>The samples listed in this file must be a subset of the <script type="math/tex">N</script> samples in bgen/bed file.</p>
+<p>The samples listed in this file must be a subset of those in the bgen/bed file.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
 1 1 1.46837294454993 1.93779743016325 0.152887004505393
@@ -299,9 +299,10 @@ corresponding prediction file name. Each phenotype must have
 only one prediction file and phenotype names must match with those in the phenotype file.</p>
 <p>Each prediction file contains the LOCO predictions for the phenotype</p>
 <p>Line 1 : FID_IID sample identifier and chromosome number (1-23)</p>
-<p>Followed by <script type="math/tex">N</script> lines of 24 values representing FID_IID and leave-one chromosome out (LOCO) 
-predictions for each genotyped individual.</p>
-<p>Samples must match those in the bed/bgen file. </p>
+<p>Following lines have 24 values representing FID_IID and leave-one chromosome out (LOCO) 
+predictions for each individual.</p>
+<p>Samples in this file must be in the bed/bgen file and must correspond to samples included in
+the analysis (otherwise use <code>--remove</code> in step 1).</p>
 <p>Samples with missing LOCO predictions for a phenotype must have their corresponding phenotype 
 value set to missing.</p>
 <h2 id="options">Options</h2>
