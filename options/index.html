@@ -284,7 +284,7 @@ Genotyped samples that are not in this file are removed from the analysis.</p>
 level 0 linear ridge regression and 
 they are dropped when fitting the level 1 logistic ridge regression for each trait . 
 In Step 2, missing values are dropped when testing each trait.</p>
-<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA).</p>
+<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
 <h4 id="predictions-file-format">Predictions file format</h4>
 <p>Running <code>--step 1 --o foo</code> will produce</p>
 <ol>
