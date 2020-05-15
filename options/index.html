@@ -468,6 +468,9 @@ value set to missing.</p>
 <p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
 per-chromosome LOCO predictions as columns of the files.</p>
 <p>The first row of the files lists FID_IID and the chromosomes output.</p>
+<p>Individuals listed using option <code>--remove</code> are excluded from this file. Hence, this can be used if genotype
+files in step 1 and 2 have different number of samples (so only keeping samples 
+in the intersection of the two files).</p>
 <p>The list of blup files needed for the association testing mode is written to file <code>file_pred.list</code>.</p>
 <p><strong>Using<code>--step 2 --o file</code></strong> </p>
 <p>Results written to a single file <code>file.test</code>, which has one line per
