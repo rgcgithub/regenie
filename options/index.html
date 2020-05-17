@@ -32,6 +32,23 @@
         <![endif]-->
 
     
+    <script>
+    (function(i, s, o, g, r, a, m) {
+        i['GoogleAnalyticsObject'] = r;
+        i[r] = i[r] || function() {
+            (i[r].q = i[r].q || []).push(arguments)
+        }, i[r].l = 1 * new Date();
+        a = s.createElement(o),
+        m = s.getElementsByTagName(o)[0];
+        a.async = 1;
+        a.src = g;
+        m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-166859683-1', 'auto');
+    ga('send', 'pageview');
+    </script>
+    
 
      
 </head>
@@ -247,7 +264,7 @@ Step 2</p>
 </code></pre>
 
 <p>No header. Each line starts with individual FID IID.</p>
-<p>The samples listed in this file must be a subset of those in the bgen/bed file.</p>
+<p>Samples listed in this file that are not in bgen/bed file are ignored.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
 1 1 1.46837294454993 1.93779743016325 0.152887004505393
@@ -257,10 +274,10 @@ Step 2</p>
 </code></pre>
 
 <p>Line 1 : Header with FID, IID and <script type="math/tex">C</script> covariate names.</p>
-<p>Followed by <script type="math/tex">N_C</script> lines of <script type="math/tex">C+2</script> values. Space separated.</p>
+<p>Followed by lines of <script type="math/tex">C+2</script> values. Space separated.</p>
 <p>Each line contains individual FID and IID followed by <script type="math/tex">C</script> covariate
 values.</p>
-<p>The <script type="math/tex">N_C</script> samples in this file must be a subset of the <script type="math/tex">N</script> samples in bgen/bed file.
+<p>Samples listed in this file that are not in bgen/bed file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.</p>
 <p>No missing values are allowed.</p>
 <p>If <code>--step 2</code> is specified, then the covariate file should be the same
@@ -274,9 +291,9 @@ as that used in Step 1.</p>
 </code></pre>
 
 <p>Line 1 : Header with FID, IID and <script type="math/tex">P</script> phenotypes names.</p>
-<p>Followed by <script type="math/tex">N_P</script> lines of <script type="math/tex">P+2</script> values. Space separated. 
+<p>Followed by lines of <script type="math/tex">P+2</script> values. Space separated. 
 Each line contains individual FID and IID followed by P phenotype values.</p>
-<p>The <script type="math/tex">N_P</script> samples in this file must be a subset of the <script type="math/tex">N</script> samples in bgen/bed file.
+<p>Samples listed in this file that are not in bgen/bed file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.</p>
 <p>Missing values must be coded as NA.</p>
 <p>With QTs, missing values are mean-imputed in Step 1 and they are dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
@@ -468,9 +485,9 @@ value set to missing.</p>
 <p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
 per-chromosome LOCO predictions as columns of the files.</p>
 <p>The first row of the files lists FID_IID and the chromosomes output.</p>
-<p>Individuals listed using option <code>--remove</code> are excluded from this file. Hence, this can be used if genotype
-files in step 1 and 2 have different number of samples (so only keeping samples 
-present in both files).</p>
+<p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
+Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
+(so only keeping samples present in both files).</p>
 <p>The list of blup files needed for the association testing mode is written to file <code>file_pred.list</code>.</p>
 <p><strong>Using<code>--step 2 --o file</code></strong> </p>
 <p>Results written to a single file <code>file.test</code>, which has one line per
