@@ -499,14 +499,14 @@ per-chromosome LOCO predictions as columns of the files.</p>
  (so only keeping samples present in both files).</p>
 <p>The list of blup files needed for the association testing mode is written to file <code>file_pred.list</code>.</p>
 <p><strong>Using<code>--step 2 --o file</code></strong> </p>
-<p>Results written to a single file <code>file.test</code>, which has one line per
+<p>Results written to a single file <code>file.regenie</code>, which has one line per
 SNP along with a header line.</p>
 <p>The first 6 entries of each row specify chromosome, posistion, ID, allele 0, allele 1
 and the frequency of allele 1.</p>
 <p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics and <script type="math/tex">-\log_{10}</script> p-values for each phenotype.</p>
 <p>When using option <code>--split</code>, the results are written in separate files for
 each phenotype
-<code>file_&lt;phenotype1_name&gt;.test,...,file_&lt;phenotypeP_name&gt;.test</code> 
+<code>file_&lt;phenotype1_name&gt;.regenie,...,file_&lt;phenotypeP_name&gt;.regenie</code> 
 with the same format.</p></div>
         
         

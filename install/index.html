@@ -183,8 +183,10 @@ at negligible extra computational cost, by writing temporary files to disk.</p>
 <h3 id="threading">Threading</h3>
 <p><strong>regenie</strong> can take advantage of multiple cores using threading. The
 number of threads can be specified using the <code>--threads</code> option.</p>
-<p><strong>regenie</strong> uses the <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page">Eigen library</a> for efficient linear algebra
-  operations and this uses threading where possible.</p></div>
+<p><strong>regenie</strong> uses the <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page">Eigen library</a> for efficient linear algebra operations and this uses threading where possible.</p>
+<p>For BGEN v1.2 files with 8-bit encoding (such as those used by UK Biobank
+with imputed variants), step 2 of <strong>regenie</strong> has been optimized to 
+used multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p></div>
         
         
     </div>
