@@ -167,13 +167,14 @@ Essentially, <strong>regenie</strong> is run in 2 steps:</p>
 <li>In the first step a subset of genetic markers are used to fit a
 whole genome regression model that captures a good fraction of the
 phenotype variance attributable to genetic effects.</li>
-<li>In the second step, a larger set of genetic markers (ie. imputed
+<li>In the second step, a larger set of genetic markers (e.g. imputed
 markers) are tested for association with the phenotype <em>conditional
 upon</em> the prediction from the regression model in Step 1, using the
 leave one chromosome out (LOCO) scheme, that avoids proximal
 contamination.</li>
 </ol>
-<p><img alt="Rflow" class="center" src="../img/regenie_overview.png" style="text-align:center;height:450px;width:650px" /></p>
+<p><img alt="Rflow" src="../img/regenie_overview.png" style="text-align:center;padding: 10px;width:70%;border: 1px solid #ddd;display: block;margin-left: auto;margin-right: auto" />
+<br></p>
 <h3 id="step-1-whole-genome-model">Step 1 : Whole genome model</h3>
 <p>In Step 1 a whole genome regression model is fit at a subset of the
 total set of available genetic markers. These are typically a set of
