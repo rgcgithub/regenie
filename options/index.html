@@ -266,6 +266,11 @@ Step 2.</p>
 <p>Step 2 of <strong>regenie</strong> can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
 (genotype file can be generated with <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> using 
 option <code>--export bgen-1.2 'bits=8'</code>).</p>
+<p>To include X chromosome genotypes in step 1 and/or step 2, males should be coded as diploid 
+so that their genotypes are 0/2. This can be done in PLINK by setting the sex of all 
+individuals to female before generating the genotype file.
+Chromosome values of 23 (for human analyses), X, XY, PAR1 and PAR2 are all acceptable and 
+will be collapsed into a single chromosome.</p>
 <h4 id="sample-exclusion-file-format">Sample exclusion file format</h4>
 <pre><code>2 2 
 7 7 
@@ -453,6 +458,12 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>INT</td>
 <td>Optional</td>
 <td>flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.</td>
+</tr>
+<tr>
+<td><code>--nauto</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>number of autosomal chromosomes (for non-human studies) [default is 22]</td>
 </tr>
 <tr>
 <td><code>--niter</code></td>

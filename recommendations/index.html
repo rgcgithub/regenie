@@ -126,7 +126,7 @@
         
         <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
     <ul class="nav bs-sidenav">
-        <li class="first-level active"><a href="#recommendations-for-analyzing-500k-uk-biobank-participants">Recommendations for analyzing 500K UK Biobank participants</a></li>
+        <li class="first-level active"><a href="#recommendations-for-uk-biobank-analysis">Recommendations for UK Biobank analysis</a></li>
             <li class="second-level"><a href="#pre-processing">Pre-processing</a></li>
                 
                 <li class="third-level"><a href="#selection-of-traits">Selection of traits</a></li>
@@ -140,13 +140,36 @@
 </div></div>
         <div class="col-md-9" role="main">
 
-<h2 id="recommendations-for-analyzing-500k-uk-biobank-participants">Recommendations for analyzing 500K UK Biobank participants</h2>
+<h2 id="recommendations-for-uk-biobank-analysis">Recommendations for UK Biobank analysis</h2>
+<p><strong>regenie</strong> is ideally suited for large-scale analyses such as 500K UK Biobank data,
+where records are available for thousands of phenotypes.</p>
+<p>We provide below a few guidelines on how to perform such analysis.</p>
 <h3 id="pre-processing">Pre-processing</h3>
+<p>We will first go over important steps to consider before running <strong>regenie</strong>.</p>
 <h4 id="selection-of-traits">Selection of traits</h4>
+<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once and this is where
+higher computational gains are obtained.
+As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
+to handle missing data, and real data applications have shown that it gives
+nearly identical results as discarding missing observations when analyzing each trait 
+separately. </p>
+<p>Hence, we recommend to analyze traits in groups that have similar missingness patterns.
+We are working on releasing a tool that generate these groupings to facilitate this step.</p>
+<p>The number of phenotypes in a group will affect the computational resources required
+and the table below shows typical computational requirements based on using 
+500,000 markers in step 1 split in blocks of 1000 and using blocks of size 200 when 
+testing SNPs in step 2. </p>
 <h4 id="preparing-genotype-file">Preparing genotype file</h4>
 <h4 id="exclusion-files">Exclusion files</h4>
 <h3 id="step-1">Step 1</h3>
-<h3 id="step-2">Step 2</h3></div>
+<p>We recommend to run <strong>regenie</strong> using multi-threading (4+ threads) which will 
+decrease the overall runtime of the program. 
+As this step can be quite memory intensive (due to storing block predictions), 
+we recommend to use option <code>--loocv</code>, where the number of phenotypes analyzed
+will determine how much disk space is required (e.g. around 10GB per phenotype 
+assuming there are 500,000 variants split in blocks of 1,000).</p>
+<h3 id="step-2">Step 2</h3>
+<p>We recommend to run <strong>regenie</strong> using multi-threading (8+ threads) which will decrease the overall runtime of the program.   </p></div>
         
         
     </div>
