@@ -92,6 +92,12 @@
                     </li>
                 
                 
+                
+                    <li >
+                        <a href="../recommendations/">Recommendations</a>
+                    </li>
+                
+                
                 </ul>
 
             <ul class="nav navbar-nav navbar-right">
@@ -137,16 +143,19 @@
 <h2 id="installation">Installation</h2>
 <ol>
 <li><strong>regenie</strong> requires the
-  <a href="https://bitbucket.org/gavinband/bgen/src/default/">bgen library</a> so
+  <a href="https://bitbucket.org/gavinband/bgen/src/default/">BGEN library</a> so
   you will need to download and install that library.</li>
-<li>In the regenie source code edit the BGEN variable in the <code>Makefile</code>
-   to the bgen library path.</li>
+<li>In the regenie source code edit the BGEN_PATH variable in the <code>Makefile</code>
+   to the BGEN library path.</li>
 <li>On the command line type <code>make</code> while in the main source code directory.</li>
 <li>This should produce the executable called <code>regenie</code>.</li>
 </ol>
 <h2 id="computing-requirements">Computing requirements</h2>
-<p>We have tested <strong>regenie</strong> on Linux and Mac OSX computing
-environments.</p>
+<p>We have tested <strong>regenie</strong> on Linux 
+<!-- Issue when using BGEN library API on MAC (gives different results than on Linux)
+and Mac OSX 
+-->
+computing environments.</p>
 <h3 id="memory-usage">Memory usage</h3>
 <p>In both Step 1 and Step 2 of a <strong>regenie</strong> run the genetic data file is
 read once, in blocks of SNPs, so at no point is the full dataset ever stored in
@@ -166,8 +175,9 @@ at negligible extra computational cost, by writing temporary files to disk.</p>
 <h3 id="threading">Threading</h3>
 <p><strong>regenie</strong> can take advantage of multiple cores using threading. The
 number of threads can be specified using the <code>--threads</code> option.</p>
-<p><strong>regenie</strong> uses the <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page">Eigen library</a> for efficient linear algebra operations and this uses threading where possible.</p>
-<p>For BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
+<p><strong>regenie</strong> uses the <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page">Eigen library</a> for 
+efficient linear algebra operations and this uses threading where possible.</p>
+<p>For PLINK bed/bim/fam files as well as BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
 500K imputed data), step 2 of <strong>regenie</strong> has been optimized by 
 using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p></div>
         

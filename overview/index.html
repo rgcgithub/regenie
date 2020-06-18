@@ -92,6 +92,12 @@
                     </li>
                 
                 
+                
+                    <li >
+                        <a href="../recommendations/">Recommendations</a>
+                    </li>
+                
+                
                 </ul>
 
             <ul class="nav navbar-nav navbar-right">
@@ -292,8 +298,10 @@ log-likelihood,</p>
 <p>where the penalty term corresponds to the use of Jeffrey's Prior. 
 This prior has the effect of shrinking the effect size towards zero.</p>
 <p><strong>regenie</strong> uses a Firth correction when the p-value from the standard
-  logistic regression test is below a threshold (default 0.05). See
-  the option <code>--firth</code>. </p>
+  logistic regression test is below a threshold (default 0.05). 
+It also includes a novel, accurate and fast approximate Firth correction which 
+is ~60x faster than the exact Firth correction
+(see the option <code>--firth</code>). </p>
 <h5 id="saddle-point-approxiation-spa-test">Saddle point approxiation (SPA) test</h5>
 <p>The SPA test approximates the null distribution of the test statistic
 by approximating the cumulant generating function of the
@@ -312,24 +320,26 @@ P&(T < t_{\text{obs}}) \approx
 \end{align*}
 </script>
 </p>
-<p>and <script type="math/tex">K(\delta)</script> is the cumulant generating function of the test statistic and <script type="math/tex">\delta^*</script> is obtained by using a root-finding algorithm for <script type="math/tex">K'(\delta)=t_{\text{obs}}</script>. As this approximation
-has been found not too work very well for ultra-rare variants, a minimum minor allele count (MAC)
-is used to filter out these variants before testing (option <code>--minMAC</code>).</p>
+<p>and <script type="math/tex">K(\delta)</script> is the cumulant generating function of the test statistic and <script type="math/tex">\delta^*</script> 
+is obtained by using a root-finding algorithm for <script type="math/tex">K'(\delta)=t_{\text{obs}}</script>. As this approximation
+has been found not to work very well for ultra-rare variants, a minimum minor 
+allele count (MAC) is used to filter out these variants before testing (option <code>--minMAC</code>).</p>
 <h3 id="missing-phenotype-data">Missing Phenotype data</h3>
-<p>With QTs, missing values are mean-imputed in Step 1 and they are dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
+<p>With QTs, missing values are mean-imputed in Step 1 and they are 
+dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
 <p>With BTs, missing values are mean-imputed in Step 1 when fitting the
 level 0 linear ridge regression and they are dropped when fitting the
-level 1 logistic ridge regression for each trait. In Step 2, missing values are dropped when testing each trait.</p>
+level 1 logistic ridge regression for each trait. In Step 2, missing 
+values are dropped when testing each trait.</p>
 <p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script>
-phenotypes, use option <code>--strict</code> in step 1 and 2. This is also useful
-when analyzing a single trait to avoid making a new bed/bgen file just
-for the complete data set of individuals (so setting the phenotype
-values of individuals to remove to NA).</p>
+phenotypes from the analysis, use option <code>--strict</code> in step 1 and 2. 
+This can also be used when analyzing a single trait to only keep individuals with 
+complete data by setting the phenotype values of individuals to remove to NA.</p>
 <h3 id="references">References</h3>
 <p>[1] L. Breiman (1996) Stacked Regressions. Machine Learning, 24,
 49-64.</p>
 <p>[2] D. Firth (1993) Bias reduction of maximum likelihood estimates. Biometrika 80,  27–38.</p>
-<p>[3] R. Butler (2007) Saddlepoint Approximations with Applications. CUP</p>
+<p>[3] R. Butler (2007) Saddlepoint Approximations with Applications. Cambridge University Press.</p>
 <p>[4] R. Dey et al. (2017) A Fast and Accurate Algorithm to Test for Binary
 Phenotypes and Its Application to PheWAS.The American Journal of Human
 Genetics 101, 37–49.</p></div>

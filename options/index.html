@@ -92,6 +92,12 @@
                     </li>
                 
                 
+                
+                    <li >
+                        <a href="../recommendations/">Recommendations</a>
+                    </li>
+                
+                
                 </ul>
 
             <ul class="nav navbar-nav navbar-right">
@@ -127,6 +133,8 @@
                 
             <li class="second-level"><a href="#sample-exclusion-file-format">Sample exclusion file format</a></li>
                 
+            <li class="second-level"><a href="#variant-exclusion-file-format">Variant exclusion file format</a></li>
+                
             <li class="second-level"><a href="#covariate-file-format">Covariate file format</a></li>
                 
             <li class="second-level"><a href="#phenotype-file-format">Phenotype file format</a></li>
@@ -141,7 +149,7 @@
 
 <h2 id="documentation">Documentation</h2>
 <h2 id="getting-started">Getting started</h2>
-<p>To run <strong>regenie</strong> use the command <code>./regenie</code> on the command line,
+<p>To run <strong>regenie</strong>, use the command <code>./regenie</code> on the command line,
 followed by options and flags as needed.</p>
 <p>To get a full list of options use</p>
 <pre><code>./regenie --help
@@ -205,7 +213,13 @@ Firth logistic regression model</p>
 <td><code>--remove</code></td>
 <td>FILE</td>
 <td>Optional</td>
-<td>Sample exclusion file that lists individuals to ignore in the analysis</td>
+<td>Exclusion file that lists IDs of individuals to ignore in the analysis</td>
+</tr>
+<tr>
+<td><code>--exclude</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Exclusion file that lists IDs of variants to remove <strong>(only works with option <code>--step 1</code>)</strong></td>
 </tr>
 <tr>
 <td><code>--p</code></td>
@@ -235,17 +249,17 @@ Firth logistic regression model</p>
 <td><code>--pred</code></td>
 <td>FILE</td>
 <td>Optional</td>
-<td>File containing predictions from Step 1 (see Overview). <strong>Required for <code>--step 2</code></strong></td>
+<td>File containing predictions from Step 1 (see Overview). <strong>This is required for <code>--step 2</code></strong></td>
 </tr>
 </tbody>
 </table>
 <h4 id="genetic-data-file-format">Genetic data file format</h4>
 <p><strong>regenie</strong> can read BGEN files or bed/bim/fam files in Step 1 and
-Step 2</p>
+Step 2.</p>
 <p>The BGEN file format is described
-<a href="https://www.well.ox.ac.uk/~gav/bgen_format/">here</a></p>
-<p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a></p>
-<p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink/">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a></p>
+<a href="https://www.well.ox.ac.uk/~gav/bgen_format/">here</a>.</p>
+<p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a>.</p>
+<p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink/">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a>.</p>
 <p>Step 2 of <strong>regenie</strong> can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
 (genotype file can be generated with <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> using 
 option <code>--export bgen-1.2 'bits=8'</code>).</p>
@@ -257,6 +271,15 @@ option <code>--export bgen-1.2 'bits=8'</code>).</p>
 
 <p>No header. Each line starts with individual FID IID. Space separated.</p>
 <p>Samples listed in this file that are not in bgen/bed file are ignored.</p>
+<h4 id="variant-exclusion-file-format">Variant exclusion file format</h4>
+<pre><code>20
+31
+.
+</code></pre>
+
+<p>No header. Each line must start with variant ID 
+(if there are additional columns, file must be space separated).</p>
+<p>Variants listed in this file that are not in bgen/bed file are ignored.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
 1 1 1.46837294454993 1.93779743016325 0.152887004505393
@@ -284,7 +307,8 @@ as that used in Step 1.</p>
 
 <p>Line 1 : Header with FID, IID and <script type="math/tex">P</script> phenotypes names.</p>
 <p>Followed by lines of <script type="math/tex">P+2</script> values. Space separated. 
-Each line contains individual FID and IID followed by P phenotype values.</p>
+Each line contains individual FID and IID followed by P phenotype values
+(for binary traits, must be coded as 0=control, 1=case, NA=missing).</p>
 <p>Samples listed in this file that are not in bgen/bed file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.</p>
 <p>Missing values must be coded as NA.</p>
@@ -298,22 +322,23 @@ In Step 2, missing values are dropped when testing each trait.</p>
 <p>Running <code>--step 1 --o foo</code> will produce</p>
 <ol>
 <li>A set of files containing genomic predictions for each phenotype
-   from Step 1 (see Output files).</li>
-<li>A file called <code>foo_pred.list</code> listing the locations of the prediction files</li>
+   from Step 1 (see Output section below).</li>
+<li>A file called <code>foo_pred.list</code> listing the locations of the prediction files.</li>
 </ol>
 <p>The file list is needed as an input file when using <code>--step 2</code>
 via the <code>--pred</code> option. The file list has one line per phenotype (in
 any order) that specifies the name of the phenotype and its
 corresponding prediction file name. Each phenotype must have
 only one prediction file and phenotype names must match with those in the phenotype file.</p>
-<p>Each prediction file contains the LOCO predictions for the phenotype</p>
+<p>Each prediction file contains the LOCO predictions for the phenotype.</p>
 <p>Line 1 : FID_IID sample identifier and chromosome number (1-23)</p>
 <p>Following lines have 24 values representing FID_IID and leave-one chromosome out (LOCO) 
   predictions for each individual.</p>
-<p>Samples in this file must be in the bed/bgen file and must correspond to samples included in
+<p>Samples in this file must be in the bed/bgen file and must be included in
   the analysis (otherwise use <code>--remove</code>).</p>
-<p>Samples with missing LOCO predictions for a phenotype must have their corresponding phenotype 
-  value set to missing.</p>
+<p>For each phenotype, samples with missing LOCO predictions must have their corresponding phenotype 
+  value set to missing, and all samples with non-missing phenotype values must have LOCO
+predictions.</p>
 <h2 id="options">Options</h2>
 <table>
 <thead>
@@ -327,13 +352,13 @@ only one prediction file and phenotype names must match with those in the phenot
 <tbody>
 <tr>
 <td><code>--step</code></td>
-<td>1/2</td>
+<td>INT</td>
 <td>Required</td>
-<td>Specify Step 1 or Step 2 of regenie run (see Overview)</td>
+<td>specify step for the regenie run (see Overview) [argument can be <code>1</code> or <code>2</code>]</td>
 </tr>
 <tr>
 <td><code>--bt</code></td>
-<td>INT</td>
+<td>FLAG</td>
 <td>Optional</td>
 <td>specify that traits are binary (default is quantitative)</td>
 </tr>
@@ -341,7 +366,7 @@ only one prediction file and phenotype names must match with those in the phenot
 <td><code>--b</code></td>
 <td>INT</td>
 <td>Required</td>
-<td>block size</td>
+<td>size of the genotype blocks</td>
 </tr>
 <tr>
 <td><code>--nb</code></td>
@@ -395,25 +420,31 @@ only one prediction file and phenotype names must match with those in the phenot
 <td><code>--firth</code></td>
 <td>FLOAT</td>
 <td>Optional</td>
-<td>flag to use Firth likelihood ratio test as fallback for p-values less than threshold [default is 0.05]</td>
+<td>specify to use Firth likelihood ratio test as fallback for p-values less than the specified threshold [default is 0.05]</td>
 </tr>
 <tr>
 <td><code>--approx</code></td>
 <td>FLAG</td>
 <td>Optional</td>
-<td>flag to use approximation to Firth LRT for computational speedup (only works when option <code>-firth</code> is used)</td>
+<td>flag to use approximate Firth LRT for computational speedup (only works when option <code>--firth</code> is used)</td>
 </tr>
 <tr>
 <td><code>--spa</code></td>
 <td>FLOAT</td>
 <td>Optional</td>
-<td>flag to use Saddlepoint approximation as fallback for p-values less than threshold [default is 0.05]</td>
+<td>specify to use Saddlepoint approximation as fallback for p-values less than the specified threshold [default is 0.05]</td>
+</tr>
+<tr>
+<td><code>--test</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>specify to carry out dominant or recessive test [default is additive; argument can be <code>dominant</code> or <code>recessive</code>]</td>
 </tr>
 <tr>
 <td><code>--chr</code></td>
 <td>INT</td>
 <td>Optional</td>
-<td>specify which chromosomes to test in step 2 (use for each chromosome)</td>
+<td>specify which chromosomes to test in step 2 (use for each chromosome to include)</td>
 </tr>
 <tr>
 <td><code>--minMAC</code></td>
@@ -426,6 +457,12 @@ only one prediction file and phenotype names must match with those in the phenot
 <td>INT</td>
 <td>Optional</td>
 <td>maximum number of iterations for logistic regression [default is 30]</td>
+</tr>
+<tr>
+<td><code>--maxstep-null</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>maximum step size for logistic model with Firth penalty under the null [default is 25]</td>
 </tr>
 <tr>
 <td><code>--threads</code></td>
@@ -480,13 +517,20 @@ per-chromosome LOCO predictions as columns of the files.</p>
 <p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
  Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
  (so only keeping samples present in both files).</p>
-<p>The list of blup files needed for the association testing mode is written to file <code>file_pred.list</code>.</p>
+<p>Individuals with missing phenotype values kept in the analysis 
+are included in the file and have their predictions set to missing.</p>
+<p>The list of blup files needed for step 2 (association testing) is written to  <code>file_pred.list</code>.</p>
 <p><strong>Using<code>--step 2 --o file</code></strong> </p>
-<p>Results written to a single file <code>file.regenie</code>, which has one line per
+<p>By default, results are written to a single file <code>file.regenie</code>, which has one line per
 SNP along with a header line.</p>
-<p>The first 6 entries of each row specify chromosome, posistion, ID, allele 0, allele 1
-and the frequency of allele 1.</p>
-<p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics and <script type="math/tex">-\log_{10}</script> p-values for each phenotype.</p>
+<p>The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
+alternative allele (allele 1), frequency of the alternative allele, and the test performed 
+(additive/dominant/recessive).
+With BGEN files, the imputation INFO score is also provided. 
+Allele frequency and INFO score, if applicable, are computed using all 
+individuals included in the analysis (so they are the same for all phenotypes).</p>
+<p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics 
+and <script type="math/tex">-\log_{10}</script> p-values for each phenotype.</p>
 <p>When using option <code>--split</code>, the results are written in separate files for
 each phenotype
 <code>file_&lt;phenotype1_name&gt;.regenie,...,file_&lt;phenotypeP_name&gt;.regenie</code> 

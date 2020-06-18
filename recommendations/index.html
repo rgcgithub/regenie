@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="../img/favicon.ico">
 
     
-    <title>Performance - regenie</title>
+    <title>Recommendations - regenie</title>
     
 
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
@@ -87,14 +87,14 @@
                 
                 
                 
-                    <li class="active">
-                        <a href="./">Performance</a>
+                    <li >
+                        <a href="../performance/">Performance</a>
                     </li>
                 
                 
                 
-                    <li >
-                        <a href="../recommendations/">Recommendations</a>
+                    <li class="active">
+                        <a href="./">Recommendations</a>
                     </li>
                 
                 
@@ -107,12 +107,12 @@
                         </a>
                     </li>
                     <li >
-                        <a rel="prev" href="../options/">
+                        <a rel="prev" href="../performance/">
                             <i class="fas fa-arrow-left"></i> Previous
                         </a>
                     </li>
-                    <li >
-                        <a rel="next" href="../recommendations/">
+                    <li class="disabled">
+                        <a rel="next" >
                             Next <i class="fas fa-arrow-right"></i>
                         </a>
                     </li>
@@ -126,81 +126,27 @@
         
         <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
     <ul class="nav bs-sidenav">
-        <li class="first-level active"><a href="#performance">Performance</a></li>
-            <li class="second-level"><a href="#quantitative-traits">Quantitative traits</a></li>
+        <li class="first-level active"><a href="#recommendations-for-analyzing-500k-uk-biobank-participants">Recommendations for analyzing 500K UK Biobank participants</a></li>
+            <li class="second-level"><a href="#pre-processing">Pre-processing</a></li>
                 
-            <li class="second-level"><a href="#binary-traits">Binary traits</a></li>
+                <li class="third-level"><a href="#selection-of-traits">Selection of traits</a></li>
+                <li class="third-level"><a href="#preparing-genotype-file">Preparing genotype file</a></li>
+                <li class="third-level"><a href="#exclusion-files">Exclusion files</a></li>
+            <li class="second-level"><a href="#step-1">Step 1</a></li>
+                
+            <li class="second-level"><a href="#step-2">Step 2</a></li>
                 
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
 
-<h2 id="performance">Performance</h2>
-<p>We assessed the performance of <strong>regenie</strong> against 3 other
-programs for GWAS on large cohorts.</p>
-<ol>
-<li>BOLT-LMM <a href="https://www.nature.com/articles/ng.3190">Loh et al. (2015) Nature Genetics 47, 284–290</a> <a href="https://data.broadinstitute.org/alkesgroup/BOLT-LMM/">[Software]</a></li>
-<li>SAIGE - <a href="https://www.nature.com/articles/s41588-018-0184-y">Zhou et al. (2018) Nature Genetics 50, 1335–1341</a><a href="https://github.com/weizhouUMICH/SAIGE">[Software]</a></li>
-<li>fastGWA - <a href="https://www.nature.com/articles/s41588-019-0530-8">Jiang et al. (2019) Nature Genetics 51, 1749–1755</a> <a href="https://cnsgenomics.com/software/gcta/#Overview">[Software]</a></li>
-</ol>
-<p>Full details for all the runs are available in the BioRxiv paper (see Home).</p>
-<h3 id="quantitative-traits">Quantitative traits</h3>
-<p>We ran <strong>regenie</strong>, BOLT-LMM and fastGWA on 
-3 quantitative phenotypes measured on white British UK Biobank participants 
-(LDL, N=389,189; Body mass index [BMI], N=407,609; and Bilirubin, N=388,303) 
-where testing was performed on 9.8 million imputed SNPs. </p>
-<p>The Manhattan plots for all three phenotypes (see below) show good agreement between the methods 
-with both <strong>regenie</strong> and BOLT-LMM resulting in stronger association signals relative to fastGWA 
-at known peaks of association 
-(note that in the plots, the scaling of the y-axis changes above the upper dashed line).</p>
-<p><img alt="QTxy3" src="../img/qt_ex3.png" />
-<img alt="QTxy1" src="../img/qt_ex1.png" />
-<img alt="QTxy2" src="../img/qt_ex2.png" />
-<br/><br/></p>
-<p>We assessed the computational requirements of all three methods using a larger set of 50 
-quantitative traits from the UK Biobank, looking at computational timings as well as
-memory usage. 
-For <strong>regenie</strong> and BOLT LMM, 469,336 LD-pruned SNPs were used as model SNPs when fitting the null model (step 1) and 
-for fastGWA, these SNPs were used to compute the sparse GRM (timing not included).
-Tests were performed on 11.4M imputed SNPs (step 2).</p>
-<p><img alt="QTtime" src="../img/qtTiming.png" /></p>
-<p>From the table above, <strong>regenie</strong> was 151x faster than BOLT-LMM in elapsed time for Step 1 and 11.5x faster for Step 2, 
-which translated into $&gt;$30x overall speed-up in terms of elapsed time.
-In addition, <strong>regenie</strong> had a maximum memory usage of 12.9 GB, which is mostly due to <strong>regenie</strong> 
-only reading a small portion of the genotype data at a time, whereas BOLT-LMM required 50GB.
-<strong>regenie</strong> was 2.8x faster than fastGWA, but fastGWA is very memory efficient and used only a maximum of 2GB.</p>
-<h3 id="binary-traits">Binary traits</h3>
-<p><strong>regenie</strong> was compared to BOLT-LMM and SAIGE on a set of four binary traits
-measured on white British UK Biobank participants (coronary artery disease [CAD], N=352,063, case-control ratio=1:11; 
-glaucoma, N=406,927, case-control ratio=1:52;
- colorectal cancer, N=407,746, case-control ratio=1:97;
- and thyroid cancer, N=407,746, case-control ratio=1:660)
-and Step 2 testing was performed on 11.6 million imputed SNPs.
-A novel and fast approximate Firth correction was used in <strong>regenie</strong> as well as a SPA correction.</p>
-<p>As seen in the Manhattan plots below (note that the scaling of the y-axis changes above the upper dashed line), 
-all four approaches show very good agreement for the most balanced trait (CAD; case-control ratio=1:11), 
-but as the fraction of cases decreases BOLT-LMM tends to give inflated test statistics. 
-However both <strong>regenie</strong> with Firth and SPA corrections, as well as SAIGE, which uses SPA correction, 
-are all robust to this inflation and show similar agreement for the associations detected.</p>
-<p><img alt="BTxy1" src="../img/ManP_exemplar_BTs_trait1.png" />
-<img alt="BTxy2" src="../img/ManP_exemplar_BTs_trait2.png" />
-<img alt="BTxy3" src="../img/ManP_exemplar_BTs_trait3.png" />
-<img alt="BTxy4" src="../img/ManP_exemplar_BTs_trait4.png" /><br />
-<br/></p>
-<p>We assessed the computational requirements of <strong>regenie</strong> and SAIGE using a larger set of 50 
-binary traits from the UK Biobank that have a range of different case-control ratios and distinct missing data patterns. 
-469,336 LD-pruned SNPs were used as model SNPs when fitting the null model (step 1) 
-and tests were performed on 11.4M imputed SNPs (step 2).
-In step 1, <strong>regenie</strong> was ran using LOOCV and for two traits SAIGE did not finish as it took longer than the 4-week limit. 
-In step 2, the novel and fast approximate Firth correction was used in <strong>regenie</strong> in addition to SPA correction.</p>
-<p><img alt="BTtime" src="../img/btTiming.png" /></p>
-<p>From the table above, Step 1 of <strong>regenie</strong> was about 350 times faster and required only $40\%$ of the memory used by SAIGE. 
-In Step 2, <strong>regenie</strong> Firth and SPA were 2x and 3x faster than SAIGE in CPU time, respectively, but were 21x and 34x 
-faster than SAIGE in elapsed time, respectively, which suggests that <strong>regenie</strong> makes better use of parallelization in this step. 
-Overall, <strong>regenie</strong> using Firth correction was 8x faster than SAIGE in CPU hours 
-and 26.8x faster in elapsed time.</p>
-<p>All runs above were done on the same computing environment (16 virtual CPU cores of a AMD EPYC 7000 series processor with an 
-all core turbo clock speed of 2.5 GHz, 64GB of memory, and 600GB solid-state disk).</p></div>
+<h2 id="recommendations-for-analyzing-500k-uk-biobank-participants">Recommendations for analyzing 500K UK Biobank participants</h2>
+<h3 id="pre-processing">Pre-processing</h3>
+<h4 id="selection-of-traits">Selection of traits</h4>
+<h4 id="preparing-genotype-file">Preparing genotype file</h4>
+<h4 id="exclusion-files">Exclusion files</h4>
+<h3 id="step-1">Step 1</h3>
+<h3 id="step-2">Step 2</h3></div>
         
         
     </div>
