@@ -395,9 +395,9 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 <tr>
 <td><code>--lowmem</code></td>
-<td>FLAG</td>
+<td>FILE PREFIX</td>
 <td>Optional</td>
-<td>flag to reduce memory usage by writing level 0 predictions to disk. This is very useful if the number of traits is large (e.g. greater than 10)</td>
+<td>flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)</td>
 </tr>
 <tr>
 <td><code>--strict</code></td>
@@ -503,6 +503,13 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 </tbody>
 </table>
+<p>When step 1 of <strong>regenie</strong> is run in low memory mode (i.e. using <code>--lowmem prefix</code>), 
+temporary files are created on disk where the prefix argument, if specified, 
+determines where the files are written (as in <code>prefix_l0_Y1</code>,...,<code>prefix_l0_YP</code> 
+for P phenotypes). If the prefix argument is omitted, the default is to use the 
+prefix specified by <code>--o</code> (see below).
+These are automatically deleted at the end of the program (unless the run
+was not successful in which case the user would need to delete the files).</p>
 <h2 id="output">Output</h2>
 <table>
 <thead>
