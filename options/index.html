@@ -163,10 +163,11 @@ a set of genomic predictions are produced as output</p>
 <pre><code>./regenie \
 --step 1 \
 --bed example/example \
+--exclude example/snplist_rm.txt \
 --c example/covariates.txt \
 --p example/phenotype_bin.txt \
---b 100 -cv 4 \
---l0 4 --l1 4 \
+--remove example/fid_iid_to_remove.txt \
+--b 100 \
 --bt --lowmem \
 --o fit_bin_out
 </code></pre>
@@ -178,10 +179,11 @@ Firth logistic regression model</p>
 --bgen example/example.bgen \
 --c example/covariates.txt \
 --p example/phenotype_bin.txt \
---b 100 \
+--remove example/fid_iid_to_remove.txt \
+--b 200 \
+--bt \
 --firth 0.01 --approx \
 --pred fit_bin_out_pred.list \
---bt \
 --split \
 --o test_bin_out_firth
 </code></pre>
@@ -336,9 +338,8 @@ only one prediction file and phenotype names must match with those in the phenot
   predictions for each individual.</p>
 <p>Samples in this file must be in the bed/bgen file and must be included in
   the analysis (otherwise use <code>--remove</code>).</p>
-<p>For each phenotype, samples with missing LOCO predictions must have their corresponding phenotype 
-  value set to missing, and all samples with non-missing phenotype values must have LOCO
-predictions.</p>
+<p>For each phenotype, samples with missing LOCO predictions must have their corresponding phenotype value set to missing, and <strong>all samples with non-missing phenotype values must have LOCO
+predictions</strong> (otherwise use <code>--remove</code>).</p>
 <h2 id="options">Options</h2>
 <table>
 <thead>
