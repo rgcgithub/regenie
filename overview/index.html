@@ -161,7 +161,8 @@ exome sequencing.</li>
 phenotypes.</li>
 <li>Accounting for a set of covariates</li>
 </ol>
-<p>The program is run in 2 steps</p>
+<p>An overview of the <strong>regenie</strong> method is provided in the figure below.
+Essentially, <strong>regenie</strong> is run in 2 steps:</p>
 <ol>
 <li>In the first step a subset of genetic markers are used to fit a
 whole genome regression model that captures a good fraction of the
@@ -172,10 +173,7 @@ upon</em> the prediction from the regression model in Step 1, using the
 leave one chromosome out (LOCO) scheme, that avoids proximal
 contamination.</li>
 </ol>
-<p align="center">
-![Rflow](img/regenie_overview.png){: style="height:450px;width:650px"}
-</p>
-
+<p><img alt="Rflow" src="../img/regenie_overview.png" style="height:450px;width:650px" /></p>
 <h3 id="step-1-whole-genome-model">Step 1 : Whole genome model</h3>
 <p>In Step 1 a whole genome regression model is fit at a subset of the
 total set of available genetic markers. These are typically a set of
