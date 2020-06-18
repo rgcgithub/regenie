@@ -147,18 +147,19 @@ where records are available for thousands of phenotypes.</p>
 <h3 id="pre-processing">Pre-processing</h3>
 <p>We will first go over important steps to consider before running <strong>regenie</strong>.</p>
 <h4 id="selection-of-traits">Selection of traits</h4>
-<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once and this is where
-higher computational gains are obtained.
-As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
-to handle missing data, and real data applications have shown that it gives
-nearly identical results as discarding missing observations when analyzing each trait 
-separately. </p>
-<p>Hence, we recommend to analyze traits in groups that have similar missingness patterns.
-We are working on releasing a tool that generate these groupings to facilitate this step.</p>
+<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once which is where
+higher computational gains are obtained.</p>
+<p>As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
+to handle missing data.
+From the real data applications we have performed so far with traits having up to ~20% (for quantitative) and ~5% (for binary) missing observations, our imputation scheme resulted in 
+nearly identical results as from discarding missing observations when analyzing each trait 
+separately (see BioRxiv paper for details). 
+Hence, we recommend to analyze traits in groups that have similar missingness patterns with at most 20% missingness.</p>
 <p>The number of phenotypes in a group will affect the computational resources required
 and the table below shows typical computational requirements based on using 
 500,000 markers in step 1 split in blocks of 1000 and using blocks of size 200 when 
-testing SNPs in step 2. </p>
+testing SNPs in step 2. The results are shown when step 1 of <strong>regenie</strong> is run in low-memory mode so that within-block predictions are temporarily stored on disk (see Documentation).</p>
+<p><img alt="Rflow" src="../img/large_timing.png" style="text-align:center;padding: 10px;width:50%;display: block;margin-left: auto;margin-right: auto" /></p>
 <h4 id="preparing-genotype-file">Preparing genotype file</h4>
 <h4 id="exclusion-files">Exclusion files</h4>
 <h3 id="step-1">Step 1</h3>
