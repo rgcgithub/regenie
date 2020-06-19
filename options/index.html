@@ -131,7 +131,7 @@
         <li class="first-level "><a href="#input">Input</a></li>
             <li class="second-level"><a href="#genetic-data-file-format">Genetic data file format</a></li>
                 
-            <li class="second-level"><a href="#sample-exclusion-file-format">Sample exclusion file format</a></li>
+            <li class="second-level"><a href="#sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</a></li>
                 
             <li class="second-level"><a href="#variant-exclusion-file-format">Variant exclusion file format</a></li>
                 
@@ -213,10 +213,16 @@ Firth logistic regression model</p>
 <td>Sample file corresponding to input BGEN file</td>
 </tr>
 <tr>
+<td><code>--keep</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Inclusion file that lists individuals to retain in the analysis</td>
+</tr>
+<tr>
 <td><code>--remove</code></td>
 <td>FILE</td>
 <td>Optional</td>
-<td>Exclusion file that lists IDs of individuals to ignore in the analysis</td>
+<td>Exclusion file that lists individuals to remove from the analysis</td>
 </tr>
 <tr>
 <td><code>--exclude</code></td>
@@ -271,14 +277,14 @@ so that their genotypes are 0/2. This can be done in PLINK by setting the sex of
 individuals to female before generating the genotype file.
 Chromosome values of 23 (for human analyses), X, XY, PAR1 and PAR2 are all acceptable and 
 will be collapsed into a single chromosome.</p>
-<h4 id="sample-exclusion-file-format">Sample exclusion file format</h4>
+<h4 id="sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</h4>
 <pre><code>2 2 
 7 7 
 .
 </code></pre>
 
 <p>No header. Each line starts with individual FID IID. Space separated.</p>
-<p>Samples listed in this file that are not in bgen/bed file are ignored.</p>
+<p>Samples listed in the file that are not in bgen/bed file are ignored.</p>
 <h4 id="variant-exclusion-file-format">Variant exclusion file format</h4>
 <pre><code>20
 31
@@ -367,7 +373,13 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td><code>--bt</code></td>
 <td>FLAG</td>
 <td>Optional</td>
-<td>specify that traits are binary (default is quantitative)</td>
+<td>specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)</td>
+</tr>
+<tr>
+<td><code>--1</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)</td>
 </tr>
 <tr>
 <td><code>--b</code></td>
@@ -509,7 +521,7 @@ determines where the files are written (as in <code>prefix_l0_Y1</code>,...,<cod
 for P phenotypes). If the prefix argument is omitted, the default is to use the 
 prefix specified by <code>--o</code> (see below).
 These are automatically deleted at the end of the program (unless the run
-was not successful in which case the user would need to delete the files).</p>
+was not successful in which case the user would need to delete the files)</p>
 <h2 id="output">Output</h2>
 <table>
 <thead>
