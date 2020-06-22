@@ -136,6 +136,7 @@
                 
             <li class="second-level"><a href="#step-2">Step 2</a></li>
                 
+                <li class="third-level"><a href="#sample-mismatch">Sample mismatch</a></li>
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
@@ -151,26 +152,102 @@ where records are available for thousands of phenotypes.</p>
 higher computational gains are obtained.</p>
 <p>As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
 to handle missing data.
-From the real data applications we have performed so far with traits having up to ~20% (for quantitative) and ~5% (for binary) missing observations, our imputation scheme resulted in 
+From the real data applications we have performed so far with traits having up to ~20% (for quantitative) 
+and ~5% (for binary) missing observations, our imputation scheme resulted in 
 nearly identical results as from discarding missing observations when analyzing each trait 
-separately (see BioRxiv paper for details). 
-Hence, we recommend to analyze traits in groups that have similar missingness patterns with resonably low amount of missingness (&lt;15%).</p>
+separately (see the <a href="https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1">BioRxiv pre-print</a> for details). 
+Hence, we recommend to analyze traits in groups that have similar missingness patterns with resonably 
+low amount of missingness (&lt;15%).</p>
 <p>The number of phenotypes in a group will affect the computational resources required
 and the table below shows typical computational requirements based on using 
 500,000 markers in step 1 split in blocks of 1000 and using blocks of size 200 when 
-testing SNPs in step 2. The results are shown when step 1 of <strong>regenie</strong> is run in low-memory mode so that within-block predictions are temporarily stored on disk (see Documentation).</p>
+testing SNPs in step 2. The results are shown when step 1 of <strong>regenie</strong> is run in low-memory mode 
+so that within-block predictions are temporarily stored on disk (see Documentation).</p>
 <p><img alt="Rflow" src="../img/large_timing.png" style="text-align:center;padding: 10px;width:50%;display: block;margin-left: auto;margin-right: auto" /></p>
 <h4 id="preparing-genotype-file">Preparing genotype file</h4>
+<p>A single genotype file is given as input of <strong>regenie</strong>. 
+For genetic files that are split by chromosome, we recommend using
+<a href="http://www.cog-genomics.org/plink/">PLINK</a> to merge the files</p>
+<pre><code>rm -f list_beds.txt
+for chr in {2..22}; do echo &quot;ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukb2604_int_chr1_v2_s488373.fam\n&quot; &gt;&gt; list_beds.txt; done
+
+plink \
+  --bed ukb_cal_chr1_v2.bed \
+  --bim ukb_snp_chr1_v2.bim \
+  --fam ukb2604_int_chr1_v2_s488373.fam\
+  --merge-list list_beds.txt \
+  --make-bed --out ukb_cal_allChrs
+</code></pre>
+
 <h4 id="exclusion-files">Exclusion files</h4>
+<p>Quality control filters can be applied using <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> to filter out samples and
+markers in the genotype file prior to step 1 of <strong>regenie</strong>. For example, to filter out SNPs with MAF below 5%, genotype missingess 
+above 10% and Hardy-Weinberg equilibrium p-value exceeding <script type="math/tex">10^{-15}</script>, and 
+samples with more than 10% missingness, </p>
+<pre><code>plink2 \
+  --bfile ukb_cal_allChrs \
+  --maf 0.05 --geno 0.1 --hwe 1e-15 \
+  --mind 0.1 \
+  --write-snplist --write-samples --no-id-header \
+  --out qc_pass
+</code></pre>
+
 <h3 id="step-1">Step 1</h3>
-<p>We recommend to run <strong>regenie</strong> using multi-threading (4+ threads) which will 
+<p>We recommend to run <strong>regenie</strong> using multi-threading (8+ threads) which will 
 decrease the overall runtime of the program. 
 As this step can be quite memory intensive (due to storing block predictions), 
-we recommend to use option <code>--loocv</code>, where the number of phenotypes analyzed
-will determine how much disk space is required (e.g. around 10GB per phenotype 
-assuming there are 500,000 variants split in blocks of 1,000).</p>
+we recommend to use option <code>--lowmem</code>, where the number of phenotypes analyzed
+will determine how much disk space is required (see table above).</p>
+<p>Running step 1 of <strong>regenie</strong> (by default, all available threads are used)</p>
+<pre><code>./regenie \
+  --step 1 \
+  --bed ukb_cal_allChrs \
+  --extract qc_pass.snplist \
+  --keep qc_pass.id \
+  --c example/covariates.txt \
+  --p example/phenotype_bin.txt \
+  --bt \
+  --b 1000 \
+  --lowmem \
+  --o ukb_step1_BT
+</code></pre>
+
+<p>For P phenotypes analyzed, this will generate a set of $P$ files ending with <code>.loco</code>
+which contain the genetic predictions using a LOCO scheme that will be needed for step 2,
+as well as a prediction list file <code>regenie_step1_BT_pred.list</code>, which lists 
+the names of these predictions files and can be used as input for step 2.</p>
 <h3 id="step-2">Step 2</h3>
-<p>We recommend to run <strong>regenie</strong> using multi-threading (8+ threads) which will decrease the overall runtime of the program.   </p></div>
+<p>As step 1 and 2 are completely decoupled in <strong>regenie</strong>, you could either use all 
+the traits for testing in step 2 or select a subset of the traits 
+(in which case you'd have to make a new prediction list file).</p>
+<p>We recommend to run step 2 of <strong>regenie</strong> with files that are either in PLINK bed/bim/fam 
+format or BGEN files that are in v1.2+ format with 8-bit encoding as <strong>regenie</strong> 
+has been optimized to run multi-threaded with these input formats.
+Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
+machines, we recommend to split the runs over chromosomes (using 4+ threads).</p>
+<h4 id="sample-mismatch">Sample mismatch</h4>
+<p>It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 or contains additional samples not used in step 1. 
+For example, to only retain samples that are contained in both data sets, you can use</p>
+<pre><code>grep -wFf qc_pass.id step2.sample &gt; fid_iid_step2.keep
+</code></pre>
+
+<p>Running <strong>regenie</strong> tesing on a single chromosome and using fast Firth correction as fallback,</p>
+<pre><code>./regenie \
+  --step 2 \
+  --bgen ukb_imp_chr1_v2.bgen \
+  --keep fid_iid_step2.keep \
+  --c example/covariates.txt \
+  --p example/phenotype_bin.txt \
+  --bt \
+  --firth 0.01 --approx \
+  --pred regenie_step1_BT_pred.list \
+  --b 400 \
+  --split \
+  --o ukb_step2_BT_chr1
+
+</code></pre>
+
+<p>This will create association results files for each phenotype ending with <code>.regenie</code>.</p></div>
         
         
     </div>

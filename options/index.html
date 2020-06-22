@@ -161,31 +161,31 @@ following 2 commands.</p>
 <p>In <strong>Step 1</strong> the whole genome regression model is fit to the traits, and
 a set of genomic predictions are produced as output</p>
 <pre><code>./regenie \
---step 1 \
---bed example/example \
---exclude example/snplist_rm.txt \
---c example/covariates.txt \
---p example/phenotype_bin.txt \
---remove example/fid_iid_to_remove.txt \
---b 100 \
---bt --lowmem \
---o fit_bin_out
+  --step 1 \
+  --bed example/example \
+  --exclude example/snplist_rm.txt \
+  --c example/covariates.txt \
+  --p example/phenotype_bin.txt \
+  --remove example/fid_iid_to_remove.txt \
+  --b 100 \
+  --bt --lowmem \
+  --o fit_bin_out
 </code></pre>
 
 <p>In <strong>Step 2</strong> a set of imputed SNPs are tested for association using a
 Firth logistic regression model</p>
 <pre><code>./regenie \
---step 2 \
---bgen example/example.bgen \
---c example/covariates.txt \
---p example/phenotype_bin.txt \
---remove example/fid_iid_to_remove.txt \
---b 200 \
---bt \
---firth 0.01 --approx \
---pred fit_bin_out_pred.list \
---split \
---o test_bin_out_firth
+  --step 2 \
+  --bgen example/example.bgen \
+  --c example/covariates.txt \
+  --p example/phenotype_bin.txt \
+  --remove example/fid_iid_to_remove.txt \
+  --b 200 \
+  --bt \
+  --firth 0.01 --approx \
+  --pred fit_bin_out_pred.list \
+  --split \
+  --o test_bin_out_firth
 </code></pre>
 
 <p>One of the output files from this command with association results is included in <code>example/example.test_bin_out_firth_Y1.regenie</code>.</p>
