@@ -133,7 +133,7 @@
                 
             <li class="second-level"><a href="#sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</a></li>
                 
-            <li class="second-level"><a href="#variant-exclusion-file-format">Variant exclusion file format</a></li>
+            <li class="second-level"><a href="#variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</a></li>
                 
             <li class="second-level"><a href="#covariate-file-format">Covariate file format</a></li>
                 
@@ -225,6 +225,12 @@ Firth logistic regression model</p>
 <td>Exclusion file that lists individuals to remove from the analysis</td>
 </tr>
 <tr>
+<td><code>--extract</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Inclusion file that lists IDs of variants to keep <strong>(only works with option <code>--step 1</code>)</strong></td>
+</tr>
+<tr>
 <td><code>--exclude</code></td>
 <td>FILE</td>
 <td>Optional</td>
@@ -285,7 +291,7 @@ will be collapsed into a single chromosome.</p>
 
 <p>No header. Each line starts with individual FID IID. Space separated.</p>
 <p>Samples listed in the file that are not in bgen/bed file are ignored.</p>
-<h4 id="variant-exclusion-file-format">Variant exclusion file format</h4>
+<h4 id="variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</h4>
 <pre><code>20
 31
 .
@@ -340,17 +346,22 @@ In Step 2, missing values are dropped when testing each trait.</p>
 <li>A file called <code>foo_pred.list</code> listing the locations of the prediction files.</li>
 </ol>
 <p>The file list is needed as an input file when using <code>--step 2</code>
-via the <code>--pred</code> option. The file list has one line per phenotype (in
-any order) that specifies the name of the phenotype and its
-corresponding prediction file name. Each phenotype must have
-only one prediction file and phenotype names must match with those in the phenotype file.</p>
-<p>Each prediction file contains the LOCO predictions for the phenotype.</p>
-<p>Line 1 : FID_IID sample identifier and chromosome number (1-23)</p>
-<p>Following lines have 24 values representing FID_IID and leave-one chromosome out (LOCO) 
-  predictions for each individual.</p>
-<p>Samples in this file must be in the bed/bgen file and must be included in
+via the <code>--pred</code> option. 
+It has one line per phenotype (in any order) that specifies the name of the phenotype and its
+corresponding prediction file name. 
+Each phenotype must have exactly one prediction file and phenotype names 
+must match with those in the phenotype file.
+Phenotypes in this file not included in the analysis are ignored.</p>
+<p>Each prediction file contains the genetic predictions for the phenotype (space separated).</p>
+<p>Line 1 starts with 'FID_IID' followed by $N$ sample identifiers.
+It is followed by 23 lines containing the genetic predictions for each chromosome 
+(sex chromosomes are collapsed into chromosome 23).</p>
+<p>More specifically, each line has $N+1$ values which are the chromosome number followed by the $N$
+leave-one chromosome out (LOCO) predictions for each individual.</p>
+<p>Samples must be in the bed/bgen input file and must be included in
   the analysis (otherwise use <code>--remove</code>).</p>
-<p>For each phenotype, samples with missing LOCO predictions must have their corresponding phenotype value set to missing, and <strong>all samples with non-missing phenotype values must have LOCO
+<p>For each phenotype, samples with missing LOCO predictions must have their corresponding 
+phenotype value set to missing, and <strong>all samples with non-missing phenotype values must have LOCO
 predictions</strong> (otherwise use <code>--remove</code>).</p>
 <h2 id="options">Options</h2>
 <table>
@@ -545,7 +556,6 @@ was not successful in which case the user would need to delete the files)</p>
 <p><strong>Using <code>--step 1 --o file</code></strong></p>
 <p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
 per-chromosome LOCO predictions as columns of the files.</p>
-<p>The first row of the files lists FID_IID and the chromosomes output.</p>
 <p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
  Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
  (so only keeping samples present in both files).</p>
