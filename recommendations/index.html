@@ -142,13 +142,14 @@
         <div class="col-md-9" role="main">
 
 <h2 id="recommendations-for-uk-biobank-analysis">Recommendations for UK Biobank analysis</h2>
-<p><strong>regenie</strong> is ideally suited for large-scale analyses such as 500K UK Biobank data,
-where records are available for thousands of phenotypes.</p>
-<p>We provide below a few guidelines on how to perform such analysis.</p>
+<p><strong>regenie</strong> is ideally suited for large-scale analyses such as 500K UK
+Biobank (UKBB) data, where records are available for thousands of phenotypes.</p>
+<p>We provide below a few guidelines on how to perform such analysis on
+the UKBB files that all UKBB approved researchers have access to.</p>
 <h3 id="pre-processing">Pre-processing</h3>
 <p>We will first go over important steps to consider before running <strong>regenie</strong>.</p>
 <h4 id="selection-of-traits">Selection of traits</h4>
-<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once which is where
+<p><strong>regenie</strong> can perform whole genome regression on multiple traits at once, which is where
 higher computational gains are obtained.</p>
 <p>As different traits can have distinct missing patterns, <strong>regenie</strong> uses an imputation scheme
 to handle missing data.
@@ -165,16 +166,17 @@ testing SNPs in step 2. The results are shown when step 1 of <strong>regenie</st
 so that within-block predictions are temporarily stored on disk (see Documentation).</p>
 <p><img alt="Rflow" src="../img/large_timing.png" style="text-align:center;padding: 10px;width:50%;display: block;margin-left: auto;margin-right: auto" /></p>
 <h4 id="preparing-genotype-file">Preparing genotype file</h4>
-<p>A single genotype file is given as input of <strong>regenie</strong>. 
-For genetic files that are split by chromosome, we recommend using
-<a href="http://www.cog-genomics.org/plink/">PLINK</a> to merge the files</p>
+<p>Step 1 of a <em>regenie</em> run requires a single genotype file as input. 
+The UKBB genotype files are split by chromosome, so we recommend using
+<a href="http://www.cog-genomics.org/plink/">PLINK</a> to merge the files using the following code.</p>
+<p><em>NOTE</em>  please change <strong>XXX</strong> to you own UKBB application ID number</p>
 <pre><code>rm -f list_beds.txt
-for chr in {2..22}; do echo &quot;ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukb2604_int_chr1_v2_s488373.fam\n&quot; &gt;&gt; list_beds.txt; done
+for chr in {2..22}; do echo &quot;ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukbXXX_int_chr1_v2_s488373.fam\n&quot; &gt;&gt; list_beds.txt; done
 
 plink \
   --bed ukb_cal_chr1_v2.bed \
   --bim ukb_snp_chr1_v2.bim \
-  --fam ukb2604_int_chr1_v2_s488373.fam\
+  --fam ukbXXX_int_chr1_v2_s488373.fam\
   --merge-list list_beds.txt \
   --make-bed --out ukb_cal_allChrs
 </code></pre>
@@ -220,10 +222,7 @@ the names of these predictions files and can be used as input for step 2.</p>
 <p>As step 1 and 2 are completely decoupled in <strong>regenie</strong>, you could either use all 
 the traits for testing in step 2 or select a subset of the traits 
 (in which case you'd have to make a new prediction list file).</p>
-<p>We recommend to run step 2 of <strong>regenie</strong> with files that are either in PLINK bed/bim/fam 
-format or BGEN files that are in v1.2+ format with 8-bit encoding as <strong>regenie</strong> 
-has been optimized to run multi-threaded with these input formats.
-Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
+<p>Step 2 of <strong>regenie</strong> has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data) and PLINK bed/bim/fam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
 machines, we recommend to split the runs over chromosomes (using 4+ threads).</p>
 <h4 id="sample-mismatch">Sample mismatch</h4>
 <p>It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 or contains additional samples not used in step 1. 
@@ -231,7 +230,7 @@ For example, to only retain samples that are contained in both data sets, you ca
 <pre><code>grep -wFf qc_pass.id step2.sample &gt; fid_iid_step2.keep
 </code></pre>
 
-<p>Running <strong>regenie</strong> tesing on a single chromosome and using fast Firth correction as fallback,</p>
+<p>Running <strong>regenie</strong> tesing on a single chromosome (here chr 1) and using fast Firth correction as fallback,</p>
 <pre><code>./regenie \
   --step 2 \
   --bgen ukb_imp_chr1_v2.bgen \
