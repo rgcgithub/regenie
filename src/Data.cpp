@@ -412,12 +412,12 @@ void Data::read_params_and_check(int argc, char *argv[]) {
   if(use_SPA && firth) use_SPA = false;
 
   // check SPA fallback pvalue threshold
-  if(use_SPA && (alpha_pvalue < numtol || alpha_pvalue > 1 - numtol) ){
+  if(use_SPA && ((alpha_pvalue < nl_dbl_dmin) || (alpha_pvalue > 1 - numtol)) ){
     sout << "ERROR :SPA fallback p-value threshold must be in (0,1).\n" << err_help ;
     exit(-1);
   }
   // check firth fallback pvalue threshold
-  if(firth && (alpha_pvalue < numtol || alpha_pvalue > 1 - numtol) ){
+  if(firth && ((alpha_pvalue < nl_dbl_dmin) || (alpha_pvalue > 1 - numtol)) ){
     sout << "ERROR :Firth fallback p-value threshold must be in (0,1).\n" << err_help ;
     exit(-1);
   }
@@ -1490,7 +1490,7 @@ void Data::residualize_phenotypes() {
 
 void Data::fit_null_logistic(int chrom) {
 
-  sout << "   -fitting null logistic regression on binary phenotypes...";
+  sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
 
   auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -3779,7 +3779,7 @@ void Data::test_snps() {
   sout << "Association testing mode" << endl;
   chi_squared chisq(1);
   normal nd(0,1);
-  double chisq_val, bhat, se_b, pval_log;
+  double chisq_val, bhat, se_b, pval_log, pval_raw;
   double chisq_thr = quantile(complement(chisq, alpha_pvalue));
   double zcrit = quantile(complement(nd, .025));
   double effect_val, outse_val, outp_val;
@@ -3921,7 +3921,7 @@ void Data::test_snps() {
         // (used as offset when computing LRT in full model)
         if(firth_approx){
           beta_null_firth.resize(covs_firth.cols(), n_pheno);
-          sout << "   -fitting null Firth logistic regression on binary phenotypes...";
+          sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
           auto t1 = std::chrono::high_resolution_clock::now();
 
           for( std::size_t i = 0; i < n_pheno; ++i ) {
@@ -4086,14 +4086,16 @@ void Data::test_snps() {
           } else {
             // with Firth, get sum. stats from Firth logistic regression
             if( firth && (chisq_val > chisq_thr) && pval_converged ){
-              chisq_val = quantile(complement(chisq, pow(10, - pval_log) ));
+              pval_raw = max(nl_dbl_dmin, pow(10, -pval_log)); // to prevent overflow
+              chisq_val = quantile(complement(chisq, pval_raw));
               bhat = bhat_firth;
               se_b = se_b_firth;
             } else {
               se_b = 1 / sqrt_denum(i, j);
               // with SPA, calculate test stat based on SPA p-value
               if( use_SPA && (chisq_val > chisq_thr) && pval_converged ){
-                chisq_val = quantile(complement(chisq, pow(10, - pval_log) ));
+                pval_raw = max(nl_dbl_dmin, pow(10, -pval_log)); // to prevent overflow
+                chisq_val = quantile(complement(chisq, pval_raw));
                 bhat = sgn(stats(i,j)) * sqrt(chisq_val);
               } else bhat = stats(i,j);
               bhat *= se_b;
@@ -4113,9 +4115,8 @@ void Data::test_snps() {
             else {
               if(!htp_out)  ofile_split[j] << pval_log << ' ';
               else {
-                outp_val = pow(10, -pval_log);
-                if(outp_val == 0) outp_val = 5e-324;
-                else if(outp_val == 1) outp_val = 1 - 1e-7;
+                outp_val = max(nl_dbl_dmin, pow(10, - pval_log)); // to prevent overflow
+                if(outp_val == 1) outp_val = 1 - 1e-7;
               }
             }
           } else {
@@ -5018,7 +5019,7 @@ void Data::test_snps_fast() {
         // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
         if(firth_approx){
           beta_null_firth.resize(covs_firth.cols(), n_pheno);
-          sout << "   -fitting null Firth logistic regression on binary phenotypes...";
+          sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
           auto t1 = std::chrono::high_resolution_clock::now();
 
           for( std::size_t i = 0; i < n_pheno; ++i ) {
@@ -5088,9 +5089,8 @@ void Data::test_snps_fast() {
             else {
               if(!htp_out)  ofile_split[j] << block_info[isnp].pval_log(j)  << ' ';
               else  {
-                outp_val = pow(10, -block_info[isnp].pval_log(j));
-                if(outp_val == 0) outp_val = 5e-324;
-                else if(outp_val == 1) outp_val = 1 - 1e-7;
+                outp_val = max(nl_dbl_dmin, pow(10, -block_info[isnp].pval_log(j))); // to prevent overflow
+                if(outp_val == 1) outp_val = 1 - 1e-7;
               }
             }
           } else {
@@ -5211,7 +5211,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     int snp_index = start + isnp;
     chi_squared chisq(1);
     double chisq_thr = quantile(complement(chisq, alpha_pvalue));
-    double chisq_val, bhat, se_b, pval_log;
+    double chisq_val, bhat, se_b, pval_log, pval_raw;
 
     // to store variant information
     variant_block* block_info = &(all_snps_info[isnp]);
@@ -5290,12 +5290,14 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       } else {
         // with Firth, get sum. stats from Firth logistic regression
         if( firth && block_info->is_corrected[i] && !block_info->test_fail[i] ){
-          block_info->chisq_val(i) = quantile(complement(chisq, pow(10, - block_info->pval_log(i)) ));
+          pval_raw = max(nl_dbl_dmin, pow(10, - block_info->pval_log(i))); // to prevent overflow
+          block_info->chisq_val(i) = quantile(complement(chisq, pval_raw));
         } else {
           block_info->se_b(i) = 1 / sqrt(block_info->denum(i));
           // with SPA, calculate test stat based on SPA p-value
           if( use_SPA && block_info->is_corrected[i] && !block_info->test_fail[i] ){
-            block_info->chisq_val(i) = quantile(complement(chisq, pow(10, - block_info->pval_log(i)) ));
+            pval_raw = max(nl_dbl_dmin, pow(10, - block_info->pval_log(i))); // to prevent overflow
+            block_info->chisq_val(i) = quantile(complement(chisq, pval_raw));
             block_info->bhat(i) = sgn(block_info->stats(i)) * sqrt(block_info->chisq_val(i));
           } else block_info->bhat(i) = block_info->stats(i);
           block_info->bhat(i) *= block_info->se_b(i);

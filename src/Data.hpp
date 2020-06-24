@@ -219,6 +219,7 @@ public:
   double numtol = 1e-6;
   double tol = 1e-8; // for logistic regression
   double eps = 10 * std::numeric_limits<double>::epsilon();
+  double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int niter_max = 30; // max number of iterations for logistic reg.
   vector<double> lambda; // ridge parameters at level 0
   vector<double> tau; // ridge parameters at level 1
