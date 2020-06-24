@@ -1684,6 +1684,14 @@ void Data::set_blocks() {
     }
   }
 
+  // for BTs: check if the sample size is lower than 5K (if so, use loocv)
+  if( binary_mode && (ind_in_analysis.sum() < 5000) ) {
+    if(!use_loocv){
+      sout << "   -WARNING: Sample size is less than 5,000 so using LOOCV instead of " << cv_folds << "-fold CV\n.";
+      use_loocv = true;
+    }
+  }
+
   /*
   // check block size vs sample size
   if(use_loocv && block_size > ind_in_analysis.sum()){
