@@ -99,7 +99,7 @@ will be collapsed into a single chromosome.
 .
 ```
 
-No header. Each line starts with individual FID IID. Space separated.
+No header. Each line starts with individual FID IID. Space/tab separated.
 
 Samples listed in the file that are not in bgen/bed file are ignored.
 
@@ -112,7 +112,7 @@ Samples listed in the file that are not in bgen/bed file are ignored.
 ```
 
 No header. Each line must start with variant ID 
-(if there are additional columns, file must be space separated).
+(if there are additional columns, file must be space/tab separated).
 
 Variants listed in this file that are not in bgen/bed file are ignored.
 
@@ -128,7 +128,7 @@ FID IID V1 V2 V3
 
 Line 1 : Header with FID, IID and \(C\) covariate names.
 
-Followed by lines of \(C+2\) values. Space separated.
+Followed by lines of \(C+2\) values. Space/tab separated.
 
 Each line contains individual FID and IID followed by \(C\) covariate
 values.
@@ -152,7 +152,7 @@ FID IID Y1 Y2
 
 Line 1 : Header with FID, IID and \(P\) phenotypes names.
 
-Followed by lines of \(P+2\) values. Space separated. 
+Followed by lines of \(P+2\) values. Space/tab separated. 
 Each line contains individual FID and IID followed by P phenotype values
 (for binary traits, must be coded as 0=control, 1=case, NA=missing unless using `--1`).
 

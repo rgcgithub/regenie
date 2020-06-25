@@ -38,12 +38,16 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
-#include "bgen_to_vcf.hpp"
+#include <boost/algorithm/string/split.hpp>
+#include <boost/algorithm/string.hpp>
 
+#include "bgen_to_vcf.hpp"
 #include "eigen3.3/Dense"
 #include "eigen3.3/StdVector"
+
 using namespace std;
 using namespace Eigen;
+using namespace boost;
 
 #ifdef __linux__
 #include <omp.h>

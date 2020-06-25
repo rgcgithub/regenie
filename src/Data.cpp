@@ -829,7 +829,8 @@ void Data::read_bim() {
   uint32_t nOutofOrder = 0;
   int minChr_read = 0; // enforce that chromosomes in file are sorted
   std::vector< int > chr_read ; 
-  snp tmp_snp; string chrom_str;
+  std::vector< string > tmp_str_vec ;
+  snp tmp_snp; 
   string line;
   ifstream myfile;
 
@@ -841,16 +842,21 @@ void Data::read_bim() {
   }
 
   while (getline(myfile, line)) {
-    std::istringstream iss(line);
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
-    // take ref allele as last
-    if (!(iss >> chrom_str >> tmp_snp.ID >> tmp_snp.genpos >> tmp_snp.physpos >> tmp_snp.allele2 >> tmp_snp.allele1))
-    {
+    if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted bim file at line " << snpinfo.size()+1 << endl;
-      exit(1);
+      exit(-1);
     }
 
-    tmp_snp.chrom = chrStrToInt(chrom_str);
+    tmp_snp.chrom = chrStrToInt(tmp_str_vec[0]);
+    tmp_snp.ID = tmp_str_vec[1];
+    tmp_snp.genpos = std::stod( tmp_str_vec[2]);
+    tmp_snp.physpos = std::stoul( tmp_str_vec[3],nullptr,0);
+    // take ref allele as last
+    tmp_snp.allele2 = tmp_str_vec[4];
+    tmp_snp.allele1 = tmp_str_vec[5];
+
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in bim file at line " << snpinfo.size()+1 << endl;
       exit(1);
@@ -903,7 +909,8 @@ void Data::read_fam() {
 
   int sex, lineread = 0; 
   double yval;
-  string fam_id, ind_id, fa_id, mo_id, line, tmp_id;
+  string line, tmp_id;
+  std::vector< string > tmp_str_vec ;
   ifstream myfile;
 
   sout << left << std::setw(20) << " * fam" << ": [" << famfile << "] ";
@@ -914,14 +921,14 @@ void Data::read_fam() {
   }
 
   while (getline(myfile, line)) {
-    istringstream iss(line);
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
-    if (!(iss >> fam_id >> ind_id >> fa_id >> mo_id >> sex >> yval)) {
+    if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted fam file at line " << lineread + 1 << endl;
-      exit(1);
+      exit(-1);
     }
 
-    tmp_id = fam_id + "_" + ind_id;
+    tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
 
     // check duplicates -- if not, store in map
     if (FID_IID_to_ind.find(tmp_id ) != FID_IID_to_ind.end()) {
@@ -961,125 +968,126 @@ void Data::prep_bed(string bedfile) {
 void Data::set_snps_to_keep() {
 
   ifstream myfile;
-  string line, tmpSNPid;
+  string line;
+  std::vector< string > tmp_str_vec ;
 
   myfile.open (file_snps_include.c_str(), ios::in);
-  if (myfile.is_open()) {    
-
-    while( getline (myfile,line) ){
-      std::istringstream iss(line);
-
-      if( !(iss >> tmpSNPid) ){
-        sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
-        exit(-1);
-      }
-      snplist_to_keep.push_back( tmpSNPid );
-    }
-
-  } else {
+  if (!myfile.is_open()) {    
     sout << "ERROR: Cannot open file specified by --exclude :" << file_snps_include<< endl;
     exit(-1);
   }
+
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < 1 ){
+      sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
+      exit(-1);
+    }
+    snplist_to_keep.push_back( tmp_str_vec[0] );
+  }
+
 }
 
 // snps to exclude from step 1 analysis
 void Data::set_snps_to_rm() {
 
   ifstream myfile;
-  string line, tmpSNPid;
+  string line;
+  std::vector< string > tmp_str_vec ;
 
   myfile.open (file_snps_exclude.c_str(), ios::in);
-  if (myfile.is_open()) {    
-
-    while( getline (myfile,line) ){
-      std::istringstream iss(line);
-
-      if( !(iss >> tmpSNPid) ){
-        sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
-        exit(-1);
-      }
-      snplist_to_rm.push_back( tmpSNPid );
-    }
-
-  } else {
+  if (!myfile.is_open()) {    
     sout << "ERROR: Cannot open file specified by --exclude :" << file_snps_exclude<< endl;
     exit(-1);
   }
+
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < 1 ){
+      sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
+      exit(-1);
+    }
+    snplist_to_rm.push_back( tmp_str_vec[0] );
+  }
+
 }
 
 void Data::set_IDs_to_keep() {
 
   ifstream myfile;
-  string line, tmp_str, FID, IID;
+  string line;
+  std::vector< string > tmp_str_vec ;
   findID person;
   uint64 indiv_index;
   ArrayXd is_included = ArrayXd::Zero(n_samples);
 
   // track individuals to include -> remaining are ignored
   myfile.open (file_ind_include.c_str(), ios::in);
-  if (myfile.is_open()) {    
-
-    while( getline (myfile,line) ){
-      std::istringstream iss(line);
-
-      if( !(iss >> FID >> IID) ){
-        sout << "ERROR: Incorrectly formatted file specified by --keep." << endl;
-        exit(-1);
-      }
-
-      person = getIndivIndex(FID, IID);
-      if(!person.is_found) continue;
-
-      indiv_index = person.index;
-      is_included(indiv_index) = 1;
-    }
-    ind_ignore = 1 - is_included; 
-
-    if( is_included.sum() < 1 ) {
-      sout << "ERROR: None of the individuals specified by --keep are in the genotype file.\n";
-      exit(-1);
-    }
-
-    sout << "   -number of genotyped individuals to keep in the analysis = " << is_included.sum() << endl;
-
-  } else {
+  if (!myfile.is_open()) {    
     sout << "ERROR: Cannot open file specified by --keep :" << file_ind_include<< endl;
     exit(-1);
   }
+
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < 2 ){
+      sout << "ERROR: Incorrectly formatted file specified by --keep." << endl;
+      exit(-1);
+    }
+
+    person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1]);
+    if(!person.is_found) continue;
+
+    indiv_index = person.index;
+    is_included(indiv_index) = 1;
+  }
+
+  // check size
+  if( is_included.sum() < 1 ) {
+    sout << "ERROR: None of the individuals specified by --keep are in the genotype file.\n";
+    exit(-1);
+  }
+  sout << "   -number of genotyped individuals to keep in the analysis = " << is_included.sum() << endl;
+
+  ind_ignore = 1 - is_included; 
+
 }
 
 void Data::set_IDs_to_rm() {
 
   ifstream myfile;
-  string line, tmp_str, FID, IID;
+  string line;
+  std::vector< string > tmp_str_vec ;
   findID person;
   uint64 indiv_index;
 
   // specify individuals to exclude by -1
   myfile.open (file_ind_exclude.c_str(), ios::in);
-  if (myfile.is_open()) {    
-
-    while( getline (myfile,line) ){
-      std::istringstream iss(line);
-
-      if( !(iss >> FID >> IID) ){
-        sout << "ERROR: Incorrectly formatted file specified by --remove." << endl;
-        exit(-1);
-      }
-
-      person = getIndivIndex(FID, IID);
-      if(!person.is_found) continue;
-
-      indiv_index = person.index;
-      ind_ignore(indiv_index) = 1;
-    }
-
-    sout << "   -number of genotyped individuals to exclude from the analysis = " << ind_ignore.sum() << endl;
-
-  } else {
+  if (!myfile.is_open()) {    
     sout << "ERROR: Cannot open file specified by --remove :" << file_ind_exclude<< endl;
     exit(-1);
   }
+
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < 2 ){
+      sout << "ERROR: Incorrectly formatted file specified by --remove." << endl;
+      exit(-1);
+    }
+
+    person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1]);
+    if(!person.is_found) continue;
+
+    indiv_index = person.index;
+    ind_ignore(indiv_index) = 1;
+  }
+
+  sout << "   -number of genotyped individuals to exclude from the analysis = " << ind_ignore.sum() << endl;
+
 }
 
 void Data::read_pheno_and_cov() {
@@ -1121,297 +1129,292 @@ void Data::read_pheno_and_cov() {
 void Data::pheno_read() {
 
   ifstream myfile;
-  string line, tmp_str, tmp_name, FID, IID;
+  string line;
+  std::vector< string > tmp_str_vec ;
   findID person;
   uint64 indiv_index;
   vector<bool> pheno_colKeep;
   bool keep_pheno;
   double mean;
 
+  sout << left << std::setw(20) << " * phenotypes" << ": [" << pheno_file << "] ";
   myfile.open (pheno_file.c_str(), ios::in);
-  if (myfile.is_open()) {    
-    sout << left << std::setw(20) << " * phenotypes" << ": [" << pheno_file << "] ";
-    getline (myfile,line);
-    std::istringstream iss(line);
-
-    // check that FID and IID are first two entries in header
-    iss >> FID >> IID;
-    if( FID != "FID" || IID != "IID" ) {
-      sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
-      exit(-1);
-    }
-
-    // get phenotype names 
-    n_pheno = 0;
-    while (iss >> tmp_name) {
-      // default is to use all columns  
-      if(!select_phenos){
-        pheno_colKeep.push_back( true );
-        n_pheno++;
-        pheno_names.push_back( tmp_name );
-      } else {
-        // otherwise, check if phenotype is in list of phenotypes to keep
-        keep_pheno = std::find(pheno_colKeep_names.begin(), pheno_colKeep_names.end(), tmp_name) != pheno_colKeep_names.end();
-        pheno_colKeep.push_back( keep_pheno );
-        if(keep_pheno){
-          n_pheno++;
-          pheno_names.push_back( tmp_name );
-        }
-      }
-    }
-
-    // check #pheno is > 0
-    if(n_pheno < 1){
-      sout << "Need at least one phenotype." << endl;
-      exit(-1);
-    }
-    sout << "n_pheno = " << n_pheno << endl;
-
-    // allocate memory
-    phenotypes = MatrixXd::Zero(n_samples, n_pheno);
-    masked_indivs = MatrixXd::Ones(n_samples, n_pheno);
-    // for raw binary traits
-    if (binary_mode) {
-      phenotypes_raw = MatrixXd::Zero(n_samples, n_pheno);
-      if(!test_mode)
-        offset_logreg = MatrixXd::Zero(n_samples, n_pheno); 
-    }
-    VectorXd total, ns;
-    total.setZero(n_pheno);
-    ns.setZero(n_pheno);
-
-    // read in data
-    while( getline (myfile,line) ){
-      std::istringstream iss(line);
-
-      if( !(iss >> FID >> IID) ){
-        sout << "ERROR: Incorrectly formatted phenotype file." << endl;
-        exit(-1);
-      }
-      person = getIndivIndex(FID, IID);
-      if(!person.is_found) continue;
-
-      indiv_index = person.index;
-
-      // ignore sample if it is in exlusion list
-      if( ind_ignore(indiv_index) ) continue;
-
-      // check duplicate
-      if( !ind_in_pheno_and_geno(indiv_index) ){
-        ind_in_pheno_and_geno( indiv_index ) = 1;
-      } else {
-        sout << "ERROR: Individual appears more than once in phenotype file: FID=" << FID << " IID=" << IID << endl;
-        exit(-1);
-      }
-
-      // read phenotypes 
-      for(int i_pheno = 0, j = 0; j < pheno_colKeep.size(); j++) {
-        if( !(iss >> tmp_str) ){
-          sout << "ERROR: Incorrectly formatted phenotype file." << endl;
-          exit(-1);
-        }
-
-        if( !pheno_colKeep[j] ) continue;
-
-        phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str);
-
-        // for BT, save raw data and force 0/1 values
-        if (binary_mode) {
-          if((control_code == 1) && (phenotypes(indiv_index, i_pheno) != missing_value_double)) phenotypes(indiv_index, i_pheno) -= control_code; // if using 1/2/NA encoding
-          phenotypes_raw(indiv_index, i_pheno) = phenotypes(indiv_index, i_pheno);
-          if(fabs(phenotypes_raw(indiv_index, i_pheno)) > numtol && fabs(phenotypes_raw(indiv_index, i_pheno)-1) > numtol ) {
-            if(within_sample_l0){
-              sout << "ERROR: No missing value allowed in phenotype file with option -within" << endl;
-              exit(-1);
-            } else if( phenotypes_raw(indiv_index, i_pheno) != missing_value_double ) {
-              sout << "ERROR: A phenotype value is not 0/1/NA for individual: FID=" << FID << " IID=" << IID << endl;
-              sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
-              exit(-1);
-            }
-            phenotypes_raw(indiv_index, i_pheno) = missing_value_double;
-            masked_indivs(indiv_index, i_pheno) = 0;
-            if( strict_mode ) masked_indivs.row(indiv_index) = MatrixXd::Zero(1, n_pheno);
-          }
-        }
-
-        if( phenotypes(indiv_index, i_pheno) != missing_value_double ) {
-          total(i_pheno) +=  phenotypes(indiv_index, i_pheno);
-          ns(i_pheno) +=  1;
-        } else {
-          if( test_mode && rm_missing_qt ) masked_indivs(indiv_index, i_pheno) = 0;
-          if( strict_mode ) masked_indivs.row(indiv_index) = MatrixXd::Zero(1, n_pheno);
-        }
-
-        i_pheno++;
-      }
-
-    }
-
-    // mask individuals in genotype data but not in phenotype data
-    masked_indivs.array().colwise() *= ind_in_pheno_and_geno;
-
-    // check if all individuals have missing/invalid phenotype
-    if(masked_indivs.colwise().sum().array().minCoeff() == 0){
-      sout << "ERROR: All individuals have missing/invalid phenotype values." << endl;
-      exit(-1);
-    }
-
-    if(!binary_mode || !test_mode){
-
-      if(!binary_mode){
-        // impute missing with mean
-        for(size_t i = 0; i < n_samples;i++) 
-          for(size_t j = 0; j < n_pheno;j++) {
-            if( phenotypes(i,j) != missing_value_double ) {
-              phenotypes(i,j) -= total(j) / ns(j);	  
-            }  else phenotypes(i,j) = 0.0;
-          }
-      } else {
-        for(size_t j = 0; j < n_pheno; j++) {
-          mean = (masked_indivs.col(j).array() == 1).select( phenotypes.col(j).array(), 0).sum() / masked_indivs.col(j).sum();
-          phenotypes.col(j).array() = (masked_indivs.col(j).array() == 1).select(phenotypes.col(j).array() - mean, 0);
-        }
-      }
-
-      // apply masking
-      phenotypes.array() *= masked_indivs.array();
-
-      sout <<  "   -reading phenotypes...done" << endl;
-    }
-
-    // number of phenotyped individuals 
-    sout <<  "   -number of phenotyped individuals = " << ind_in_pheno_and_geno.sum() << endl;
-
-    // check that there cases are present
-    if(binary_mode){
-      for(size_t j = 0; j < n_pheno;j++) {
-        if( ( phenotypes_raw.col(j).array() == 1 ).count() == 0){
-          sout << "ERROR: No cases present for phenotype: " << pheno_names[j] << endl; 
-          exit(-1);
-        }
-      }
-    }
-
-    Neff = masked_indivs.colwise().sum();
-    if(strict_mode) sout << "   -number of individuals remaining with non-missing phenotypes = " << Neff(0) << endl;
-
-    myfile.close();
-  } else {
+  if (!myfile.is_open()) {    
     sout << "ERROR: Cannot open phenotype file : " << pheno_file << endl;
     exit(-1);
   }
+
+  getline (myfile,line); // header
+  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+  // check that FID and IID are first two entries in header
+  if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
+    sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
+    exit(-1);
+  }
+
+  // get phenotype names 
+  n_pheno = 0;
+  for( size_t filecol = 2; filecol < tmp_str_vec.size(); filecol++ ) {
+    // default is to use all columns  
+    if(!select_phenos){
+      pheno_colKeep.push_back( true );
+      n_pheno++;
+      pheno_names.push_back( tmp_str_vec[filecol] );
+    } else {
+      // otherwise, check if phenotype is in list of phenotypes to keep
+      keep_pheno = std::find(pheno_colKeep_names.begin(), pheno_colKeep_names.end(), tmp_str_vec[filecol]) != pheno_colKeep_names.end();
+      pheno_colKeep.push_back( keep_pheno );
+      if(keep_pheno){
+        n_pheno++;
+        pheno_names.push_back( tmp_str_vec[filecol] );
+      }
+    }
+  }
+
+  // check #pheno is > 0
+  if(n_pheno < 1){
+    sout << "Need at least one phenotype." << endl;
+    exit(-1);
+  }
+  sout << "n_pheno = " << n_pheno << endl;
+
+  // allocate memory
+  phenotypes = MatrixXd::Zero(n_samples, n_pheno);
+  masked_indivs = MatrixXd::Ones(n_samples, n_pheno);
+  // for raw binary traits
+  if (binary_mode) {
+    phenotypes_raw = MatrixXd::Zero(n_samples, n_pheno);
+    if(!test_mode)
+      offset_logreg = MatrixXd::Zero(n_samples, n_pheno); 
+  }
+  VectorXd total, ns;
+  total.setZero(n_pheno);
+  ns.setZero(n_pheno);
+
+  // read in data
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < pheno_colKeep.size() ){
+      sout << "ERROR: Incorrectly formatted phenotype file." << endl;
+      exit(-1);
+    }
+
+    person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1]);
+    if(!person.is_found) continue;
+
+    indiv_index = person.index;
+
+    // ignore sample if it is in exlusion list
+    if( ind_ignore(indiv_index) ) continue;
+
+    // check duplicate
+    if( !ind_in_pheno_and_geno(indiv_index) ){
+      ind_in_pheno_and_geno( indiv_index ) = 1;
+    } else {
+      sout << "ERROR: Individual appears more than once in phenotype file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
+      exit(-1);
+    }
+
+    // read phenotypes 
+    for(int i_pheno = 0, j = 0; j < pheno_colKeep.size(); j++) {
+
+      if( !pheno_colKeep[j] ) continue;
+
+      phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j]);
+
+      // for BT, save raw data and force 0/1 values
+      if (binary_mode) {
+        if((control_code == 1) && (phenotypes(indiv_index, i_pheno) != missing_value_double)) phenotypes(indiv_index, i_pheno) -= control_code; // if using 1/2/NA encoding
+        phenotypes_raw(indiv_index, i_pheno) = phenotypes(indiv_index, i_pheno);
+        if(fabs(phenotypes_raw(indiv_index, i_pheno)) > numtol && fabs(phenotypes_raw(indiv_index, i_pheno)-1) > numtol ) {
+          if(within_sample_l0){
+            sout << "ERROR: No missing value allowed in phenotype file with option -within" << endl;
+            exit(-1);
+          } else if( phenotypes_raw(indiv_index, i_pheno) != missing_value_double ) {
+            sout << "ERROR: A phenotype value is not 0/1/NA for individual: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
+            sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
+            exit(-1);
+          }
+          phenotypes_raw(indiv_index, i_pheno) = missing_value_double;
+          masked_indivs(indiv_index, i_pheno) = 0;
+          if( strict_mode ) masked_indivs.row(indiv_index) = MatrixXd::Zero(1, n_pheno);
+        }
+      }
+
+      if( phenotypes(indiv_index, i_pheno) != missing_value_double ) {
+        total(i_pheno) +=  phenotypes(indiv_index, i_pheno);
+        ns(i_pheno) +=  1;
+      } else {
+        if( test_mode && rm_missing_qt ) masked_indivs(indiv_index, i_pheno) = 0;
+        if( strict_mode ) masked_indivs.row(indiv_index) = MatrixXd::Zero(1, n_pheno);
+      }
+
+      i_pheno++;
+    }
+
+  }
+
+  // mask individuals in genotype data but not in phenotype data
+  masked_indivs.array().colwise() *= ind_in_pheno_and_geno;
+
+  // check if all individuals have missing/invalid phenotype
+  if(masked_indivs.colwise().sum().array().minCoeff() == 0){
+    sout << "ERROR: All individuals have missing/invalid phenotype values." << endl;
+    exit(-1);
+  }
+
+  if(!binary_mode || !test_mode){
+
+    if(!binary_mode){
+      // impute missing with mean
+      for(size_t i = 0; i < n_samples;i++) 
+        for(size_t j = 0; j < n_pheno;j++) {
+          if( phenotypes(i,j) != missing_value_double ) {
+            phenotypes(i,j) -= total(j) / ns(j);	  
+          }  else phenotypes(i,j) = 0.0;
+        }
+    } else {
+      for(size_t j = 0; j < n_pheno; j++) {
+        mean = (masked_indivs.col(j).array() == 1).select( phenotypes.col(j).array(), 0).sum() / masked_indivs.col(j).sum();
+        phenotypes.col(j).array() = (masked_indivs.col(j).array() == 1).select(phenotypes.col(j).array() - mean, 0);
+      }
+    }
+
+    // apply masking
+    phenotypes.array() *= masked_indivs.array();
+
+    sout <<  "   -reading phenotypes...done" << endl;
+  }
+
+  // number of phenotyped individuals 
+  sout <<  "   -number of phenotyped individuals = " << ind_in_pheno_and_geno.sum() << endl;
+
+  // check that there cases are present
+  if(binary_mode){
+    for(size_t j = 0; j < n_pheno;j++) {
+      if( ( phenotypes_raw.col(j).array() == 1 ).count() == 0){
+        sout << "ERROR: No cases present for phenotype: " << pheno_names[j] << endl; 
+        exit(-1);
+      }
+    }
+  }
+
+  Neff = masked_indivs.colwise().sum();
+  if(strict_mode) sout << "   -number of individuals remaining with non-missing phenotypes = " << Neff(0) << endl;
+
+  myfile.close();
 
 }
 
 void Data::covariate_read() {
   ifstream myfile;
-  string line, tmp_str, tmp_name, FID, IID;
+  string line;
+  std::vector< string > tmp_str_vec ;
+  findID person;
   uint64 indiv_index;
   vector<bool> cov_colKeep;
   bool keep_cov;
 
+  sout << left << std::setw(20) << " * covariates" << ": [" << cov_file << "] " << flush;
   myfile.open (cov_file.c_str(), ios::in);
-  if (myfile.is_open()) {
-    sout << left << std::setw(20) << " * covariates" << ": [" << cov_file << "] " << flush;
-    getline (myfile,line);
-    std::istringstream iss(line);
-    
-    // check that FID and IID are first two entries in header
-    iss >> FID >> IID;
-    if( FID != "FID" || IID != "IID" ) {
-      sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
-      exit(-1);
-    }
-
-    // get covariate names 
-    n_cov = 0;
-    while (iss >> tmp_name) {
-      // default is to use all columns  
-      if(!select_covs){
-        cov_colKeep.push_back( true );
-        n_cov++;
-      } else {
-        // otherwise, check if covariate is in list of covariates to keep
-        keep_cov = std::find(cov_colKeep_names.begin(), cov_colKeep_names.end(), tmp_name) != cov_colKeep_names.end();
-        cov_colKeep.push_back( keep_cov );
-        if(keep_cov){
-          n_cov++;
-        }
-      }
-    }
-    // check #covariates is > 0
-    if(n_cov < 1){ // only intercept will be included
-      sout << "n_cov = " << n_cov << " (+ intercept)" << endl;
-      return ;
-    }
-    sout << "n_cov = " << n_cov << flush;
-    
-    // allocate memory 
-    covariates.resize(n_samples, n_cov);
-    findID person;
-
-    // read in data
-    while( getline (myfile,line) ){
-    std::istringstream iss(line);
-
-      if( !(iss >> FID >> IID) ){
-        sout << "ERROR: Incorrectly formatted covariate file." << endl;
-        exit(-1);
-      }
-
-      person = getIndivIndex(FID, IID);
-      if(!person.is_found) continue;
-      indiv_index = person.index;
-
-      // ignore sample if it is in exlusion list
-      if( ind_ignore(indiv_index) ) continue;
-
-      // check duplicate
-      if( !ind_in_cov_and_geno(indiv_index) ){
-        ind_in_cov_and_geno(indiv_index) = 1;
-      } else {
-        sout << "ERROR: Individual appears more than once in covariate file: FID=" << FID << " IID=" << IID << endl;
-        exit(-1);
-      }
-
-      // read covariate data and check for missing values
-      for(size_t i_cov = 0, j = 0; j < cov_colKeep.size(); j++) {
-        if( !(iss >> tmp_str) ){
-          sout << "ERROR: Incorrectly formatted covariate file." << endl;
-          exit(-1);
-        }
-
-        if( !cov_colKeep[j] ) continue;
-        covariates(indiv_index, i_cov) = convertDouble(tmp_str);
-        if( covariates(indiv_index, i_cov) == missing_value_double ) {
-          sout << "ERROR: Individual has missing value in covariate file: FID=" << FID << " IID=" << IID << endl;
-          exit(-1);
-        }
-        i_cov++;
-      }
-
-    }
-    myfile.close();
-
-    // mask individuals in genotype data but not in covariate data
-    masked_indivs.array().colwise() *= ind_in_cov_and_geno;
-
-    // Append covariates to intercept
-    new_cov.resize(n_samples, 1 + n_cov);
-    new_cov.col(0) = MatrixXd::Ones(n_samples, 1);
-    new_cov.rightCols(n_cov) = covariates;
-
-    // apply masking
-    new_cov.array().colwise() *= ind_in_cov_and_geno;
-    if(strict_mode) new_cov.array().colwise() *= masked_indivs.col(0).array();
-
-  } else {
+  if (!myfile.is_open()) {
     sout << "ERROR: Cannot open covariate file : " << cov_file << endl;
     exit(-1);
   }
 
+  getline (myfile,line);
+  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+  // check that FID and IID are first two entries in header
+  if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
+    sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
+    exit(-1);
+  }
+
+  // get covariate names 
+  n_cov = 0;
+  for( size_t filecol = 2; filecol < tmp_str_vec.size(); filecol++ ) {
+    // default is to use all columns  
+    if(!select_covs){
+      cov_colKeep.push_back( true );
+      n_cov++;
+    } else {
+      // otherwise, check if covariate is in list of covariates to keep
+      keep_cov = std::find(cov_colKeep_names.begin(), cov_colKeep_names.end(), tmp_str_vec[filecol]) != cov_colKeep_names.end();
+      cov_colKeep.push_back( keep_cov );
+      if(keep_cov){
+        n_cov++;
+      }
+    }
+  }
+  // check #covariates is > 0
+  if(n_cov < 1){ // only intercept will be included
+    sout << "n_cov = " << n_cov << " (+ intercept)" << endl;
+    return ;
+  }
+  sout << "n_cov = " << n_cov << flush;
+
+  // allocate memory 
+  covariates.resize(n_samples, n_cov);
+
+  // read in data
+  while( getline (myfile,line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec.size() < cov_colKeep.size() ){
+      sout << "ERROR: Incorrectly formatted covariate file." << endl;
+      exit(-1);
+    }
+
+    person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1]);
+    if(!person.is_found) continue;
+
+    indiv_index = person.index;
+
+    // ignore sample if it is in exlusion list
+    if( ind_ignore(indiv_index) ) continue;
+
+    // check duplicate
+    if( !ind_in_cov_and_geno(indiv_index) ){
+      ind_in_cov_and_geno(indiv_index) = 1;
+    } else {
+      sout << "ERROR: Individual appears more than once in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
+      exit(-1);
+    }
+
+    // read covariate data and check for missing values
+    for(size_t i_cov = 0, j = 0; j < cov_colKeep.size(); j++) {
+
+      if( !cov_colKeep[j] ) continue;
+
+      covariates(indiv_index, i_cov) = convertDouble(tmp_str_vec[2+j]);
+      if( covariates(indiv_index, i_cov) == missing_value_double ) {
+        sout << "ERROR: Individual has missing value in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
+        exit(-1);
+      }
+      i_cov++;
+    }
+
+  }
+  myfile.close();
+
+  // mask individuals in genotype data but not in covariate data
+  masked_indivs.array().colwise() *= ind_in_cov_and_geno;
+
+  // Append covariates to intercept
+  new_cov.resize(n_samples, 1 + n_cov);
+  new_cov.col(0) = MatrixXd::Ones(n_samples, 1);
+  new_cov.rightCols(n_cov) = covariates;
+
+  // apply masking
+  new_cov.array().colwise() *= ind_in_cov_and_geno;
+  if(strict_mode) new_cov.array().colwise() *= masked_indivs.col(0).array();
+
   sout <<  endl;
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.sum() << endl;
+
 }
 
 void Data::getCovBasis(){
