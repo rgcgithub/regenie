@@ -28,7 +28,7 @@ We first try fit the model with a step size threshold that is more liberal (=25)
 
 3. Can REGENIE be used on data with small sample sizes? 
     - For quantitative traits, we have not obtained issues running REGENIE on small data sets.
-    - For binary traits, we have obtained successful runs of REGENIE (step 1 and 2) on data with as little as 200 samples. A few factors to consider:
+    - For binary traits, we have obtained successful runs of REGENIE (step 1 and 2) on data with as little as 300 samples. A few factors to consider:
         - Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) -> see (1) above
         - Similarly, convergence issues may occur in step 2 when using Firth approximation -> see (2) above 
  
