@@ -181,7 +181,7 @@
 <p>What to do if Step 2 of REGENIE fails when fitting the null model for the approximate Firth correction? </p>
 <ul>
 <li>We have implemented the same measures as in <code>logistf</code> function in R to avoid convergence issues, which include the use of a step size threshold value when performing a Newton step. 
-We first try fit the model with a step size threshold that is more liberal (=25) as well as a maximum number of iterations of 1,000 and if convergence fails, we use a more stringent maximum step size value (=5) which slows down convergence as well as increase the number of iterations to 5,000.</li>
+We first try fit the model with a step size threshold that is more liberal (=25) as well as a maximum number of iterations of 1,000 and if convergence fails, we use a more stringent maximum step size value (=5) as well as increase the number of iterations to 5,000, which slow down convergence.</li>
 <li>The user can also specify a maximum step size threshold using <code>--maxstep-null</code> (use value &lt;5) as well as increase the maximum number of iterations using <code>--maxiter-null</code> (use value &gt;5000). In that case, no retries are perfomed if convergence fails.<ul>
 <li>We recommend to test chromosomes separately (using <code>--chr</code>) as these parameters may need to be altered when fitting the null model for each chromosome</li>
 </ul>
