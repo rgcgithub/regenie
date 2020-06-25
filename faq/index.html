@@ -8,10 +8,10 @@
     
     
     
-    <link rel="shortcut icon" href="img/favicon.ico">
+    <link rel="shortcut icon" href="../img/favicon.ico">
 
     
-    <title>Home - regenie</title>
+    <title>F.A.Q. - regenie</title>
     
 
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
@@ -19,9 +19,9 @@
     <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.min.css">
     <link href='//rsms.me/inter/inter.css' rel='stylesheet' type='text/css'>
     <link href='//fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,700italic,400,300,600,700&subset=latin-ext,latin' rel='stylesheet' type='text/css'>
-    <link href="css/bootstrap-custom.min.css" rel="stylesheet">
-    <link href="css/base.min.css" rel="stylesheet">
-    <link href="css/cinder.min.css" rel="stylesheet">
+    <link href="../css/bootstrap-custom.min.css" rel="stylesheet">
+    <link href="../css/base.min.css" rel="stylesheet">
+    <link href="../css/cinder.min.css" rel="stylesheet">
 
     
 
@@ -53,7 +53,7 @@
      
 </head>
 
-<body class="homepage" >
+<body>
 
     <div class="navbar navbar-default navbar-fixed-top" role="navigation">
     <div class="container">
@@ -71,7 +71,7 @@
 
             <!-- Main title -->
 
-            <a class="navbar-brand" href=".">regenie</a>
+            <a class="navbar-brand" href="..">regenie</a>
         </div>
 
         <!-- Expanded navigation -->
@@ -80,44 +80,44 @@
                 <ul class="nav navbar-nav">
                 
                 
+                    <li >
+                        <a href="..">Home</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../overview/">Overview</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../install/">Install</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../options/">Documentation</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../performance/">Performance</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../recommendations/">UKBB Analysis</a>
+                    </li>
+                
+                
+                
                     <li class="active">
-                        <a href=".">Home</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="overview/">Overview</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="install/">Install</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="options/">Documentation</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="performance/">Performance</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="recommendations/">UKBB Analysis</a>
-                    </li>
-                
-                
-                
-                    <li >
-                        <a href="faq/">F.A.Q.</a>
+                        <a href="./">F.A.Q.</a>
                     </li>
                 
                 
@@ -129,13 +129,13 @@
                             <i class="fas fa-search"></i> Search
                         </a>
                     </li>
-                    <li class="disabled">
-                        <a rel="prev" >
+                    <li >
+                        <a rel="prev" href="../recommendations/">
                             <i class="fas fa-arrow-left"></i> Previous
                         </a>
                     </li>
-                    <li >
-                        <a rel="next" href="overview/">
+                    <li class="disabled">
+                        <a rel="next" >
                             Next <i class="fas fa-arrow-right"></i>
                         </a>
                     </li>
@@ -149,46 +149,46 @@
         
         <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
     <ul class="nav bs-sidenav">
-        <li class="first-level active"><a href="#regenie">regenie</a></li>
-        <li class="first-level "><a href="#license">License</a></li>
-        <li class="first-level "><a href="#contact">Contact</a></li>
-        <li class="first-level "><a href="#version-history">Version history</a></li>
+        <li class="first-level active"><a href="#frequently-asked-questions-faq">Frequently asked questions (F.A.Q.)</a></li>
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
 
-<h2 id="regenie">regenie</h2>
-<p><strong>regenie</strong> is a C++ program for whole genome regression modelling of large
-<a href="https://en.wikipedia.org/wiki/Genome-wide_association_study">genome-wide association studies</a>.</p>
-<p>It is developed and supported by a team of scientists at the Regeneron Genetics Center.</p>
-<p>The method has the following properties</p>
+<h2 id="frequently-asked-questions-faq">Frequently asked questions (F.A.Q.)</h2>
 <ul>
-<li>It works on quantitative and binary traits, including binary
-traits with unbalanced case-control ratios</li>
-<li>It can process multiple phenotypes at once</li>
-<li>It is fast and memory efficient 🔥</li>
-<li>For binary traits it supports Firth logistic regression and an SPA test</li>
-<li>It supports the <a href="https://www.well.ox.ac.uk/~gav/bgen_format/">BGEN</a> and <a href="https://www.cog-genomics.org/plink/1.9/formats#bed">PLINK</a> bed/bim/fam genetic data formats</li>
-<li>It is ideally suited for implementation in
-  <a href="https://spark.apache.org/">Apache Spark</a> (see <a href="https://projectglow.io/">GLOW</a>)</li>
-</ul>
-<p><strong>Citation</strong> 
-Joelle Mbatchou, Leland Barnard, Joshua Backman, Anthony Marcketta, Jack A. Kosmicki, Andrey Ziyatdinov, Christian Benner, Colm O'Dushlaine, Mathew Barber, Boris Boutkov, Lukas Habegger, Manuel Ferreira, Jeffrey Reid, Goncalo Abecasis, Evan Maxwell, Jonathan Marchini.
-(2020)
-Computationally efficient whole genome regression for quantitative and binary traits
- <a href="https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1">[BioRxiv pre-print]</a></p>
-<h2 id="license">License</h2>
-<p><strong>regenie</strong> is distributed under an <a href="https://github.com/rgcgithub/regenie/blob/master/LICENSE">MIT license</a>.</p>
-<h2 id="contact">Contact</h2>
-<p>If you have any questions about <strong>regenie</strong> please contact</p>
+<li>
+<p>Can REGENIE be run on small sample sizes? </p>
 <ul>
-<li><a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#106;&#111;&#110;&#97;&#116;&#104;&#97;&#110;&#46;&#109;&#97;&#114;&#99;&#104;&#105;&#110;&#105;&#64;&#114;&#101;&#103;&#101;&#110;&#101;&#114;&#111;&#110;&#46;&#99;&#111;&#109;">&#106;&#111;&#110;&#97;&#116;&#104;&#97;&#110;&#46;&#109;&#97;&#114;&#99;&#104;&#105;&#110;&#105;&#64;&#114;&#101;&#103;&#101;&#110;&#101;&#114;&#111;&#110;&#46;&#99;&#111;&#109;</a></li>
-<li><a href="&#109;&#97;&#105;&#108;&#116;&#111;&#58;&#106;&#111;&#101;&#108;&#108;&#101;&#46;&#109;&#98;&#97;&#116;&#99;&#104;&#111;&#117;&#64;&#114;&#101;&#103;&#101;&#110;&#101;&#114;&#111;&#110;&#46;&#99;&#111;&#109;">&#106;&#111;&#101;&#108;&#108;&#101;&#46;&#109;&#98;&#97;&#116;&#99;&#104;&#111;&#117;&#64;&#114;&#101;&#103;&#101;&#110;&#101;&#114;&#111;&#110;&#46;&#99;&#111;&#109;</a> </li>
+<li>For quantitative traits, we have not obtained issues running REGENIE on small data sets.</li>
+<li>For binary traits, we have obtained successful runs of REGENIE (step 1 and 2) on data with as little as 300 samples. A few factors to consider:<ul>
+<li>Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) -&gt; see (2) below</li>
+<li>Similarly, convergence issues may occur in step 2 when using Firth approximation -&gt; see (3) below </li>
 </ul>
-<p>If you want to submit a issue concerning the software please do so
-using the <strong>regenie</strong> <a href="https://github.com/rgcgithub/regenie/issues">Github repository</a>.</p>
-<h2 id="version-history">Version history</h2>
-<p>Version 1.0 (22 June 2020): Initial release</p></div>
+</li>
+</ul>
+</li>
+<li>
+<p>What to do if Step 1 of REGENIE failed for a binary trait when fitting the penalized logsitic regression model? This can occur when the sample size used to fit the model is small.</p>
+<ul>
+<li>If using K-fold CV, switch to LOOCV (option <code>--loocv</code>) to increase the size of the sample used to fit the model<ul>
+<li>LOOCV is now used by default when the sample size is less than 5,000</li>
+</ul>
+</li>
+<li>If it is due to quasi-separation (i.e. <code>Var(Y)=0</code> occurred in model fitting), either increase the sample size using LOOCV or increase the MAF threshold for variants included in step 1 analysis </li>
+</ul>
+</li>
+<li>
+<p>What to do if Step 2 of REGENIE fails when fitting the null model for the approximate Firth correction? </p>
+<ul>
+<li>We have implemented the same measures as in <code>logistf</code> function in R to avoid convergence issues, which include the use of a step size threshold value when performing a Newton step. 
+We first try fit the model with a step size threshold that is more liberal (=25) as well as a maximum number of iterations of 1,000 and if convergence fails, we use a more stringent maximum step size value (=5) which slows down convergence as well as increase the number of iterations to 5,000.</li>
+<li>The user can also specify a maximum step size threshold using <code>--maxstep-null</code> (use value &lt;5) as well as increase the maximum number of iterations using <code>--maxiter-null</code> (use value &gt;5000). In that case, no retries are perfomed if convergence fails.<ul>
+<li>We recommend to test chromosomes separately (using <code>--chr</code>) as these parameters may need to be altered when fitting the null model for each chromosome</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul></div>
         
         
     </div>
@@ -204,12 +204,12 @@ using the <strong>regenie</strong> <a href="https://github.com/rgcgithub/regenie
         
     </footer>
     <script src="//ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
-    <script src="js/bootstrap-3.0.3.min.js"></script>
+    <script src="../js/bootstrap-3.0.3.min.js"></script>
     
-    <script>var base_url = "."</script>
+    <script>var base_url = ".."</script>
     
-    <script src="js/base.js"></script>
-    <script src="search/main.js"></script>
+    <script src="../js/base.js"></script>
+    <script src="../search/main.js"></script>
 
   <script type="text/javascript"
           src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML"></script>
@@ -300,8 +300,3 @@ autoNumber: "AMS"
 
 
 </html>
-
-<!--
-MkDocs version : 1.0.4
-Build Date UTC : 2020-06-25 01:20:06
--->
