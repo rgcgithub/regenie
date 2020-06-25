@@ -11,7 +11,7 @@
     <link rel="shortcut icon" href="../img/favicon.ico">
 
     
-    <title>Install - regenie</title>
+    <title>F.A.Q. - regenie</title>
     
 
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
@@ -92,8 +92,8 @@
                 
                 
                 
-                    <li class="active">
-                        <a href="./">Install</a>
+                    <li >
+                        <a href="../install/">Install</a>
                     </li>
                 
                 
@@ -116,8 +116,8 @@
                 
                 
                 
-                    <li >
-                        <a href="../faq/">F.A.Q.</a>
+                    <li class="active">
+                        <a href="./">F.A.Q.</a>
                     </li>
                 
                 
@@ -130,12 +130,12 @@
                         </a>
                     </li>
                     <li >
-                        <a rel="prev" href="../overview/">
+                        <a rel="prev" href="../recommendations/">
                             <i class="fas fa-arrow-left"></i> Previous
                         </a>
                     </li>
-                    <li >
-                        <a rel="next" href="../options/">
+                    <li class="disabled">
+                        <a rel="next" >
                             Next <i class="fas fa-arrow-right"></i>
                         </a>
                     </li>
@@ -149,63 +149,46 @@
         
         <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
     <ul class="nav bs-sidenav">
-        <li class="first-level active"><a href="#download">Download</a></li>
-        <li class="first-level "><a href="#installation">Installation</a></li>
-        <li class="first-level "><a href="#computing-requirements">Computing requirements</a></li>
-            <li class="second-level"><a href="#memory-usage">Memory usage</a></li>
-                
-            <li class="second-level"><a href="#threading">Threading</a></li>
-                
+        <li class="first-level active"><a href="#frequently-asked-questions-faq">Frequently asked questions (F.A.Q.)</a></li>
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
 
-<h2 id="download">Download</h2>
-<p>The <strong>regenie</strong> source code is hosted on
-<a href="https://github.com/rgcgithub/regenie">Github</a></p>
-<h2 id="installation">Installation</h2>
-<ol>
-<li><strong>regenie</strong> requires the
-  <a href="https://bitbucket.org/gavinband/bgen/src/default/">BGEN library</a> so
-  you will need to download and install that library.</li>
-<li>In the regenie source code edit the BGEN_PATH variable in the <code>Makefile</code>
-   to the BGEN library path.</li>
-<li>On the command line type <code>make</code> while in the main source code directory.<ul>
-<li>Compile using <a href="https://gcc.gnu.org">GCC</a> version &gt;= 5.1</li>
+<h2 id="frequently-asked-questions-faq">Frequently asked questions (F.A.Q.)</h2>
+<ul>
+<li>
+<p>Can REGENIE be run on small sample sizes? </p>
+<ul>
+<li>For quantitative traits, we have not obtained issues running REGENIE on small data sets.</li>
+<li>For binary traits, we have obtained successful runs of REGENIE (step 1 and 2) on data sets with as little as 300 samples. A few factors to consider:<ul>
+<li>Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) -&gt; see below</li>
+<li>Similarly, convergence issues may occur in step 2 when using Firth approximation -&gt; see below </li>
 </ul>
 </li>
-<li>This should produce the executable called <code>regenie</code>.</li>
-</ol>
-<h2 id="computing-requirements">Computing requirements</h2>
-<p>We have tested <strong>regenie</strong> on Linux 
-<!-- Issue when using BGEN library API on MAC (gives different results than on Linux)
-and Mac OSX 
--->
-computing environment.</p>
-<h3 id="memory-usage">Memory usage</h3>
-<p>In both Step 1 and Step 2 of a <strong>regenie</strong> run the genetic data file is
-read once, in blocks of SNPs, so at no point is the full dataset ever stored in
-memory.</p>
-<p><strong>regenie</strong> uses a dimension reduction approach using ridge regression
-  to produce a relatively small set of genetic predictors, that are
-  then used to fit a whole-genome regression model. These genetic
-  predictors are stored in memory by default, and can be relatively
-  large if many phenotypes are stored at once.</p>
-<p>For example, if there are <script type="math/tex">P</script> phenotypes, <script type="math/tex">M</script> SNPs and <script type="math/tex">N</script> samples, and a
-block size of <script type="math/tex">B</script> SNPs is used with <script type="math/tex">R</script> ridge parameters,
- then <strong>regenie</strong> needs to store roughly <script type="math/tex">N\times M/B\times R</script>
-doubles per phenotype, which is 8Gb per phenotype when <script type="math/tex">M=500,000,
-N=400,000, B =1,000,R=5</script> and 200Gb in total when <script type="math/tex">P=25</script>.</p>
-<p>However, the <code>--lowmem</code> option can be used to avoid that memory usage,
-at negligible extra computational cost, by writing temporary files to disk.</p>
-<h3 id="threading">Threading</h3>
-<p><strong>regenie</strong> can take advantage of multiple cores using threading. The
-number of threads can be specified using the <code>--threads</code> option.</p>
-<p><strong>regenie</strong> uses the <a href="http://eigen.tuxfamily.org/index.php?title=Main_Page">Eigen library</a> for 
-efficient linear algebra operations and this uses threading where possible.</p>
-<p>For PLINK bed/bim/fam files as well as BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
-500K imputed data), step 2 of <strong>regenie</strong> has been optimized by 
-using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p></div>
+</ul>
+</li>
+<li>
+<p>What to do if Step 1 of REGENIE failed for a binary trait when fitting the penalized logsitic regression model? This can occur when the sample size used to fit the model is small.</p>
+<ul>
+<li>If using K-fold CV, switch to LOOCV (option <code>--loocv</code>) to increase the size of the sample used to fit the model<ul>
+<li>LOOCV is now used by default when the sample size is less than 5,000</li>
+</ul>
+</li>
+<li>If it is due to quasi-separation (i.e. <code>Var(Y)=0</code> occurred in model fitting), either increase the sample size using LOOCV or increase the MAF threshold for variants included in step 1 analysis </li>
+</ul>
+</li>
+<li>
+<p>What to do if Step 2 of REGENIE fails when fitting the null model for the approximate Firth correction? </p>
+<ul>
+<li>We have implemented the same measures as in <code>logistf</code> function in R to avoid convergence issues, which include the use of a step size threshold value when performing a Newton step. 
+We first try fit the model with a step size threshold that is more liberal (=25) as well as a maximum number of iterations of 1,000 and if convergence fails, we use a more stringent maximum step size value (=5) as well as increase the number of iterations to 5,000, which slow down convergence.</li>
+<li>The user can also specify a maximum step size threshold using <code>--maxstep-null</code> (use value &lt;5) as well as increase the maximum number of iterations using <code>--maxiter-null</code> (use value &gt;5000). In that case, no retries are perfomed if convergence fails.<ul>
+<li>We recommend to test chromosomes separately (using <code>--chr</code>) as these parameters may need to be altered when fitting the null model for each chromosome</li>
+</ul>
+</li>
+</ul>
+</li>
+</ul></div>
         
         
     </div>

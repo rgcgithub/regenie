@@ -10,6 +10,7 @@ nav:
   - Documentation: options.md
   - Performance: performance.md
   - UKBB Analysis: recommendations.md
+  - F.A.Q.: faq.md
 
 markdown_extensions:
   - mdx_math
