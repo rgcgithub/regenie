@@ -148,6 +148,7 @@ void Data::print_help( bool help_full ){
   cout << left << std::setw(35) << " --nauto INT (=22)"<< "number of autosomal chromosomes\n";
   cout << left << std::setw(35) << " --niter INT (=30)"<< "maximum number of iterations for logistic regression\n";
   cout << left << std::setw(35) << " --maxstep-null INT (=25)"<< "maximum step size in null Firth logistic regression\n";
+  cout << left << std::setw(35) << " --maxiter-null INT (=25)"<< "maximum number of iterations in null Firth logistic regression\n";
   cout << left << std::setw(35) << " --within" << "use within-sample predictions as input when fitting model\n" <<
     std::setw(35) << " " << "across blocks.\n";
   }
@@ -218,7 +219,16 @@ void Data::read_params_and_check(int argc, char *argv[]) {
       if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) niter_max = atoi(argv[counter+1]);
     }
     if(string(argv[counter]) == "--maxstep-null") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) maxstep_null = atoi(argv[counter+1]);
+      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+        maxstep_null = atoi(argv[counter+1]);
+        fix_maxstep_null = true;
+      }
+    }
+    if(string(argv[counter]) == "--maxiter-null") {
+      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+        niter_max_firth_null = atoi(argv[counter+1]);
+        fix_maxstep_null = true;
+      }
     }
     if(string(argv[counter]) == "--minMAC") {
       if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) min_MAC = atoi(argv[counter+1]);
@@ -430,6 +440,10 @@ void Data::read_params_and_check(int argc, char *argv[]) {
   }
   if(firth && (maxstep_null < 1)){
     sout << "ERROR :Invalid argument for --maxstep-null (must be a positive integer).\n" << err_help ;
+    exit(-1);
+  }
+  if(firth && (niter_max_firth_null < 1)){
+    sout << "ERROR :Invalid argument for --maxiter-null (must be a positive integer).\n" << err_help ;
     exit(-1);
   }
   if(nChrom < 2){
@@ -3935,8 +3949,7 @@ void Data::test_snps() {
           for( std::size_t i = 0; i < n_pheno; ++i ) {
             has_converged = fit_firth_logistic(chrom, i, true); 
             if(!has_converged) {
-              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << 
-                pheno_names[i] << endl;
+              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << pheno_names[i] << endl;
               exit(-1);
             }
           }
@@ -4536,85 +4549,53 @@ bool Data::fit_firth_logistic(int chrom, int ph, bool null_fit) {
   // mask individuals
   Xmat.array().colwise() *= masked_indivs.col(ph).array();
 
-  // starting values
-  if(null_fit){
+  // with firth approx. => trial 1: use maxstep_null
+  // trial 2 => use fallback options (increase maxstep & niter)
+  for( size_t trial = 0; trial < 2; trial++){
 
-    betaold = ArrayXd::Zero(Xmat.cols());
-    betaold(0) = ( 0.5 + Y1.sum())  / (Neff(ph) + 1);
-    betaold(0) = log( betaold(0) / (1 - betaold(0) ));
+    // starting values
+    if(null_fit){
 
-    // LOCO prediction is offset
-    betaold(0) -= (blups.col(ph).array() * masked_indivs.col(ph).array()).mean();
+      betaold = ArrayXd::Zero(Xmat.cols());
+      betaold(0) = ( 0.5 + Y1.sum())  / (Neff(ph) + 1);
+      betaold(0) = log( betaold(0) / (1 - betaold(0) ));
 
-  } else {
+      // LOCO prediction is offset
+      betaold(0) -= (blups.col(ph).array() * masked_indivs.col(ph).array()).mean();
 
-    if(firth_approx) betaold = ArrayXd::Zero(col_incl); // only estimating effect of tested SNP
-    else betaold = beta_null_firth.array();
+    } else {
 
-  }
-  betanew = ArrayXd::Zero( betaold.size() );
+      if(firth_approx) betaold = ArrayXd::Zero(col_incl); // only estimating effect of tested SNP
+      else betaold = beta_null_firth.array();
 
-  // get the corresponding deviance
-  etavec = (Xmat * betaold.matrix()).array();
-  etavec += blups.col(ph).array() * masked_indivs.col(ph).array();
-  // covariate effects added as offset in firth approx. (last entry of beta_null_firth = 0)
-  if( firth_approx && !null_fit ) etavec += ((new_cov.array().colwise() * masked_indivs.col(ph).array()).matrix() * beta_null_firth.block(0,ph,new_cov.cols(),1)).array(); 
-  // fitted probabilities
-  pivec = 1 - 1 / (etavec.exp() + 1) ;
-  wvec = (masked_indivs.col(ph).array() == 1).select( ( pivec * (1 - pivec) ).sqrt(), 0);
-  XtW = Xmat.transpose() * wvec.matrix().asDiagonal();
-  XtWX = XtW * XtW.transpose();
-  qr.compute(XtWX);
-  // use penalized log-lik
-  dev_old = (masked_indivs.col(ph).array() == 1).select( (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
-  dev_old += 0.5 * qr.logAbsDeterminant();
-  dev_old *= -2;
+    }
+    betanew = ArrayXd::Zero( betaold.size() );
 
-  // at niter=0 (i.e. betaSNP=0) this is null deviance
-  if( !null_fit ) deviance_l0 = dev_old;
-
-  // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
-  niter_cur = 0;
-  while(niter_cur++ < niter_firth){
-
-    ////////  compute step size
+    // get the corresponding deviance
     etavec = (Xmat * betaold.matrix()).array();
     etavec += blups.col(ph).array() * masked_indivs.col(ph).array();
+    // covariate effects added as offset in firth approx. (last entry of beta_null_firth = 0)
     if( firth_approx && !null_fit ) etavec += ((new_cov.array().colwise() * masked_indivs.col(ph).array()).matrix() * beta_null_firth.block(0,ph,new_cov.cols(),1)).array(); 
-
+    // fitted probabilities
     pivec = 1 - 1 / (etavec.exp() + 1) ;
     wvec = (masked_indivs.col(ph).array() == 1).select( ( pivec * (1 - pivec) ).sqrt(), 0);
     XtW = Xmat.transpose() * wvec.matrix().asDiagonal();
     XtWX = XtW * XtW.transpose();
     qr.compute(XtWX);
-    if(!firth_approx && null_fit )  qrX.compute(XtWX.block(0, 0, col_incl, col_incl));
+    // use penalized log-lik
+    dev_old = (masked_indivs.col(ph).array() == 1).select( (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
+    dev_old += 0.5 * qr.logAbsDeterminant();
+    dev_old *= -2;
 
-    // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
-    hvec = (qr.solve(XtW).array() * XtW.array() ).colwise().sum();
+    // at niter=0 (i.e. betaSNP=0) this is null deviance
+    if( !null_fit ) deviance_l0 = dev_old;
 
-    // modified score for beta
-    mod_score = (Xmat.leftCols(col_incl).transpose() * (masked_indivs.col(ph).array() == 1).select( Y1 - pivec + hvec * (0.5 - pivec), 0).matrix() ).array();
+    // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
+    niter_cur = 0;
+    while(niter_cur++ < niter_firth){
 
-    // step size
-    if(!firth_approx && null_fit )
-      step_size = qrX.solve( mod_score.matrix() ).array();
-    else
-      step_size = qr.solve( mod_score.matrix() ).array();
-
-    // force absolute step size to be less than maxstep for each entry of beta
-    mx = step_size.abs().maxCoeff() / maxstep_firth;
-    if( mx > 1 ) step_size /= mx;
-
-    // start step-halving and stop when deviance decreases 
-    denum = 1;
-    for( size_t niter_search = 1; niter_search <= niter_max_line_search; niter_search++ ){
-
-      // adjusted step size
-      step_size /= denum;
-
-      ///////// compute corresponding deviance
-      betanew.head(col_incl) = betaold.head(col_incl) + step_size;
-      etavec = (Xmat * betanew.matrix()).array();
+      ////////  compute step size
+      etavec = (Xmat * betaold.matrix()).array();
       etavec += blups.col(ph).array() * masked_indivs.col(ph).array();
       if( firth_approx && !null_fit ) etavec += ((new_cov.array().colwise() * masked_indivs.col(ph).array()).matrix() * beta_null_firth.block(0,ph,new_cov.cols(),1)).array(); 
 
@@ -4623,27 +4604,78 @@ bool Data::fit_firth_logistic(int chrom, int ph, bool null_fit) {
       XtW = Xmat.transpose() * wvec.matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
       qr.compute(XtWX);
+      if(!firth_approx && null_fit )  qrX.compute(XtWX.block(0, 0, col_incl, col_incl));
 
-      deviance_logistic = (masked_indivs.col(ph).array() == 1).select( (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
-      deviance_logistic += 0.5 * qr.logAbsDeterminant();
-      deviance_logistic *= -2;
+      // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
+      hvec = (qr.solve(XtW).array() * XtW.array() ).colwise().sum();
 
-      //sout << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << deviance_logistic << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
-      if( deviance_logistic < dev_old + numtol ) break;
-      denum *= 2;
+      // modified score for beta
+      mod_score = (Xmat.leftCols(col_incl).transpose() * (masked_indivs.col(ph).array() == 1).select( Y1 - pivec + hvec * (0.5 - pivec), 0).matrix() ).array();
+
+      // step size
+      if(!firth_approx && null_fit )
+        step_size = qrX.solve( mod_score.matrix() ).array();
+      else
+        step_size = qr.solve( mod_score.matrix() ).array();
+
+      // force absolute step size to be less than maxstep for each entry of beta
+      mx = step_size.abs().maxCoeff() / maxstep_firth;
+      if( mx > 1 ) step_size /= mx;
+
+      // start step-halving and stop when deviance decreases 
+      denum = 1;
+      for( size_t niter_search = 1; niter_search <= niter_max_line_search; niter_search++ ){
+
+        // adjusted step size
+        step_size /= denum;
+
+        ///////// compute corresponding deviance
+        betanew.head(col_incl) = betaold.head(col_incl) + step_size;
+        etavec = (Xmat * betanew.matrix()).array();
+        etavec += blups.col(ph).array() * masked_indivs.col(ph).array();
+        if( firth_approx && !null_fit ) etavec += ((new_cov.array().colwise() * masked_indivs.col(ph).array()).matrix() * beta_null_firth.block(0,ph,new_cov.cols(),1)).array(); 
+
+        pivec = 1 - 1 / (etavec.exp() + 1) ;
+        wvec = (masked_indivs.col(ph).array() == 1).select( ( pivec * (1 - pivec) ).sqrt(), 0);
+        XtW = Xmat.transpose() * wvec.matrix().asDiagonal();
+        XtWX = XtW * XtW.transpose();
+        qr.compute(XtWX);
+
+        deviance_logistic = (masked_indivs.col(ph).array() == 1).select( (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
+        deviance_logistic += 0.5 * qr.logAbsDeterminant();
+        deviance_logistic *= -2;
+
+        //sout << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << deviance_logistic << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
+        if( deviance_logistic < dev_old + numtol ) break;
+        denum *= 2;
+      }
+
+      betaold.head(col_incl) += step_size;
+      dev_old = deviance_logistic;
+
+      // stopping criterion using modified score function
+      if( mod_score.abs().maxCoeff() < numtol_firth) break;
+
     }
 
-    betaold.head(col_incl) += step_size;
-    dev_old = deviance_logistic;
+    if(firth_approx && null_fit){ // only retry for firth approx null model
+      if(!fix_maxstep_null) { // don't retry with user-given settings
+        if( niter_cur > niter_firth ){ // if failed to converge
+          sout << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep_firth <<";maximum number of iterations=" << niter_firth<<").";
+          maxstep_firth = retry_maxstep_firth;
+          niter_firth = retry_niter_firth;
+          sout << "Retrying with fallback parameters: (maximum step size=" << maxstep_firth <<";maximum number of iterations=" << niter_firth<<").\n";
+          continue;
+        }
+      }
+    }
 
-    // stopping criterion using modified score function
-    if( mod_score.abs().maxCoeff() < numtol_firth) break;
-
+    break;
   }
 
   // If didn't converge
   if(niter_cur > niter_firth){
-    if(verbose) sout << "WARNING: Logistic regression with Firth correction did not converge!\n";
+    if(verbose && !firth_approx) sout << "WARNING: Logistic regression with Firth correction did not converge!\n";
     return false;
   }
   // sout << "\nNiter = " << niter_cur << " : " << mod_score.matrix().transpose() << endl;
@@ -5033,8 +5065,9 @@ void Data::test_snps_fast() {
           for( std::size_t i = 0; i < n_pheno; ++i ) {
             has_converged = fit_firth_logistic(chrom, i, true); 
             if(!has_converged) {
-              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << pheno_names[i];
-              sout << ". Try decreasing the maximum step size using `--maxstep-null` (currently=" << maxstep_null<<").\n";
+              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << pheno_names[i] << ". ";
+              sout << "Try decreasing the maximum step size using `--maxstep-null` (currently=" << (fix_maxstep_null ? maxstep_null : retry_maxstep_firth)<< ") " <<
+                "and increasing the maximum number of iterations using `--maxiter-null` (currently=" << (fix_maxstep_null ? niter_max_firth_null : retry_niter_firth) << ").\n";
               exit(-1);
             }
           }

@@ -49,7 +49,7 @@ using namespace Eigen;
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0"
+#define VERSION_NUMBER "1.0.1"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -284,8 +284,10 @@ public:
   int niter_max_firth = 250; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 5; // max number of iterations for line search in logistic reg.
+  bool fix_maxstep_null = false; // if user specifies max step size
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
+  int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
   int pval_converged = false; // keep track of whether SPA/Firth converged
   vector < vector < uint64 > > non_zero_indices_G;
   MatrixXd covs_firth, beta_null_firth;
