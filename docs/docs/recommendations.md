@@ -103,7 +103,7 @@ Running step 1 of **regenie** (by default, all available threads are used)
 
 For P phenotypes analyzed, this will generate a set of $P$ files ending with `.loco`
 which contain the genetic predictions using a LOCO scheme that will be needed for step 2,
-as well as a prediction list file `regenie_step1_BT_pred.list`, which lists 
+as well as a prediction list file `ukb_step1_BT_pred.list`, which lists 
 the names of these predictions files and can be used as input for step 2.
 
 
@@ -114,12 +114,13 @@ the traits for testing in step 2 or select a subset of the traits to perform ass
 
 
 Step 2 of **regenie** has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data) and PLINK bed/bim/fam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
-machines, we recommend to split the runs over chromosomes (using 4+ threads).
+machines, we recommend to split the runs over chromosomes (using 8+ threads).
 
 #### Sample mismatch 
 
-It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 or contains additional samples not used in step 1. 
-In such a case, you could for example used the following code to only retain samples that are 
+It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 
+or contains additional samples not used in step 1. 
+In such a case, you could for example use the following code to only retain samples that are 
 contained in both data sets (we assume that you are testing on BGEN input file)
 
 ```
@@ -137,7 +138,7 @@ Running **regenie** tesing on a single chromosome (here chr 1) and using fast Fi
   --c ukv_covariates.txt \
   --bt \
   --firth 0.01 --approx \
-  --pred regenie_step1_BT_pred.list \
+  --pred ukb_step1_BT_pred.list \
   --b 400 \
   --split \
   --o ukb_step2_BT_chr1

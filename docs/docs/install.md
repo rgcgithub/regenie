@@ -8,7 +8,7 @@ The **regenie** source code is hosted on
 1. **regenie** requires the
   [BGEN library](https://bitbucket.org/gavinband/bgen/src/default/) so
   you will need to download and install that library.
-2. In the regenie source code edit the BGEN_PATH variable in the `Makefile`
+2. In the source code edit the BGEN_PATH variable in the `Makefile`
    to the BGEN library path.
 3. On the command line type `make` while in the main source code directory.
     - Compile using [GCC](https://gcc.gnu.org) version >= 5.1

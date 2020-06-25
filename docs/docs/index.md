@@ -20,7 +20,7 @@ traits with unbalanced case-control ratios
 Joelle Mbatchou, Leland Barnard, Joshua Backman, Anthony Marcketta, Jack A. Kosmicki, Andrey Ziyatdinov, Christian Benner, Colm O'Dushlaine, Mathew Barber, Boris Boutkov, Lukas Habegger, Manuel Ferreira, Jeffrey Reid, Goncalo Abecasis, Evan Maxwell, Jonathan Marchini.
 (2020)
 Computationally efficient whole genome regression for quantitative and binary traits
- [[BioRxiv pre-print]](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1)
+ [[BioRxiv pre-print]](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v2)
 
 
 ## License 
@@ -38,7 +38,8 @@ If you have any questions about **regenie** please contact
 If you want to submit a issue concerning the software please do so
 using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/issues).
 
+<!--
 ## Version history
 
 Version 1.0 (22 June 2020): Initial release
-
+-->
