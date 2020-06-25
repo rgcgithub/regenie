@@ -312,7 +312,7 @@ will be collapsed into a single chromosome.</p>
 .
 </code></pre>
 
-<p>No header. Each line starts with individual FID IID. Space separated.</p>
+<p>No header. Each line starts with individual FID IID. Space/tab separated.</p>
 <p>Samples listed in the file that are not in bgen/bed file are ignored.</p>
 <h4 id="variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</h4>
 <pre><code>20
@@ -321,7 +321,7 @@ will be collapsed into a single chromosome.</p>
 </code></pre>
 
 <p>No header. Each line must start with variant ID 
-(if there are additional columns, file must be space separated).</p>
+(if there are additional columns, file must be space/tab separated).</p>
 <p>Variants listed in this file that are not in bgen/bed file are ignored.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
@@ -332,7 +332,7 @@ will be collapsed into a single chromosome.</p>
 </code></pre>
 
 <p>Line 1 : Header with FID, IID and <script type="math/tex">C</script> covariate names.</p>
-<p>Followed by lines of <script type="math/tex">C+2</script> values. Space separated.</p>
+<p>Followed by lines of <script type="math/tex">C+2</script> values. Space/tab separated.</p>
 <p>Each line contains individual FID and IID followed by <script type="math/tex">C</script> covariate
 values.</p>
 <p>Samples listed in this file that are not in bgen/bed file are ignored.
@@ -349,7 +349,7 @@ as that used in Step 1.</p>
 </code></pre>
 
 <p>Line 1 : Header with FID, IID and <script type="math/tex">P</script> phenotypes names.</p>
-<p>Followed by lines of <script type="math/tex">P+2</script> values. Space separated. 
+<p>Followed by lines of <script type="math/tex">P+2</script> values. Space/tab separated. 
 Each line contains individual FID and IID followed by P phenotype values
 (for binary traits, must be coded as 0=control, 1=case, NA=missing unless using <code>--1</code>).</p>
 <p>Samples listed in this file that are not in bgen/bed file are ignored.
