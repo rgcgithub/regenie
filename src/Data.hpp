@@ -53,7 +53,7 @@ using namespace boost;
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.1"
+#define VERSION_NUMBER "1.0.2"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -303,6 +303,7 @@ public:
   bool pos_score;
   vector<bool> snp_flipped;
   uint32_t size1, size2, snp_index_counter, total_chrs_loco;
+  uint64 bed_block_size; // prevent overflow
   
   // function definitions
   void run();

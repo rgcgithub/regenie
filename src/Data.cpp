@@ -67,7 +67,7 @@ void Data::run() {
     else test_snps();
 
   } else {
-    cout << "Fitting null model" << endl;
+    sout << "Fitting null model" << endl;
 
     // set number of threads
     setNbThreads(threads);
@@ -152,6 +152,8 @@ void Data::print_help( bool help_full ){
   cout << left << std::setw(35) << " --within" << "use within-sample predictions as input when fitting model\n" <<
     std::setw(35) << " " << "across blocks.\n";
   }
+
+  cout << "\nFor more information, visit the website: https://rgcgithub.github.io/regenie/\n";
   exit(-1);
 }
 
@@ -961,7 +963,8 @@ void Data::prep_bed(string bedfile) {
   }
 
   // size of genotype block [(n+3)/4 = ceil(n/4.0)]
-  inbed.resize((n_samples+3)>>2);
+  bed_block_size = (n_samples+3)>>2;
+  inbed.resize( bed_block_size );
 }
 
 // snps to retain in step 1 analysis
@@ -2154,17 +2157,18 @@ void Data::readChunkFromBedFileToG(int bs) {
   // mapping matches the switch of alleles done when reading bim
   const int maptogeno[4] = {2, -3, 1, 0};
 
+  // only for step 1
   for(size_t j = 0; j < bs; ) {
     if(keep_snps || rm_snps){
       if(snpinfo[snp_index_counter].mask){
-        bed_ifstream.ignore((n_samples+3)>>2);
+        bed_ifstream.ignore(bed_block_size);
         snp_index_counter++;
         continue;
       }
     }
 
     ns = 0, total = 0;
-    bed_ifstream.read( reinterpret_cast<char *> (&inbed[0]), (n_samples+3)>>2);
+    bed_ifstream.read( reinterpret_cast<char *> (&inbed[0]), bed_block_size);
     for (size_t i = 0; i < n_samples; i++) {
       byte_start = i>>2; // 4 samples per byte
       bit_start = (i&3)<<1; // 2 bits per sample
@@ -2236,12 +2240,12 @@ void Data::readChunkFromBedFileToG(int bs) {
 void Data::skip_snps(int bs){
 
   std::string chromosome, rsid;
-  uint32_t position ;
+  uint32_t position;
   std::vector< std::string > alleles ;
 
   // skip the whole block of snps
   if(!bgen_type) {
-    bed_ifstream.ignore( bs * ((n_samples+3)>>2) );
+    bed_ifstream.seekg( bs * bed_block_size, ios_base::cur);
   } else {
     for(size_t snp = 0; snp < bs; snp++) {
       bgen.read_variant( &chromosome, &position, &rsid, &alleles );
@@ -4237,10 +4241,10 @@ void Data::test_snps() {
 // get list of blup files
 void Data::blup_read() {
   ifstream blup_list_stream, blupf;
-  string line, filename, chr_str, FID_IID, tmp_pheno, tmp_str;
+  string line, tmp_pheno;
+  std::vector< string > tmp_str_vec ;
   int n_files = 0, tmp_index;
   double in_blup;
-  uint64 indiv_index;
   vector<int> read_pheno(n_pheno, 0);
 
   // allocate memory
@@ -4261,21 +4265,17 @@ void Data::blup_read() {
   // get list of files containing blups 
   sout << " * loco predictions : [" << blup_file << "] ";
   while (getline(blup_list_stream, line)){
-    std::istringstream iss(line); 
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     // each line contains a phenotype name and the corresponding blup file name
-    if(!(iss >> tmp_pheno >> filename)){
+    if( tmp_str_vec.size() != 2 ){
       sout << "ERROR: Incorrectly formatted blup list file : " << blup_file << endl;
-      exit(1);
+      exit(-1);
     }
 
     // get index of phenotype in phenotype matrix
-    vector<string>::iterator it = std::find(pheno_names.begin(), pheno_names.end(), tmp_pheno);
-    if (it == pheno_names.end()) {
-      continue; // ignore unrecognized phenotypes
-      //sout << "ERROR: Unrecognized phenotype name in blup list file : " << tmp_pheno << endl;
-      //exit(1);
-    }
+    vector<string>::iterator it = std::find(pheno_names.begin(), pheno_names.end(), tmp_str_vec[0]);
+    if (it == pheno_names.end()) continue; // ignore unrecognized phenotypes
 
     tmp_index = std::distance(pheno_names.begin(), it);
     pheno_index.push_back(tmp_index);
@@ -4288,7 +4288,7 @@ void Data::blup_read() {
 
     n_files++;
     read_pheno[tmp_index] = 1;
-    blup_files.push_back(filename);
+    blup_files.push_back(tmp_str_vec[1]);
   }
 
   // force all phenotypes in phenotype file to be used 
@@ -4298,8 +4298,6 @@ void Data::blup_read() {
   }
   sout << "n_files = " << n_files << endl;
   blup_list_stream.close();
-
-
 
   // read blup file for each phenotype
   for(size_t ph = 0; ph < n_pheno; ph++) {
@@ -4322,7 +4320,8 @@ void Data::blup_read() {
 
 void Data::blup_read_chr(int chrom) {
   ifstream blup_list_stream, blupf;
-  string line, filename, chr_str, FID_IID, tmp_pheno, tmp_str;
+  string line, filename, tmp_pheno;
+  std::vector< string > id_strings, tmp_str_vec ;
   int tmp_index;
   double in_blup;
   uint64 indiv_index;
@@ -4330,9 +4329,8 @@ void Data::blup_read_chr(int chrom) {
   blups = MatrixXd::Zero(n_samples, n_pheno);
 
   // skip reading if specified by user
-  if( skip_blups ) {
-    return;
-  }
+  if( skip_blups ) return;
+
   sout << "   -reading loco predictions for the chromosome..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
     
@@ -4345,9 +4343,8 @@ void Data::blup_read_chr(int chrom) {
 
     // check header
     getline (blupf,line);
-    std::istringstream iss(line); 
-    iss >> FID_IID;
-    if( FID_IID != "FID_IID") {
+    boost::algorithm::split(id_strings, line, is_any_of("\t "));
+    if( id_strings[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID." << endl;
       exit(-1);
     }
@@ -4355,19 +4352,27 @@ void Data::blup_read_chr(int chrom) {
     // skip to chr
     for (int chr = 1; chr < chrom; chr++) blupf.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
     getline (blupf,line);
-    std::istringstream iss_pred(line); 
-    iss_pred >> chr_str;
-    if(chrStrToInt(chr_str) != chrom) {
-      sout << "ERROR: blup file for phenotype [" << pheno_names[i_pheno] << "] isn't in the right format." << endl;
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    // check number of entries is same as in header
+    if(tmp_str_vec.size() != id_strings.size()) {
+      sout << "ERROR: blup file for phenotype [" << pheno_names[i_pheno] << "] has different number of entries on line " << chrom + 1 << " compared to the header.\n";
+      exit(-1);
+    }
+
+    // check starts with chromosome number
+    if(chrStrToInt(tmp_str_vec[0]) != chrom) {
+      sout << "ERROR: blup file for phenotype [" << pheno_names[i_pheno] << "] start with `" << tmp_str_vec[0]<< "`" <<
+        "instead of chromosome number=" << chrom << "." << endl;
       exit(-1);
     }
 
     // read blup data
-    while( iss >> FID_IID ){
+    for( size_t filecol = 1; filecol < id_strings.size(); filecol++ ) {
 
       // ignore sample if it is not in genotype data
-      if ( FID_IID_to_ind.find(FID_IID) == FID_IID_to_ind.end()) continue;
-      indiv_index = FID_IID_to_ind[FID_IID];
+      if ( FID_IID_to_ind.find(id_strings[filecol]) == FID_IID_to_ind.end()) continue;
+      indiv_index = FID_IID_to_ind[id_strings[filecol]];
 
       // ignore sample if it is not included in analysis
       if(ind_in_analysis(indiv_index) == 0) continue;
@@ -4376,20 +4381,16 @@ void Data::blup_read_chr(int chrom) {
       if( !read_indiv(indiv_index) ){
         read_indiv(indiv_index) = 1;
       } else {
-        sout << "ERROR: Individual appears more than once in blup file [" << blup_files[ph] <<"]: FID_IID=" << FID_IID << endl;
+        sout << "ERROR: Individual appears more than once in blup file [" << blup_files[ph] <<"]: FID_IID=" << id_strings[filecol] << endl;
         exit(-1);
       }
 
-      if( !(iss_pred >> tmp_str) ){
-        sout << "ERROR: blup file for phenotype [" << pheno_names[i_pheno] << "] isn't in the right format." << endl;
-        exit(-1);
-      }
-      in_blup = convertDouble( tmp_str );
+      in_blup = convertDouble( tmp_str_vec[filecol] );
 
-      // if blup is NA then individual must be ignored in analysis
+      // if blup is NA then individual must be ignored in analysis for the phenotype (ie mask = 0)
       if (in_blup == missing_value_double){
-        if( masked_indivs(indiv_index, i_pheno) ){
-          sout << "ERROR: Individual (FID_IID=" << FID_IID << ") has missing blup prediction at chromosome " << chrom <<" for phenotype " << pheno_names[i_pheno]<< ". ";
+        if( masked_indivs(indiv_index, i_pheno) > 0 ){
+          sout << "ERROR: Individual (FID_IID=" << id_strings[filecol] << ") has missing blup prediction at chromosome " << chrom <<" for phenotype " << pheno_names[i_pheno]<< ". ";
           sout << "Either set their phenotype to `NA`, specify to ignore them using option '--remove', or skip reading predictions with option '--ignore-pred'.\n" << err_help ;
           exit(-1);
         };
@@ -5033,7 +5034,7 @@ void Data::test_snps_fast() {
         block += chrom_nb;
         snp_tally.snp_count += chrom_nsnps;
         snp_tally.n_skipped_snps += chrom_nsnps;
-        if(!bgen_type) bed_ifstream.ignore( chrom_nsnps * ((n_samples+3)>>2) );
+        if(!bgen_type) bed_ifstream.seekg(chrom_nsnps * bed_block_size, ios_base::cur);
         continue;
       }
 
@@ -5589,7 +5590,7 @@ void Data::readChunkFromBedFileToG(const int &bs, vector<variant_block> &all_snp
     snp_data->n_non_zero = 0;
 
     ns = 0, total = 0;
-    bed_ifstream.read( reinterpret_cast<char *> (&inbed[0]), (n_samples+3)>>2);
+    bed_ifstream.read( reinterpret_cast<char *> (&inbed[0]), bed_block_size);
     for (size_t i = 0; i < n_samples; i++) {
       byte_start = i>>2; // 4 samples per byte
       bit_start = (i&3)<<1; // 2 bits per sample
