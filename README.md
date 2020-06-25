@@ -31,7 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-Version 1.0.1 (fixed numerical overflow bug for quantile calculation and added new strategy for fitting null model for approximate Firth test [see (2) in FAQ]) 
+Version 1.0.1 (fixed numerical overflow bug for quantile calculation and added new strategy for fitting null model for approximate Firth test) 
+
 Version 1.0 (22 June 2020): Initial release
 
 
