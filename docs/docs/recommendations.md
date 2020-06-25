@@ -72,8 +72,6 @@ plink2 \
   --mind 0.1 \
   --write-snplist --write-samples --no-id-header \
   --out qc_pass
-
-expand -t 1 qc_pass.id > qc_pass_space.id   # space-separated file
 ```
 
 
@@ -92,7 +90,7 @@ Running step 1 of **regenie** (by default, all available threads are used)
   --step 1 \
   --bed ukb_cal_allChrs \
   --extract qc_pass.snplist \
-  --keep qc_pass_space.id \
+  --keep qc_pass.id \
   --p ukb_phenotypes_BT.txt \
   --c ukv_covariates.txt \
   --bt \
@@ -124,6 +122,7 @@ In such a case, you could for example use the following code to only retain samp
 contained in both data sets (we assume that you are testing on BGEN input file)
 
 ```
+expand -t 1 qc_pass.id > qc_pass_space.id   # BGEN sample file is space-seperated
 grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample > fid_iid_step2.keep
 ```
 

@@ -219,8 +219,6 @@ samples with more than 10% missingness,</p>
   --mind 0.1 \
   --write-snplist --write-samples --no-id-header \
   --out qc_pass
-
-expand -t 1 qc_pass.id &gt; qc_pass_space.id   # space-separated file
 </code></pre>
 
 <h3 id="step-1">Step 1</h3>
@@ -234,7 +232,7 @@ will determine how much disk space is required (see table above).</p>
   --step 1 \
   --bed ukb_cal_allChrs \
   --extract qc_pass.snplist \
-  --keep qc_pass_space.id \
+  --keep qc_pass.id \
   --p ukb_phenotypes_BT.txt \
   --c ukv_covariates.txt \
   --bt \
@@ -257,7 +255,8 @@ machines, we recommend to split the runs over chromosomes (using 8+ threads).</p
 or contains additional samples not used in step 1. 
 In such a case, you could for example use the following code to only retain samples that are 
 contained in both data sets (we assume that you are testing on BGEN input file)</p>
-<pre><code>grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.keep
+<pre><code>expand -t 1 qc_pass.id &gt; qc_pass_space.id   # BGEN sample file is space-seperated
+grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.keep
 </code></pre>
 
 <p>Running <strong>regenie</strong> tesing on a single chromosome (here chr 1) and using fast Firth correction as fallback,</p>

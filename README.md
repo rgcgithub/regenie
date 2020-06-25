@@ -31,7 +31,9 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-Version 1.0.1 (fixed numerical overflow bug for quantile calculation and added new strategy for fitting null model for approximate Firth test) 
+Version 1.0.2 (fixed numerical overflow bug when using option `--chr` in step 2; changed to boost split function to read all input files [either space/tab delimited])
+
+Version 1.0.1 (fixed numerical overflow bug for quantile calculation; added new strategy for fitting null model for approximate Firth test) 
 
 Version 1.0 (22 June 2020): Initial release
 
