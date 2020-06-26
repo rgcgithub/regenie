@@ -95,6 +95,7 @@ void Data::run() {
 
 void Data::print_help( bool help_full ){
 
+  print_header(cout);
   cout << "Options:\n";
 
   cout << left << std::setw(35) << " --help" << "print list of available options\n";
@@ -122,7 +123,8 @@ void Data::print_help( bool help_full ){
     std::setw(35) << " " << "across blocks (evenly spaced in (0,1))\n";
   cout << left << std::setw(35) << " --loocv"<< "use leave-one out cross validation (LOOCV)\n";
   cout << left << std::setw(35) << " --bt"<< "analyze phenotypes as binary (default is quantitative)\n";
-  cout << left << std::setw(35) << " --lowmem PREFIX "<< "reduce memory usage by writing level 0 predictions to temporary files\n";
+  cout << left << std::setw(35) << " --lowmem PREFIX "<< "reduce memory usage by writing level 0 predictions\n" << 
+   std::setw(35) << " " << "to temporary files\n";
   cout << left << std::setw(35) << " --threads INT (=ALL)"<< "number of threads\n";
   cout << left << std::setw(35) << " --strict"<< "remove all samples with missingness at any of the traits\n";
   cout << left << std::setw(35) << " --o PREFIX" << "prefix for output files\n";
@@ -516,12 +518,12 @@ void Data::read_params_and_check(int argc, char *argv[]) {
 
 void Data::print_header(std::ostream& o){
 
-  o << "|==================================|" << endl;
-  o << "|           regenie v" << left << std::setw(14) << VERSION_NUMBER << "|" << endl;
-  o << "|==================================|" << endl << endl;
+  o << left << std::setw(14) << " " << "|==================================|" << endl;
+  o << left << std::setw(14) << " " << "|           REGENIE v" << left << std::setw(14) << VERSION_NUMBER << "|" << endl;
+  o << left << std::setw(14) << " " << "|==================================|" << endl << endl;
 
   o << "Copyright (c) 2020 Joelle Mbatchou and Jonathan Marchini." << endl;
-  o << "Distributed under the MIT License." << endl ;
+  o << "Distributed under the MIT License.\n\n";
 }
 
 void Data::start_log(int argc, char **argv){
@@ -1117,7 +1119,14 @@ void Data::read_pheno_and_cov() {
   if(binary_mode) phenotypes_raw.array().colwise() *= ind_in_analysis;
   new_cov.array().colwise() *= ind_in_analysis;
   Neff = masked_indivs.colwise().sum();
+
+  // check sample size
+  if( ind_in_analysis.sum() < 1 ) {
+    sout << "ERROR: Sample size cannot be < 1\n";
+    exit(-1);
+  }
   sout << " * number of individuals used in analysis = " << ind_in_analysis.sum() << endl;
+
 
   // orthonormal basis
   getCovBasis();
