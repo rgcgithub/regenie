@@ -580,9 +580,11 @@ void Data::print_usage_info(){
   } else {
     // Step 2
     // 3P + B
-    total_ram = n_pheno * 3 + block_size;
-    if(use_SPA) total_ram += block_size; // nonzero indices
-    if(!streamBGEN && binary_mode) total_ram += block_size; // residual of G
+    total_ram = n_pheno * 3 + block_size; // y, mask, y_resid, g
+    if(binary_mode) {
+      total_ram += 2 * n_pheno + block_size; // y_raw, gamma_hat, g_resid
+      if(use_SPA) total_ram += 0.5 * block_size; // non_zero_indices of g (4 bytes)
+    }
   }
 
   total_ram *= n_samples * sizeof(double);

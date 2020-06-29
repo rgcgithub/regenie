@@ -143,14 +143,14 @@ struct variant_block {
   ArrayXd bhat;
   ArrayXd se_b;
   // for spa
-  vector <uint32_t> non_zero_indices;
+  vector <uint> non_zero_indices;
   bool flipped, pos_score;
   // firth
   MatrixXd beta_null_firth;
   // reset each time
   bool ignored = false;
   bool fastSPA = true;
-  uint32_t n_non_zero = 0;
+  uint n_non_zero = 0;
 };
 
 
@@ -293,7 +293,7 @@ public:
   int maxstep_null = 25; // max step size in null penalized logistic regression
   int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
   int pval_converged = false; // keep track of whether SPA/Firth converged
-  vector < vector < uint64 > > non_zero_indices_G;
+  vector < vector < uint > > non_zero_indices_G;
   MatrixXd covs_firth, beta_null_firth;
   bool fastSPA; // use fast approx. for rare SNPs
   int niter_max_spa = 1000; 
