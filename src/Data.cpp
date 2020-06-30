@@ -25,10 +25,6 @@
 */
 
 #include "Data.hpp"
-#include "eigen3.3/Dense"
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <boost/math/distributions.hpp>
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
@@ -180,7 +176,11 @@ void Data::read_params_and_check(int argc, char *argv[]) {
     if(string(argv[counter]) == "--help") print_help( false );
 
     if(string(argv[counter]) == "--bgen") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) bgen_file = string(argv[counter+1]);
+      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+        bgen_file = string(argv[counter+1]);
+        file_type = "bgen";
+        n_genofiles++;
+      }
     }
     if(string(argv[counter]) == "--c") {
       if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) cov_file = string(argv[counter+1]);
@@ -242,7 +242,8 @@ void Data::read_params_and_check(int argc, char *argv[]) {
         bedfile = string(argv[counter+1]) + ".bed";
         bimfile = string(argv[counter+1]) + ".bim";
         famfile = string(argv[counter+1]) + ".fam";
-        bgen_type = false;
+        file_type = "bed";
+        n_genofiles++;
       }
     }
     if(string(argv[counter]) == "--sample") {
@@ -473,23 +474,24 @@ void Data::read_params_and_check(int argc, char *argv[]) {
     exit(-1);
   }
 
-  if( (bedfile != "NULL") & (bgen_file != "NULL") ){
-    sout << "ERROR :You must use either --bed or --bgen but not both.\n" << err_help ;
-    exit(-1);
-  }
-  if( (bedfile== "NULL") & (bgen_file == "NULL") ) {
+  if( n_genofiles < 1 ) {
     sout << "ERROR :You must supply an input file using one of --bed or --bgen.\n" << err_help ;
     exit(-1);
   }
-  if( bgenSample && (bgen_file == "NULL") ) {
-    sout << "ERROR :You must supply a BGEN file using --bgen corresponding to the sample file.\n" << err_help ;
+  if( n_genofiles > 1 ){
+    sout << "ERROR :You must use either --bed or --bgen but not both.\n" << err_help ;
     exit(-1);
   }
-  if(block_size <= 0) {
+
+  if( bgenSample && (file_type != "bgen") ) {
+    sout << "ERROR :You must supply a BGEN file corresponding to the sample file (use `--bgen`).\n" << err_help ;
+    exit(-1);
+  }
+  if(block_size < 1) {
     sout << "ERROR : You must set --b.\n" << err_help ;
     exit(-1);
   }
-  if((bgen_file != "NULL") & (!file_exists (bgen_file))) {
+  if((file_type == "bgen") & (!file_exists (bgen_file))) {
     sout << "ERROR : " << bgen_file  << " doesn't exist.\n" << err_help ;
     exit(-1);
   }
@@ -501,15 +503,15 @@ void Data::read_params_and_check(int argc, char *argv[]) {
     sout << "ERROR : " << pheno_file  << " doesn't exist.\n" << err_help ;
     exit(-1);
   }
-  if((bedfile != "NULL") & (!file_exists (bedfile))) {
+  if((file_type == "bed") & (!file_exists (bedfile))) {
     sout << "ERROR : " << bedfile  << " doesn't exist.\n" << err_help ;
     exit(-1);
   }
-  if((famfile != "NULL") & (!file_exists (famfile))) {
+  if((file_type == "bed") & (!file_exists (famfile))) {
     sout << "ERROR : " << famfile  << " doesn't exist.\n"  << err_help;
     exit(-1);
   }
-  if((bimfile != "NULL") & (!file_exists (bimfile))) {
+  if((file_type == "bed") & (!file_exists (bimfile))) {
     sout << "ERROR : " << bimfile  << " doesn't exist.\n" << err_help ;
     exit(-1);
   }
@@ -631,7 +633,7 @@ void Data::file_read_initialization() {
   chr_counts.resize(nChrom, 0.0);
   if(rm_snps || keep_snps) chr_file_counts.resize(nChrom, 0.0);
 
-  if(bedfile != "NULL") read_bed_bim_fam();
+  if(file_type == "bed") read_bed_bim_fam();
   else prep_bgen();
 
   if(n_variants == 0){
@@ -1955,7 +1957,7 @@ void Data::calc_cv_matrices(int bs) {
 void Data::level_0_calculations() {
 
   int block = 0, nread;
-  if(keep_snps || rm_snps) snp_index_counter = 0;
+  snp_index_counter = 0;
   map<int, vector<int> >::iterator itr; 
   for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
     int chrom = itr->first;
@@ -2049,7 +2051,7 @@ void Data::get_G(int block, int bs, int chrom){
 
   sout << " block [" << block+1 << "] : " << flush; 
 
-  if(!bgen_type) readChunkFromBedFileToG(bs);
+  if(file_type == "bed") readChunkFromBedFileToG(bs);
   else readChunkFromBGENFileToG(bs, chrom);
 
   auto t2 = std::chrono::high_resolution_clock::now();
@@ -2134,12 +2136,18 @@ void Data::readChunkFromBGENFileToG(int bs, int chrom) {
 
     // apply dominant/recessive encoding & recompute mean
     if(test_type > 0){
-      if(test_type == 1){ //dominant
-        G.row(snp).array() = (G.row(snp).array() == 2).select(1, G.row(snp).array());
-      } else if(test_type == 2){ //recessive
-        G.row(snp).array() = (G.row(snp).array() >= 1).select(G.row(snp).array() - 1, G.row(snp).array());
+      for( std::size_t i = 0; i < probs.size(); ++i ) {
+        if( (G(snp, i) != -3)  && ind_in_analysis(i) && 
+            (!strict_mode || (strict_mode && masked_indivs(i,0))) ){
+          if(test_type == 1){ //dominant
+            G(snp, i) = probs[i][0] + probs[i][1]; // allele0 is ALT
+          } else if(test_type == 2){ //recessive
+            G(snp, i) = probs[i][0];
+          }
+        }
       }
-      total = (G.row(snp).array() != -3).select(G.row(snp).array(), 0).sum() / ns;
+      total = ((G.row(snp).transpose().array()!= -3) && (ind_in_analysis == 1)).select(G.row(snp).transpose().array(), 0).sum() / ns;
+      if(total < numtol) bad_snps(snp) = 1;
     }
 
     // deal with missing data and center SNPs
@@ -2221,13 +2229,14 @@ void Data::readChunkFromBedFileToG(int bs) {
     }
 
     // apply dominant/recessive encoding & recompute mean
-    if(test_mode && (test_type > 0)){
+    if(test_type > 0){
       if(test_type == 1){ //dominant
         G.row(j).array() = (G.row(j).array() == 2).select(1, G.row(j).array());
       } else if(test_type == 2){ //recessive
         G.row(j).array() = (G.row(j).array() >= 1).select(G.row(j).array() - 1, G.row(j).array());
       }
-      total = (G.row(j).array() != -3).select(G.row(j).array(), 0).sum() / ns;
+      total = ((G.row(j).transpose().array() != -3) && (ind_in_analysis == 1)).select(G.row(j).transpose().array(), 0).sum() / ns;
+      if(total < numtol) bad_snps(j) = 1;
     }
 
     //if(j<5) sout << "\nj="<< j+1 << ":" <<  G.row(j).array().head(5);
@@ -2255,7 +2264,7 @@ void Data::skip_snps(int bs){
   std::vector< std::string > alleles ;
 
   // skip the whole block of snps
-  if(!bgen_type) {
+  if(file_type == "bed") {
     bed_ifstream.seekg( bs * bed_block_size, ios_base::cur);
   } else {
     for(size_t snp = 0; snp < bs; snp++) {
@@ -3669,8 +3678,8 @@ void Data::write_predictions(int ph){
 // check if uses Layout 2 (v1.2/1.3) and compressed using zlib's compress() function & check for first SNP if precision for probabilities is 8 bits
 void Data::check_bgen(){
 
-  // for bed file input, skip check
-  if(!bgen_type) return;
+  // for non-bgen file input, skip check
+  if(file_type != "bgen") return;
 
   BgenParser bgen_ck;
   bgen_ck.open( bgen_file ) ;
@@ -3852,7 +3861,7 @@ void Data::test_snps() {
     ofile.open(out.c_str());
     // header of output file 
     ofile << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << 
-      "ALLELE1" << " " << "A1FREQ" << " " << (bgen_type? "INFO ":"") << "TEST" << " ";
+      "ALLELE1" << " " << "A1FREQ" << " " << ((file_type == "bgen")? "INFO ":"") << "TEST" << " ";
     for(size_t i = 0; i < n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<  
       " " << "CHISQ.Y" << i+1 << " " << "LOG10P.Y" << i+1 << " ";  
     ofile << endl;
@@ -3867,7 +3876,7 @@ void Data::test_snps() {
       // header of output file 
       if(!htp_out){
       ofile_split[i] << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " << 
-        "A1FREQ" << " " << (bgen_type? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " << 
+        "A1FREQ" << " " << ((file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " << 
         "CHISQ" << " " << "LOG10P" << endl;
       } else {
         ofile_split[i] << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" << 
@@ -3989,7 +3998,7 @@ void Data::test_snps() {
         G.resize(bs,n_samples);
         stats.resize(bs, n_pheno);
         snp_afs.resize(bs, 1);
-        if(bgen_type) snp_info.resize(bs, 1);
+        if(file_type == "bgen") snp_info.resize(bs, 1);
         if(binary_mode) sqrt_denum.resize(bs, n_pheno);
         else scaleG_pheno.resize(bs, n_pheno);
         if(use_SPA) {
@@ -4006,7 +4015,7 @@ void Data::test_snps() {
         G.resize(bs,n_samples);
         stats.resize(bs, n_pheno);
         snp_afs.resize(bs, 1);
-        if(bgen_type) snp_info.resize(bs, 1);
+        if(file_type == "bgen") snp_info.resize(bs, 1);
         if(binary_mode) sqrt_denum.resize(bs, n_pheno);
         else scaleG_pheno.resize(bs, n_pheno);
         if(use_SPA) {
@@ -4090,7 +4099,7 @@ void Data::test_snps() {
 
         if(!split_by_pheno) {
           ofile << (snpinfo[snp_count]).chrom << " " << (snpinfo[snp_count]).physpos << " "<< (snpinfo[snp_count]).ID << " "<< (snpinfo[snp_count]).allele1 << " "<< (snpinfo[snp_count]).allele2 << " " << snp_afs(i, 0) << " " ;
-          if(bgen_type) ofile << snp_info(i, 0) << " ";
+          if(file_type == "bgen") ofile << snp_info(i, 0) << " ";
           ofile << test_string << " ";
         }
 
@@ -4098,7 +4107,7 @@ void Data::test_snps() {
           if(split_by_pheno) {
             if(!htp_out){
               ofile_split[j] << (snpinfo[snp_count]).chrom << " " << (snpinfo[snp_count]).physpos << " "<< (snpinfo[snp_count]).ID << " "<< (snpinfo[snp_count]).allele1 << " "<< (snpinfo[snp_count]).allele2 << " " << snp_afs(i, 0) << " " ;
-              if(bgen_type) ofile_split[j] << snp_info(i, 0) << " ";
+              if(file_type == "bgen") ofile_split[j] << snp_info(i, 0) << " ";
               ofile_split[j] << test_string << " ";
             } else {
               ofile_split[j] <<  (snpinfo[snp_count]).ID << "\t"<< (snpinfo[snp_count]).chrom << "\t" << (snpinfo[snp_count]).physpos << "\t"<< (snpinfo[snp_count]).allele1 << "\t"<< (snpinfo[snp_count]).allele2 << "\t" << pheno_names[j] << "\t" << cohort_name << "\t" << model_type << "\t";
@@ -4201,7 +4210,7 @@ void Data::test_snps() {
               if(outp_val < 0) ofile_split[j]  << ";" << "SE=NA";
               else ofile_split[j]  << ";" << "SE=" << outse_val;
             }
-            if(bgen_type) ofile_split[j] << ";" << "INFO=" << snp_info(i,0);
+            if(file_type == "bgen") ofile_split[j] << ";" << "INFO=" << snp_info(i,0);
           }
 
           if(split_by_pheno) ofile_split[j] << endl;
@@ -4987,7 +4996,7 @@ void Data::test_snps_fast() {
     out = out_file + ".regenie";
     ofile.open(out.c_str());
     // header of output file 
-    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << (bgen_type? "INFO ":"") << "TEST ";
+    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ((file_type == "bgen")? "INFO ":"") << "TEST ";
     for(size_t i = 0; i < n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";  
     ofile << endl;
   } else {  // split results in separate files for each phenotype
@@ -4999,7 +5008,7 @@ void Data::test_snps_fast() {
       ofile_split[i].open( out_split[i].c_str() );
       // header of output file 
       if(!htp_out){
-        ofile_split[i] << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << (bgen_type? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
+        ofile_split[i] << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ((file_type == "bgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
       } else {
         ofile_split[i] << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
       }
@@ -5045,7 +5054,7 @@ void Data::test_snps_fast() {
         block += chrom_nb;
         snp_tally.snp_count += chrom_nsnps;
         snp_tally.n_skipped_snps += chrom_nsnps;
-        if(!bgen_type) bed_ifstream.seekg(chrom_nsnps * bed_block_size, ios_base::cur);
+        if((file_type == "bed")) bed_ifstream.seekg(chrom_nsnps * bed_block_size, ios_base::cur);
         continue;
       }
 
@@ -5119,7 +5128,7 @@ void Data::test_snps_fast() {
 
         if(!split_by_pheno) {
           ofile << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-          if(bgen_type) ofile << block_info[isnp].info << " ";
+          if(file_type == "bgen") ofile << block_info[isnp].info << " ";
           ofile << test_string << " ";
         }
 
@@ -5129,7 +5138,7 @@ void Data::test_snps_fast() {
           if(split_by_pheno) {
             if(!htp_out){
               ofile_split[j] << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-              if(bgen_type) ofile_split[j] << block_info[isnp].info << " ";
+              if(file_type == "bgen") ofile_split[j] << block_info[isnp].info << " ";
               ofile_split[j] << test_string << " ";
             } else {
               ofile_split[j] <<  (snpinfo[snpindex]).ID << "\t"<< (snpinfo[snpindex]).chrom << "\t" << (snpinfo[snpindex]).physpos << "\t"<< (snpinfo[snpindex]).allele1 << "\t"<< (snpinfo[snpindex]).allele2 << "\t" << pheno_names[j] << "\t" << cohort_name << "\t" << model_type << "\t";
@@ -5191,7 +5200,7 @@ void Data::test_snps_fast() {
               if(outp_val < 0) ofile_split[j]  << ";" << "SE=NA";
               else ofile_split[j]  << ";" << "SE=" << outse_val;
             }
-            if(bgen_type) ofile_split[j] << ";" << "INFO=" << block_info[isnp].info;
+            if(file_type == "bgen") ofile_split[j] << ";" << "INFO=" << block_info[isnp].info;
 
           }
 
@@ -5238,7 +5247,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   vector< vector < uchar > > snp_data_blocks;
   vector< uint32_t > insize, outsize;
 
-  if(bgen_type){
+  if(file_type == "bgen"){
     snp_data_blocks.resize( n_snps );
     insize.resize(n_snps); outsize.resize(n_snps);
 
@@ -5272,7 +5281,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     // to store variant information
     variant_block* block_info = &(all_snps_info[isnp]);
 
-    if(bgen_type){
+    if(file_type == "bgen"){
       // uncompress and extract the dosages 
       // for QTs (or BTs with firth approx.): project out covariates & scale
       extract_variant_MT(&(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &snpinfo[snp_index], block_info);
@@ -5532,12 +5541,30 @@ void Data::extract_variant_MT(vector<uchar>* geno_block, const uint32_t insize, 
 
   // apply dominant/recessive encoding & recompute mean
   if(test_type > 0){
-    if(test_type == 1){ //dominant
-      snp_data->Geno = (snp_data->Geno == 2).select(1, snp_data->Geno);
-    } else if(test_type == 2){ //recessive
-      snp_data->Geno = (snp_data->Geno >= 1).select(snp_data->Geno - 1, snp_data->Geno);
+    // go over data block again
+    buffer -= 2 * n_samples;
+    for(size_t i = 0; i < n_samples; i++) {
+      missing = ((ploidy_n[i]) & 0x80);
+      if(missing) {
+        buffer+=2;
+        continue;
+      }
+      prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
+      prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
+
+      if(ind_in_analysis(i)){
+        if(test_type == 1){ //dominant
+          snp_data->Geno(i) = prob0 + prob1; // allele0 is ALT
+        } else if(test_type == 2){ //recessive
+          snp_data->Geno(i) = prob0; // allele0 is ALT
+        }
+      }
     }
-    total = (snp_data->Geno != -3).select(snp_data->Geno, 0).sum() / ns;
+    total = ((snp_data->Geno != -3) && (ind_in_analysis == 1)).select(snp_data->Geno, 0).sum() / ns;
+    if(total < numtol) {
+      snp_data->ignored = true;
+      return;
+    }
   }
 
   // deal with missing data & prep for spa
@@ -5655,7 +5682,11 @@ void Data::readChunkFromBedFileToG(const int &bs, vector<variant_block> &all_snp
       } else if(test_type == 2){ //recessive
         snp_data->Geno = (snp_data->Geno >= 1).select(snp_data->Geno - 1, snp_data->Geno);
       }
-      total = (snp_data->Geno != -3).select(snp_data->Geno, 0).sum() / ns;
+      total = ((snp_data->Geno != -3) && (ind_in_analysis == 1)).select(snp_data->Geno, 0).sum() / ns;
+      if(total < numtol) {
+        snp_data->ignored = true;
+        continue;
+      }
     }
 
 

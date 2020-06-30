@@ -38,8 +38,11 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string.hpp>
+#include <boost/math/distributions.hpp>
 
 #include "bgen_to_vcf.hpp"
 #include "eigen3.3/Dense"
@@ -176,6 +179,7 @@ public:
   vector<string> cov_colKeep_names;
   bool select_chrs = false; // user specify which chromosomes to test
   vector<int> chrKeep_test;
+  int n_genofiles = 0; 
   bool bgenSample = false; // user specifies .sample file to go with bgen file
   bool rm_indivs = false; // user specify to remove genotyped samples from analysis
   bool keep_indivs = false; // user specify to keep only select genotyped samples in the analysis
@@ -194,7 +198,7 @@ public:
   bool user_ridge_params_l1 = false; // if user specifies ridge parameters
   bool test_mode = false;
   int test_type = 0; // add=0/dom=1/rec=2 test
-  bool bgen_type = true; // bed or bgen genotype file format;
+  string file_type = "null"; // type of the genotype file format;
   bool streamBGEN = true; // use fast version of step 2 when testing with BGEN v1.2 zlib compressed input
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
   bool use_SPA = false; // saddlepoint approximation to estimate pvalue
