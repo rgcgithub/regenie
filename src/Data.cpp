@@ -578,7 +578,7 @@ void Data::print_usage_info(){
     total_ram = 4 * n_pheno + nChrom;
     int t_eff = ( write_l0_pred ? 1 : total_n_block );
     int p_eff = ( write_l0_pred ? 1 : n_pheno );
-    total_ram += std::max( block_size + n_pheno * n_ridge_l0 * t_eff, p_eff * n_ridge_l0 * total_n_block );
+    total_ram += block_size + std::max( n_pheno * n_ridge_l0 * t_eff, p_eff * n_ridge_l0 * total_n_block );
   } else {
     // Step 2
     // 3P + B
