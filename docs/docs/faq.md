@@ -1,17 +1,17 @@
 ## Frequently asked questions
 <br/>
 
-*    <span style="font-size: large; font-style: italic;color:#404040"> Can REGENIE be run on small sample sizes? 
+*    <span style="font-size: large; font-style: italic;color:#404040"> Can **regenie** be run on small sample sizes? 
 </span>
 
-    - For quantitative traits, we have not obtained issues running REGENIE on small data sets.
-    - For binary traits, we have obtained successful runs of REGENIE (step 1 and 2) on data sets with as little as 300 samples. A few factors to consider:
+    - For quantitative traits, we have not obtained issues running **regenie** on small data sets.
+    - For binary traits, we have obtained successful runs of **regenie** (step 1 and 2) on data sets with as little as 300 samples. A few factors to consider:
         - Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) \(-\) see below
         - Similarly, convergence issues may occur in step 2 when using Firth approximation \(-\) see below 
 
  <br/>
 
-*    <span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 1 of REGENIE failed for a binary trait when fitting the penalized logsitic regression model? 
+*    <span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 1 of **regenie** failed for a binary trait when fitting the penalized logsitic regression model? 
 </span>
 
     - This can occur when the sample size used to fit the model is small and/or if the trait is extremely unbalanced. 
@@ -21,7 +21,7 @@
 
 <br/>
 
-*    <span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 2 of REGENIE fails when fitting the null model for the approximate Firth correction? 
+*    <span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 2 of **regenie** fails when fitting the null model for the approximate Firth correction? 
 </span>
 
     - This can occur when the sample size used to fit the model is small and/or if the trait is extremely unbalanced. 

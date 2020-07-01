@@ -1,12 +1,12 @@
 ##Download
 
 The **regenie** source code is hosted on
-[Github](https://github.com/rgcgithub/regenie)
+[Github](https://github.com/rgcgithub/regenie).
 
 ##Installation
 
 1. **regenie** requires the
-  [BGEN library](https://bitbucket.org/gavinband/bgen/src/default/) so
+  [BGEN library](https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk) so
   you will need to download and install that library.
 2. In the source code edit the BGEN_PATH variable in the `Makefile`
    to the BGEN library path.
