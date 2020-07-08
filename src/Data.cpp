@@ -1486,8 +1486,8 @@ findID Data::getIndivIndex(const string &FID, const string &IID){
 int Data::chrStrToInt(string chrom) {
 
   //detect chromosome labels with 'chr' prefix
-  std::regex re("^chr(\\d+)");
-  std::smatch m;
+  regex re("^chr(\\d+)");
+  smatch m;
 
   if (isdigit(chrom[0])) {
     int chr = atoi(chrom.c_str());
