@@ -1485,10 +1485,18 @@ findID Data::getIndivIndex(const string &FID, const string &IID){
 
 int Data::chrStrToInt(string chrom) {
 
+  //detect chromosome labels with 'chr' prefix
+  std::regex re("^chr(\\d+)");
+  std::smatch m;
+
   if (isdigit(chrom[0])) {
     int chr = atoi(chrom.c_str());
     if((chr >= 1) && (chr <= nChrom)) return chr;
-  } else if ( (chrom == "X") || (chrom == "XY") || (chrom == "PAR1") || (chrom == "PAR2") ) return nChrom;
+  } else if (regex_search(chrom, m, re)){
+    string dig = m[1];
+    int chr = atoi(dig.c_str());
+    if((chr >= 1) && (chr <= nChrom)) return chr;
+  } else if ( (chrom == "X") || (chrom == "XY") || (chrom == "PAR1") || (chrom == "PAR2") || (chrom == "chrX") ) return nChrom;
 
   return -1;
 }

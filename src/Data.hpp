@@ -38,6 +38,7 @@
 #include <stdlib.h>
 #include <chrono>
 #include <thread>
+#include <regex>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <boost/algorithm/string/split.hpp>
