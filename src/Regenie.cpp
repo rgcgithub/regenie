@@ -575,7 +575,7 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
       total_ram += 2 * params->n_pheno + params->block_size; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
     }
-    if((params->file_type == "bed") && param->streamBGEN) total_ram += params->block_size/32.0; //for extracting snp_data_block
+    if((params->file_type == "bed") && params->streamBGEN) total_ram += params->block_size/32.0; //for extracting snp_data_block
   }
 
   total_ram *= params->n_samples * sizeof(double);
@@ -609,10 +609,13 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
 
 int chrStrToInt(const string chrom, const int nChrom) {
 
-  if (isdigit(chrom[0])) {
-    int chr = atoi(chrom.c_str());
+  // if label is chr1, chr2,...
+  string s_chr = std::regex_replace(chrom, std::regex(R"(^chr)"), "");
+
+  if (isdigit(s_chr[0])) {
+    int chr = atoi(s_chr.c_str());
     if((chr >= 1) && (chr <= nChrom)) return chr;
-  } else if ( (chrom == "X") || (chrom == "XY") || (chrom == "PAR1") || (chrom == "PAR2") ) return nChrom;
+  } else if ( (s_chr == "X") || (s_chr == "XY") || (s_chr == "PAR1") || (s_chr == "PAR2") ) return nChrom;
 
   return -1;
 }
