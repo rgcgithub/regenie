@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.4.1 (Can specify multiple phenotypes/covariates/chromosomes using comma separated arguments and allow chromosome names can start with 'chr' in the input genotype file)
+
 Version 1.0.4 (Enabled PLINK 2.0 PGEN format files as input using the PLINK 2.0 PGEN library)
 
 Version 1.0.3 (fixed genotype coding in dominant/recessive test for BGEN input format)

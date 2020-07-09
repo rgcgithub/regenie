@@ -127,7 +127,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // check #pheno is > 0
   if(params->n_pheno < 1){
-    sout << "Need at least one phenotype." << endl;
+    sout << "ERROR: Need at least one phenotype." << endl;
     exit(-1);
   }
   sout << "n_pheno = " << params->n_pheno << endl;
@@ -316,6 +316,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   // check #covariates is > 0
   if(params->n_cov < 1){ // only intercept will be included
     sout << "n_cov = " << params->n_cov << " (+ intercept)" << endl;
+    ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, true );
     return ;
   }
   sout << "n_cov = " << params->n_cov << flush;

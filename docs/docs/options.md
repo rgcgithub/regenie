@@ -63,8 +63,10 @@ One of the output files from this command with association results is included i
 |`--exclude`  | FILE | Optional | Exclusion file that lists IDs of variants to remove **(only works with option `--step 1`)**|
 |`--p`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
+|`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
 |`--c`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
+|`--covarColList` | STRING | Optional | Comma separated list of covariates to include in the analysis|
 |`--pred`  | FILE | Optional  | File containing predictions from Step 1 (see Overview). **This is required for `--step 2`**|
 
 
@@ -227,6 +229,7 @@ predictions** (otherwise use `--remove`).
 |`--spa`| FLOAT | Optional| specify to use Saddlepoint approximation as fallback for p-values less than the specified threshold [default is 0.05]|
 |`--test`| STRING | Optional | specify to carry out dominant or recessive test [default is additive; argument can be `dominant` or `recessive`]|
 |`--chr`| INT| Optional| specify which chromosomes to test in step 2 (use for each chromosome to include)|
+|`--chrList` | STRING | Optional | Comma separated list of chromosomes to test in step 2|
 |`--minMAC`| INT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|

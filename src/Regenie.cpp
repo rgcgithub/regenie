@@ -81,8 +81,10 @@ void print_help( bool help_full ){
   cout << left << std::setw(35) << " --exclude FILE" << "file with IDs of variants to remove from the analysis\n";
   cout << left << std::setw(35) << " --p FILE" << "phenotype file (header required starting with FID IID)\n";
   cout << left << std::setw(35) << " --phenoCol STRING"<< "phenotype name in header (use for each phenotype to keep)\n";
+  cout << left << std::setw(35) << " --phenoColList STRING"<< "Comma separated list of phenotype names to keep\n";
   cout << left << std::setw(35) << " --c FILE" << "covariate file (header required starting with FID IID)\n";
   cout << left << std::setw(35) << " --covarCol STRING"<< "covariate name in header (use for each covariate to keep)\n";
+  cout << left << std::setw(35) << " --covarColList STRING"<< "Comma separated list of covariate names to keep\n";
   cout << left << std::setw(35) << " --b INT"<< "size of genotype blocks\n";
   cout << left << std::setw(35) << " --cv INT (=5)"<< "number of cross validation (CV) folds\n";
   cout << left << std::setw(35) << " --l0 INT (=5)"<< "number of ridge parameters to use when fitting models\n" << 
@@ -108,6 +110,7 @@ void print_help( bool help_full ){
   cout << left << std::setw(35) << " --spa FLOAT (=0.05)" << "use Saddlepoint approximation (SPA) for p-values less\n" <<
     std::setw(35) << " " << "than threshold\n";
   cout << left << std::setw(35) << " --chr INT" << "specify chromosome to test in step 2 (use for each chromosome)\n";
+  cout << left << std::setw(35) << " --chrList STRING"<< "Comma separated list of chromosomes to test in step 2\n";
   cout << left << std::setw(35) << " --test STRING" << "specify to use dominant or recessive test\n";
 
   if(help_full){
@@ -141,193 +144,344 @@ void print_header(std::ostream& o){
 void read_params_and_check(int argc, char *argv[], struct param* params, struct in_files* files, struct filter* filters, MeasureTime* mt, mstream& sout) {
 
   int maxargs = argc - 1;
+  vector< string > tmp_str_vec;
+  std::string trimmed_str, trimmed_str_arg;
 
   for(size_t counter=1; counter<argc; counter++){	  
-    if(string(argv[counter]) == "--bt") params->binary_mode = true;
-    if(string(argv[counter]) == "--1") params->CC_ZeroOne = false;
-    if(string(argv[counter]) == "--within") params->within_sample_l0 = true;
-    if(string(argv[counter]) == "--loocv") params->use_loocv = true;
-    if(string(argv[counter]) == "--split") params->split_by_pheno = true;
-    if(string(argv[counter]) == "--strict") params->strict_mode = true;
-    if(string(argv[counter]) == "--force-impute") params->rm_missing_qt = false;
-    if(string(argv[counter]) == "--ignore-pred") params->skip_blups = true;
-    if(string(argv[counter]) == "--print") params->print_block_betas = true;
-    if(string(argv[counter]) == "--approx") params->firth_approx = true;
-    if(string(argv[counter]) == "--v") params->verbose = true;
-    if(string(argv[counter]) == "--nostream") params->streamBGEN = false;
-    if(string(argv[counter]) == "--helpFull") print_help( true );
-    if(string(argv[counter]) == "--help") print_help( false );
+    trimmed_str = string(argv[counter]);  // trim this
+    trimmed_str.erase(std::remove_if(trimmed_str.begin(), trimmed_str.end(), ::isspace), trimmed_str.end());
 
-    if(string(argv[counter]) == "--bgen") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        files->bgen_file = string(argv[counter+1]);
+    if(trimmed_str == "--bt") params->binary_mode = true;
+    if(trimmed_str == "--1") params->CC_ZeroOne = false;
+    if(trimmed_str == "--within") params->within_sample_l0 = true;
+    if(trimmed_str == "--loocv") params->use_loocv = true;
+    if(trimmed_str == "--split") params->split_by_pheno = true;
+    if(trimmed_str == "--strict") params->strict_mode = true;
+    if(trimmed_str == "--force-impute") params->rm_missing_qt = false;
+    if(trimmed_str == "--ignore-pred") params->skip_blups = true;
+    if(trimmed_str == "--print") params->print_block_betas = true;
+    if(trimmed_str == "--approx") params->firth_approx = true;
+    if(trimmed_str == "--v") params->verbose = true;
+    if(trimmed_str == "--nostream") params->streamBGEN = false;
+    if(trimmed_str == "--helpFull") print_help( true );
+    if(trimmed_str == "--help") print_help( false );
+
+    if((trimmed_str == "--bgen") && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->bgen_file = trimmed_str_arg;
         params->file_type = "bgen";
         params->n_genofiles++;
       }
     }
-    if(string(argv[counter]) == "--pgen") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        files->pgen_prefix = string(argv[counter+1]);
+
+    if((trimmed_str == "--pgen")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->pgen_prefix = trimmed_str_arg;
         params->file_type = "pgen";
-       params->n_genofiles++;
+        params->n_genofiles++;
       }
     }
-    if(string(argv[counter]) == "--c") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) files->cov_file = string(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--p") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) files->pheno_file = string(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--pred") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) files->blup_file = string(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--o") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) files->out_file = string(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--lowmem") {
-      params->write_l0_pred = true;
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) files->loco_tmp_prefix = string(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--b") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->block_size = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--nb") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->n_block = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--cv") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->cv_folds = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--l0") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->n_ridge_l0 = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--l1") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->n_ridge_l1 = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--step") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->run_mode = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--nauto") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->nChrom = atoi(argv[counter+1]) + 1;
-    }
-    if(string(argv[counter]) == "--niter") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->niter_max = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--maxstep-null") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        params->maxstep_null = atoi(argv[counter+1]);
-        params->fix_maxstep_null = true;
-      }
-    }
-    if(string(argv[counter]) == "--maxiter-null") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        params->niter_max_firth_null = atoi(argv[counter+1]);
-        params->fix_maxstep_null = true;
-      }
-    }
-    if(string(argv[counter]) == "--minMAC") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->min_MAC = atoi(argv[counter+1]);
-    }
-    if(string(argv[counter]) == "--bed") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        files->bedfile = string(argv[counter+1]) + ".bed";
-        files->bimfile = string(argv[counter+1]) + ".bim";
-        files->famfile = string(argv[counter+1]) + ".fam";
+
+    if((trimmed_str == "--bed")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->bedfile = trimmed_str_arg + ".bed";
+        files->bimfile = trimmed_str_arg + ".bim";
+        files->famfile = trimmed_str_arg + ".fam";
         params->file_type = "bed";
         params->n_genofiles++;
       }
     }
-    if(string(argv[counter]) == "--sample") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        files->sample_file = string(argv[counter+1]);
+
+    if((trimmed_str == "--sample")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->sample_file = trimmed_str_arg;
         params->bgenSample = true;
       }
     }
-    if(string(argv[counter]) == "--remove") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--remove")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->file_ind_exclude = trimmed_str_arg;
         params->rm_indivs = true;
-        files->file_ind_exclude = string(argv[counter+1]);
       }
     }
-    if(string(argv[counter]) == "--keep") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--keep")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->file_ind_include = trimmed_str_arg;
         params->keep_indivs = true;
-        files->file_ind_include = string(argv[counter+1]);
       }
     }
-    if(string(argv[counter]) == "--extract") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--extract")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->file_snps_include = trimmed_str_arg;
         params->keep_snps = true;
-        files->file_snps_include = string(argv[counter+1]);
       }
     }
-    if(string(argv[counter]) == "--exclude") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--exclude")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        files->file_snps_exclude = trimmed_str_arg;
         params->rm_snps = true;
-        files->file_snps_exclude = string(argv[counter+1]);
       }
     }
-    if(string(argv[counter]) == "--phenoCol") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--phenoCol")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
         params->select_phenos = true;
-        filters->pheno_colKeep_names.push_back( string(argv[counter+1]) );
+        filters->pheno_colKeep_names.push_back( trimmed_str_arg );
       }
     }
-    if(string(argv[counter]) == "--covarCol") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--phenoColList")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        params->select_phenos = true;
+        // split csv
+        boost::algorithm::split(tmp_str_vec, trimmed_str_arg, is_any_of(","));
+        filters->pheno_colKeep_names.insert( 
+            filters->pheno_colKeep_names.end(),
+            std::begin( tmp_str_vec ), 
+            std::end( tmp_str_vec)         );
+      }
+    }
+
+    if((trimmed_str == "--covarCol")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
         params->select_covs = true;
-        filters->cov_colKeep_names.push_back( string(argv[counter+1]) );
+        filters->cov_colKeep_names.push_back( trimmed_str_arg );
       }
     }
-    if(string(argv[counter]) == "--chr") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
+
+    if((trimmed_str == "--covarColList")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        params->select_covs = true;
+        // split csv
+        boost::algorithm::split(tmp_str_vec, trimmed_str_arg, is_any_of(","));
+        filters->cov_colKeep_names.insert( 
+            filters->cov_colKeep_names.end(),
+            std::begin( tmp_str_vec ), 
+            std::end( tmp_str_vec )      );
+      }
+    }
+
+    if((trimmed_str == "--c")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') files->cov_file = trimmed_str_arg;
+    }
+
+    if((trimmed_str == "--p")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') files->pheno_file = trimmed_str_arg;
+    }
+
+    if((trimmed_str == "--pred")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') files->blup_file = trimmed_str_arg;
+    }
+
+    if((trimmed_str == "--o")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') files->out_file = trimmed_str_arg;
+    }
+
+    if((trimmed_str == "--lowmem")  && (counter < maxargs)){
+      params->write_l0_pred = true;
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') files->loco_tmp_prefix = trimmed_str_arg;
+    }
+
+    if((trimmed_str == "--b")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->block_size = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--nb")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->n_block = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--cv")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->cv_folds = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--l0")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->n_ridge_l0 = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--l1")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->n_ridge_l1 = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--step")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->run_mode = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--nauto")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->nChrom = atoi(argv[counter+1]) + 1;
+    }
+
+    if((trimmed_str == "--niter")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->niter_max = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--maxstep-null")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        params->maxstep_null = atoi(argv[counter+1]);
+        params->fix_maxstep_null = true;
+      }
+    }
+
+    if((trimmed_str == "--maxiter-null")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        params->niter_max_firth_null = atoi(argv[counter+1]);
+        params->fix_maxstep_null = true;
+      }
+    }
+
+    if((trimmed_str == "--minMAC")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->min_MAC = atoi(argv[counter+1]);
+    }
+
+    if((trimmed_str == "--chr")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
         params->select_chrs = true;
-        filters->chrKeep_test.push_back( chrStrToInt(string(argv[counter+1]), params->nChrom) );
+        filters->chrKeep_test.push_back( chrStrToInt(trimmed_str_arg, params->nChrom) );
       }
     }
-    if(string(argv[counter]) == "--test") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) {
-        if( string(argv[counter+1]) == "dominant") params->test_type = 1; 
-        else if( string(argv[counter+1]) == "recessive") params->test_type = 2; 
+
+    if((trimmed_str == "--chrList")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        params->select_chrs = true;
+        // split csv
+        boost::algorithm::split(tmp_str_vec, trimmed_str_arg, is_any_of(","));
+        for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
+          filters->chrKeep_test.push_back( chrStrToInt(tmp_str_vec[ichr], params->nChrom) );
+      }
+    }
+
+    if((trimmed_str == "--test")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') {
+        if( trimmed_str_arg == "dominant") params->test_type = 1; 
+        else if( trimmed_str_arg == "recessive") params->test_type = 2; 
         else {
+          print_header(cerr);
           cerr << "ERROR : Unrecognized argument, must be either 'dominant' or 'recessive' for option `--test`.\n" << params->err_help ;
           exit(-1);
         }
       }
     }
-    if(string(argv[counter]) == "--setl0") {
+
+    if((trimmed_str == "--setl0")  && (counter < maxargs)){
       params->n_ridge_l0 = 0;
-      params->user_ridge_params_l0 = true;
+      // get number of ridge parameters
       for(size_t i = 1; (counter+i) < argc; i++) {
-        if( string(argv[counter+i])[0] != '-' ) params->n_ridge_l0++;
+        trimmed_str_arg = string(argv[counter+i]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') params->n_ridge_l0++;
         else break;
       }
+      // read them in
       params->lambda.resize(params->n_ridge_l0);
-      for(size_t i = 0; i < params->n_ridge_l0; i++) params->lambda[i] = atof(argv[counter+1+i]);
+      for(size_t i = 1; i <= params->n_ridge_l0; i++) params->lambda[i] = atof(argv[counter+i]);
+      params->user_ridge_params_l0 = true;
     }
-    if(string(argv[counter]) == "--setl1") {
+
+    if((trimmed_str == "--setl1")  && (counter < maxargs)){
       params->n_ridge_l1 = 0;
-      params->user_ridge_params_l1 = true;
+      // get number of ridge parameters
       for(size_t i = 1; (counter+i) < argc; i++) {
-        if( string(argv[counter+i])[0] != '-' ) params->n_ridge_l1++;
+        trimmed_str_arg = string(argv[counter+1]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') params->n_ridge_l1++;
         else break;
       }
+      // read them in
       params->tau.resize(params->n_ridge_l1);
-      for(size_t i = 0; i < params->n_ridge_l1; i++) params->tau[i] = atof(argv[counter+1+i]);
+      for(size_t i = 1; i <= params->n_ridge_l1; i++) params->tau[i] = atof(argv[counter+i]);
+      params->user_ridge_params_l1 = true;
     }
-    if(string(argv[counter]) == "--firth") {
+
+    if((trimmed_str == "--firth")  && (counter < maxargs)){
       params->firth = true;
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->alpha_pvalue = atof(argv[counter+1]);;
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);;
     }
-    if(string(argv[counter]) == "--spa") {
+
+    if((trimmed_str == "--spa")  && (counter < maxargs)){
       params->use_SPA = true;
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->alpha_pvalue = atof(argv[counter+1]);
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);
     }
-    if(string(argv[counter]) == "--threads") {
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->threads = atoi(argv[counter+1]);
+
+    if((trimmed_str == "--threads")  && (counter < maxargs)){
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->threads = atoi(argv[counter+1]);
     }
-    if(string(argv[counter]) == "--htp") {
+
+    if((trimmed_str == "--htp")  && (counter < maxargs)){
       params->htp_out = params->split_by_pheno = true;
-      if( (counter < maxargs) && (string(argv[counter+1])[0] != '-') ) params->cohort_name = string(argv[counter+1]);
+      trimmed_str_arg = string(argv[counter+1]);  // trim this
+      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+      if(trimmed_str_arg[0] != '-') params->cohort_name = trimmed_str_arg;
     }
 
   }
@@ -337,6 +491,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     cerr << "ERROR :You must specify an output file with --o.\n" << params->err_help ;
     exit(-1);
   }
+
   // Print output to file and to stdout
   // print command line arguments
   start_log(argc, argv, files->out_file, mt, sout);
@@ -517,6 +672,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 }
 
 void start_log(int argc, char **argv, const string out_file, MeasureTime* mt, mstream& sout){
+
+  string trimmed_str;
   string log_name = out_file + ".log";
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
 
@@ -529,8 +686,11 @@ void start_log(int argc, char **argv, const string out_file, MeasureTime* mt, ms
   // print options
   sout << "Command line arguments:";
   for(size_t counter=1;counter<argc;counter++){	  
-    if( string(argv[counter])[0] == '-') sout << endl << "  ";
-    sout << string(argv[counter]) << " ";
+    trimmed_str = string(argv[counter]);  // trim this
+    trimmed_str.erase(std::remove_if(trimmed_str.begin(), trimmed_str.end(), ::isspace), trimmed_str.end());
+
+    if( trimmed_str[0] == '-') sout << endl << "  ";
+    sout << trimmed_str << " ";
   }
   sout << endl << endl;
 
