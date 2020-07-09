@@ -922,17 +922,17 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
           v2 = Xmat_chunk.row(i) * V1.col(i); 
           v2 *= wvec(j_start + i); 
           b_loo = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
-					pred = Xmat_chunk.row(i) * b_loo.col(0); 
-					pred += m_ests->offset_logreg(j_start + i, ph);
-					p1 = 1 - 1/ ( exp(pred) + 1 );
+          pred = Xmat_chunk.row(i) * b_loo.col(0); 
+          pred += m_ests->offset_logreg(j_start + i, ph);
+          p1 = 1 - 1/ ( exp(pred) + 1 );
 
-					// compute mse and rsq
-					l1->cumsum_values[0](ph,j) += p1; // Sx
-					l1->cumsum_values[1](ph,j) += Yvec_chunk(i); // Sy
-					l1->cumsum_values[2](ph,j) += p1 * p1; // Sx2
-					l1->cumsum_values[3](ph,j) += Yvec_chunk(i) * Yvec_chunk(i); // Sy2
-					l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i); // Sxy
-					l1->cumsum_values[5](ph,j) += compute_log_lik(Yvec_chunk(i), p1); // Sxy
+          // compute mse and rsq
+          l1->cumsum_values[0](ph,j) += p1; // Sx
+          l1->cumsum_values[1](ph,j) += Yvec_chunk(i); // Sy
+          l1->cumsum_values[2](ph,j) += p1 * p1; // Sx2
+          l1->cumsum_values[3](ph,j) += Yvec_chunk(i) * Yvec_chunk(i); // Sy2
+          l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i); // Sxy
+          l1->cumsum_values[5](ph,j) += compute_log_lik(Yvec_chunk(i), p1); // Sxy
         }
       }
     }
