@@ -39,9 +39,6 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file == "NULL" );
 
-  if( params->strict_mode ) sout << " * dropping observations with missing values at any of the phenotypes" << endl;
-  else if( !params->rm_missing_qt  && !params->binary_mode) sout << " * keeping and mean-imputing missing observations (done for each trait)" << endl;
-
   // read in phenotype (mean-impute for QT)
   pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
   if(params->binary_mode && !params->test_mode)
@@ -134,6 +131,14 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     exit(-1);
   }
   sout << "n_pheno = " << params->n_pheno << endl;
+
+  // if n_pheno = 1, drop all missing observations
+  if(params->n_pheno == 1) params->strict_mode = true; 
+
+  // how missingness is handles
+  if( params->strict_mode ) sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
+  else if( !params->rm_missing_qt  && !params->binary_mode) sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
+
 
   // allocate memory
   pheno_data->phenotypes = MatrixXd::Zero(params->n_samples, params->n_pheno);
