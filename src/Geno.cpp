@@ -212,8 +212,8 @@ void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter
 
   read_fam(files, params, sout);
   sout << "params.n_samples = " << params->n_samples << endl;
-  prep_bed(files, params, sout);
 
+  prep_bed(files, params, sout);
 }
 
 
@@ -858,7 +858,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
   for(size_t j = 0; j < bs; ) {
     if(params->keep_snps || params->rm_snps){
       if(snpinfo[snp_index_counter].mask){
-        files->bed_ifstream.ignore(files->bed_block_size);
+        files->bed_ifstream.seekg(files->bed_block_size, ios_base::cur);
         snp_index_counter++;
         continue;
       }
