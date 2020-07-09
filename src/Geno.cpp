@@ -211,7 +211,7 @@ void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter
   }
 
   read_fam(files, params, sout);
-  sout << "params.n_samples = " << params->n_samples << endl;
+  sout << "n_samples = " << params->n_samples << endl;
 
   prep_bed(files, params, sout);
 }
