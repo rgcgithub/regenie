@@ -18,7 +18,7 @@ endif
 
 
 PGEN_PATH = ./external_libs/pgenlib/
-PGEN_OBJECTS = ${PGEN_PATH}/include/plink2_base.o ${PGEN_PATH}/include/plink2_bits.o ${PGEN_PATH}/include/pgenlib_misc.o ${PGEN_PATH}/include/pgenlib_read.o ${PGEN_PATH}/pgenlib_ffi_support.o ${PGEN_PATH}/pgenlibr.o   
+PGEN_OBJECTS = $(patsubst %.cc,%.o,$(wildcard ${PGEN_PATH}include/*.cc)) $(patsubst %.cpp,%.o,$(wildcard ${PGEN_PATH}*.cpp))   
 
 LPATHS = -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 LIBS = -lbgen -lzstd -ldb  -lsqlite3 -lboost -lz
