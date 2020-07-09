@@ -17,11 +17,7 @@ The **regenie** source code is hosted on
 
 ##Computing requirements
 
-We have tested **regenie** on Linux 
-<!-- Issue when using BGEN library API on MAC (gives different results than on Linux)
-and Mac OSX 
--->
-computing environment.
+We have tested **regenie** on Linux and Mac OSX computing environments.
 
 ### Memory usage
 In both Step 1 and Step 2 of a **regenie** run the genetic data file is
