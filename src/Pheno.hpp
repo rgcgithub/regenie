@@ -24,23 +24,28 @@
 
 */
 
+#ifndef PHENO_H
+#define PHENO_H
 
-#include "Data.hpp"
-#include <ctime>
 
-using namespace std;
+struct phenodt {
 
-// This example program reads data from a bgen file specified as the first argument
-// and outputs it as a VCF file.
-int main( int argc, char** argv ) {
+  Eigen::MatrixXd new_cov;
+  Eigen::MatrixXd phenotypes;
+  Eigen::MatrixXd phenotypes_raw;
+  MatrixXb masked_indivs;
+  Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
+  Eigen::RowVectorXd scale_Y;
 
-  Data data;
-  data.read_params_and_check(argc, argv);
-  data.run();
+};
 
-  data.runtime.stop();
 
-  data.sout << "\nElapsed time : " << std::chrono::duration<double>(data.runtime.end - data.runtime.begin).count() << "s" << endl;
-  data.sout << "End time: " << ctime(&data.runtime.end_time_info) << endl; 
+void read_pheno_and_cov(struct in_files*,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
+void pheno_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
+void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
+void getCovBasis(Eigen::MatrixXd&,struct param*);
+void residualize_phenotypes(struct param*,struct phenodt*,mstream&);
+double convertDouble(const std::string&,struct param*,mstream&);
 
-}
+#endif
+
