@@ -51,7 +51,7 @@ number of threads can be specified using the `--threads` option.
 **regenie** uses the [Eigen library](http://eigen.tuxfamily.org/index.php?title=Main_Page) for 
 efficient linear algebra operations and this uses threading where possible.
 
-For PLINK bed/bim/fam files as well as BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
+For PLINK bed/bim/fam files, PLINK2 pgen/pvar/psam files, as well as BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
 500K imputed data), step 2 of **regenie** has been optimized by 
 using multithreading through [OpenMP](https://www.openmp.org).
 

@@ -224,10 +224,10 @@ Firth logistic regression model</p>
 </thead>
 <tbody>
 <tr>
-<td><code>--bgen, --bed</code></td>
+<td><code>--bgen, --bed, --pgen</code></td>
 <td>FILE</td>
 <td>Required</td>
-<td>Input genetic data file. Either BGEN file eg. <code>file.bgen</code>, or bed/bim/fam prefix that assumes<code>file.bed</code>, <code>file.fam</code>, <code>file.bim</code> exist</td>
+<td>Input genetic data file. Either BGEN file eg. <code>file.bgen</code>, or bed/bim/fam prefix that assumes<code>file.bed</code>, <code>file.bim</code>, <code>file.fam</code> exist, or pgen/pvar/psam prefix that assumes<code>file.pgen</code>, <code>file.pvar</code>, <code>file.psam</code> exist</td>
 </tr>
 <tr>
 <td><code>--sample</code></td>
@@ -292,11 +292,12 @@ Firth logistic regression model</p>
 </tbody>
 </table>
 <h4 id="genetic-data-file-format">Genetic data file format</h4>
-<p><strong>regenie</strong> can read BGEN files or bed/bim/fam files in Step 1 and
-Step 2.</p>
+<p><strong>regenie</strong> can read BGEN files, bed/bim/fam files or pgen/psam/pvar 
+files in Step 1 and Step 2.</p>
 <p>The BGEN file format is described
 <a href="https://www.well.ox.ac.uk/~gav/bgen_format/">here</a>.</p>
 <p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a>.</p>
+<p>The pgen/pvar/psam file format is described <a href="https://www.cog-genomics.org/plink/2.0/formats#pgen">here</a>.</p>
 <p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink/">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a>.</p>
 <p>Step 2 of <strong>regenie</strong> can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
 (genotype file can be generated with <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> using 
@@ -313,7 +314,7 @@ will be collapsed into a single chromosome.</p>
 </code></pre>
 
 <p>No header. Each line starts with individual FID IID. Space/tab separated.</p>
-<p>Samples listed in the file that are not in bgen/bed file are ignored.</p>
+<p>Samples listed in the file that are not in bgen/bed/pgen file are ignored.</p>
 <h4 id="variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</h4>
 <pre><code>20
 31
@@ -322,7 +323,7 @@ will be collapsed into a single chromosome.</p>
 
 <p>No header. Each line must start with variant ID 
 (if there are additional columns, file must be space/tab separated).</p>
-<p>Variants listed in this file that are not in bgen/bed file are ignored.</p>
+<p>Variants listed in this file that are not in bgen/bed/pgen file are ignored.</p>
 <h4 id="covariate-file-format">Covariate file format</h4>
 <pre><code>FID IID V1 V2 V3
 1 1 1.46837294454993 1.93779743016325 0.152887004505393
@@ -335,7 +336,7 @@ will be collapsed into a single chromosome.</p>
 <p>Followed by lines of <script type="math/tex">C+2</script> values. Space/tab separated.</p>
 <p>Each line contains individual FID and IID followed by <script type="math/tex">C</script> covariate
 values.</p>
-<p>Samples listed in this file that are not in bgen/bed file are ignored.
+<p>Samples listed in this file that are not in bgen/bed/pgen file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.</p>
 <p>No missing values are allowed.</p>
 <p>If <code>--step 2</code> is specified, then the covariate file should be the same
@@ -352,7 +353,7 @@ as that used in Step 1.</p>
 <p>Followed by lines of <script type="math/tex">P+2</script> values. Space/tab separated. 
 Each line contains individual FID and IID followed by P phenotype values
 (for binary traits, must be coded as 0=control, 1=case, NA=missing unless using <code>--1</code>).</p>
-<p>Samples listed in this file that are not in bgen/bed file are ignored.
+<p>Samples listed in this file that are not in bgen/bed/pgen file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.</p>
 <p>Missing values must be coded as NA.</p>
 <p>With QTs, missing values are mean-imputed in Step 1 and they are dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
@@ -360,7 +361,7 @@ Genotyped samples that are not in this file are removed from the analysis.</p>
 level 0 linear ridge regression and 
 they are dropped when fitting the level 1 logistic ridge regression for each trait . 
 In Step 2, missing values are dropped when testing each trait.</p>
-<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
+<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
 <h4 id="predictions-file-format">Predictions file format</h4>
 <p>Running <code>--step 1 --o foo</code> will produce</p>
 <ol>
@@ -381,7 +382,7 @@ It is followed by 23 lines containing the genetic predictions for each chromosom
 (sex chromosomes are collapsed into chromosome 23).</p>
 <p>More specifically, each line has $N+1$ values which are the chromosome number followed by the $N$
 leave-one chromosome out (LOCO) predictions for each individual.</p>
-<p>Samples must be in the bed/bgen input file and must be included in
+<p>Samples must be in the bed/pgen/bgen input file and must be included in
   the analysis (otherwise use <code>--remove</code>).</p>
 <p>For each phenotype, samples with missing LOCO predictions must have their corresponding 
 phenotype value set to missing, and <strong>all samples with non-missing phenotype values must have LOCO
@@ -422,12 +423,6 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>size of the genotype blocks</td>
 </tr>
 <tr>
-<td><code>--nb</code></td>
-<td>INT</td>
-<td>Optional</td>
-<td>number of blocks (determined from block size if not provided)</td>
-</tr>
-<tr>
 <td><code>--cv</code></td>
 <td>INT</td>
 <td>Optional</td>
@@ -444,6 +439,12 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>FILE PREFIX</td>
 <td>Optional</td>
 <td>flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)</td>
+</tr>
+<tr>
+<td><code>--nb</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>number of blocks (determined from block size if not provided)</td>
 </tr>
 <tr>
 <td><code>--strict</code></td>
@@ -577,7 +578,7 @@ was not successful in which case the user would need to delete the files)</p>
 <td><code>--o</code></td>
 <td>FILE PREFIX</td>
 <td>Required</td>
-<td>Output file that depends on <code>--step</code></td>
+<td>Output files that depends on <code>--step</code></td>
 </tr>
 </tbody>
 </table>

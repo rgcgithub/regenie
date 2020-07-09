@@ -111,7 +111,7 @@ As step 1 and 2 are completely decoupled in **regenie**, you could either use al
 the traits for testing in step 2 or select a subset of the traits to perform association testing.
 
 
-Step 2 of **regenie** has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data) and PLINK bed/bim/fam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
+Step 2 of **regenie** has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data), PLINK bed/bim/fam files, and PLINK2 pgen/pvar/psam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
 machines, we recommend to split the runs over chromosomes (using 8+ threads).
 
 #### Sample mismatch 

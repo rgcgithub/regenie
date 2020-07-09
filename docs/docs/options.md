@@ -55,7 +55,7 @@ One of the output files from this command with association results is included i
 
 | Option | Argument | Type | Description|
 |---|-------|------|----|
-|`--bgen, --bed`  | FILE | Required |Input genetic data file. Either BGEN file eg. `file.bgen`, or bed/bim/fam prefix that assumes`file.bed`, `file.fam`, `file.bim` exist|
+|`--bgen, --bed, --pgen`  | FILE | Required |Input genetic data file. Either BGEN file eg. `file.bgen`, or bed/bim/fam prefix that assumes`file.bed`, `file.bim`, `file.fam` exist, or pgen/pvar/psam prefix that assumes`file.pgen`, `file.pvar`, `file.psam` exist |
 |`--sample`  | FILE | Optional |Sample file corresponding to input BGEN file|
 |`--keep`  | FILE | Optional | Inclusion file that lists individuals to retain in the analysis|
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
@@ -70,13 +70,15 @@ One of the output files from this command with association results is included i
 
 #### Genetic data file format
 
-**regenie** can read BGEN files or bed/bim/fam files in Step 1 and
-Step 2.
+**regenie** can read BGEN files, bed/bim/fam files or pgen/psam/pvar 
+files in Step 1 and Step 2.
 
 The BGEN file format is described
 [here](https://www.well.ox.ac.uk/~gav/bgen_format/).
 
 The bed/bim/fam file format is described [here](https://www.cog-genomics.org/plink/1.9/formats).
+
+The pgen/pvar/psam file format is described [here](https://www.cog-genomics.org/plink/2.0/formats#pgen).
 
 Tools useful for genetic data file format conversion are : [PLINK](http://www.cog-genomics.org/plink/), [QCTOOL](https://www.well.ox.ac.uk/~gav/qctool/), [BCFTOOLS](https://samtools.github.io/bcftools/).
 
@@ -101,7 +103,7 @@ will be collapsed into a single chromosome.
 
 No header. Each line starts with individual FID IID. Space/tab separated.
 
-Samples listed in the file that are not in bgen/bed file are ignored.
+Samples listed in the file that are not in bgen/bed/pgen file are ignored.
 
 #### Variant inclusion/exclusion file format
 
@@ -114,7 +116,7 @@ Samples listed in the file that are not in bgen/bed file are ignored.
 No header. Each line must start with variant ID 
 (if there are additional columns, file must be space/tab separated).
 
-Variants listed in this file that are not in bgen/bed file are ignored.
+Variants listed in this file that are not in bgen/bed/pgen file are ignored.
 
 #### Covariate file format
 
@@ -133,7 +135,7 @@ Followed by lines of \(C+2\) values. Space/tab separated.
 Each line contains individual FID and IID followed by \(C\) covariate
 values.
 
-Samples listed in this file that are not in bgen/bed file are ignored.
+Samples listed in this file that are not in bgen/bed/pgen file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.
 
 No missing values are allowed.
@@ -156,7 +158,7 @@ Followed by lines of \(P+2\) values. Space/tab separated.
 Each line contains individual FID and IID followed by P phenotype values
 (for binary traits, must be coded as 0=control, 1=case, NA=missing unless using `--1`).
 
-Samples listed in this file that are not in bgen/bed file are ignored.
+Samples listed in this file that are not in bgen/bed/pgen file are ignored.
 Genotyped samples that are not in this file are removed from the analysis.
 
 Missing values must be coded as NA.
@@ -168,7 +170,7 @@ level 0 linear ridge regression and
 they are dropped when fitting the level 1 logistic ridge regression for each trait . 
 In Step 2, missing values are dropped when testing each trait.
 
-To remove all samples that have missing values at **any** of the \(P\) phenotypes, use option `--strict` in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although `--remove` can also be used in that situation.
+To remove all samples that have missing values at **any** of the \(P\) phenotypes, use option `--strict` in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although `--remove` can also be used in that situation.
 
 #### Predictions file format
 
@@ -195,7 +197,7 @@ It is followed by 23 lines containing the genetic predictions for each chromosom
 More specifically, each line has $N+1$ values which are the chromosome number followed by the $N$
 leave-one chromosome out (LOCO) predictions for each individual.
 
-  Samples must be in the bed/bgen input file and must be included in
+  Samples must be in the bed/pgen/bgen input file and must be included in
   the analysis (otherwise use `--remove`).
 
   For each phenotype, samples with missing LOCO predictions must have their corresponding 
@@ -212,10 +214,10 @@ predictions** (otherwise use `--remove`).
 |`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)|
 |`--1`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
 |`--b`| INT| Required| size of the genotype blocks|
-|`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
 |`--loocv`| FLAG | Optional| flag to use leave-one out cross validation|
 |`--lowmem`| FILE PREFIX | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
+|`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
 |`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
@@ -247,7 +249,7 @@ was not successful in which case the user would need to delete the files)
 
 | Option | Argument | Type | Description|
 |---|-------|------|----|
-|`--o`| FILE PREFIX| Required| Output file that depends on `--step`|
+|`--o`| FILE PREFIX| Required| Output files that depends on `--step`|
 
 A log file `file.log` of the output is generated.
 

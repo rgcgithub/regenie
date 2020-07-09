@@ -8,7 +8,7 @@ The method has the following properties
 - It can process multiple phenotypes at once
 - It is fast and memory efficient 🔥
 - For binary traits it supports Firth logistic regression and an SPA test
-- It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/) and [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam genetic data formats
+- It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
 - It is ideally suited for implementation in [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
 
 Full documentation for the **regenie** can be found [here](https://rgcgithub.github.io/regenie/).
@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.4 (Enabled PLINK 2.0 PGEN format files as input using the PLINK 2.0 PGEN library)
+
 Version 1.0.3 (fixed genotype coding in dominant/recessive test for BGEN input format)
 
 Version 1.0.2 (fixed numerical overflow bug when using option `--chr` in step 2; changed to boost split function to read all input files [either space/tab delimited])

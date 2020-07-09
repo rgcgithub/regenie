@@ -12,7 +12,7 @@ traits with unbalanced case-control ratios
 - It can process multiple phenotypes at once
 - It is fast and memory efficient 🔥
 - For binary traits it supports Firth logistic regression and an SPA test
-- It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/) and [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam genetic data formats
+- It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
 - It is ideally suited for implementation in
   [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
 
