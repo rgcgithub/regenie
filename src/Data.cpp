@@ -2252,7 +2252,9 @@ void Data::test_snps_fast() {
             // print counts in cases
             ofile_split[j] << (int) block_info[isnp].genocounts.block(0,j,3,1).sum() << "\t" << (int) block_info[isnp].genocounts(0,j) << "\t" << (int) block_info[isnp].genocounts(1,j) << "\t" << (int) block_info[isnp].genocounts(2,j) << "\t";
             // print counts in controls
-            ofile_split[j] << (int) block_info[isnp].genocounts.block(3,j,3,1).sum() << "\t" << (int) block_info[isnp].genocounts(3,j) << "\t" << (int) block_info[isnp].genocounts(4,j) << "\t" << (int) block_info[isnp].genocounts(5,j) ;
+            if(params.binary_mode){
+              ofile_split[j] << (int) block_info[isnp].genocounts.block(3,j,3,1).sum() << "\t" << (int) block_info[isnp].genocounts(3,j) << "\t" << (int) block_info[isnp].genocounts(4,j) << "\t" << (int) block_info[isnp].genocounts(5,j) ;
+            } else ofile_split[j] << "NA\tNA\tNA\tNA";
 
             // info column
             if(params.binary_mode){
