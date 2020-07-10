@@ -94,7 +94,7 @@ void print_help( bool help_full ){
   cout << left << std::setw(35) << " --loocv"<< "use leave-one out cross validation (LOOCV)\n";
   cout << left << std::setw(35) << " --bt"<< "analyze phenotypes as binary (default is quantitative)\n";
   cout << left << std::setw(35) << " --lowmem PREFIX "<< "reduce memory usage by writing level 0 predictions\n" << 
-   std::setw(35) << " " << "to temporary files\n";
+    std::setw(35) << " " << "to temporary files\n";
   cout << left << std::setw(35) << " --threads INT (=ALL)"<< "number of threads\n";
   cout << left << std::setw(35) << " --strict"<< "remove all samples with missingness at any of the traits\n";
   cout << left << std::setw(35) << " --o PREFIX" << "prefix for output files\n";
@@ -114,16 +114,16 @@ void print_help( bool help_full ){
   cout << left << std::setw(35) << " --test STRING" << "specify to use dominant or recessive test\n";
 
   if(help_full){
-  cout << left << std::setw(35) << " --v" << "verbose screen output\n";
-  cout << left << std::setw(35) << " --nb INT"<< "number of blocks to use\n";
-  cout << left << std::setw(35) << " --setl0 FLOAT ... FLOAT"<< "specify ridge parameters to use when fitting models within blocks\n";
-  cout << left << std::setw(35) << " --setl1 FLOAT ... FLOAT"<< "specify ridge parameters to use when fitting model across blocks\n";
-  cout << left << std::setw(35) << " --nauto INT (=22)"<< "number of autosomal chromosomes\n";
-  cout << left << std::setw(35) << " --niter INT (=30)"<< "maximum number of iterations for logistic regression\n";
-  cout << left << std::setw(35) << " --maxstep-null INT (=25)"<< "maximum step size in null Firth logistic regression\n";
-  cout << left << std::setw(35) << " --maxiter-null INT (=25)"<< "maximum number of iterations in null Firth logistic regression\n";
-  cout << left << std::setw(35) << " --within" << "use within-sample predictions as input when fitting model\n" <<
-    std::setw(35) << " " << "across blocks.\n";
+    cout << left << std::setw(35) << " --v" << "verbose screen output\n";
+    cout << left << std::setw(35) << " --nb INT"<< "number of blocks to use\n";
+    cout << left << std::setw(35) << " --setl0 FLOAT ... FLOAT"<< "specify ridge parameters to use when fitting models within blocks\n";
+    cout << left << std::setw(35) << " --setl1 FLOAT ... FLOAT"<< "specify ridge parameters to use when fitting model across blocks\n";
+    cout << left << std::setw(35) << " --nauto INT (=22)"<< "number of autosomal chromosomes\n";
+    cout << left << std::setw(35) << " --niter INT (=30)"<< "maximum number of iterations for logistic regression\n";
+    cout << left << std::setw(35) << " --maxstep-null INT (=25)"<< "maximum step size in null Firth logistic regression\n";
+    cout << left << std::setw(35) << " --maxiter-null INT (=25)"<< "maximum number of iterations in null Firth logistic regression\n";
+    cout << left << std::setw(35) << " --within" << "use within-sample predictions as input when fitting model\n" <<
+      std::setw(35) << " " << "across blocks.\n";
   }
 
   cout << "\nFor more information, visit the website: https://rgcgithub.github.io/regenie/\n";
@@ -313,11 +313,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       if(trimmed_str_arg[0] != '-') files->out_file = trimmed_str_arg;
     }
 
-    if((trimmed_str == "--lowmem")  && (counter < maxargs)){
+    if(trimmed_str == "--lowmem"){
       params->write_l0_pred = true;
-      trimmed_str_arg = string(argv[counter+1]);  // trim this
-      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
-      if(trimmed_str_arg[0] != '-') files->loco_tmp_prefix = trimmed_str_arg;
+      if(counter < maxargs){ 
+        trimmed_str_arg = string(argv[counter+1]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') files->loco_tmp_prefix = trimmed_str_arg;
+      }
     }
 
     if((trimmed_str == "--b")  && (counter < maxargs)){
@@ -457,18 +459,22 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->user_ridge_params_l1 = true;
     }
 
-    if((trimmed_str == "--firth")  && (counter < maxargs)){
+    if(trimmed_str == "--firth"){
       params->firth = true;
-      trimmed_str_arg = string(argv[counter+1]);  // trim this
-      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
-      if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);;
+      if(counter < maxargs){ 
+        trimmed_str_arg = string(argv[counter+1]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);;
+      }
     }
 
-    if((trimmed_str == "--spa")  && (counter < maxargs)){
+    if(trimmed_str == "--spa"){
       params->use_SPA = true;
-      trimmed_str_arg = string(argv[counter+1]);  // trim this
-      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
-      if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);
+      if(counter < maxargs){ 
+        trimmed_str_arg = string(argv[counter+1]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') params->alpha_pvalue = atof(argv[counter+1]);
+      }
     }
 
     if((trimmed_str == "--threads")  && (counter < maxargs)){
@@ -477,11 +483,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       if(trimmed_str_arg[0] != '-') params->threads = atoi(argv[counter+1]);
     }
 
-    if((trimmed_str == "--htp")  && (counter < maxargs)){
+    if(trimmed_str == "--htp"){
       params->htp_out = params->split_by_pheno = true;
-      trimmed_str_arg = string(argv[counter+1]);  // trim this
-      trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
-      if(trimmed_str_arg[0] != '-') params->cohort_name = trimmed_str_arg;
+      if(counter < maxargs){ 
+        trimmed_str_arg = string(argv[counter+1]);  // trim this
+        trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
+        if(trimmed_str_arg[0] != '-') params->cohort_name = trimmed_str_arg;
+      }
     }
 
   }
@@ -632,7 +640,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     exit(-1);
   }
 
-    if(params->test_mode && (params->file_type == "pgen") && !params->streamBGEN){
+  if(params->test_mode && (params->file_type == "pgen") && !params->streamBGEN){
     sout << "ERROR :Cannot use --nostream with PGEN format.\n" << params->err_help ;
     exit(-1);
   }

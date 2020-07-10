@@ -1589,7 +1589,9 @@ void Data::test_snps() {
             if(params.file_type == "bgen") 
               ofile_split[j] << 
                 (params.binary_mode && (!params.firth || (params.firth & !pval_converged)) ? ";" : "\t") << "INFO=" << Gblock.snp_info(i,0);
-          }
+          } else if(!params.binary_mode || (params.firth && pval_converged)){
+              ofile_split[j] << "\tNA"; 
+            } 
 
           if(params.split_by_pheno) ofile_split[j] << endl;
         }
@@ -2266,9 +2268,12 @@ void Data::test_snps_fast() {
                 } else ofile_split[j] << "\t" << "REGENIE_BETA=NA;REGENIE_SE=NA;SE=NA";
               }
             }
-            if(params.file_type == "bgen") 
+            if(params.file_type == "bgen") {
               ofile_split[j] << 
                 (params.binary_mode && (!params.firth || (params.firth & block_info[isnp].test_fail[j])) ? ";" : "\t") << "INFO=" << block_info[isnp].info;
+            } else if(!params.binary_mode || (params.firth && !block_info[isnp].test_fail[j])){
+              ofile_split[j] << "\tNA"; 
+            }
 
           }
 
