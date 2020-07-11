@@ -434,7 +434,7 @@ double solve_K1(const double tval, const bool use_SPAfast, const double denum_t,
     if(params->verbose) sout << "WARNING: SPA did not converge to root for K'(t)=s.\n";
     return params->missing_value_double;
   }
-    //sout << "#iterations = " << niter_cur << "; f= " << f_new << endl;
+  //sout << "#iterations = " << niter_cur << "; f= " << f_new << endl;
 
   return t_new;
 }
@@ -463,7 +463,7 @@ double compute_K_fast(const double t, const double denum_t, const int snp, const
 double compute_K1(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est ){
 
   double val = ( ( s_est->Gmod * m_ests->Y_hat_p.col(ph).array() / s_est->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / s_est->val_c * s_est->Gmod).exp() ) ).sum();
- val -= s_est->val_a / s_est->val_c;
+  val -= s_est->val_a / s_est->val_c;
 
   return val;
 }
@@ -488,7 +488,7 @@ double compute_K2(const double t, const int ph, const struct ests* m_ests, const
 
   return val;
 }
-  
+
 double compute_K2_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock ){
 
   uint32_t index_j;
@@ -577,7 +577,7 @@ double solve_K1_snp(const double tval, const int ph, const struct param* params,
     if(params->verbose) sout << "WARNING: SPA did not converge to root for K'(t)=s.\n";
     return params->missing_value_double;
   }
-    //sout << "#iterations = " << niter_cur << "; f= " << f_new << endl;
+  //sout << "#iterations = " << niter_cur << "; f= " << f_new << endl;
 
   return t_new;
 }
@@ -606,7 +606,7 @@ double compute_K_fast_snp(const double t, const struct ests* m_ests, variant_blo
 double compute_K1_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
 
   double val = ( ( block_info->Gmod * m_ests->Y_hat_p.col(ph).array() / block_info->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / block_info->val_c * block_info->Gmod).exp() ) ).sum();
- val -= block_info->val_a / block_info->val_c;
+  val -= block_info->val_a / block_info->val_c;
 
   return val;
 }
@@ -673,5 +673,5 @@ double get_SPA_pvalue_snp(const double root, const double tval, const int ph, st
 
   return -log10( pvalue );
 }
- 
+
 

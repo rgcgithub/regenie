@@ -380,18 +380,18 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
 void getCovBasis(MatrixXd& new_cov,struct param* params){
 
-    // eigen-decompose cov matrix
-    MatrixXd xtx = new_cov.transpose() * new_cov;
-    SelfAdjointEigenSolver<MatrixXd> es(xtx);
-    VectorXd D = es.eigenvalues();
-    MatrixXd V = es.eigenvectors();
+  // eigen-decompose cov matrix
+  MatrixXd xtx = new_cov.transpose() * new_cov;
+  SelfAdjointEigenSolver<MatrixXd> es(xtx);
+  VectorXd D = es.eigenvalues();
+  MatrixXd V = es.eigenvectors();
 
-    // create basis set
-    // eigenvalues sorted in increasing order
-    int non_zero_eigen = (D.array() > D.tail(1)(0) * params->eigen_val_rel_tol).count();
-    RowVectorXd vv1 = D.tail(non_zero_eigen).array().sqrt();
-    new_cov *= V.rightCols(non_zero_eigen);
-    new_cov.array().rowwise() /= vv1.array();
+  // create basis set
+  // eigenvalues sorted in increasing order
+  int non_zero_eigen = (D.array() > D.tail(1)(0) * params->eigen_val_rel_tol).count();
+  RowVectorXd vv1 = D.tail(non_zero_eigen).array().sqrt();
+  new_cov *= V.rightCols(non_zero_eigen);
+  new_cov.array().rowwise() /= vv1.array();
 
 }
 

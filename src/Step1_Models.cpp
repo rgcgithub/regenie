@@ -63,7 +63,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
 
     // compute deviance
     etavec = ( X1 * betaold.matrix()).array();
-  //cerr << endl << X1.block(0,0,5,X1.cols()) << endl << endl;
+    //cerr << endl << X1.block(0,0,5,X1.cols()) << endl << endl;
     if(params->test_mode) etavec += loco_offset;
     pivec = 1 - 1 / (etavec.exp() + 1) ;
     dev_old = -2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ).sum();
@@ -86,7 +86,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
         sout << "ERROR: Zeros occured in Var(Y) during logistic regression! (Check covariates)" << endl;
         exit(-1);
       }
- 
+
       XtW = X1.transpose() * wvec.matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
       // working vector z = X*beta + (Y-p)/(p*i(1-p)
@@ -336,23 +336,23 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
   int block_eff = params->write_l0_pred ? 0 : block; // if writing to file
   string out_pheno;
   ofstream ofile;
-	VectorXd z1, gvec;
-	MatrixXd VtG, z2, pred, Xout;
+  VectorXd z1, gvec;
+  MatrixXd VtG, z2, pred, Xout;
   RowVectorXd p_mean, p_sd;
 
   /*
-  if(bs > params->n_samples){
-    sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!";
-    exit(-1);
-  }
-  */
+     if(bs > params->n_samples){
+     sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!";
+     exit(-1);
+     }
+     */
 
 
-	// make matrix of (eigen-value + lambda)^(-1)
-	Map<RowVectorXd> Lmap(params->lambda.data(), params->n_ridge_l0);
-	MatrixXd dl = l0->GGt_eig_val.asDiagonal() * MatrixXd::Ones(bs, params->n_ridge_l0);
-	dl.rowwise() += Lmap;
-	MatrixXd DL_inv = dl.array().inverse().matrix();
+  // make matrix of (eigen-value + lambda)^(-1)
+  Map<RowVectorXd> Lmap(params->lambda.data(), params->n_ridge_l0);
+  MatrixXd dl = l0->GGt_eig_val.asDiagonal() * MatrixXd::Ones(bs, params->n_ridge_l0);
+  dl.rowwise() += Lmap;
+  MatrixXd DL_inv = dl.array().inverse().matrix();
 
   uint64 max_bytes = params->chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (bs * target_size) matrix ]
@@ -530,7 +530,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
 void ridge_level_1_loocv(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ridgel1* l1, mstream& sout) {
 
   sout << endl << " Level 1 ridge..." << flush;
-	    
+
   int bs_l1 = params->total_n_block * params->n_ridge_l0;
   int ph_eff;
   string in_pheno;
@@ -542,8 +542,8 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
   for (int i = 0; i < 5; i++)
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
 
-	// make matrix of (eigen-values + tau)^(-1)
-	Map<RowVectorXd> Lmap(params->tau.data(), params->n_ridge_l1);
+  // make matrix of (eigen-values + tau)^(-1)
+  Map<RowVectorXd> Lmap(params->tau.data(), params->n_ridge_l1);
 
   uint64 max_bytes = params->chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (target_size * bs_l1) matrix ]
@@ -581,9 +581,9 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
 
     xtx = l1->test_mat_conc[ph_eff].transpose() * l1->test_mat_conc[ph_eff];
     SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
-		dl = eigX.eigenvalues().asDiagonal() * MatrixXd::Ones(bs_l1, params->n_ridge_l1);
-		dl.rowwise() += Lmap;
-		dl_inv = dl.array().inverse().matrix();
+    dl = eigX.eigenvalues().asDiagonal() * MatrixXd::Ones(bs_l1, params->n_ridge_l1);
+    dl.rowwise() += Lmap;
+    dl_inv = dl.array().inverse().matrix();
 
     zvec = l1->test_mat_conc[ph_eff].transpose() * pheno_data->phenotypes.col(ph);
     wvec = eigX.eigenvectors().transpose() * zvec;
@@ -598,9 +598,9 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
       for(size_t i = 0; i < size_chunk; ++i ) {
         Z2 = (dl_inv.array().colwise() * Z1.col(i).array()).matrix();
         calFactor = Z1.col(i).transpose() * Z2;
-				pred = wvec.transpose() * Z2;
+        pred = wvec.transpose() * Z2;
         pred -=  Yvec_chunk(i, 0) * calFactor;
-				pred.array()  /= 1 - calFactor.array();
+        pred.array()  /= 1 - calFactor.array();
         //if( ph == 0) sout << pred.head(5) << endl;
 
         // compute mse and rsq
@@ -616,7 +616,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
-	l1->cumsum_values[3].array().colwise() += pheno_data->Neff - 1; // Sy2
+  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - 1; // Sy2
 
   sout << endl;
 }
@@ -711,7 +711,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             score = (X1.transpose() * (Y1 - pivec).matrix()).array() - params->tau[j] * betanew; 
 
           } else {
-            
+
             XtWX = MatrixXd::Zero(bs_l1, bs_l1);
             XtWZ = MatrixXd::Zero(bs_l1, 1);
 
@@ -769,7 +769,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         p1 = (1 - 1/(etatest.exp() + 1));
 
         if(!params->within_sample_l0) l1->beta_hat_level_1[ph][i].col(j) = betanew;
-          
+
         // compute mse
         for(size_t l = 0; l < params->cv_sizes[i]; l++){
           if(!masked_in_folds[i](l,ph)) continue;
@@ -802,7 +802,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   int niter_cur;
   int bs_l1 = params->total_n_block * params->n_ridge_l0;
   int ph_eff;
-	double v2, pred, p1;
+  double v2, pred, p1;
   string in_pheno;
   ifstream infile;
 
@@ -913,7 +913,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         j_start = chunk * target_size;
 
         Xmat_chunk = l1->test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
-				Yvec_chunk = pheno_data->phenotypes_raw.block(j_start, ph, size_chunk, 1);
+        Yvec_chunk = pheno_data->phenotypes_raw.block(j_start, ph, size_chunk, 1);
         mask_chunk = pheno_data->masked_indivs.block(j_start, ph, size_chunk,1);
 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n

@@ -37,7 +37,7 @@ using namespace boost;
 
 
 template <typename T> int sgn(T val) {
-    return (T(0) < val) - (val < T(0));
+  return (T(0) < val) - (val < T(0));
 }
 
 using namespace Eigen;
@@ -45,10 +45,10 @@ using boost::math::normal;
 using boost::math::chi_squared;
 
 Data::Data() { // @suppress("Class members should be properly initialized")
- }
+}
 
 Data::~Data() {
-	// TODO Auto-generated destructor stub
+  // TODO Auto-generated destructor stub
 }
 
 
@@ -118,7 +118,7 @@ void Data::file_read_initialization() {
 
   if( params.rm_indivs ) set_IDs_to_rm(&files, &in_filters, &params, sout);
   else if( params.keep_indivs ) set_IDs_to_keep(&files, &in_filters, &params, sout);
-  
+
 }
 
 
@@ -237,8 +237,8 @@ void Data::set_blocks() {
   /*
   // check block size vs sample size
   if(params.use_loocv && params.block_size > n_analyzed){
-    sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!" << endl;
-    exit(-1);
+  sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!" << endl;
+  exit(-1);
   }
   */
   if(params.use_loocv) params.cv_folds = params.n_samples;
@@ -536,7 +536,7 @@ void Data::level_0_calculations() {
 }
 
 void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
-  
+
   sout << "   -calc working matrices..." << flush;
   auto t2 = std::chrono::high_resolution_clock::now();
 
@@ -575,7 +575,7 @@ void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
 /////////////////////////////////////////////////
 
 void Data::output() {
-  
+
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
   string pfile, out_blup_list, pline;
@@ -648,7 +648,7 @@ void Data::output() {
       if(j == min_index) sout << "<- min value";
       sout << endl;
     }
-    
+
     if(!params.binary_mode){
       if(params.use_loocv) make_predictions_loocv(ph, min_index);
       else make_predictions(ph, min_index);
@@ -762,7 +762,7 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
 
   sout << "  * making predictions..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
-	    
+
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
   string in_pheno;
@@ -770,7 +770,7 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
   MatrixXd Xmat_chunk, Yvec_chunk,  Z1, Z2, b0, xtx;
   VectorXd w1, w2, Vw2, zvec;
   RowVectorXd calFactor;
-	ArrayXd dl_inv;
+  ArrayXd dl_inv;
 
   uint64 max_bytes = params.chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (target_size * bs_l1) matrix ]
@@ -800,9 +800,9 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
   // fit model on whole data again for optimal ridge param
   xtx = l1_ests.test_mat_conc[ph_eff].transpose() * l1_ests.test_mat_conc[ph_eff];
   SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
-	zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
-	w1 = eigX.eigenvectors().transpose() * zvec;
-	dl_inv = (eigX.eigenvalues().array() + params.tau[val]).inverse();
+  zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
+  w1 = eigX.eigenvectors().transpose() * zvec;
+  dl_inv = (eigX.eigenvalues().array() + params.tau[val]).inverse();
   w2 = (w1.array() * dl_inv).matrix();
   Vw2 = eigX.eigenvectors() * w2;
 
@@ -833,7 +833,7 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
   }
 
   write_predictions(ph);
-    
+
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
@@ -1232,9 +1232,9 @@ void Data::test_snps() {
       ofile_split[i].open( out_split[i].c_str() );
       // header of output file 
       if(!params.htp_out){
-      ofile_split[i] << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " << 
-        "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " << 
-        "CHISQ" << " " << "LOG10P" << endl;
+        ofile_split[i] << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " << 
+          "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " << 
+          "CHISQ" << " " << "LOG10P" << endl;
       } else {
         ofile_split[i] << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" << 
           "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << 
@@ -1410,7 +1410,7 @@ void Data::test_snps() {
           }
         }
       }
-      
+
 
       // perform assoc. testing
       t1 = std::chrono::high_resolution_clock::now();
@@ -1519,7 +1519,7 @@ void Data::test_snps() {
 
           }
 
-          
+
           if(!params.split_by_pheno) 
             ofile << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
           else if(!params.htp_out) ofile_split[j] << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
@@ -1572,7 +1572,7 @@ void Data::test_snps() {
             ofile_split[j] << (int) Gblock.genocounts[i].block(0,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](0,j) << "\t" << (int) Gblock.genocounts[i](1,j) << "\t" << (int) Gblock.genocounts[i](2,j) << "\t";
             // print counts in controls
             if(params.binary_mode){
-            ofile_split[j] << (int) Gblock.genocounts[i].block(3,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](3,j) << "\t" << (int) Gblock.genocounts[i](4,j) << "\t" << (int) Gblock.genocounts[i](5,j);
+              ofile_split[j] << (int) Gblock.genocounts[i].block(3,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](3,j) << "\t" << (int) Gblock.genocounts[i](4,j) << "\t" << (int) Gblock.genocounts[i](5,j);
             } else ofile_split[j] << "NA\tNA\tNA\tNA";
 
             // info column
@@ -1590,8 +1590,8 @@ void Data::test_snps() {
               ofile_split[j] << 
                 (params.binary_mode && (!params.firth || (params.firth & !pval_converged)) ? ";" : "\t") << "INFO=" << Gblock.snp_info(i,0);
           } else if(!params.binary_mode || (params.firth && pval_converged)){
-              ofile_split[j] << "\tNA"; 
-            } 
+            ofile_split[j] << "\tNA"; 
+          } 
 
           if(params.split_by_pheno) ofile_split[j] << endl;
         }
@@ -1628,7 +1628,7 @@ void Data::test_snps() {
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - n_skipped_snps - n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")" << endl;
   }
-    sout << "Number of ignored SNPs due to low MAC : " << n_ignored_snps << endl;
+  sout << "Number of ignored SNPs due to low MAC : " << n_ignored_snps << endl;
 
 } 
 
@@ -1735,7 +1735,7 @@ void Data::blup_read_chr(const int chrom) {
 
   sout << "   -reading loco predictions for the chromosome..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
-    
+
   // read blup file for each phenotype
   for(size_t ph = 0; ph < params.n_pheno; ph++) {
 
@@ -1971,8 +1971,8 @@ void Data::run_SPA_test(int ph){
       for( std::size_t j = 0; j < Gblock.non_zero_indices_G[snp].size(); ++j ) {
         index_j = Gblock.non_zero_indices_G[snp][j];
         if(!pheno_data.masked_indivs(index_j,ph)) continue;
-         spa_est.val_b -= Gblock.Gmat_tmp(snp, index_j) * Gblock.Gmat_tmp(snp, index_j);
-         spa_est.val_d += Gmu(index_j);
+        spa_est.val_b -= Gblock.Gmat_tmp(snp, index_j) * Gblock.Gmat_tmp(snp, index_j);
+        spa_est.val_d += Gmu(index_j);
       }
     }
 
@@ -2002,7 +2002,7 @@ void Data::run_SPA_test(int ph){
 
 }
 
- 
+
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 ////    Testing mode (multi-threaded with OpenMP)
@@ -2380,7 +2380,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     block_info->test_fail.assign(params.n_pheno, false); 
     block_info->is_corrected.assign(params.n_pheno, true); 
 
-    
+
     if(params.binary_mode) {
       MatrixXd tmpG, WX, GW;
       block_info->stats = ArrayXd::Zero(params.n_pheno); 

@@ -262,7 +262,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
         exit(-1);
       } else minChr_read = tmp_snp.chrom;
     }
-    
+
     // check if variant is in list of ignored SNPs
     if(params->keep_snps) tmp_snp.mask = (std::find(filters->snplist_to_keep.begin(), filters->snplist_to_keep.end(), tmp_snp.ID) == filters->snplist_to_keep.end());
     else if(params->rm_snps) tmp_snp.mask = (std::find(filters->snplist_to_rm.begin(), filters->snplist_to_rm.end(), tmp_snp.ID) != filters->snplist_to_rm.end());
@@ -634,7 +634,7 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
   std::vector< string > tmp_str_vec ;
   findID person;
   filters->ind_ignore.fill(true);
-  
+
 
   // track individuals to include -> remaining are ignored
   myfile.open (files->file_ind_include.c_str(), ios::in);
@@ -750,7 +750,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     if(params->keep_snps || params->rm_snps){
       assert(snpinfo[snp_index_counter].ID == rsid);
       if(snpinfo[snp_index_counter].mask){
-       gblock->bgen.ignore_probs();
+        gblock->bgen.ignore_probs();
         snp_index_counter++;
         continue;
       }
@@ -931,7 +931,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
     }
 
     j++;
-   if(!params->test_mode) snp_index_counter++;
+    if(!params->test_mode) snp_index_counter++;
   }
 
   sout << bs << " snps ";
@@ -1065,7 +1065,7 @@ void check_bgen(const string bgen_file, struct param* params){
     return;
   }
 
-// stream to uncompressed block
+  // stream to uncompressed block
   uchar *buffer = &geno_block_uncompressed[0];
   // sample size
   std::memcpy(&nindivs, &(buffer[0]), 4);
@@ -1088,10 +1088,10 @@ void check_bgen(const string bgen_file, struct param* params){
   buffer ++;
 
   /* //to identify missing when getting dosages
-  vector < uchar > ploidy_n;
-  ploidy_n.resize( nindivs );
-  std::memcpy(&(ploidy_n[0]), &(buffer[0]), nindivs);
-  */
+     vector < uchar > ploidy_n;
+     ploidy_n.resize( nindivs );
+     std::memcpy(&(ploidy_n[0]), &(buffer[0]), nindivs);
+     */
   buffer += nindivs;
 
   // phasing
@@ -1253,7 +1253,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
     snp_data->ignored = true;
     return;
   }
-  
+
   total /= ns;
   snp_data->af = total / 2;
   snp_data->info = 1 - info_num / (2 * ns * snp_data->af * (1 - snp_data->af));
