@@ -36,14 +36,12 @@
 #include "pgenlib_ffi_support.h"
 #include "include/pgenlib_read.h"
 
-using namespace std;
-
 
 class PgenReader {
 public:
   PgenReader();
 
-  void Load(string filename, uint32_t cur_sample_ct);
+  void Load(std::string filename, uint32_t cur_sample_ct);
 
   uint32_t GetRawSampleCt() const;
 
@@ -57,11 +55,11 @@ public:
 
   bool HardcallPhasePresent() const;
 
-  void ReadIntHardcalls(vector<int>& buf, int variant_idx, int allele_idx);
+  void ReadIntHardcalls(std::vector<int>& buf, int variant_idx, int allele_idx);
 
-  void ReadHardcalls(vector<double>& buf, int variant_idx, int allele_idx);
+  void ReadHardcalls(std::vector<double>& buf, int variant_idx, int allele_idx);
 
-  void Read(vector<double>& buf, int variant_idx, int allele_idx);
+  void Read(std::vector<double>& buf, int variant_idx, int allele_idx);
 
   void Close();
 
@@ -89,7 +87,7 @@ private:
   uintptr_t* _multivar_smaj_phaseinfo_batch_buf;
   uintptr_t* _multivar_smaj_phasepresent_batch_buf;
 
-  void SetSampleSubsetInternal(vector<int>& sample_subset_1based);
+  void SetSampleSubsetInternal(std::vector<int>& sample_subset_1based);
 
   void ReadAllelesPhasedInternal(int variant_idx);
 };

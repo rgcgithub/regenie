@@ -40,7 +40,7 @@ PgenReader::~PgenReader() {
   Close();
 }
 
-void PgenReader::Load(string filename, uint32_t cur_sample_ct) {
+void PgenReader::Load(std::string filename, uint32_t cur_sample_ct) {
   if (_info_ptr) {
     Close();
   }
@@ -247,7 +247,7 @@ bool PgenReader::HardcallPhasePresent() const {
 
 static const int32_t kGenoRInt32Quads[1024] ALIGNV16 = QUAD_TABLE256(0, 1, 2, -3);
 
-void PgenReader::ReadIntHardcalls(vector<int>& buf, int variant_idx, int allele_idx) {
+void PgenReader::ReadIntHardcalls(std::vector<int>& buf, int variant_idx, int allele_idx) {
   if (!_info_ptr) {
     fprintf(stderr,"pgen is closed");
     exit(-1);
@@ -276,7 +276,7 @@ void PgenReader::ReadIntHardcalls(vector<int>& buf, int variant_idx, int allele_
 
 static const double kGenoRDoublePairs[32] ALIGNV16 = PAIR_TABLE16(0.0, 1.0, 2.0, -3.0);
 
-void PgenReader::ReadHardcalls(vector<double>& buf, int variant_idx, int allele_idx) {
+void PgenReader::ReadHardcalls(std::vector<double>& buf, int variant_idx, int allele_idx) {
   if (!_info_ptr) {
     fprintf(stderr,"pgen is closed");
     exit(-1);
@@ -303,7 +303,7 @@ void PgenReader::ReadHardcalls(vector<double>& buf, int variant_idx, int allele_
   plink2::GenoarrLookup16x8bx2(_pgv.genovec, kGenoRDoublePairs, _subset_size, &buf[0]);
 }
 
-void PgenReader::Read(vector<double>& buf, int variant_idx, int allele_idx) {
+void PgenReader::Read(std::vector<double>& buf, int variant_idx, int allele_idx) {
   if (!_info_ptr) {
     fprintf(stderr,"pgen is closed");
     exit(-1);
@@ -356,7 +356,7 @@ void PgenReader::Close() {
   _subset_size = 0;
 }
 
-void PgenReader::SetSampleSubsetInternal(vector<int>& sample_subset_1based) {
+void PgenReader::SetSampleSubsetInternal(std::vector<int>& sample_subset_1based) {
   const uint32_t raw_sample_ct = _info_ptr->raw_sample_ct;
   const uint32_t raw_sample_ctv = plink2::DivUp(raw_sample_ct, plink2::kBitsPerVec);
   const uint32_t raw_sample_ctaw = raw_sample_ctv * plink2::kWordsPerVec;
@@ -375,7 +375,7 @@ void PgenReader::SetSampleSubsetInternal(vector<int>& sample_subset_1based) {
       char errstr_buf[256];
       sprintf(errstr_buf, "sample number out of range (%d; must be 1..%u)", static_cast<int>(sample_uidx + 1), raw_sample_ct);
       fprintf(stderr,"%s\n", errstr_buf);
-    exit(-1);
+      exit(-1);
     }
     plink2::SetBit(sample_uidx, sample_include);
     if (++idx == subset_size) {
