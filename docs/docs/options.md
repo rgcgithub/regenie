@@ -10,7 +10,7 @@ To get a full list of options use
 ./regenie --help
 ```
 
-The directory `/examples` contains some small example files that are
+The directory `examples/` contains some small example files that are
 useful when getting started. A test run on a set of binary traits can be achieved by the
 following 2 commands.
 

@@ -14,6 +14,8 @@ The **regenie** source code is hosted on
     - Compile using [GCC](https://gcc.gnu.org) version >= 5.1
 4. This should produce the executable called `regenie`.
 
+Pre-compiled executable files for **regenie** (in Mac OSX 10.14 and x86 64-bit Linux) are available in the `bin/` directory.
+
 
 ##Computing requirements
 
