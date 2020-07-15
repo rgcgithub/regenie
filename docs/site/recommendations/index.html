@@ -190,7 +190,7 @@ so that within-block predictions are temporarily stored on disk (see Documentati
 <p><img alt="Rflow" src="../img/comp_req_largeP.png" style="text-align:center;padding: 10px;width:50%;display: block;margin-left: auto;margin-right: auto" /></p>
 <p>In the following sections, we'll assume traits (let's say binary) and covariates 
 used in the analysis have been chosen and data are in files
-<code>ukb_phenotypes_BT.txt</code> and <code>ukv_covariates.txt</code>,
+<code>ukb_phenotypes_BT.txt</code> and <code>ukb_covariates.txt</code>,
 which follow the format requirement for <strong>regenie</strong> (see Documentation).</p>
 <h4 id="preparing-genotype-file">Preparing genotype file</h4>
 <p>Step 1 of a <strong>regenie</strong> run requires a single genotype file as input. 
@@ -234,7 +234,7 @@ will determine how much disk space is required (see table above).</p>
   --extract qc_pass.snplist \
   --keep qc_pass.id \
   --p ukb_phenotypes_BT.txt \
-  --c ukv_covariates.txt \
+  --c ukb_covariates.txt \
   --bt \
   --b 1000 \
   --lowmem tmpdir/regenie_tmp_preds \
@@ -265,7 +265,7 @@ grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.
   --bgen ukb_imp_chr1_v2.bgen \
   --keep fid_iid_step2.keep \
   --p ukb_phenotypes_BT.txt \
-  --c ukv_covariates.txt \
+  --c ukb_covariates.txt \
   --bt \
   --firth 0.01 --approx \
   --pred ukb_step1_BT_pred.list \

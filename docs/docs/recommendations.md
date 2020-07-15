@@ -35,7 +35,7 @@ so that within-block predictions are temporarily stored on disk (see Documentati
 
 In the following sections, we'll assume traits (let's say binary) and covariates 
 used in the analysis have been chosen and data are in files
-`ukb_phenotypes_BT.txt` and `ukv_covariates.txt`,
+`ukb_phenotypes_BT.txt` and `ukb_covariates.txt`,
 which follow the format requirement for **regenie** (see Documentation).
 
 #### Preparing genotype file
@@ -92,7 +92,7 @@ Running step 1 of **regenie** (by default, all available threads are used)
   --extract qc_pass.snplist \
   --keep qc_pass.id \
   --p ukb_phenotypes_BT.txt \
-  --c ukv_covariates.txt \
+  --c ukb_covariates.txt \
   --bt \
   --b 1000 \
   --lowmem tmpdir/regenie_tmp_preds \
@@ -134,7 +134,7 @@ Running **regenie** tesing on a single chromosome (here chr 1) and using fast Fi
   --bgen ukb_imp_chr1_v2.bgen \
   --keep fid_iid_step2.keep \
   --p ukb_phenotypes_BT.txt \
-  --c ukv_covariates.txt \
+  --c ukb_covariates.txt \
   --bt \
   --firth 0.01 --approx \
   --pred ukb_step1_BT_pred.list \
