@@ -391,7 +391,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if((trimmed_str == "--minMAC")  && (counter < maxargs)){
       trimmed_str_arg = string(argv[counter+1]);  // trim this
       trimmed_str_arg.erase(std::remove_if(trimmed_str_arg.begin(), trimmed_str_arg.end(), ::isspace), trimmed_str_arg.end());
-      if(trimmed_str_arg[0] != '-') params->min_MAC = atoi(argv[counter+1]);
+      if(trimmed_str_arg[0] != '-') {
+        params->setMinMAC = true;
+        params->min_MAC = atoi(argv[counter+1]);
+      }
     }
 
     if((trimmed_str == "--chr")  && (counter < maxargs)){
@@ -568,6 +571,9 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
   if(params->test_mode && params->rm_snps) params->rm_snps = false;
   if(params->test_mode && params->keep_snps) params->keep_snps = false;
 
+  if(!params->test_mode && params->setMinMAC){
+    sout << "WARNING : Option --minMAC only works in step 2 of REGENIE.\n";
+  }
   if(params->test_mode && params->min_MAC < 1){
     sout << "ERROR : minimum MAC must be at least 1.\n" << params->err_help;
     exit(-1);

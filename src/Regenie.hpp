@@ -194,6 +194,7 @@ struct param {
   bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
+  bool setMinMAC = false;
   double alpha_pvalue = 0.05; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
   // spa

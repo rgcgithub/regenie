@@ -426,7 +426,7 @@ double convertDouble(const string& phenoValue, struct param* params, mstream& so
 
   double pheno_d;
   if(sscanf(phenoValue.c_str(), "%lf", &pheno_d) != 1){
-    sout << "ERROR: Could not convert phenotype value to double: " << phenoValue << endl;
+    sout << "ERROR: Could not convert value to double: " << phenoValue << endl;
     exit(-1);
   }
   return pheno_d;
