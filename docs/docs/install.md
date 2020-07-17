@@ -19,7 +19,7 @@ Pre-compiled executable files for **regenie** (in Mac OSX 10.14 and x86 64-bit L
 
 ##Computing requirements
 
-We have tested **regenie** on Linux and Mac OSX computing environments.
+We have tested **regenie** on 64-bit Linux and 64-bit Mac OSX computing environments.
 
 ### Memory usage
 In both Step 1 and Step 2 of a **regenie** run the genetic data file is
