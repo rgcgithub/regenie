@@ -58,7 +58,7 @@
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.4.1"
+#define VERSION_NUMBER "1.0.4.2"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -245,7 +245,7 @@ struct filter {
   std::vector<std::string> pheno_colKeep_names;
   std::vector<std::string> cov_colKeep_names;
   std::vector<int> chrKeep_test;
-  std::vector<std::string> snplist_to_keep, snplist_to_rm;
+  std::map <std::string, uint64> snpID_to_ind;
   ArrayXb ind_ignore;
   ArrayXb ind_in_analysis;
 

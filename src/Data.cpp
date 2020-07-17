@@ -95,29 +95,13 @@ void Data::run() {
 
 void Data::file_read_initialization() {
 
-  if( params.rm_snps ) set_snps_to_rm(&files, &in_filters, sout);
-  else if( params.keep_snps ) set_snps_to_keep(&files, &in_filters, sout);
-
-  // read genotype data
+  // prepare genotype data
   files.chr_counts.assign(params.nChrom, 0.0);
-  if(params.rm_snps || params.keep_snps) files.chr_file_counts.assign(params.nChrom, 0.0);
 
   if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
   else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
 
-  if(params.n_variants == 0){
-    sout << "ERROR: No variant left to include in analysis.\n";
-    exit(-1);
-  }
-
-  //  keep track of samples in geno/pheno/covariates 
-  //   and those to ignore
-  in_filters.ind_ignore = ArrayXb::Constant(params.n_samples, false);
-  in_filters.ind_in_analysis = ArrayXb::Constant(params.n_samples, false);
-
-  if( params.rm_indivs ) set_IDs_to_rm(&files, &in_filters, &params, sout);
-  else if( params.keep_indivs ) set_IDs_to_keep(&files, &in_filters, &params, sout);
 
 }
 

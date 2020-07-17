@@ -36,6 +36,7 @@ using namespace boost;
 void prep_bgen(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int, vector<int>>& chr_map, BgenParser& bgen, mstream& sout){
 
   uint32_t nOutofOrder = 0;
+  uint64 lineread = 0; 
   std::vector< int > chr_read ; 
   std::string chromosome, rsid;
   uint32_t position ;
@@ -51,30 +52,8 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   bgen_tmp.summarise( sout.coss ) ;
   bgen_tmp.summarise( cerr ) ;
 
-  // retrieve number of samples/snps
-  params->n_samples  = bgen_tmp.number_of_samples();
-  if(!(params->keep_snps||params->rm_snps)) params->n_variants = bgen_tmp.number_of_variants();
-  else params->n_variants = 0;
-
-  // get sample IDs (from sample file or directly from bgen file)
-  if( params->bgenSample ) {
-    read_bgen_sample(files->sample_file, params->n_samples, tmp_ids, sout);
-  } else {
-    bgen_tmp.get_sample_ids(
-        [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; }
-        );
-  }
-
-  // check duplicates -- if not, store in map
-  for(size_t i = 0; i < params->n_samples; i++) {
-    if (params->FID_IID_to_ind.find(tmp_ids[i]) != params->FID_IID_to_ind.end()) {
-      sout << "ERROR: Duplicate individual in .bgen file : FID_IID=" << tmp_ids[i] << endl;
-      exit(1);
-    }
-    params->FID_IID_to_ind.insert( std::make_pair( tmp_ids[i], i ) );
-  }
-
-  // get CPRA info for each SNP
+  
+  // get info for variants
   tmp_snp.offset = bgen_tmp.get_position();
   while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
 
@@ -94,49 +73,53 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
     tmp_snp.allele1 = alleles[1];
     tmp_snp.allele2 = alleles[0]; // switch so allele0 is ALT
 
-    // check if variant is in list of retained/ignored SNPs
-    if(params->keep_snps) tmp_snp.mask = (std::find(filters->snplist_to_keep.begin(), filters->snplist_to_keep.end(), tmp_snp.ID) == filters->snplist_to_keep.end());
-    else if(params->rm_snps) tmp_snp.mask = (std::find(filters->snplist_to_rm.begin(), filters->snplist_to_rm.end(), tmp_snp.ID) != filters->snplist_to_rm.end());
+    // keep track of how many included snps per chromosome there are
+    files->chr_counts[tmp_snp.chrom-1]++;
 
-    // track how many variants are to be included for each chr
-    if(!tmp_snp.mask) {
-      files->chr_counts[tmp_snp.chrom-1]++; 
-      if(params->keep_snps || params->rm_snps) params->n_variants++;
-    }
-    // track how many variants are in file for each chr
-    if(params->keep_snps || params->rm_snps) files->chr_file_counts[tmp_snp.chrom-1]++; 
+    // make list of variant IDs if inclusion/exclusion file is given
+    if(params->rm_snps || params->keep_snps) 
+      filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
 
     // check if snps are in order (same chromosome & non-decreasing positions)
     if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) nOutofOrder++;
 
     snpinfo.push_back(tmp_snp);
+    lineread++;
 
     tmp_snp.offset = bgen_tmp.get_position();
   }
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
 
-  // go through each chromosome in order & save number of snps
-  // also save how many are actually read (when using --exclude)
-  vector<int> tmp_v;
-  tmp_v.resize(3, 0);
-  for(int j = 0; j < chr_read.size(); j++){
-    int i = chr_read[j];
-    tmp_v[0] = files->chr_counts[i-1];
-    if(params->keep_snps || params->rm_snps) tmp_v[2] = files->chr_file_counts[i-1];
-    chr_map.insert(pair<int, vector<int> >(i, tmp_v)); 
+  // check if should mask snps
+  check_snps_include_exclude(files, params, filters, snpinfo, chr_map, chr_read, sout);
+
+  
+  // get info on samples
+  params->n_samples  = bgen_tmp.number_of_samples();
+
+  // get sample IDs (from sample file or directly from bgen file)
+  if( params->bgenSample ) {
+    read_bgen_sample(files->sample_file, params->n_samples, tmp_ids, sout);
+  } else {
+    bgen_tmp.get_sample_ids(
+        [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
   }
 
-  if(params->keep_snps) {
-    sout << "   -keeping only variants specified in [" << files->file_snps_include << "]" << endl;
-    sout << "     +number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->keep_snps = false;
-  } else if(params->rm_snps) {
-    sout << "   -removing variants specified in [" << files->file_snps_exclude << "]" << endl;
-    sout << "     +number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->rm_snps = false;
+  // check duplicates -- if not, store in map
+  for(size_t i = 0; i < params->n_samples; i++) {
+    if (params->FID_IID_to_ind.find(tmp_ids[i]) != params->FID_IID_to_ind.end()) {
+      sout << "ERROR: Duplicate individual in .bgen file : FID_IID=" << tmp_ids[i] << endl;
+      exit(1);
+    }
+    params->FID_IID_to_ind.insert( std::make_pair( tmp_ids[i], i ) );
   }
 
+  // check if should mask samples
+  check_samples_include_exclude(files, params, filters, sout);
+
+
+  // prepare file
   if( !params->streamBGEN ) {
     // setup file for reading the genotype probabilities later
     bgen.open( files->bgen_file ) ;
@@ -197,31 +180,25 @@ void read_bgen_sample(const string sample_file, const int n_samples, std::vector
 
 void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
-  read_bim(files, params, filters, snpinfo, chr_map, sout);
-  sout << "n_snps = " << snpinfo.size() << endl;
-
-  if(params->keep_snps) {
-    sout << "   -keeping only variants specified in [" << files->file_snps_include << "]" << endl;
-    sout << "   -number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->keep_snps = false;
-  } else if(params->rm_snps) {
-    sout << "   -removing variants specified in [" << files->file_snps_exclude << "]" << endl;
-    sout << "   -number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->rm_snps = false;
-  }
+  std::vector< int > chr_read ;
+  read_bim(files, params, filters, snpinfo, chr_read, sout);
+  // check if should mask snps
+  check_snps_include_exclude(files, params, filters, snpinfo, chr_map, chr_read, sout);
 
   read_fam(files, params, sout);
   sout << "n_samples = " << params->n_samples << endl;
+  // check if should mask samples
+  check_samples_include_exclude(files, params, filters, sout);
 
   prep_bed(files, params, sout);
 }
 
 
-void read_bim(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
+void read_bim(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, std::vector< int >& chr_read, mstream& sout) {
 
   uint32_t nOutofOrder = 0;
   int minChr_read = 0; // enforce that chromosomes in file are sorted
-  std::vector< int > chr_read ; 
+  uint64 lineread = 0; 
   std::vector< string > tmp_str_vec ;
   snp tmp_snp; 
   string line;
@@ -255,6 +232,13 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
       exit(1);
     }
 
+    // keep track of how many included snps per chromosome there are
+    files->chr_counts[tmp_snp.chrom-1]++;
+
+    // make list of variant IDs if inclusion/exclusion file is given
+    if(params->rm_snps || params->keep_snps) 
+      filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
+
     if( chr_read.empty() || (tmp_snp.chrom != chr_read.back() ) ) {
       chr_read.push_back(tmp_snp.chrom);
       if( tmp_snp.chrom <= minChr_read ){
@@ -263,36 +247,14 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
       } else minChr_read = tmp_snp.chrom;
     }
 
-    // check if variant is in list of ignored SNPs
-    if(params->keep_snps) tmp_snp.mask = (std::find(filters->snplist_to_keep.begin(), filters->snplist_to_keep.end(), tmp_snp.ID) == filters->snplist_to_keep.end());
-    else if(params->rm_snps) tmp_snp.mask = (std::find(filters->snplist_to_rm.begin(), filters->snplist_to_rm.end(), tmp_snp.ID) != filters->snplist_to_rm.end());
-
-    // track how many variants are to be included for chr
-    if(!tmp_snp.mask) {
-      files->chr_counts[tmp_snp.chrom-1]++; 
-      params->n_variants++;
-    }
-    // track how many variants in file for chr
-    if(params->keep_snps || params->rm_snps) files->chr_file_counts[tmp_snp.chrom-1]++; 
-
     // check if snps are in order (same chromosome & non-decreasing positions)
     if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) nOutofOrder++;
 
     snpinfo.push_back(tmp_snp);
+    lineread++;
   }
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
-
-  // go through each chromosome in order & save number of snps
-  // also save how many are actually read (when using --exclude)
-  vector<int> tmp_v;
-  tmp_v.resize(3, 0);
-  for(int j = 0; j < chr_read.size(); j++){
-    int i = chr_read[j];
-    tmp_v[0] = files->chr_counts[i-1];
-    if(params->keep_snps || params->rm_snps) tmp_v[2] = files->chr_file_counts[i-1];
-    chr_map.insert(pair<int, vector<int> >(i, tmp_v)); 
-  }
 
   myfile.close();
 
@@ -362,40 +324,34 @@ void prep_bed(struct in_files* files, struct param* params, mstream& sout) {
 
 
 
-void read_pgen_pvar_psam(struct in_files* files, struct param* params,struct filter* filters, struct geno_block* gblock, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
+void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct filter* filters, struct geno_block* gblock, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
   uint32_t pgen_nvariants;
+  std::vector< int > chr_read ;
 
-  read_pvar(pgen_nvariants, files, params, filters, snpinfo, chr_map, sout);
-  sout << "n_snps = " << snpinfo.size() << endl;
-
-  if(params->keep_snps) {
-    sout << "   -keeping only variants specified in [" << files->file_snps_include << "]" << endl;
-    sout << "   -number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->keep_snps = false;
-  } else if(params->rm_snps) {
-    sout << "   -removing variants specified in [" << files->file_snps_exclude << "]" << endl;
-    sout << "   -number of variants remaining in the analysis = " << params->n_variants << endl;
-    if(snpinfo.size() == params->n_variants) params->rm_snps = false;
-  }
+  read_pvar(files, params, filters, snpinfo, chr_read, sout);
+  pgen_nvariants = snpinfo.size();
+  // check if should mask snps
+  check_snps_include_exclude(files, params, filters, snpinfo, chr_map, chr_read, sout);
 
   read_psam(files, params, sout);
   sout << "n_samples = " << params->n_samples << endl;
+  // check if should mask samples
+  check_samples_include_exclude(files, params, filters, sout);
 
   prep_pgen(pgen_nvariants, files, params, gblock, sout);
 }
 
 
-void read_pvar(uint32_t& pgen_nv, struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
+void read_pvar(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, std::vector< int >& chr_read, mstream& sout) {
 
   uint32_t nOutofOrder = 0;
   int minChr_read = 0; // enforce that chromosomes in file are sorted
-  std::vector< int > chr_read ;
+  uint64 lineread = 0; 
   std::vector< string > tmp_str_vec ;
   snp tmp_snp;
   string line, fname;
   ifstream myfile;
-  pgen_nv = 0;
 
   fname = files->pgen_prefix + ".pvar";
   sout << left << std::setw(20) << " * pvar" << ": [" << fname << "] " << flush;
@@ -440,6 +396,14 @@ void read_pvar(uint32_t& pgen_nv, struct in_files* files, struct param* params, 
       sout << "ERROR: Unknown chromosome code in pvar file at line " << snpinfo.size()+1 << endl;
       exit(1);
     }
+
+    // keep track of how many included snps per chromosome there are
+    files->chr_counts[tmp_snp.chrom-1]++;
+
+    // make list of variant IDs if inclusion/exclusion file is given
+    if(params->rm_snps || params->keep_snps) 
+      filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
+
     if( chr_read.empty() || (tmp_snp.chrom != chr_read.back() ) ) {
       chr_read.push_back(tmp_snp.chrom);
       if( tmp_snp.chrom <= minChr_read ){
@@ -448,37 +412,14 @@ void read_pvar(uint32_t& pgen_nv, struct in_files* files, struct param* params, 
       } else minChr_read = tmp_snp.chrom;
     }
 
-    // check if variant is in list of ignored SNPs
-    if(params->keep_snps) tmp_snp.mask = (std::find(filters->snplist_to_keep.begin(), filters->snplist_to_keep.end(), tmp_snp.ID) == filters->snplist_to_keep.end());
-    else if(params->rm_snps) tmp_snp.mask = (std::find(filters->snplist_to_rm.begin(), filters->snplist_to_rm.end(), tmp_snp.ID) != filters->snplist_to_rm.end());
-
-    // track how many variants are to be included for chr
-    if(!tmp_snp.mask) {
-      files->chr_counts[tmp_snp.chrom-1]++;
-      params->n_variants++;
-    }
-    // track how many variants in file for chr
-    if(params->keep_snps || params->rm_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
-
     // check if snps are in order (same chromosome & non-decreasing positions)
     if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) nOutofOrder++;
 
     snpinfo.push_back(tmp_snp);
-    pgen_nv++;
+    lineread++;
   }
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
-
-  // go through each chromosome in order & save number of snps
-  // also save how many are actually read (when using --exclude)
-  vector<int> tmp_v;
-  tmp_v.resize(3, 0);
-  for(int j = 0; j < chr_read.size(); j++){
-    int i = chr_read[j];
-    tmp_v[0] = files->chr_counts[i-1];
-    if(params->keep_snps || params->rm_snps) tmp_v[2] = files->chr_file_counts[i-1];
-    chr_map.insert(pair<int, vector<int> >(i, tmp_v));
-  }
 
   myfile.close();
 
@@ -542,7 +483,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 }
 
 
-void prep_pgen(uint32_t& pgen_nv, struct in_files* files, struct param* params, struct geno_block* gblock, mstream& sout){
+void prep_pgen(const uint32_t pgen_nv, struct in_files* files, struct param* params, struct geno_block* gblock, mstream& sout){
 
   int pgen_samples, pgen_variants, pgen_ac;
   string fname;
@@ -574,39 +515,106 @@ void prep_pgen(uint32_t& pgen_nv, struct in_files* files, struct param* params, 
 }
 
 
+// determine if snps should be included/excluded for step 1
+void check_snps_include_exclude(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, const std::vector< int >& chr_read, mstream& sout){
+
+  params->n_variants = snpinfo.size(); // current variants count
+  if(params->file_type != "bgen")
+    sout << "n_snps = " << params->n_variants << endl;
+
+  // if inclusion/exclusion file is given
+  if(params->rm_snps || params->keep_snps) {
+
+    // keep track of total number of variants per chromosome in file
+    files->chr_file_counts.assign(files->chr_counts.begin(), files->chr_counts.end());
+
+    // apply masking to snps 
+    if( params->rm_snps ) set_snps_to_rm(files, params, filters, snpinfo, sout);
+    else if( params->keep_snps ) set_snps_to_keep(files, params, filters, snpinfo, sout);
+
+    // delete snpID map
+    filters->snpID_to_ind.clear();
+  }
+
+  // check nonzero
+  if(params->n_variants == 0){
+    sout << "ERROR: No variant left to include in analysis.\n";
+    exit(-1);
+  }
+
+  // go through each chromosome in order & save number of snps
+  // and save how many are actually read 
+  vector<int> tmp_v;
+  tmp_v.resize(3, 0);
+  for(size_t j = 0; j < chr_read.size(); j++){
+    int i = chr_read[j];
+    tmp_v[0] = files->chr_counts[i-1];
+    if(params->keep_snps || params->rm_snps) tmp_v[2] = files->chr_file_counts[i-1];
+    chr_map.insert(pair<int, vector<int> >(i, tmp_v));
+  }
+
+
+  if(params->rm_snps || params->keep_snps) {
+    if(params->keep_snps) {
+      sout << "   -keeping only variants specified in [" << files->file_snps_include << "]" << endl;
+      if(snpinfo.size() == params->n_variants) params->keep_snps = false;
+    } else if(params->rm_snps) {
+      sout << "   -removing variants specified in [" << files->file_snps_exclude << "]" << endl;
+      if(snpinfo.size() == params->n_variants) params->rm_snps = false;
+    }
+    sout << "     +number of variants remaining in the analysis = " << params->n_variants << endl;
+  }
+}
+
 
 // snps to retain in step 1 analysis
-void set_snps_to_keep(struct in_files* files, struct filter* filters, mstream& sout) {
+void set_snps_to_keep(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, mstream& sout) {
 
-  ifstream myfile;
+  uint64 snp_pos;
   string line;
   std::vector< string > tmp_str_vec ;
+  ifstream myfile;
 
   myfile.open (files->file_snps_include.c_str(), ios::in);
   if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open file specified by --exclude :" << files->file_snps_include<< endl;
+    sout << "ERROR: Cannot open file specified by --extract :" << files->file_snps_include<< endl;
     exit(-1);
   }
+
+  // set all the masks to true
+  params->n_variants = 0;
+  for(size_t j = 0; j < snpinfo.size(); j++)
+    snpinfo[j].mask = true;
+  // set chr counts to 0
+  std::fill(files->chr_counts.begin(), files->chr_counts.end(), 0);
 
   while( getline (myfile,line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 1 ){
-      sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
+      sout << "ERROR: Incorrectly formatted file specified by --extract." << endl;
       exit(-1);
     }
-    filters->snplist_to_keep.push_back( tmp_str_vec[0] );
+
+    if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
+      snp_pos = filters->snpID_to_ind[ tmp_str_vec[0] ];
+      snpinfo[ snp_pos ].mask = false;
+      // adjust counts
+      files->chr_counts[ snpinfo[ snp_pos ].chrom - 1 ]++;
+      params->n_variants++;
+    }
   }
 
 }
 
 
 // snps to exclude from step 1 analysis
-void set_snps_to_rm(struct in_files* files, struct filter* filters, mstream& sout) {
+void set_snps_to_rm(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, mstream& sout) {
 
-  ifstream myfile;
+  uint64 snp_pos;
   string line;
   std::vector< string > tmp_str_vec ;
+  ifstream myfile;
 
   myfile.open (files->file_snps_exclude.c_str(), ios::in);
   if (!myfile.is_open()) {    
@@ -621,10 +629,32 @@ void set_snps_to_rm(struct in_files* files, struct filter* filters, mstream& sou
       sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
       exit(-1);
     }
-    filters->snplist_to_rm.push_back( tmp_str_vec[0] );
+
+    if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
+      snp_pos = filters->snpID_to_ind[ tmp_str_vec[0] ];
+      snpinfo[ snp_pos ].mask = true;
+      // adjust counts
+      files->chr_counts[ snpinfo[ snp_pos ].chrom - 1 ]--;
+      params->n_variants--;
+    }
   }
 
 }
+
+void check_samples_include_exclude(struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
+
+  //  keep track of samples in geno/pheno/covariates 
+  //   and those to ignore
+  filters->ind_ignore = ArrayXb::Constant(params->n_samples, false);
+  filters->ind_in_analysis = ArrayXb::Constant(params->n_samples, false);
+
+  if( params->rm_indivs ) 
+    set_IDs_to_rm(files, filters, params, sout);
+  else if( params->keep_indivs ) 
+    set_IDs_to_keep(files, filters, params, sout);
+
+}
+
 
 void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct param* params, mstream& sout) {
 
@@ -1548,7 +1578,7 @@ void skip_snps(const int& bs, struct param* params, struct in_files* files, stru
   // skip the whole block of snps
   if(params->file_type == "bed") {
     files->bed_ifstream.seekg( bs * files->bed_block_size, ios_base::cur);
-  } else {
+  } else if(params->file_type == "bgen") {
     for(size_t snp = 0; snp < bs; snp++) {
       gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
       gblock->bgen.ignore_probs();
