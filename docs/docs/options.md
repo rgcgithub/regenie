@@ -48,7 +48,11 @@ Firth logistic regression model
   --o test_bin_out_firth
 ```
 
-One of the output files from this command with association results is included in `example/example.test_bin_out_firth_Y1.regenie`.
+One of the output files from these two commands is included in the `example/` directory and you can check the two files using 
+
+```
+cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie
+```
 
 ## Input 
 
