@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.5 (Reduced memory usage and computational time when using options to keep/remove genotyped samples from the analysis)
+
 Version 1.0.4.2 (Fixed bug excluding/including variants in step 1 with PGEN input format and improved the implementation of how it's done)
 
 Version 1.0.4.1 (Can specify multiple phenotypes/covariates/chromosomes using comma separated arguments; chromosome names can start with 'chr' in the input genotype file)
