@@ -102,7 +102,6 @@ void Data::file_read_initialization() {
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
   else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
 
-
 }
 
 
@@ -1068,8 +1067,8 @@ void Data::write_predictions(const int ph){
       id_index = itr_ind->first;
       index = itr_ind->second;
 
-      // check individual is not in exclusion list, otherwise skip
-      if( in_filters.ind_ignore( index ) ) continue;
+      // check individual was included in analysis, if not then skip
+      if( !in_filters.ind_in_analysis( index ) ) continue;
       ofile << id_index << " ";
     }
     ofile << endl;
@@ -1081,8 +1080,8 @@ void Data::write_predictions(const int ph){
         id_index = itr_ind->first;
         index = itr_ind->second;
 
-        // check individual is not in exclusion list, otherwise skip
-        if( in_filters.ind_ignore( index ) ) continue;
+        // check individual was included in analysis, if not then skip
+        if( !in_filters.ind_in_analysis( index ) ) continue;
 
         // print blup 
         if( pheno_data.masked_indivs(index, ph) )
@@ -1122,8 +1121,8 @@ void Data::write_predictions(const int ph){
       id_index = itr_ind->first;
       index = itr_ind->second;
 
-      // check individual is not in exclusion list, otherwise skip
-      if( in_filters.ind_ignore( index ) ) continue;
+      // check individual was included in analysis, if not then skip
+      if( !in_filters.ind_in_analysis( index ) ) continue;
       ofile << id_index << " ";
     }
     ofile << endl;
@@ -1135,8 +1134,8 @@ void Data::write_predictions(const int ph){
         id_index = itr_ind->first;
         index = itr_ind->second;
 
-        // check individual is not in exclusion list, otherwise skip
-        if( in_filters.ind_ignore( index ) ) continue;
+        // check individual was included in analysis, if not then skip
+        if( !in_filters.ind_in_analysis( index ) ) continue;
 
         // print loco prediction 
         if( pheno_data.masked_indivs(index, ph) )
@@ -1570,12 +1569,13 @@ void Data::test_snps() {
               }
             }
 
-            if(params.file_type == "bgen") 
+            if(params.file_type == "bgen") {
               ofile_split[j] << 
                 (params.binary_mode && (!params.firth || (params.firth & !pval_converged)) ? ";" : "\t") << "INFO=" << Gblock.snp_info(i,0);
-          } else if(!params.binary_mode || (params.firth && pval_converged)){
-            ofile_split[j] << "\tNA"; 
-          } 
+            } else if(!params.binary_mode || (params.firth && pval_converged)){
+              ofile_split[j] << "\tNA"; 
+            } 
+          }
 
           if(params.split_by_pheno) ofile_split[j] << endl;
         }

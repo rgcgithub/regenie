@@ -103,12 +103,12 @@ void read_bgen_sample(const std::string,const int,std::vector<std::string> &,mst
 void read_bed_bim_fam(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
 void read_fam(struct in_files*,struct param*,mstream&);
-void prep_bed(struct in_files*,struct param*,mstream&);
+void prep_bed(const uint32_t&, struct in_files*,mstream&);
 
 void read_pgen_pvar_psam(struct in_files*,struct param*,struct filter*,struct geno_block*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void read_pvar(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
 void read_psam(struct in_files*,struct param*,mstream&);
-void prep_pgen(const uint32_t,struct in_files*,struct param*,struct geno_block*,mstream&);
+void prep_pgen(const uint32_t&,const uint32_t&,struct in_files*,struct geno_block*,mstream&);
 
 void check_snps_include_exclude(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,const std::vector< int >&,mstream&);
 void set_snps_to_keep(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);

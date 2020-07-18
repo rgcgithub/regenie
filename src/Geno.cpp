@@ -180,6 +180,7 @@ void read_bgen_sample(const string sample_file, const int n_samples, std::vector
 
 void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
+  uint32_t nsamples_bed;
   std::vector< int > chr_read ;
   read_bim(files, params, filters, snpinfo, chr_read, sout);
   // check if should mask snps
@@ -187,10 +188,11 @@ void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter
 
   read_fam(files, params, sout);
   sout << "n_samples = " << params->n_samples << endl;
+  nsamples_bed = params->n_samples;
   // check if should mask samples
   check_samples_include_exclude(files, params, filters, sout);
 
-  prep_bed(files, params, sout);
+  prep_bed(nsamples_bed, files, sout);
 }
 
 
@@ -301,7 +303,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 }
 
 
-void prep_bed(struct in_files* files, struct param* params, mstream& sout) {
+void prep_bed(const uint32_t& nsamples, struct in_files* files, mstream& sout) {
 
   sout << left << std::setw(20) << " * bed" << ": [" << files->bedfile << "]" << endl;
   files->bed_ifstream.open(files->bedfile.c_str(), std::ios::in | std::ios::binary);
@@ -318,7 +320,7 @@ void prep_bed(struct in_files* files, struct param* params, mstream& sout) {
   }
 
   // size of genotype block [(n+3)/4 = ceil(n/4.0)]
-  files->bed_block_size = (params->n_samples+3)>>2;
+  files->bed_block_size = (nsamples+3)>>2;
   files->inbed.resize( files->bed_block_size );
 }
 
@@ -326,7 +328,7 @@ void prep_bed(struct in_files* files, struct param* params, mstream& sout) {
 
 void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct filter* filters, struct geno_block* gblock, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
-  uint32_t pgen_nvariants;
+  uint32_t pgen_nvariants, pgen_nsamples;
   std::vector< int > chr_read ;
 
   read_pvar(files, params, filters, snpinfo, chr_read, sout);
@@ -336,10 +338,11 @@ void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct fi
 
   read_psam(files, params, sout);
   sout << "n_samples = " << params->n_samples << endl;
+  pgen_nsamples = params->n_samples;
   // check if should mask samples
   check_samples_include_exclude(files, params, filters, sout);
 
-  prep_pgen(pgen_nvariants, files, params, gblock, sout);
+  prep_pgen(pgen_nsamples, pgen_nvariants, files, gblock, sout);
 }
 
 
@@ -483,7 +486,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 }
 
 
-void prep_pgen(const uint32_t pgen_nv, struct in_files* files, struct param* params, struct geno_block* gblock, mstream& sout){
+void prep_pgen(const uint32_t& pgen_ns, const uint32_t& pgen_nv, struct in_files* files, struct geno_block* gblock, mstream& sout){
 
   int pgen_samples, pgen_variants, pgen_ac;
   string fname;
@@ -491,12 +494,12 @@ void prep_pgen(const uint32_t pgen_nv, struct in_files* files, struct param* par
   fname = files->pgen_prefix + ".pgen";
   sout << left << std::setw(20) << " * pgen" << ": [" << fname << "] " << flush;
 
-  gblock->pgr.Load(fname, params->n_samples);
+  gblock->pgr.Load(fname, pgen_ns);
   pgen_samples = gblock->pgr.GetRawSampleCt();
   pgen_variants = gblock->pgr.GetVariantCt();
   pgen_ac = gblock->pgr.GetMaxAlleleCt();
 
-  if(pgen_samples != params->n_samples){
+  if(pgen_samples != pgen_ns){
     cerr << "ERROR: Number of samples in pgen file and psam file don't match.\n";
     exit(-1);
   }
@@ -509,7 +512,7 @@ void prep_pgen(const uint32_t pgen_nv, struct in_files* files, struct param* par
     exit(-1);
   }
 
-  gblock->genobuf.resize(params->n_samples);
+  gblock->genobuf.resize(pgen_ns);
   sout << endl;
 
 }
@@ -643,16 +646,53 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
 
 void check_samples_include_exclude(struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
 
-  //  keep track of samples in geno/pheno/covariates 
-  //   and those to ignore
-  filters->ind_ignore = ArrayXb::Constant(params->n_samples, false);
-  filters->ind_in_analysis = ArrayXb::Constant(params->n_samples, false);
+  uint32_t ind_pos = 0, cum_pos;
+  string ind_ID;
+  std::map <std::string, uint32_t> new_map;
+  std::map <std::string, uint32_t>::iterator itr; 
+  vector< string > allIDs;
+
+  //  keep track of samples to remove 
+  filters->ind_in_analysis = ArrayXb::Constant(params->n_samples, true);
 
   if( params->rm_indivs ) 
     set_IDs_to_rm(files, filters, params, sout);
   else if( params->keep_indivs ) 
     set_IDs_to_keep(files, filters, params, sout);
 
+  // to keep track of individual to exclude (i.e. not stored in memory)
+  // this is used when reading in genotypes
+  filters->ind_ignore = !filters->ind_in_analysis;
+
+  if( params->rm_indivs || params->keep_indivs ) {
+
+    // need to re-assign indices
+    // retrieve all sample IDs (need to keep same order as in genotype file)
+    allIDs.resize( params->n_samples );
+    for (itr = params->FID_IID_to_ind.begin(); itr != params->FID_IID_to_ind.end(); ++itr) { 
+      ind_ID = itr->first;
+      ind_pos = itr->second;
+      allIDs[ ind_pos ] = ind_ID;
+    }
+
+    // create new map
+    cum_pos = 0;
+    for( size_t j = 0; j < params->n_samples; j++){
+      if( !filters->ind_ignore(j) ){
+        new_map.insert( std::make_pair( allIDs[j] , cum_pos ) );
+        cum_pos++;
+      }
+    }
+
+    // save map
+    params->FID_IID_to_ind = new_map;
+
+    // resize ind_in_analysis
+    filters->ind_in_analysis = ArrayXb::Constant(cum_pos, true);
+  }
+
+
+  params->n_samples = filters->ind_in_analysis.cast<int>().sum();
 }
 
 
@@ -663,7 +703,7 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
   string line;
   std::vector< string > tmp_str_vec ;
   findID person;
-  filters->ind_ignore.fill(true);
+  filters->ind_in_analysis.fill(false);
 
 
   // track individuals to include -> remaining are ignored
@@ -684,16 +724,18 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
     if(!person.is_found) continue;
 
-    filters->ind_ignore(person.index) = false;
+    filters->ind_in_analysis(person.index) = true;
     n_kept++;
   }
 
+  sout << "   -keeping only individuals specified in [" << files->file_ind_include<< "]" << endl;
+
   // check size
   if( n_kept < 1 ) {
-    sout << "ERROR: None of the individuals specified by --keep are in the genotype file.\n";
+    sout << "ERROR: None of the individuals are in the genotype file.\n";
     exit(-1);
   }
-  sout << "   -keeping only individuals specified in [" << files->file_ind_include<< "]" << endl;
+
   sout << "     +number of genotyped individuals to keep in the analysis = " << n_kept << endl;
 
 }
@@ -723,13 +765,19 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
     if(!person.is_found) continue;
 
-    filters->ind_ignore(person.index) = true;
+    filters->ind_in_analysis(person.index) = false;
     n_rm++;
   }
 
   sout << "   -removing individuals specified in [" << files->file_ind_exclude<< "]" << endl;
-  sout << "     +number of genotyped individuals to exclude from the analysis = " << n_rm << endl;
 
+  if( n_rm == params->n_samples ){
+    sout << "ERROR: No individuals remain in the analysis.\n";
+    exit(-1);
+  }
+
+  sout << "     +number of genotyped individuals to exclude from the analysis = " << n_rm << endl;
+  
 }
 
 
@@ -766,6 +814,7 @@ void get_G(const int block, const int bs, const int chrom, uint32_t &snp_index_c
 void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
 
   int ns, hc_val;
+  uint32_t index ;
   double ds, total, info_num;
   bool switch_alleles;
   std::string chromosome, rsid;
@@ -790,16 +839,20 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     assert(chrStrToInt(chromosome, params->nChrom) == chrom);
     gblock->bgen.read_probs( &probs ) ;
 
-    ns = 0, hc_val = 0;
+    ns = 0, hc_val = 0, index = 0;
     total = 0, info_num = 0; 
     for( std::size_t i = 0; i < probs.size(); ++i ) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
+
       ds = 0;
       for( std::size_t j = 1; j < probs[i].size(); ++j ) ds += probs[i][j] * j;
 
       if(ds != -3) {
         ds = 2 - ds; // switch so that allele0 is ALT
-        if( filters->ind_in_analysis(i) ){
-          if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += ds;
             info_num += 4 * probs[i][0] + probs[i][1] - ds * ds;
             ns++;
@@ -809,17 +862,19 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
           if( params->htp_out ) {
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
             if( !params->binary_mode ) {
-              gblock->genocounts[snp].row(hc_val) += masked_indivs.row(i).cast<double>();
+              gblock->genocounts[snp].row(hc_val) += masked_indivs.row(index).cast<double>();
             } else {
-              gblock->genocounts[snp].row(hc_val).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-              gblock->genocounts[snp].row(3 + hc_val).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
+              gblock->genocounts[snp].row(hc_val).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
+              gblock->genocounts[snp].row(3 + hc_val).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
             }
           }
         }
       } 
-      gblock->Gmat(snp, i) = ds;
 
+      gblock->Gmat(snp, index) = ds;
+      index++;
     }
+
     if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) gblock->bad_snps(snp) = 1;
     //sout << "SNP#" << snp + 1 << "AC=" << total << " BAD="<< bad_snps(snp)<< endl;
     total /= ns;
@@ -842,22 +897,27 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
 
     // apply dominant/recessive encoding & recompute mean
     if(params->test_type > 0){
+      index = 0;
       for( std::size_t i = 0; i < probs.size(); ++i ) {
-        if( (gblock->Gmat(snp, i) != -3)  && filters->ind_in_analysis(i) && 
-            (!params->strict_mode || (params->strict_mode && masked_indivs(i,0))) ){
+        // skip samples that were ignored from the analysis
+        if( filters->ind_ignore(i) ) continue;
+
+        if( (gblock->Gmat(snp, index) != -3)  && filters->ind_in_analysis(index) && 
+            (!params->strict_mode || (params->strict_mode && masked_indivs(index,0))) ){
           if(params->test_type == 1){ //dominant
-            gblock->Gmat(snp, i) = probs[i][0] + probs[i][1]; // allele0 is ALT
+            gblock->Gmat(snp, index) = probs[i][0] + probs[i][1]; // allele0 is ALT
           } else if(params->test_type == 2){ //recessive
-            gblock->Gmat(snp, i) = probs[i][0];
+            gblock->Gmat(snp, index) = probs[i][0];
           }
         }
+        index++;
       }
       total = ((gblock->Gmat.row(snp).transpose().array()!= -3) && filters->ind_in_analysis).select(gblock->Gmat.row(snp).transpose().array(), 0).sum() / ns;
       if(total < params->numtol) gblock->bad_snps(snp) = 1;
     }
 
     // deal with missing data and center SNPs
-    for( std::size_t i = 0; i < probs.size(); ++i ) {
+    for( std::size_t i = 0; i < params->n_samples; ++i ) {
       ds = gblock->Gmat(snp, i);
       if( params->use_SPA && filters->ind_in_analysis(i) && ds > 0 ) gblock->non_zero_indices_G[snp].push_back(i);
 
@@ -879,6 +939,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
 void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct in_files* files, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
 
   int hc, ns, byte_start, bit_start;
+  uint32_t index ;
   double total; 
   bool switch_alleles;
   // mapping matches the switch of alleles done when reading bim
@@ -894,18 +955,22 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
       }
     }
 
-    ns = 0, total = 0;
+    ns = 0, total = 0, index = 0;
     files->bed_ifstream.read( reinterpret_cast<char *> (&files->inbed[0]), files->bed_block_size);
 
-    for (size_t i = 0; i < params->n_samples; i++) {
+    for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
+
       byte_start = i>>2; // 4 samples per byte
       bit_start = (i&3)<<1; // 2 bits per sample
       hc = maptogeno[ (files->inbed[byte_start] >> bit_start)&3 ]; 
-      gblock->Gmat(j, i) = hc;
+      gblock->Gmat(j, index) = hc;
 
       if(hc != -3) {
-        if( filters->ind_in_analysis(i) ){
-          if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += hc;
             ns++;
           }
@@ -913,13 +978,14 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
 
         // get genotype counts 
         if( params->htp_out ) {
-          if( !params->binary_mode ) gblock->genocounts[j].row(hc) += masked_indivs.row(i).cast<double>();
+          if( !params->binary_mode ) gblock->genocounts[j].row(hc) += masked_indivs.row(index).cast<double>();
           else {
-            gblock->genocounts[j].row(hc).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-            gblock->genocounts[j].row(3 + hc).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
+            gblock->genocounts[j].row(hc).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
+            gblock->genocounts[j].row(3 + hc).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
           }
         }
       }
+      index++;
     }
 
     if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) )  gblock->bad_snps(j) = 1;
@@ -973,6 +1039,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
 void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, mstream& sout) {
 
   int ns;
+  uint32_t index ;
   double ds, total;
 
   for(size_t j = 0; j < bs; ) {
@@ -986,18 +1053,23 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
     // read genotype data
     gblock->pgr.Read(gblock->genobuf, snp_index_counter, 1);
 
-    ns = 0, total = 0;
-    for (size_t i = 0; i < params->n_samples; i++) {
-      gblock->Gmat(j, i) = gblock->genobuf[i];
+    ns = 0, total = 0, index = 0;
+    for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
+
+      gblock->Gmat(j, index) = gblock->genobuf[i];
 
       if(gblock->genobuf[i] != -3.0) {
-        if( filters->ind_in_analysis(i) ){
-          if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += gblock->genobuf[i];
             ns++;
           }
         }
       }
+      index++;
     }
 
     total /= ns;
@@ -1187,8 +1259,8 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   uint minploidy = 0, maxploidy = 0, phasing = 0, bits_prob = 0;
   uint16_t numberOfAlleles = 0 ;
   uint32_t nindivs = 0;
+  uint32_t index;
   string tmp_buffer;
-  uint64 first_snp = infosnp->offset;
 
   // reset variant info
   snp_data->ignored = false;
@@ -1208,9 +1280,9 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
   // stream to uncompressed block
   uchar *buffer = &geno_block_uncompressed[0];
-  // sample size
+  // sample size in file
   std::memcpy(&nindivs, &(buffer[0]), 4);
-  assert( nindivs == params->n_samples );
+  assert( nindivs == filters->ind_ignore.size() );
   buffer += 4;
   // num alleles
   std::memcpy(&numberOfAlleles, &(buffer[0]), 2);
@@ -1246,36 +1318,46 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
 
   // parse genotype probabilities block
-  for(size_t i = 0; i < params->n_samples; i++) {
-    missing = ((ploidy_n[i]) & 0x80);
-    if(missing) {
-      snp_data->Geno(i) = -3;
+  index = 0;
+  for(size_t i = 0; i < nindivs; i++) {
+
+    // skip samples that were ignored from the analysis
+    if( filters->ind_ignore(i) ) {
       buffer+=2;
       continue;
     }
+
+    missing = ((ploidy_n[i]) & 0x80);
+    if(missing) {
+      snp_data->Geno(index) = -3;
+      buffer+=2;
+      continue;
+    }
+
     prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
     prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
-    snp_data->Geno(i) = 2 - (prob1 + 2 * (std::max( 1 - prob0 - prob1, 0.0) )); // switch allele0 to ALT
+    snp_data->Geno(index) = 2 - (prob1 + 2 * (std::max( 1 - prob0 - prob1, 0.0) )); // switch allele0 to ALT
 
-    if( filters->ind_in_analysis(i) ){
-      if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
-        total += snp_data->Geno(i);
-        info_num += 4 * prob0 + prob1 - snp_data->Geno(i) * snp_data->Geno(i);
+    if( filters->ind_in_analysis(index) ){
+      if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
+        total += snp_data->Geno(index);
+        info_num += 4 * prob0 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
         ns++;
       }
 
       // get genotype counts (convert to hardcall)
       if( params->htp_out ) {
-        hc_val = (int) (snp_data->Geno(i) + 0.5); // round to nearest integer 0/1/2
+        hc_val = (int) (snp_data->Geno(index) + 0.5); // round to nearest integer 0/1/2
         if( !params->binary_mode ) {
-          snp_data->genocounts.row(hc_val) += masked_indivs.row(i).cast<double>();
+          snp_data->genocounts.row(hc_val) += masked_indivs.row(index).cast<double>();
         } else {
-          snp_data->genocounts.row(hc_val).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-          snp_data->genocounts.row(3 + hc_val).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
+          snp_data->genocounts.row(hc_val).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
+          snp_data->genocounts.row(3 + hc_val).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
         }
       }
 
     }
+    index++;
   }
 
   // check MAC
@@ -1301,8 +1383,16 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   // apply dominant/recessive encoding & recompute mean
   if(params->test_type > 0){
     // go over data block again
-    buffer -= 2 * params->n_samples;
-    for(size_t i = 0; i < params->n_samples; i++) {
+    buffer -= 2 * nindivs;
+    index = 0;
+    for(size_t i = 0; i < nindivs; i++) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) {
+        buffer+=2;
+        continue;
+      }
+
       missing = ((ploidy_n[i]) & 0x80);
       if(missing) {
         buffer+=2;
@@ -1311,13 +1401,14 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
       prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
       prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
 
-      if(filters->ind_in_analysis(i)){
+      if(filters->ind_in_analysis(index)){
         if(params->test_type == 1){ //dominant
-          snp_data->Geno(i) = prob0 + prob1; // allele0 is ALT
+          snp_data->Geno(index) = prob0 + prob1; // allele0 is ALT
         } else if(params->test_type == 2){ //recessive
-          snp_data->Geno(i) = prob0; // allele0 is ALT
+          snp_data->Geno(index) = prob0; // allele0 is ALT
         }
       }
+      index++;
     }
     total = ((snp_data->Geno != -3) && filters->ind_in_analysis).select(snp_data->Geno, 0).sum() / ns;
     if(total < params->numtol) {
@@ -1333,7 +1424,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
     // keep track of number of entries filled so avoid using clear
     if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) {
       snp_data->n_non_zero++;
-      if(snp_data->n_non_zero > (params->n_samples / 2)) {
+      if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
         snp_data->fastSPA = false;
       } else {
         if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
@@ -1357,6 +1448,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, variant_block* snp_data){
 
   int hc, ns, byte_start, bit_start;
+  uint32_t index ;
   double total;
   // mapping matches the switch of alleles done when reading bim
   const int maptogeno[4] = {2, -3, 1, 0};
@@ -1368,16 +1460,20 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
   snp_data->fastSPA = params->use_SPA;
   snp_data->n_non_zero = 0;
 
-  ns = 0, total = 0;
-  for (size_t i = 0; i < params->n_samples; i++) {
+  ns = 0, total = 0, index = 0;
+  for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+
+    // skip samples that were ignored from the analysis
+    if( filters->ind_ignore(i) ) continue;
+
     byte_start = i>>2; // 4 samples per byte
     bit_start = (i&3)<<1; // 2 bits per sample
     hc = maptogeno[ (geno_block[byte_start] >> bit_start)&3 ];
-    snp_data->Geno(i) = hc;
+    snp_data->Geno(index) = hc;
 
     if(hc != -3) {
-      if( filters->ind_in_analysis(i) ){
-        if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
+      if( filters->ind_in_analysis(index) ){
+        if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
           total += hc;
           ns++;
         }
@@ -1386,14 +1482,15 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
       // get genotype counts
       if( params->htp_out ) {
         if( !params->binary_mode ) {
-          snp_data->genocounts.row(hc) += masked_indivs.row(i).cast<double>();
+          snp_data->genocounts.row(hc) += masked_indivs.row(index).cast<double>();
         } else {
-          snp_data->genocounts.row(hc).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-          snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
+          snp_data->genocounts.row(hc).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
+          snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
         }
       }
 
     }
+    index++;
   }
 
   // check MAC
@@ -1437,7 +1534,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
     // keep track of number of entries filled so avoid using clear
     if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && hc > 0 ) {
       snp_data->n_non_zero++;
-      if(snp_data->n_non_zero > (params->n_samples / 2)) {
+      if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
         snp_data->fastSPA = false;
       } else {
         if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
@@ -1460,6 +1557,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
 void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info){
 
   int hc, ns;
+  uint32_t index ;
   double ds, total;
 
   for(size_t j = 0; j < bs; j++) {
@@ -1475,12 +1573,17 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
     // read genotype data (either hardcalls or dosages if present)
     gblock->pgr.Read(gblock->genobuf, start + j, 1);
 
-    for (size_t i = 0; i < params->n_samples; i++) {
-      snp_data->Geno(i) = gblock->genobuf[i];
+    index = 0;
+    for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
+
+      snp_data->Geno(index) = gblock->genobuf[i];
 
       if(gblock->genobuf[i] != -3.0) {
-        if( filters->ind_in_analysis(i) ){
-          if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += gblock->genobuf[i];
             ns++;
           }
@@ -1488,16 +1591,17 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
 
         // get genotype counts
         if( params->htp_out ) {
-          hc = (int) (snp_data->Geno(i) + 0.5); // round to nearest integer 0/1/2
+          hc = (int) (snp_data->Geno(index) + 0.5); // round to nearest integer 0/1/2
           if( !params->binary_mode ) {
-            snp_data->genocounts.row(hc) += masked_indivs.row(i).cast<double>();
+            snp_data->genocounts.row(hc) += masked_indivs.row(index).cast<double>();
           } else {
-            snp_data->genocounts.row(hc).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-            snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
+            snp_data->genocounts.row(hc).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
+            snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
           }
         }
 
       }
+      index++;
     }
 
     // check MAC
@@ -1547,7 +1651,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
       // keep track of number of entries filled so avoid using clear
       if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) {
         snp_data->n_non_zero++;
-        if(snp_data->n_non_zero > (params->n_samples / 2)) {
+        if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
           snp_data->fastSPA = false;
         } else {
           if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)

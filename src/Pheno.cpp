@@ -36,6 +36,7 @@ using namespace boost;
 
 void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
 
+
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file == "NULL" );
 
@@ -163,9 +164,6 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     if(!person.is_found) continue;
 
     indiv_index = person.index;
-
-    // ignore sample if it is in exlusion list
-    if( filters->ind_ignore(indiv_index) ) continue;
 
     // check duplicate
     if( !ind_in_pheno_and_geno(indiv_index) ){
@@ -338,9 +336,6 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     if(!person.is_found) continue;
 
     indiv_index = person.index;
-
-    // ignore sample if it is in exlusion list
-    if( filters->ind_ignore(indiv_index) ) continue;
 
     // check duplicate
     if( !ind_in_cov_and_geno(indiv_index) ){
