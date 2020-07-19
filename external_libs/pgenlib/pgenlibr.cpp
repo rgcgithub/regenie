@@ -40,7 +40,7 @@ PgenReader::~PgenReader() {
   Close();
 }
 
-void PgenReader::Load(std::string filename, uint32_t cur_sample_ct) {
+void PgenReader::Load(std::string filename, uint32_t cur_sample_ct, std::vector<int> sample_subset_1based) {
   if (_info_ptr) {
     Close();
   }
@@ -173,7 +173,13 @@ void PgenReader::Load(std::string filename, uint32_t cur_sample_ct) {
   pgr_alloc_iter = &(pgr_alloc_iter[sample_subset_byte_ct]);
   _pgv.dosage_main = reinterpret_cast<uint16_t*>(pgr_alloc_iter);
   pgr_alloc_iter = &(pgr_alloc_iter[dosage_main_byte_ct]);
-  _subset_size = file_sample_ct;
+
+  if (sample_subset_1based.size() > 0) {
+    SetSampleSubsetInternal(sample_subset_1based);
+  } else {
+    _subset_size = file_sample_ct;
+  }
+
   pgr_alloc_iter = &(pgr_alloc_iter[plink2::kPglBitTransposeBufbytes]);
   _multivar_vmaj_geno_buf = reinterpret_cast<uintptr_t*>(pgr_alloc_iter);
   pgr_alloc_iter = &(pgr_alloc_iter[plink2::kPglNypTransposeBatch * genovec_byte_ct]);

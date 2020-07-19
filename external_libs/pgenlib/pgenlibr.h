@@ -41,7 +41,7 @@ class PgenReader {
 public:
   PgenReader();
 
-  void Load(std::string filename, uint32_t cur_sample_ct);
+  void Load(std::string filename, uint32_t cur_sample_ct, std::vector<int> sample_subset_1based);
 
   uint32_t GetRawSampleCt() const;
 
