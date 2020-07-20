@@ -1528,7 +1528,9 @@ void Data::test_snps() {
 
           // for HTPv4 output
           if(params.htp_out){
-            if(!params.binary_mode || ( (outp_val >= 0) & params.firth & pval_converged ) ){
+
+            // Effect / CI bounds / Pvalue columns
+            if(!params.binary_mode || ( params.firth & (outp_val >= 0) ) ){
 
               if(!params.binary_mode) // QT
                 ofile_split[j] << bhat << "\t" << (bhat - zcrit * se_b) << "\t" << (bhat + zcrit * se_b) << "\t" << outp_val << "\t";
@@ -1545,14 +1547,17 @@ void Data::test_snps() {
                 effect_val = (2*Gblock.genocounts[i](3,j)+Gblock.genocounts[i](4,j)+.5)*(2*Gblock.genocounts[i](2,j)+Gblock.genocounts[i](1,j)+.5)/(2*Gblock.genocounts[i](5,j)+Gblock.genocounts[i](4,j)+.5)/(2*Gblock.genocounts[i](0,j)+Gblock.genocounts[i](1,j)+.5);
                 // compute SE = log(allelic OR) / zstat
                 outse_val = fabs(log(effect_val)) / quantile(complement(nd, outp_val/2 ));
+
                 ofile_split[j] << effect_val << "\t" << effect_val * exp(- zcrit * outse_val) << "\t" << effect_val * exp(zcrit * outse_val) << "\t" << outp_val << "\t";
               }
             }
 
             // print out AF
             ofile_split[j] << Gblock.snp_afs(i, 0) << "\t";
+
             // print counts in cases
             ofile_split[j] << (int) Gblock.genocounts[i].block(0,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](0,j) << "\t" << (int) Gblock.genocounts[i](1,j) << "\t" << (int) Gblock.genocounts[i](2,j) << "\t";
+
             // print counts in controls
             if(params.binary_mode){
               ofile_split[j] << (int) Gblock.genocounts[i].block(3,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](3,j) << "\t" << (int) Gblock.genocounts[i](4,j) << "\t" << (int) Gblock.genocounts[i](5,j);
@@ -1560,21 +1565,23 @@ void Data::test_snps() {
 
             // info column
             if(params.binary_mode){
-              if( (params.firth && !pval_converged) || !params.firth){
-                if(outp_val >= 0){
-                  ofile_split[j] << "\t" << "REGENIE_BETA=" << bhat;
-                  ofile_split[j] << ";" << "REGENIE_SE=" << se_b;
-                  ofile_split[j] << ";" << "SE=" << outse_val;
-                } else ofile_split[j] << "\t" << "REGENIE_BETA=NA;REGENIE_SE=NA;SE=NA";
+              if(outp_val<0){ // only have NA
+                ofile_split[j] << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") << 
+                  "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
+              } else {
+                // Firth => only SE
+                if(params.firth){
+                  ofile_split[j] << "\t" << "REGENIE_SE=" << se_b;
+                } else {
+                  // SPA/uncorrected logistic => beta & SEs
+                  ofile_split[j] << "\t" << "REGENIE_BETA=" << bhat << 
+                    ";" << "REGENIE_SE=" << se_b << 
+                    ";" << "SE=" << outse_val;
+                }
               }
-            }
+            } else ofile_split[j] << "\t" << "REGENIE_SE=" << se_b; // fot QTs
 
-            if(params.file_type == "bgen") {
-              ofile_split[j] << 
-                (params.binary_mode && (!params.firth || (params.firth & !pval_converged)) ? ";" : "\t") << "INFO=" << Gblock.snp_info(i,0);
-            } else if(!params.binary_mode || (params.firth && pval_converged)){
-              ofile_split[j] << "\tNA"; 
-            } 
+            if(params.file_type == "bgen") ofile_split[j] << ";INFO=" << Gblock.snp_info(i,0);
           }
 
           if(params.split_by_pheno) ofile_split[j] << endl;
@@ -2213,7 +2220,7 @@ void Data::test_snps_fast() {
 
           // for HTPv4 output
           if(params.htp_out){
-            if(!params.binary_mode || ( (outp_val >= 0) & params.firth & !block_info[isnp].test_fail[j] ) ){
+            if(!params.binary_mode || (params.firth & !block_info[isnp].test_fail[j]) ){
 
               if(!params.binary_mode) // QT
                 ofile_split[j] << block_info[isnp].bhat(j) << "\t" << block_info[isnp].bhat(j) - zcrit * block_info[isnp].se_b(j) << "\t" << block_info[isnp].bhat(j) + zcrit * block_info[isnp].se_b(j) << "\t" << outp_val << "\t";
@@ -2244,21 +2251,23 @@ void Data::test_snps_fast() {
 
             // info column
             if(params.binary_mode){
-              if( (params.firth && block_info[isnp].test_fail[j]) || !params.firth){
-                if(outp_val >= 0){
-                  ofile_split[j] << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j);
-                  ofile_split[j] << ";" << "REGENIE_SE=" << block_info[isnp].se_b(j);
-                  ofile_split[j] << ";" << "SE=" << outse_val;
-                } else ofile_split[j] << "\t" << "REGENIE_BETA=NA;REGENIE_SE=NA;SE=NA";
+              if(outp_val < 0){
+                ofile_split[j] << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") << 
+                  "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
+              } else {
+                // Firth => only SE
+                if(params.firth){
+                  ofile_split[j] << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j);
+                } else {
+                  // SPA/uncorrected logistic => beta & SEs
+                  ofile_split[j] << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) << 
+                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) << 
+                    ";" << "SE=" << outse_val;
+                }
               }
-            }
-            if(params.file_type == "bgen") {
-              ofile_split[j] << 
-                (params.binary_mode && (!params.firth || (params.firth & block_info[isnp].test_fail[j])) ? ";" : "\t") << "INFO=" << block_info[isnp].info;
-            } else if(!params.binary_mode || (params.firth && !block_info[isnp].test_fail[j])){
-              ofile_split[j] << "\tNA"; 
-            }
+            } else ofile_split[j] << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j); // for QTs
 
+            if(params.file_type == "bgen") ofile_split[j] << ";INFO=" << block_info[isnp].info;
           }
 
           if(params.split_by_pheno) ofile_split[j] << endl;

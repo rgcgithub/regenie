@@ -121,7 +121,7 @@ void print_help( bool help_full ){
     cout << left << std::setw(35) << " --nauto INT (=22)"<< "number of autosomal chromosomes\n";
     cout << left << std::setw(35) << " --niter INT (=30)"<< "maximum number of iterations for logistic regression\n";
     cout << left << std::setw(35) << " --maxstep-null INT (=25)"<< "maximum step size in null Firth logistic regression\n";
-    cout << left << std::setw(35) << " --maxiter-null INT (=25)"<< "maximum number of iterations in null Firth logistic regression\n";
+    cout << left << std::setw(35) << " --maxiter-null INT (=1000)"<< "maximum number of iterations in null Firth logistic regression\n";
     cout << left << std::setw(35) << " --within" << "use within-sample predictions as input when fitting model\n" <<
       std::setw(35) << " " << "across blocks.\n";
   }
