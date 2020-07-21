@@ -5,13 +5,14 @@ The **regenie** source code is hosted on
 
 ##Installation
 
+Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) or Clang version >=3.3 (on Mac OSX)
+
 1. **regenie** requires the
   [BGEN library](https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk) so
   you will need to download and install that library.
 2. In the source code edit the BGEN_PATH variable in the `Makefile`
    to the BGEN library path.
 3. On the command line type `make` while in the main source code directory.
-    - Compile using [GCC](https://gcc.gnu.org) version >= 5.1
 4. This should produce the executable called `regenie`.
 
 Pre-compiled executable files for **regenie** (in Mac OSX 10.14 and x86 64-bit Linux) are available in the `bin/` directory.
@@ -20,6 +21,8 @@ Pre-compiled executable files for **regenie** (in Mac OSX 10.14 and x86 64-bit L
 ##Computing requirements
 
 We have tested **regenie** on 64-bit Linux and 64-bit Mac OSX computing environments.
+ 
+Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. 
 
 ### Memory usage
 In both Step 1 and Step 2 of a **regenie** run the genetic data file is
