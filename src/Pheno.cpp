@@ -83,6 +83,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
+  bool all_miss;
   bool keep_pheno;
   double mean;
   string line;
@@ -155,7 +156,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   while( getline (myfile,line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
-    if( tmp_str_vec.size() < pheno_colKeep.size() ){
+    if( tmp_str_vec.size() != (2+pheno_colKeep.size()) ){
       sout << "ERROR: Incorrectly formatted phenotype file." << endl;
       exit(-1);
     }
@@ -174,6 +175,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     }
 
     // read phenotypes 
+    all_miss = true;
     for(int i_pheno = 0, j = 0; j < pheno_colKeep.size(); j++) {
 
       if( !pheno_colKeep[j] ) continue;
@@ -209,6 +211,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
       if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double ) {
         total(i_pheno) +=  pheno_data->phenotypes(indiv_index, i_pheno);
         ns(i_pheno) +=  1;
+        all_miss = false;
       } else {
         if( params->test_mode && params->rm_missing_qt ) pheno_data->masked_indivs(indiv_index, i_pheno) = false;
         if( params->strict_mode ) pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
@@ -216,6 +219,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
       i_pheno++;
     }
+
+    if( all_miss ) ind_in_pheno_and_geno( indiv_index ) = false; // if individual has no phenotype data at all
 
   }
 
