@@ -699,12 +699,12 @@ void start_log(int argc, char **argv, const string out_file, MeasureTime* mt, ms
   sout << "Log of output saved in file : " << log_name << endl<< endl;
 
   // print options
-  sout << "Command line arguments:";
+  sout << "Command line arguments:" << endl << argv[0] << " ";
   for(size_t counter=1;counter<argc;counter++){	  
     trimmed_str = string(argv[counter]);  // trim this
     trimmed_str.erase(std::remove_if(trimmed_str.begin(), trimmed_str.end(), ::isspace), trimmed_str.end());
 
-    if( trimmed_str[0] == '-') sout << endl << "  ";
+    if( trimmed_str[0] == '-') sout << "\\" << endl << "  ";
     sout << trimmed_str << " ";
   }
   sout << endl << endl;
