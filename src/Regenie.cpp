@@ -691,6 +691,10 @@ void start_log(int argc, char **argv, const string out_file, MeasureTime* mt, ms
   string trimmed_str;
   string log_name = out_file + ".log";
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
+  if (!sout.coss.is_open()) {
+    cerr << "ERROR : Cannot write log file '" << log_name << "'\n" ;
+    exit(-1);
+  } 
 
   mt->init();
   sout << "Start time: " << ctime( &(mt->start_time_info) ) << endl; 

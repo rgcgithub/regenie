@@ -24,6 +24,7 @@
 
 */
 
+#include <boost/filesystem.hpp>
 #include "Regenie.hpp"
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
@@ -34,6 +35,7 @@
 using namespace std;
 using namespace Eigen;
 using namespace boost;
+namespace fs = boost::filesystem;
 
 
 template <typename T> int sgn(T val) {
@@ -561,7 +563,8 @@ void Data::output() {
 
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
-  string pfile, out_blup_list, pline;
+  string pfile, out_blup_list, pline, loco_filename;
+  fs::path fullpath; 
   ofstream outb;
 
   sout << "Output" << endl << "------" << endl;
@@ -574,14 +577,18 @@ void Data::output() {
   for(size_t ph = 0; ph < params.n_pheno; ++ph ) { 
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
+    loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco";
 
     if( params.make_loco || params.binary_mode ) {
 
+      // convert to full path
+      fullpath = fs::canonical( loco_filename );
+
       if( !params.binary_mode ) { // for quantitative traits
-        outb << files.pheno_names[ph]  << " " << files.out_file << "_" << ph + 1 << ".loco" << endl;
+        outb << files.pheno_names[ph]  << " " << fullpath.string() << endl;
       } else { // for binary traits - check level 1 ridge converged
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
-          outb << files.pheno_names[ph]  << " " << files.out_file << "_" << ph + 1 << ".loco" << endl;
+          outb << files.pheno_names[ph]  << " " << fullpath.string() << endl;
         } else {
           if(params.write_l0_pred){ // cleanup level 0 predictions
             pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);

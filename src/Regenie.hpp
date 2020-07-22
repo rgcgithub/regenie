@@ -58,7 +58,7 @@
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.5.1"
+#define VERSION_NUMBER "1.0.5.2"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
