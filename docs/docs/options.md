@@ -22,12 +22,12 @@ a set of genomic predictions are produced as output
   --step 1 \
   --bed example/example \
   --exclude example/snplist_rm.txt \
-  --c example/covariates.txt \
-  --p example/phenotype_bin.txt \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
   --remove example/fid_iid_to_remove.txt \
-  --b 100 \
+  --bsize 100 \
   --bt --lowmem \
-  --o fit_bin_out
+  --out fit_bin_out
 ```
 
 In **Step 2** a set of imputed SNPs are tested for association using a
@@ -37,15 +37,15 @@ Firth logistic regression model
 ./regenie \
   --step 2 \
   --bgen example/example.bgen \
-  --c example/covariates.txt \
-  --p example/phenotype_bin.txt \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
   --remove example/fid_iid_to_remove.txt \
-  --b 200 \
+  --bsize 200 \
   --bt \
   --firth 0.01 --approx \
   --pred fit_bin_out_pred.list \
   --split \
-  --o test_bin_out_firth
+  --out test_bin_out_firth
 ```
 
 One of the output files from these two commands is included in the `example/` directory and you can check the two files using 
@@ -65,10 +65,10 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
 |`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep **(only works with option `--step 1`)**|
 |`--exclude`  | FILE | Optional | Exclusion file that lists IDs of variants to remove **(only works with option `--step 1`)**|
-|`--p`  | FILE | Required |Phenotypes file|
+|`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
-|`--c`  | FILE | Optional | Covariates file|
+|`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
 |`--covarColList` | STRING | Optional | Comma separated list of covariates to include in the analysis|
 |`--pred`  | FILE | Optional  | File containing predictions from Step 1 (see Overview). **This is required for `--step 2`**|
@@ -219,7 +219,7 @@ predictions** (otherwise use `--remove`).
 |`--step`| INT| Required| specify step for the regenie run (see Overview) [argument can be `1` or `2`] |
 |`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)|
 |`--1`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
-|`--b`| INT| Required| size of the genotype blocks|
+|`--bsize`| INT| Required| size of the genotype blocks|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
 |`--loocv`| FLAG | Optional| flag to use leave-one out cross validation|
 |`--lowmem`| FILE PREFIX | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
@@ -256,11 +256,11 @@ was not successful in which case the user would need to delete the files)
 
 | Option | Argument | Type | Description|
 |---|-------|------|----|
-|`--o`| FILE PREFIX| Required| Output files that depends on `--step`|
+|`--out`| FILE PREFIX| Required| Output files that depends on `--step`|
 
 A log file `file.log` of the output is generated.
 
-**Using `--step 1 --o file`**
+**Using `--step 1 --out file`**
 
 For the \(P\) phenotypes, files `file_1.loco`,...,`file_P.loco` are output with the
 per-chromosome LOCO predictions as columns of the files.
@@ -274,7 +274,7 @@ are included in the file and have their predictions set to missing.
 
 The list of blup files needed for step 2 (association testing) is written to  `file_pred.list`.
 
-**Using`--step 2 --o file`** 
+**Using`--step 2 --out file`** 
 
 By default, results are written to a single file `file.regenie`, which has one line per
 SNP along with a header line.

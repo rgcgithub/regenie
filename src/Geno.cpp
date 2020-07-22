@@ -109,7 +109,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   // check duplicates -- if not, store in map
   for(size_t i = 0; i < params->n_samples; i++) {
     if (params->FID_IID_to_ind.find(tmp_ids[i]) != params->FID_IID_to_ind.end()) {
-      sout << "ERROR: Duplicate individual in .bgen file : FID_IID=" << tmp_ids[i] << endl;
+      sout << "ERROR: Duplicate individual in bgen file : FID_IID=" << tmp_ids[i] << endl;
       exit(1);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_ids[i], i ) );
@@ -137,7 +137,7 @@ void read_bgen_sample(const string sample_file, const int n_samples, std::vector
   sout << "   -sample file: " << sample_file << endl;
   myfile.open (sample_file, ios::in);
   if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open sample file : " << sample_file << endl;
+    sout << "ERROR: Cannot open sample file." << endl;
     exit(-1);
   }
 
@@ -203,13 +203,14 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
   uint64 lineread = 0; 
   std::vector< string > tmp_str_vec ;
   snp tmp_snp; 
-  string line;
+  string line, fname;
   ifstream myfile;
 
-  sout << left << std::setw(20) << " * bim" << ": [" << files->bimfile << "] " << flush;
-  myfile.open(files->bimfile.c_str());
+  fname = files->bed_prefix + ".bim";
+  sout << left << std::setw(20) << " * bim" << ": [" << fname << "] " << flush;
+  myfile.open(fname.c_str());
   if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open bim file : " << files->bimfile << endl;
+    sout << "ERROR: Cannot open bim file." << endl;
     exit(1);
   }
 
@@ -244,7 +245,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
     if( chr_read.empty() || (tmp_snp.chrom != chr_read.back() ) ) {
       chr_read.push_back(tmp_snp.chrom);
       if( tmp_snp.chrom <= minChr_read ){
-        sout << "ERROR: Chromosomes in .bim file are not in ascending order.\n";
+        sout << "ERROR: Chromosomes in bim file are not in ascending order.\n";
         exit(-1);
       } else minChr_read = tmp_snp.chrom;
     }
@@ -267,14 +268,15 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
   int sex, lineread = 0; 
   double yval;
-  string line, tmp_id;
+  string line, tmp_id, fname;
   std::vector< string > tmp_str_vec ;
   ifstream myfile;
 
-  sout << left << std::setw(20) << " * fam" << ": [" << files->famfile << "] ";
-  myfile.open(files->famfile.c_str());
+  fname = files->bed_prefix + ".fam";
+  sout << left << std::setw(20) << " * fam" << ": [" << fname << "] ";
+  myfile.open(fname.c_str());
   if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open fam file : " << files->famfile << endl;
+    sout << "ERROR: Cannot open fam file." << endl;
     exit(1);
   }
 
@@ -305,17 +307,20 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
 void prep_bed(const uint32_t& nsamples, struct in_files* files, mstream& sout) {
 
-  sout << left << std::setw(20) << " * bed" << ": [" << files->bedfile << "]" << endl;
-  files->bed_ifstream.open(files->bedfile.c_str(), std::ios::in | std::ios::binary);
+  string fname;
+
+  fname = files->bed_prefix + ".bed";
+  sout << left << std::setw(20) << " * bed" << ": [" << fname << "]" << endl;
+  files->bed_ifstream.open(fname.c_str(), std::ios::in | std::ios::binary);
   if (!files->bed_ifstream.is_open()) {    
-    sout << "ERROR: Cannot open bed file : " << files->bedfile << endl;
+    sout << "ERROR: Cannot open bed file." << endl;
     exit(1);
   }
 
   uchar header[3];
   files->bed_ifstream.read( reinterpret_cast<char *> (&header[0]), 3);
   if ( (header[0] != 0x6c) || (header[1] != 0x1b) || (header[2] != 0x01) ) {
-    sout << "ERROR: Incorrect magic number in bed file : " << files->bedfile << endl;
+    sout << "ERROR: Incorrect magic number in bed file.\n";
     exit(1);
   }
 
@@ -360,7 +365,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
   sout << left << std::setw(20) << " * pvar" << ": [" << fname << "] " << flush;
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {
-    sout << "ERROR: Cannot open pvar file : " << fname << endl;
+    sout << "ERROR: Cannot open pvar file." << endl;
     exit(1);
   }
 
@@ -440,7 +445,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   sout << left << std::setw(20) << " * psam" << ": [" << fname << "] " << flush;
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {
-    sout << "ERROR: Cannot open psam file : " << fname << endl;
+    sout << "ERROR: Cannot open psam file." << endl;
     exit(1);
   }
 

@@ -38,7 +38,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
 
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
-  ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file == "NULL" );
+  ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file.empty());
 
   // read in phenotype (mean-impute for QT)
   pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
@@ -50,7 +50,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->strict_mode) pheno_data->new_cov.array() *= pheno_data->masked_indivs.col(0).array().cast<double>();;
 
   // read in covariates
-  if(files->cov_file != "NULL") covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
+  if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
 
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno * ind_in_cov_and_geno;
@@ -196,8 +196,12 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
             sout << "ERROR: No missing value allowed in phenotype file with option -within" << endl;
             exit(-1);
           } else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
-            sout << "ERROR: A phenotype value is not 0/1/NA for individual: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-            sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
+            sout << "ERROR: A phenotype value is not "<<
+              (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA") <<
+              " for individual: FID=" << tmp_str_vec[0] << 
+              " IID=" << tmp_str_vec[1] << 
+              " Y=" << tmp_str_vec[2+j] << endl;
+            //sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
             exit(-1);
           }
 

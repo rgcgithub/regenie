@@ -582,13 +582,13 @@ void Data::output() {
     if( params.make_loco || params.binary_mode ) {
 
       // convert to full path
-      fullpath = fs::canonical( loco_filename );
+      fullpath = fs::absolute(loco_filename);
 
       if( !params.binary_mode ) { // for quantitative traits
-        outb << files.pheno_names[ph]  << " " << fullpath.string() << endl;
+        outb << files.pheno_names[ph]  << " " << fullpath.make_preferred().string() << endl;
       } else { // for binary traits - check level 1 ridge converged
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
-          outb << files.pheno_names[ph]  << " " << fullpath.string() << endl;
+          outb << files.pheno_names[ph]  << " " << fullpath.make_preferred().string() << endl;
         } else {
           if(params.write_l0_pred){ // cleanup level 0 predictions
             pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);

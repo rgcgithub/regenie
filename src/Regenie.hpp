@@ -58,7 +58,7 @@
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.5.2"
+#define VERSION_NUMBER "1.0.5.3"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -127,7 +127,7 @@ struct param {
 
   //////
   // global options
-  int run_mode = 0; // running in null model fitting (=1) or association testing (=2)
+  int run_mode; // running in null model fitting (=1) or association testing (=2)
   bool test_mode = false; // step 1: false; step 2 = true
   bool binary_mode = false; // QT = false, BT = true
   bool strict_mode = false; // remove individuals with any NA
@@ -151,12 +151,11 @@ struct param {
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-16;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
-  uint threads = 0;
-  int n_genofiles = 0; 
+  int threads = 0;
   bool verbose = false;
 
   // for input data
-  int n_samples = 0; // number of samples
+  uint32_t n_samples = 0; // number of samples
   int n_pheno = 0; // number of phenotypes
   int n_cov = 0; // number of covariates
   uint32_t n_variants = 0; // number of variants in bgen file
@@ -164,10 +163,10 @@ struct param {
 
 
   // step 1 
-  int block_size = -1; // number of SNPs per block
+  int block_size; // number of SNPs per block
   int cv_folds = 5; // number of CV folds
-  int n_block = -1; // number of blocks to run
-  int total_n_block = -1; // number of blocks to run across all chrs
+  int n_block; // number of blocks to run
+  int total_n_block = 0; // number of blocks to run across all chrs
   int n_ridge_l0 = 5; // number of ridge parameters at level 0
   int n_ridge_l1 = 5; // number of ridge parameters at level 1
   int chunk_mb = 1000; // max amount of memory to use with LOOCV
@@ -180,16 +179,16 @@ struct param {
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
   uint32_t print_snpcount = 0; 
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >  beta_print_out;
-  std::vector<int> cv_sizes;
   std::vector<double> lambda; // ridge parameters at level 0
   std::vector<double> tau; // ridge parameters at level 1
   // TO REMOVE
   bool within_sample_l0 = false; // specify to use within-sample predictions as features at level 1 (default is to use out-of-sample predictions)
+  std::vector<int> cv_sizes;
 
 
   // step 2
   bool rm_missing_qt = true; // remove missing individuals when performing test with QTs
-  std::string file_type = "null"; // type of the genotype file format;
+  std::string file_type; // type of the genotype file format;
   bool streamBGEN = true; // use fast version of step 2 when testing with BGEN v1.2 zlib compressed input
   bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
@@ -214,22 +213,22 @@ struct param {
   int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
   bool fix_maxstep_null = false; // if user specifies max step size
   bool htp_out = false; 
-  std::string cohort_name = "NULL"; // Name of cohort to add in HTP output
+  std::string cohort_name; // Name of cohort to add in HTP output
 
 };
 
 // for input files
 struct in_files {
 
-  std::string bedfile="NULL", bimfile="NULL", famfile="NULL";
-  std::string bgen_file = "NULL", sample_file = "NULL";
-  std::string pgen_prefix="NULL";
-  std::string file_ind_include = "NULL", file_ind_exclude = "NULL";
-  std::string file_snps_include = "NULL", file_snps_exclude = "NULL";
-  std::string cov_file = "NULL", pheno_file = "NULL";
-  std::string loco_tmp_prefix = "NULL";
-  std::string out_file = "NULL";
-  std::string blup_file = "NULL";
+  std::string bed_prefix;
+  std::string pgen_prefix;
+  std::string bgen_file, sample_file;
+  std::string file_ind_include, file_ind_exclude;
+  std::string file_snps_include, file_snps_exclude;
+  std::string cov_file, pheno_file;
+  std::string loco_tmp_prefix;
+  std::string out_file;
+  std::string blup_file;
   std::vector<std::string> blup_files;
   std::vector<std::string> pheno_names;
   std::vector<int> chr_counts, chr_file_counts;
