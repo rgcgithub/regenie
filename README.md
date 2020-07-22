@@ -31,7 +31,7 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-Version 1.0.5.2 (Changed default behavior to remove individuals who have missing data at all phenotypes in the analysis)
+Version 1.0.5.2 (Changed default behavior to remove individuals who have missing data at all phenotypes in the analysis; absolute paths are written in the predictions list file created in step 1)
 
 Version 1.0.5.1 (Reduced memory usage and computational time when using options to keep/remove genotyped samples from the analysis)
 
