@@ -187,12 +187,12 @@ a set of genomic predictions are produced as output</p>
   --step 1 \
   --bed example/example \
   --exclude example/snplist_rm.txt \
-  --c example/covariates.txt \
-  --p example/phenotype_bin.txt \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
   --remove example/fid_iid_to_remove.txt \
-  --b 100 \
+  --bsize 100 \
   --bt --lowmem \
-  --o fit_bin_out
+  --out fit_bin_out
 </code></pre>
 
 <p>In <strong>Step 2</strong> a set of imputed SNPs are tested for association using a
@@ -200,15 +200,15 @@ Firth logistic regression model</p>
 <pre><code>./regenie \
   --step 2 \
   --bgen example/example.bgen \
-  --c example/covariates.txt \
-  --p example/phenotype_bin.txt \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
   --remove example/fid_iid_to_remove.txt \
-  --b 200 \
+  --bsize 200 \
   --bt \
   --firth 0.01 --approx \
   --pred fit_bin_out_pred.list \
   --split \
-  --o test_bin_out_firth
+  --out test_bin_out_firth
 </code></pre>
 
 <p>One of the output files from these two commands is included in the <code>example/</code> directory and you can check the two files using </p>
@@ -263,7 +263,7 @@ Firth logistic regression model</p>
 <td>Exclusion file that lists IDs of variants to remove <strong>(only works with option <code>--step 1</code>)</strong></td>
 </tr>
 <tr>
-<td><code>--p</code></td>
+<td><code>--phenoFile</code></td>
 <td>FILE</td>
 <td>Required</td>
 <td>Phenotypes file</td>
@@ -281,7 +281,7 @@ Firth logistic regression model</p>
 <td>Comma separated list of phenotypes to include in the analysis</td>
 </tr>
 <tr>
-<td><code>--c</code></td>
+<td><code>--covarFile</code></td>
 <td>FILE</td>
 <td>Optional</td>
 <td>Covariates file</td>
@@ -432,7 +432,7 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)</td>
 </tr>
 <tr>
-<td><code>--b</code></td>
+<td><code>--bsize</code></td>
 <td>INT</td>
 <td>Required</td>
 <td>size of the genotype blocks</td>
@@ -596,7 +596,7 @@ was not successful in which case the user would need to delete the files)</p>
 </thead>
 <tbody>
 <tr>
-<td><code>--o</code></td>
+<td><code>--out</code></td>
 <td>FILE PREFIX</td>
 <td>Required</td>
 <td>Output files that depends on <code>--step</code></td>
@@ -604,7 +604,7 @@ was not successful in which case the user would need to delete the files)</p>
 </tbody>
 </table>
 <p>A log file <code>file.log</code> of the output is generated.</p>
-<p><strong>Using <code>--step 1 --o file</code></strong></p>
+<p><strong>Using <code>--step 1 --out file</code></strong></p>
 <p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
 per-chromosome LOCO predictions as columns of the files.</p>
 <p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
@@ -613,7 +613,7 @@ per-chromosome LOCO predictions as columns of the files.</p>
 <p>Individuals with missing phenotype values kept in the analysis 
 are included in the file and have their predictions set to missing.</p>
 <p>The list of blup files needed for step 2 (association testing) is written to  <code>file_pred.list</code>.</p>
-<p><strong>Using<code>--step 2 --o file</code></strong> </p>
+<p><strong>Using<code>--step 2 --out file</code></strong> </p>
 <p>By default, results are written to a single file <code>file.regenie</code>, which has one line per
 SNP along with a header line.</p>
 <p>The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
