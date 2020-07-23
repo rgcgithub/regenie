@@ -378,7 +378,7 @@ they are dropped when fitting the level 1 logistic ridge regression for each tra
 In Step 2, missing values are dropped when testing each trait.</p>
 <p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
 <h4 id="predictions-file-format">Predictions file format</h4>
-<p>Running <code>--step 1 --o foo</code> will produce</p>
+<p>Running <code>--step 1 --out foo</code> will produce</p>
 <ol>
 <li>A set of files containing genomic predictions for each phenotype
    from Step 1 (see Output section below).</li>
@@ -581,7 +581,7 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 temporary files are created on disk where the prefix argument, if specified, 
 determines where the files are written (as in <code>prefix_l0_Y1</code>,...,<code>prefix_l0_YP</code> 
 for P phenotypes). If the prefix argument is omitted, the default is to use the 
-prefix specified by <code>--o</code> (see below).
+prefix specified by <code>--out</code> (see below).
 These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)</p>
 <h2 id="output">Output</h2>
