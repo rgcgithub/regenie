@@ -283,6 +283,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         boost::algorithm::split(tmp_str_vec, vm["setl0"].as<string>(), is_any_of(","));
         for( size_t val = 0; val < tmp_str_vec.size(); val++)
           params->lambda.push_back(convertDouble( tmp_str_vec[val], params, sout));
+        std::sort(params->lambda.begin(), params->lambda.end());
+        params->lambda.erase( unique( params->lambda.begin(), params->lambda.end() ), params->lambda.end() );
         params->n_ridge_l0 = params->lambda.size();
         // parameters must be less in (0, 1)
         if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 ){
@@ -297,6 +299,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         boost::algorithm::split(tmp_str_vec, vm["setl1"].as<string>(), is_any_of(","));
         for( size_t val = 0; val < tmp_str_vec.size(); val++)
           params->tau.push_back(convertDouble( tmp_str_vec[val], params, sout));
+        std::sort(params->tau.begin(), params->tau.end());
+        params->tau.erase( unique( params->tau.begin(), params->tau.end() ), params->tau.end() );
         params->n_ridge_l1 = params->tau.size();
         if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 ){
           sout << "ERROR : You must specify values for --l1 in (0,1).\n" << params->err_help;
