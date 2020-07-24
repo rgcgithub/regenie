@@ -27,6 +27,7 @@ a set of genomic predictions are produced as output
   --remove example/fid_iid_to_remove.txt \
   --bsize 100 \
   --bt --lowmem \
+  --lowmem-prefix tmp_rg \
   --out fit_bin_out
 ```
 
@@ -42,7 +43,8 @@ Firth logistic regression model
   --remove example/fid_iid_to_remove.txt \
   --bsize 200 \
   --bt \
-  --firth 0.01 --approx \
+  --firth --approx \
+  --pThresh 0.01 \
   --pred fit_bin_out_pred.list \
   --split \
   --out test_bin_out_firth
@@ -180,7 +182,7 @@ To remove all samples that have missing values at **any** of the \(P\) phenotype
 
 #### Predictions file format
 
-Running `--step 1 --o foo` will produce
+Running `--step 1 --out foo` will produce
 
 1. A set of files containing genomic predictions for each phenotype
    from Step 1 (see Output section below).
@@ -218,19 +220,21 @@ predictions** (otherwise use `--remove`).
 |---|-------|------|----|
 |`--step`| INT| Required| specify step for the regenie run (see Overview) [argument can be `1` or `2`] |
 |`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)|
-|`--1`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
+|`-1,--cc12`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
 |`--bsize`| INT| Required| size of the genotype blocks|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
 |`--loocv`| FLAG | Optional| flag to use leave-one out cross validation|
-|`--lowmem`| FILE PREFIX | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
+|`--lowmem`| FLAG | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
+|`--lowmem-prefix`| FILE PREFIX | Optional | prefix where to temporarily write the level 0 predictions|
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
 |`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
-|`--firth`| FLOAT | Optional | specify to use Firth likelihood ratio test as fallback for p-values less than the specified threshold [default is 0.05]|
+|`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test as fallback for p-values less than|
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
-|`--spa`| FLOAT | Optional| specify to use Saddlepoint approximation as fallback for p-values less than the specified threshold [default is 0.05]|
+|`--spa`| FLAG | Optional| specify to use Saddlepoint approximation as fallback for p-values less than threshold|
+|`--pThresh`| FLOAT | Optional| P-value threshold below which to apply Firth/SPA correction [default is 0.05]
 |`--test`| STRING | Optional | specify to carry out dominant or recessive test [default is additive; argument can be `dominant` or `recessive`]|
 |`--chr`| INT| Optional| specify which chromosomes to test in step 2 (use for each chromosome to include)|
 |`--chrList` | STRING | Optional | Comma separated list of chromosomes to test in step 2|
@@ -241,14 +245,14 @@ predictions** (otherwise use `--remove`).
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|
 |`--threads`| INT | Optional| number of computational threads to use [default=all]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
-|`--v`| FLAG | Optional| verbose screen output|
+|`--verbose`| FLAG | Optional| verbose screen output|
 |`--help`| FLAG | Optional| Prints usage and options list to screen|
 
-When step 1 of **regenie** is run in low memory mode (i.e. using `--lowmem prefix`), 
-temporary files are created on disk where the prefix argument, if specified, 
-determines where the files are written (as in `prefix_l0_Y1`,...,`prefix_l0_YP` 
-for P phenotypes). If the prefix argument is omitted, the default is to use the 
-prefix specified by `--o` (see below).
+When step 1 of **regenie** is run in low memory mode (i.e. using `--lowmem`), 
+temporary files are created on disk (using `--lowmem-prefix tmp_prefix`  
+determines where the files are written [as in `tmp_prefix_l0_Y1`,...,`tmp_prefix_l0_YP` 
+for P phenotypes]). If the prefix is not specified, the default is to use the 
+prefix specified by `--out` (see below).
 These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)
 
