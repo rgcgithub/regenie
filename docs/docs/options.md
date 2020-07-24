@@ -50,11 +50,14 @@ Firth logistic regression model
   --out test_bin_out_firth
 ```
 
-One of the output files from these two commands is included in the `example/` directory and you can check the two files using 
+One of the output files from these two commands is included in the `example/` directory and 
+you can check they are the same using  the following command (the message should be printed out)
 
 ```
-cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie
+cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie \
+  && echo "Files are identical"
 ```
+
 
 ## Input 
 

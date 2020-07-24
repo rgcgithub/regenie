@@ -15,7 +15,15 @@ Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >
 3. On the command line type `make` while in the main source code directory.
 4. This should produce the executable called `regenie`.
 
-Pre-compiled executable files for **regenie** (in Mac OSX 10.14 and x86 64-bit Linux) are available in the `bin/` directory.
+Alternatively, you can use a Docker image to install and run **regenie**, the
+Dockerfile (thanks to Nathan Weeks) is provided in the main directory. 
+An example test script on how to do that is located in the `test/` directory 
+(you may need to run `chmod u+x test/test.sh` prior to running the script). 
+To run it, you can use the following command
+
+```
+test/test.sh .
+```
 
 
 ##Computing requirements

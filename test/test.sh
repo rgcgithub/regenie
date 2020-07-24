@@ -65,6 +65,8 @@ then
   echo "SUCCESS: Files are identical!"
   # file cleanup
   rm ${REGENIE_PATH}test/fit_bin_out* ${REGENIE_PATH}test/test_bin_out_firth*
+  echo "You can run regenie using:"
+  echo "docker run -v <host_path>:<mount_path> --rm regenie:latest <command_options>"
 else
   echo "Uh oh... Files are different!"
 fi
