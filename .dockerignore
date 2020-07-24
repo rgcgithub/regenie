@@ -3,7 +3,6 @@
 .gitignore
 
 # directories to ignore
-dockers
 example
 test
 
