@@ -1,0 +1,12 @@
+# File .dockerignore
+.git
+.gitignore
+
+# directories to ignore
+dockers
+example
+test
+
+# Files
+README.md
+LICENSE
