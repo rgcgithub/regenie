@@ -192,6 +192,7 @@ a set of genomic predictions are produced as output</p>
   --remove example/fid_iid_to_remove.txt \
   --bsize 100 \
   --bt --lowmem \
+  --lowmem-prefix tmp_rg \
   --out fit_bin_out
 </code></pre>
 
@@ -205,7 +206,8 @@ Firth logistic regression model</p>
   --remove example/fid_iid_to_remove.txt \
   --bsize 200 \
   --bt \
-  --firth 0.01 --approx \
+  --firth --approx \
+  --pThresh 0.01 \
   --pred fit_bin_out_pred.list \
   --split \
   --out test_bin_out_firth
@@ -378,7 +380,7 @@ they are dropped when fitting the level 1 logistic ridge regression for each tra
 In Step 2, missing values are dropped when testing each trait.</p>
 <p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
 <h4 id="predictions-file-format">Predictions file format</h4>
-<p>Running <code>--step 1 --o foo</code> will produce</p>
+<p>Running <code>--step 1 --out foo</code> will produce</p>
 <ol>
 <li>A set of files containing genomic predictions for each phenotype
    from Step 1 (see Output section below).</li>
@@ -426,7 +428,7 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)</td>
 </tr>
 <tr>
-<td><code>--1</code></td>
+<td><code>-1,--cc12</code></td>
 <td>FLAG</td>
 <td>Optional</td>
 <td>specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)</td>
@@ -451,9 +453,15 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 <tr>
 <td><code>--lowmem</code></td>
-<td>FILE PREFIX</td>
+<td>FLAG</td>
 <td>Optional</td>
 <td>flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)</td>
+</tr>
+<tr>
+<td><code>--lowmem-prefix</code></td>
+<td>FILE PREFIX</td>
+<td>Optional</td>
+<td>prefix where to temporarily write the level 0 predictions</td>
 </tr>
 <tr>
 <td><code>--nb</code></td>
@@ -487,9 +495,9 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 <tr>
 <td><code>--firth</code></td>
-<td>FLOAT</td>
+<td>FLAG</td>
 <td>Optional</td>
-<td>specify to use Firth likelihood ratio test as fallback for p-values less than the specified threshold [default is 0.05]</td>
+<td>specify to use Firth likelihood ratio test as fallback for p-values less than</td>
 </tr>
 <tr>
 <td><code>--approx</code></td>
@@ -499,9 +507,15 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 <tr>
 <td><code>--spa</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>specify to use Saddlepoint approximation as fallback for p-values less than threshold</td>
+</tr>
+<tr>
+<td><code>--pThresh</code></td>
 <td>FLOAT</td>
 <td>Optional</td>
-<td>specify to use Saddlepoint approximation as fallback for p-values less than the specified threshold [default is 0.05]</td>
+<td>P-value threshold below which to apply Firth/SPA correction [default is 0.05]</td>
 </tr>
 <tr>
 <td><code>--test</code></td>
@@ -564,7 +578,7 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 <td>debug flag (for use by developers)</td>
 </tr>
 <tr>
-<td><code>--v</code></td>
+<td><code>--verbose</code></td>
 <td>FLAG</td>
 <td>Optional</td>
 <td>verbose screen output</td>
@@ -577,11 +591,11 @@ predictions</strong> (otherwise use <code>--remove</code>).</p>
 </tr>
 </tbody>
 </table>
-<p>When step 1 of <strong>regenie</strong> is run in low memory mode (i.e. using <code>--lowmem prefix</code>), 
-temporary files are created on disk where the prefix argument, if specified, 
-determines where the files are written (as in <code>prefix_l0_Y1</code>,...,<code>prefix_l0_YP</code> 
-for P phenotypes). If the prefix argument is omitted, the default is to use the 
-prefix specified by <code>--o</code> (see below).
+<p>When step 1 of <strong>regenie</strong> is run in low memory mode (i.e. using <code>--lowmem</code>), 
+temporary files are created on disk (using <code>--lowmem-prefix tmp_prefix</code><br />
+determines where the files are written [as in <code>tmp_prefix_l0_Y1</code>,...,<code>tmp_prefix_l0_YP</code> 
+for P phenotypes]). If the prefix is not specified, the default is to use the 
+prefix specified by <code>--out</code> (see below).
 These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)</p>
 <h2 id="output">Output</h2>

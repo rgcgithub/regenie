@@ -91,12 +91,12 @@ Running step 1 of **regenie** (by default, all available threads are used)
   --bed ukb_cal_allChrs \
   --extract qc_pass.snplist \
   --keep qc_pass.id \
-  --p ukb_phenotypes_BT.txt \
-  --c ukb_covariates.txt \
+  --phenoFile ukb_phenotypes_BT.txt \
+  --covarFile ukb_covariates.txt \
   --bt \
-  --b 1000 \
+  --bsize 1000 \
   --lowmem tmpdir/regenie_tmp_preds \
-  --o ukb_step1_BT
+  --out ukb_step1_BT
 ```
 
 For P phenotypes analyzed, this will generate a set of $P$ files ending with `.loco`
@@ -133,14 +133,14 @@ Running **regenie** tesing on a single chromosome (here chr 1) and using fast Fi
   --step 2 \
   --bgen ukb_imp_chr1_v2.bgen \
   --keep fid_iid_step2.keep \
-  --p ukb_phenotypes_BT.txt \
-  --c ukb_covariates.txt \
+  --phenoFile ukb_phenotypes_BT.txt \
+  --covarFile ukb_covariates.txt \
   --bt \
   --firth 0.01 --approx \
   --pred ukb_step1_BT_pred.list \
-  --b 400 \
+  --bsize 400 \
   --split \
-  --o ukb_step2_BT_chr1
+  --out ukb_step2_BT_chr1
 
 ```
 
