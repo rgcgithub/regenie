@@ -31,7 +31,7 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-Version 1.0.5.3 (Changed program options `--p/--c/--b/--o` to `--phenoFile/--covarFile/--bsize/--out`, respectively, and use boost program_options library to parse command line arguments)
+Version 1.0.5.3 (Use cxxopts header-only library to parse command line arguments; changed program options `--p/--c/--b/--o/--1` to `--phenoFile/--covarFile/--bsize/--out/--cc12`, respectively; added options `--lowmem-prefix/--pThresh`)
 
 Version 1.0.5.2 (Changed default behavior to remove individuals who have missing data at all phenotypes in the analysis; absolute paths are written in the predictions list file created in step 1)
 
