@@ -226,7 +226,7 @@ struct in_files {
   std::string file_ind_include, file_ind_exclude;
   std::string file_snps_include, file_snps_exclude;
   std::string cov_file, pheno_file;
-  std::string loco_tmp_prefix;
+  std::string loco_tmp_prefix = "";
   std::string out_file;
   std::string blup_file;
   std::vector<std::string> blup_files;
@@ -250,12 +250,15 @@ struct filter {
 
 };
 
+template <typename T> 
+void start_log(T,const std::string,MeasureTime*,mstream&);
+
 void print_help(bool);
 void read_params_and_check(int argc,char *argv[],struct param*,struct in_files*,struct filter*,MeasureTime*,mstream&);
-void start_log(int,char **,const std::string,MeasureTime*,mstream&);
 void print_header(std::ostream&);
 void set_ridge_params(int,std::vector<double>&,const std::string,mstream&);
 void print_usage_info(struct param*,struct in_files*,mstream&);
 int chrStrToInt(const std::string, const int);
+
 
 #endif
