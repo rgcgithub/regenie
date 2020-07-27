@@ -3,7 +3,7 @@
 #### Working from directory where regenie repo was cloned
 REGENIE_PATH="$1" 
 if [ "$#" -eq 0 ]; then
-echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO>"; exit 1
+echo "Usage: test_withGz.sh <PATH_TO_CLONED_REGENIE_REPO>"; exit 1
 fi
 
 # quick check src/example folders are present

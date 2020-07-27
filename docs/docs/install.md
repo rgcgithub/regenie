@@ -7,6 +7,7 @@ The **regenie** source code is hosted on
 
 Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) or Clang version >=3.3 (on Mac OSX)
 
+### Standard installation
 1. **regenie** requires the
   [BGEN library](https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk) so
   you will need to download and install that library.
@@ -15,8 +16,15 @@ Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >
 3. On the command line type `make` while in the main source code directory.
 4. This should produce the executable called `regenie`.
 
-Alternatively, you can use a Docker image to install and run **regenie**, the
-Dockerfile (thanks to Nathan Weeks) is provided in the main directory. 
+**regenie** has been enhanced to allow for gzip compressed input 
+(for phenotype/covariate files) using the Boost Iostream library. 
+If this library is installed on the system, you should compile using 
+`make HAS_BOOST_IOSTREAM=1`. 
+
+### With docker
+Alternatively, you can use a Docker image to run **regenie**. 
+A Dockerfile (thanks to Nathan Weeks) is provided in the main directory 
+and can be used to build the image. 
 An example test script on how to do that is located in the `test/` directory 
 (you may need to run `chmod u+x test/test.sh` prior to running the script). 
 To run it, you can use the following command
@@ -24,6 +32,9 @@ To run it, you can use the following command
 ```
 test/test.sh .
 ```
+
+For **regenie** with enabled gzip compressed input, use the
+script `test/test_withGz.sh` instead.
 
 
 ##Computing requirements
