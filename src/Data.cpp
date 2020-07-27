@@ -130,10 +130,10 @@ void Data::residualize_genotypes() {
   if(params.strict_mode) scale_G = Gblock.Gmat.rowwise().norm() / sqrt(pheno_data.Neff(0) - 1);
   else scale_G = Gblock.Gmat.rowwise().norm() / sqrt(in_filters.ind_in_analysis.cast<double>().sum() - 1);
 
-  // only done in step 1
-  if(scale_G.array().minCoeff() < params.numtol) {
-    if(!params.test_mode) {
-      sout << "!! Uh-oh, SNP with low variance.\n" ;
+  MatrixXd::Index  minIndex;
+  if(scale_G.array().minCoeff(&minIndex) < params.numtol) { //
+    if(!params.test_mode) { // only done in step 1
+      sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+minIndex].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
       exit(1);
     } else {
       Gblock.bad_snps( scale_G.array() < params.numtol ) =  1;
@@ -489,7 +489,7 @@ void Data::level_0_calculations() {
       else
         ridge_level_0(block, &files, &params, &in_filters, &m_ests, &Gblock, &pheno_data, snpinfo, &l0, &l1_ests, masked_in_folds, sout);
 
-      block++;
+      block++; in_filters.step1_snp_count += bs;
     }
 
     // if skipping all snps at end of chromosome

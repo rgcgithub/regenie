@@ -77,9 +77,6 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
   string webinfo = "For more information, visit the website: https://rgcgithub.github.io/regenie/";
 
   cxxopts::Options AllOptions(argv[0], "");
-  AllOptions
-    .positional_help("[optional args]")
-    .show_positional_help();
 
   AllOptions.add_options()
     ("h,help", "print list of available options")
@@ -90,7 +87,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
   AllOptions.add_options("Main")
     ("step", "specify if fitting null model (=1) or association testing (=2)", cxxopts::value<int>(params->run_mode),"INT")
     ("bed", "prefix to PLINK .bed/.bim/.fam files", cxxopts::value<std::string>(files->bed_prefix),"PREFIX")
-    ("pgen", "prefix to PLINK2 .pgen/.pvar/.psam files", cxxopts::value(files->pgen_prefix),"PREFIX")
+    ("pgen", "prefix to PLINK2 .pgen/.pvar/.psam files", cxxopts::value<std::string>(files->pgen_prefix),"PREFIX")
     ("bgen", "BGEN file", cxxopts::value<std::string>(files->bgen_file),"FILE")
     ("sample", "sample file corresponding to BGEN file", cxxopts::value<std::string>(files->sample_file),"FILE")
     ("keep", "file listing samples to retain in the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(files->file_ind_include),"FILE")

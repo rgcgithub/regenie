@@ -844,7 +844,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       assert(snpinfo[snp_index_counter].ID == rsid);
       if(snpinfo[snp_index_counter].mask){
         gblock->bgen.ignore_probs();
-        snp_index_counter++;
+        snp_index_counter++;filters->step1_snp_count++; 
         continue;
       }
     }
@@ -964,7 +964,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
     if(params->keep_snps || params->rm_snps){
       if(snpinfo[snp_index_counter].mask){
         files->bed_ifstream.seekg(files->bed_block_size, ios_base::cur);
-        snp_index_counter++;
+        snp_index_counter++;filters->step1_snp_count++; 
         continue;
       }
     }
@@ -1058,7 +1058,7 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
   for(size_t j = 0; j < bs; ) {
     if(params->keep_snps || params->rm_snps){
       if(snpinfo[snp_index_counter].mask){
-        snp_index_counter++;
+        snp_index_counter++;filters->step1_snp_count++;
         continue;
       }
     }

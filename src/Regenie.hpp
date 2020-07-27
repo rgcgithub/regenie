@@ -58,7 +58,7 @@
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.5.3"
+#define VERSION_NUMBER "1.0.5.31"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -247,6 +247,7 @@ struct filter {
   std::map <std::string, uint64> snpID_to_ind;
   ArrayXb ind_ignore;
   ArrayXb ind_in_analysis;
+  uint32_t step1_snp_count = 0;
 
 };
 
