@@ -15,8 +15,8 @@ cd $REGENIE_PATH
 
 
 echo -e "Building docker image\n=================================="
-dckfile=Dockerfile 
-docker build -f $dckfile -t regenie:latest .
+dckfile=Dockerfile_gz
+docker build -f $dckfile -t regenie_gz:latest .
 
 
 # Create test folder to store results and use as mounting point
@@ -25,27 +25,27 @@ REGENIE_PATH=$(pwd)/
 # where to mount in container
 mntpt=/docker/ 
 
-echo -e "\n\nRunning step 1 of regenie\n=================================="
+echo -e "\n\nRunning step 1 of regenie with gzipped-files\n=================================="
 # Prepare regenie command to run for Step 1
 rgcmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
-  --covarFile ${mntpt}example/covariates.txt \
-  --phenoFile ${mntpt}example/phenotype_bin.txt \
+  --covarFile ${mntpt}example/covariates.txt.gz \
+  --phenoFile ${mntpt}example/phenotype_bin.txt.gz \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
   --bt --lowmem \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie:latest $rgcmd
+docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie_gz:latest $rgcmd
 
-echo -e "Running step 2 of regenie\n=================================="
+echo -e "Running step 2 of regenie with gzipped-files\n=================================="
 # Prepare regenie command to run for Step 2
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
-  --covarFile ${mntpt}example/covariates.txt \
-  --phenoFile ${mntpt}example/phenotype_bin.txt \
+  --covarFile ${mntpt}example/covariates.txt.gz \
+  --phenoFile ${mntpt}example/phenotype_bin.txt.gz \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 200 \
   --bt \
@@ -55,7 +55,7 @@ rgcmd="--step 2 \
   --split \
   --out ${mntpt}test/test_bin_out_firth"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie:latest $rgcmd
+docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie_gz:latest $rgcmd
 
 ## quick check that compilation was successful
 if cmp --silent \
@@ -64,7 +64,7 @@ if cmp --silent \
 then
    echo "SUCCESS: Files are identical!"
    echo -e "\nYou can run regenie using:"
-   echo "docker run -v <host_path>:<mount_path> --rm regenie:latest <command_options>"
+   echo "docker run -v <host_path>:<mount_path> --rm regenie_gz:latest <command_options>"
  else
    echo "Uh oh... Files are different!"
 fi
