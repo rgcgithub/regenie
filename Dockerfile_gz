@@ -1,6 +1,6 @@
 # Thanks to Nathan Weeks for sharing this Dockerfile
-# minor edits were made
-# Filename: Dockerfile
+# minor edits were made (install & compile linking with Boost Iostream library)
+# Filename: Dockerfile_gz
 
 FROM ubuntu:16.04 AS builder
 
