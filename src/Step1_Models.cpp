@@ -29,6 +29,7 @@
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
+#include "Files.hpp"
 #include "Pheno.hpp"
 #include "Data.hpp"
 

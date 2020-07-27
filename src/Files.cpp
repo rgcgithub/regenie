@@ -24,28 +24,61 @@
 
 */
 
-#ifndef PHENO_H
-#define PHENO_H
 
+#include "Regenie.hpp"
+#include "Files.hpp"
 
-struct phenodt {
+namespace fs = boost::filesystem;
 
-  Eigen::MatrixXd new_cov;
-  Eigen::MatrixXd phenotypes;
-  Eigen::MatrixXd phenotypes_raw;
-  MatrixXb masked_indivs;
-  Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
-  Eigen::RowVectorXd scale_Y;
+Files::Files(){
+}
+Files::~Files(){
+}
 
-};
+// Open file (either regular or gzipped
+void Files::open(std::string filename, mstream& sout){
 
-
-void read_pheno_and_cov(struct in_files*,Files&,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
-void pheno_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
-void covariate_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
-void getCovBasis(Eigen::MatrixXd&,struct param*);
-void residualize_phenotypes(struct param*,struct phenodt*,mstream&);
-double convertDouble(const std::string&,struct param*,mstream&);
-
+  // only used if compiled with boost iostream
+# if defined(HAS_BOOST_IOSTREAM)
+  is_gz = checkFileExtension(filename);
+#else
+  is_gz = false;
 #endif
 
+  std::ios_base::openmode mode = (is_gz ? std::ios_base::in | std::ios_base::binary : std::ios_base::in ); 
+
+  myfile.open(filename.c_str(), mode);
+  if (!myfile.is_open()) {    
+    sout << "ERROR: Cannot open file : " << filename << std::endl;
+    exit(-1);
+  }
+
+# if defined(HAS_BOOST_IOSTREAM)
+  if(is_gz){
+    mygzfile.push(boost::iostreams::gzip_decompressor());
+    mygzfile.push(myfile);
+  }
+#endif
+
+}
+
+bool Files::readLine(std::string& line){
+
+# if defined(HAS_BOOST_IOSTREAM)
+  if(is_gz) return static_cast<bool>( getline(mygzfile, line) );
+#endif
+
+  return  static_cast<bool>( getline(myfile, line) );
+}
+
+void Files::closeFile(){
+# if defined(HAS_BOOST_IOSTREAM)
+  if(is_gz) mygzfile.reset();
+#endif
+  myfile.close();
+}
+
+// Check file extension
+bool Files::checkFileExtension(std::string filename) {
+  return fs::extension(filename) == ".gz";
+}

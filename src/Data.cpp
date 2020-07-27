@@ -29,6 +29,7 @@
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
+#include "Files.hpp"
 #include "Pheno.hpp"
 #include "Data.hpp"
 
@@ -69,7 +70,7 @@ void Data::run() {
     // set up file for reading
     file_read_initialization();
     // read phenotype and covariate files
-    read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);
+    read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);
     // set number of blocks and block size and ridge parameters
     set_blocks();
     // some initializations
@@ -1190,7 +1191,7 @@ void Data::test_snps() {
 
   setNbThreads(params.threads); // set threads   
   file_read_initialization(); // set up files for reading
-  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files  
+  read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   blup_read(files.blup_file); // read blups
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);
@@ -2024,7 +2025,7 @@ void Data::test_snps_fast() {
 
   setNbThreads(params.threads);
   file_read_initialization(); // set up files for reading
-  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files  
+  read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   blup_read(files.blup_file); // read blups
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);

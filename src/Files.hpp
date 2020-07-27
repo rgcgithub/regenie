@@ -23,29 +23,39 @@
    SOFTWARE.
 
 */
+#ifndef RFILES_H
+#define RFILES_H
 
-#ifndef PHENO_H
-#define PHENO_H
+#include <fstream>
+#include <iostream>
+#include <boost/filesystem.hpp>
 
-
-struct phenodt {
-
-  Eigen::MatrixXd new_cov;
-  Eigen::MatrixXd phenotypes;
-  Eigen::MatrixXd phenotypes_raw;
-  MatrixXb masked_indivs;
-  Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
-  Eigen::RowVectorXd scale_Y;
-
-};
-
-
-void read_pheno_and_cov(struct in_files*,Files&,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
-void pheno_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
-void covariate_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
-void getCovBasis(Eigen::MatrixXd&,struct param*);
-void residualize_phenotypes(struct param*,struct phenodt*,mstream&);
-double convertDouble(const std::string&,struct param*,mstream&);
-
+# if defined(HAS_BOOST_IOSTREAM)
+#include <boost/iostreams/filtering_stream.hpp>
+#include <boost/iostreams/filter/gzip.hpp>
 #endif
 
+class Files {
+
+  public:
+    // variables
+    bool is_gz;
+    std::ifstream myfile;
+
+# if defined(HAS_BOOST_IOSTREAM)
+    boost::iostreams::filtering_istream mygzfile;
+#endif
+
+
+    // functions
+    bool checkFileExtension(std::string filename);
+    void open(std::string filename,mstream&);
+    bool readLine(std::string& line);
+    void closeFile();
+
+
+    Files();
+    ~Files();
+};
+
+#endif

@@ -27,6 +27,7 @@
 #include "Regenie.hpp"
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
+#include "Files.hpp"
 #include "Pheno.hpp"
 
 using namespace std;
@@ -34,14 +35,13 @@ using namespace Eigen;
 using namespace boost;
 
 
-void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
-
+void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
 
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file.empty());
 
   // read in phenotype (mean-impute for QT)
-  pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
+  pheno_read(params, files, fClass, filters, pheno_data, ind_in_pheno_and_geno, sout);
   if(params->binary_mode && !params->test_mode)
     m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
 
@@ -50,7 +50,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->strict_mode) pheno_data->new_cov.array() *= pheno_data->masked_indivs.col(0).array().cast<double>();;
 
   // read in covariates
-  if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
+  if(!files->cov_file.empty()) covariate_read(params, files, fClass, filters, pheno_data, ind_in_cov_and_geno, sout);
 
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno * ind_in_cov_and_geno;
@@ -80,7 +80,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
 }
 
-void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
+void pheno_read(struct param* params, struct in_files* files, Files& fClass,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
   bool all_miss;
@@ -93,16 +93,11 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   ifstream myfile;
 
   sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
-  myfile.open (files->pheno_file.c_str(), ios::in);
-  if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open phenotype file : " << files->pheno_file << endl;
-    exit(-1);
-  }
-
-  getline (myfile,line); // header
-  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+  fClass.open(files->pheno_file, sout);
+  fClass.readLine(line);
 
   // check that FID and IID are first two entries in header
+  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
     exit(-1);
@@ -153,7 +148,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   ns.setZero(params->n_pheno);
 
   // read in data
-  while( getline (myfile,line) ){
+  while( fClass.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() != (2+pheno_colKeep.size()) ){
@@ -275,11 +270,11 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
   if(params->strict_mode) sout << "   -number of individuals remaining with non-missing phenotypes = " << pheno_data->Neff(0) << endl;
 
-  myfile.close();
+  fClass.closeFile();
 
 }
 
-void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
+void covariate_read(struct param* params, struct in_files* files, Files& fClass,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
   bool keep_cov;
@@ -290,16 +285,11 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   ifstream myfile;
 
   sout << left << std::setw(20) << " * covariates" << ": [" << files->cov_file << "] " << flush;
-  myfile.open (files->cov_file.c_str(), ios::in);
-  if (!myfile.is_open()) {
-    sout << "ERROR: Cannot open covariate file : " << files->cov_file << endl;
-    exit(-1);
-  }
-
-  getline (myfile,line);
-  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+  fClass.open(files->cov_file, sout);
+  fClass.readLine(line);
 
   // check that FID and IID are first two entries in header
+  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
     exit(-1);
@@ -333,7 +323,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   pheno_data->new_cov.col(0) = MatrixXd::Ones(params->n_samples, 1);
 
   // read in data
-  while( getline (myfile,line) ){
+  while( fClass.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < cov_colKeep.size() ){
@@ -368,7 +358,6 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     }
 
   }
-  myfile.close();
 
   // mask individuals in genotype data but not in covariate data
   pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
@@ -379,6 +368,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   sout <<  endl;
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.cast<int>().sum() << endl;
+
+  fClass.closeFile();
 
 }
 

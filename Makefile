@@ -5,14 +5,16 @@ CFLAGS =
 
 # specify BGEN library path 
 BGEN_PATH = 
+# specify if compiling Boost iostream library (set to 1 if yes)
+HAS_BOOST_IOSTREAM = 0
+
 
 # detect OS architecture and add flags
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
 	INC = -I${BGEN_PATH}/3rd_party/boost_1_55_0
 	CFLAGS += -fopenmp
-endif
-ifeq ($(UNAME_S),Darwin)
+else ifeq ($(UNAME_S),Darwin)
 	CXXFLAGS += -stdlib=libc++
 endif
 
@@ -24,13 +26,19 @@ LPATHS = -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BG
 LIBS = -lbgen -lzstd -ldb  -lsqlite3 -lboost -lz
 INC += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I./external_libs/ 
 
+## add boost iostream
+ifeq ($(HAS_BOOST_IOSTREAM),1)
+	LIBS += -lboost_iostreams
+	CXXFLAGS += -DHAS_BOOST_IOSTREAM
+endif
+
 OBJECTS = $(patsubst %.cpp,%.o,$(wildcard ./src/*.cpp)) ${PGEN_OBJECTS} 
 
 
 all: ${EFILE}
 
 ${EFILE}: ${OBJECTS}
-	${CXX} ${CXXFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ${LPATHS} ${LIBS} 
+	${CXX} ${CXXFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ${LPATHS} ${LIBS}
 
 %.o: %.cpp
 	${CXX} ${CXXFLAGS} -o $@ -c $< ${INC} ${CFLAGS}

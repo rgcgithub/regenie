@@ -35,6 +35,7 @@ class Data {
     MeasureTime runtime;
     param params;
     in_files files;
+    Files fClass;
     filter in_filters;
     std::vector<snp> snpinfo;
     phenodt pheno_data;
