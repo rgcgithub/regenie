@@ -151,6 +151,10 @@
     <ul class="nav bs-sidenav">
         <li class="first-level active"><a href="#download">Download</a></li>
         <li class="first-level "><a href="#installation">Installation</a></li>
+            <li class="second-level"><a href="#standard-installation">Standard installation</a></li>
+                
+            <li class="second-level"><a href="#with-docker">With docker</a></li>
+                
         <li class="first-level "><a href="#computing-requirements">Computing requirements</a></li>
             <li class="second-level"><a href="#memory-usage">Memory usage</a></li>
                 
@@ -165,6 +169,7 @@
 <a href="https://github.com/rgcgithub/regenie">Github</a>.</p>
 <h2 id="installation">Installation</h2>
 <p>Note: <strong>regenie</strong> requires compilation with <a href="https://gcc.gnu.org">GCC</a> version &gt;= 5.1 (on Linux) or Clang version &gt;=3.3 (on Mac OSX)</p>
+<h3 id="standard-installation">Standard installation</h3>
 <ol>
 <li><strong>regenie</strong> requires the
   <a href="https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk">BGEN library</a> so
@@ -174,14 +179,22 @@
 <li>On the command line type <code>make</code> while in the main source code directory.</li>
 <li>This should produce the executable called <code>regenie</code>.</li>
 </ol>
-<p>Alternatively, you can use a Docker image to install and run <strong>regenie</strong>, the
-Dockerfile (thanks to Nathan Weeks) is provided in the main directory. 
+<p><strong>regenie</strong> has been enhanced to allow for gzip compressed input 
+(for phenotype/covariate files) using the Boost Iostream library. 
+If this library is installed on the system, you should compile using 
+<code>make HAS_BOOST_IOSTREAM=1</code>. </p>
+<h3 id="with-docker">With docker</h3>
+<p>Alternatively, you can use a Docker image to run <strong>regenie</strong>. 
+A Dockerfile (thanks to Nathan Weeks) is provided in the main directory 
+and can be used to build the image. 
 An example test script on how to do that is located in the <code>test/</code> directory 
 (you may need to run <code>chmod u+x test/test.sh</code> prior to running the script). 
 To run it, you can use the following command</p>
 <pre><code>test/test.sh .
 </code></pre>
 
+<p>For <strong>regenie</strong> with enabled gzip compressed input, use the
+script <code>test/test_withGz.sh</code> instead.</p>
 <h2 id="computing-requirements">Computing requirements</h2>
 <p>We have tested <strong>regenie</strong> on 64-bit Linux and 64-bit Mac OSX computing environments.</p>
 <p>Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. </p>
