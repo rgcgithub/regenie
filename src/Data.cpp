@@ -505,6 +505,17 @@ void Data::level_0_calculations() {
     }
   }
 
+  if(params.early_exit) {
+    sout << "\nDone printing out level 0 predictions. There are " << 
+      params.n_samples << " rows and " <<
+      params.total_n_block * params.n_ridge_l0 << " columns " <<
+      "stored in column-major order. Exiting...\n";
+    runtime.stop();
+    sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s" << endl;
+    sout << "End time: " << ctime(&runtime.end_time_info) << endl; 
+    exit(1);
+  }
+
   // free up memory not used anymore
   Gblock.Gmat.resize(0,0); 
   if(params.write_l0_pred && (params.n_pheno > 1) ) {
@@ -518,6 +529,7 @@ void Data::level_0_calculations() {
       }
     }
   }
+
 
 }
 

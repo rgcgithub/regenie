@@ -153,6 +153,7 @@ struct param {
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0;
   bool verbose = false;
+  bool early_exit = false;
 
   // for input data
   uint32_t n_samples = 0; // number of samples

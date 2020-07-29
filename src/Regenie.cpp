@@ -146,6 +146,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("nostream", "print estimated effect sizes from level 0 and level 1 models")
     ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
+    ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ;
 
 
@@ -211,6 +212,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("print") ) params->print_block_betas = true;
     if( vm.count("nostream") ) params->streamBGEN = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
+    if( vm.count("early-exit") ) params->early_exit = true;
 
 
 
