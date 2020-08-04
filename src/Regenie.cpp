@@ -336,6 +336,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
+    if( !vm.count("bsize") ) {
+      sout << "ERROR : must specify the block size using '--bsize'.\n" << params->err_help;
+      exit(-1);
+    }
+
     // determine number of threads if not specified
     if(params->threads < 1){
       params->threads = std::thread::hardware_concurrency(); //may return 0 when not able to detect
