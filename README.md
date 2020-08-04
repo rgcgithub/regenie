@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.5.5 (fixed bug when setting the total number of blocks [the bug was introduced in v1.0.5.3 due to `n_blocks` being uninitialized])
+
 Version 1.0.5.4 (Enable using gzip compressed phenotype/covariate files as input [requires installed Boost Iostream library and setting `HAS_BOOST_IOSTREAM = 1` in Makefile] )
 
 Version 1.0.5.31 (Print out ID of problematic variants with low variance in step 1)

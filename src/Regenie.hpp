@@ -58,7 +58,7 @@
 #include <omp.h>
 #endif
 
-#define VERSION_NUMBER "1.0.5.4"
+#define VERSION_NUMBER "1.0.5.5"
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -166,7 +166,7 @@ struct param {
   // step 1 
   int block_size; // number of SNPs per block
   int cv_folds = 5; // number of CV folds
-  int n_block; // number of blocks to run
+  int n_block = -1; // number of blocks to run
   int total_n_block = 0; // number of blocks to run across all chrs
   int n_ridge_l0 = 5; // number of ridge parameters at level 0
   int n_ridge_l1 = 5; // number of ridge parameters at level 1
