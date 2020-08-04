@@ -24,6 +24,7 @@
 
 */
 
+#include <limits.h> /* for PATH_MAX */
 #include <boost/filesystem.hpp>
 #include "Regenie.hpp"
 #include "Geno.hpp"
@@ -577,7 +578,7 @@ void Data::output() {
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
   string pfile, out_blup_list, pline, loco_filename;
-  fs::path fullpath; 
+  string fullpath_str;
   ofstream outb;
 
   sout << "Output" << endl << "------" << endl;
@@ -594,14 +595,25 @@ void Data::output() {
 
     if( params.make_loco || params.binary_mode ) {
 
-      // convert to full path
-      fullpath = fs::absolute(loco_filename);
+      try {
+        // convert to full path using boost filesystem library
+        // this can generate errors due to LC_ALL locale being invalid
+        fs::path fullpath; 
+        fullpath = fs::absolute(loco_filename);
+        fullpath_str = fullpath.make_preferred().string(); 
+      } catch ( std::runtime_error& ex ) {
+        // use realpath
+        char buf[PATH_MAX];
+        char *res = realpath(loco_filename.c_str(), buf);
+        if(res) fullpath_str = string(buf);
+        else fullpath_str = loco_filename; // if failed to get full path
+      }
 
       if( !params.binary_mode ) { // for quantitative traits
-        outb << files.pheno_names[ph]  << " " << fullpath.make_preferred().string() << endl;
+        outb << files.pheno_names[ph]  << " " <<  fullpath_str << endl;
       } else { // for binary traits - check level 1 ridge converged
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
-          outb << files.pheno_names[ph]  << " " << fullpath.make_preferred().string() << endl;
+          outb << files.pheno_names[ph]  << " " << fullpath_str << endl;
         } else {
           if(params.write_l0_pred){ // cleanup level 0 predictions
             pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
