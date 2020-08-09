@@ -63,7 +63,6 @@ docker-build:
 ifeq ($(HAS_BOOST_IOSTREAM),1)
 	@echo Compiling with Boost Iostream library
 endif
-  ## build-arg option introduced in Docker 1.9+
 	@docker build -f ${DFILE} \
 		--no-cache --pull \
 		--build-arg BOOST_IO=${HAS_BOOST_IOSTREAM} \
