@@ -64,12 +64,27 @@ int main( int argc, char** argv ) {
 
 void print_header(std::ostream& o){
 
-  o << left << std::setw(14) << " " << "|==================================|" << endl;
-  o << left << std::setw(14) << " " << "|           REGENIE v" << left << std::setw(14) << VERSION_NUMBER << "|" << endl;
-  o << left << std::setw(14) << " " << "|==================================|" << endl << endl;
+  std::ostringstream oss;
+  string vnumber;
+  // label version with Boost Iostream library by `.gz` suffix
+# if defined(HAS_BOOST_IOSTREAM)
+  oss << "REGENIE v" << VERSION_NUMBER << ".gz"; 
+# else
+  oss << "  REGENIE v" << VERSION_NUMBER; 
+#endif
+  vnumber = oss.str();
+
+  o << left << std::setw(14) << " " << "|" << std::string(30, '=')<< "|" << endl;
+  o << left << std::setw(14) << " " << "|" << left << std::setw(6) << " " <<
+    left << std::setw(24) << vnumber << "|" << endl;
+  o << left << std::setw(14) << " " << "|" << std::string(30, '=')<< "|\n\n";
 
   o << "Copyright (c) 2020 Joelle Mbatchou and Jonathan Marchini." << endl;
-  o << "Distributed under the MIT License.\n\n";
+  o << "Distributed under the MIT License.\n";
+# if defined(HAS_BOOST_IOSTREAM)
+  o << "Compiled with Boost Iostream library.\n";
+#endif
+  o << "\n";
 }
 
 

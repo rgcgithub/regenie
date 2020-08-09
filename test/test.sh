@@ -1,51 +1,72 @@
 #!/usr/bin/env bash
 
 #### Working from directory where regenie repo was cloned
-REGENIE_PATH="$1" 
 if [ "$#" -eq 0 ]; then
-echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO>"; exit 1
+echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
 fi
+
+REGENIE_PATH="$1" 
+DOCKER_IMAGE=$2
+WITH_GZ=$3
 
 # quick check src/example folders are present
 if [ ! -d "${REGENIE_PATH}/src" ] || [ ! -d "${REGENIE_PATH}/example" ]; then
-  echo "ERROR: Input argument must be the directory where Regenie repo was cloned"; exit 1
+  echo "ERROR: First input argument must be the directory where Regenie repo was cloned"; exit 1
+else
+  cd $REGENIE_PATH
 fi 
 
-cd $REGENIE_PATH
+# check docker image
+if [ -z $DOCKER_IMAGE ]; then
+  echo "ERROR: Need to pass docker image tag."; exit 1
+elif [[ "$(docker images -q $DOCKER_IMAGE 2> /dev/null)" == "" ]]; then
+  echo "ERROR: Image with tag \"${DOCKER_IMAGE}\" does not exist!"; exit 1
+fi
 
-
-echo -e "Building docker image\n=================================="
-dckfile=Dockerfile 
-docker build -f $dckfile -t regenie:latest .
-
+# If compiling was done with Boost Iostream library, use gzipped files as input
+if [ -z $WITH_GZ ]; then # add suffixes to files
+  echo "ERROR: Need to pass indicator for Boost Iostream compilation."; exit 1
+elif (( $WITH_GZ == 1 )); then
+  fsuf=.gz
+fi
 
 # Create test folder to store results and use as mounting point
-# make sure to use absolute path
-REGENIE_PATH=$(pwd)/
+REGENIE_PATH=$(pwd)/  # use absolute path
 # where to mount in container
 mntpt=/docker/ 
 
-echo -e "\n\nRunning step 1 of regenie\n=================================="
+echo "** Checking docker \"image ${DOCKER_IMAGE}\" **"
+echo -e "  -> Mounting directory $REGENIE_PATH to /docker/ \n"
+echo -e "Running step 1 of REGENIE\n=================================="
 # Prepare regenie command to run for Step 1
 rgcmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
-  --covarFile ${mntpt}example/covariates.txt \
-  --phenoFile ${mntpt}example/phenotype_bin.txt \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
   --bt --lowmem \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie:latest $rgcmd
+docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
-echo -e "Running step 2 of regenie\n=================================="
+## quick check that the correct files have been created
+if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
+  [ ! -f ${REGENIE_PATH}test/fit_bin_out_pred.list ] || \
+  [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco ] || \
+  [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco ]; then
+  echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
+fi
+
+
+echo -e "Running step 2 of REGENIE\n=================================="
 # Prepare regenie command to run for Step 2
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
-  --covarFile ${mntpt}example/covariates.txt \
-  --phenoFile ${mntpt}example/phenotype_bin.txt \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 200 \
   --bt \
@@ -55,18 +76,19 @@ rgcmd="--step 2 \
   --split \
   --out ${mntpt}test/test_bin_out_firth"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm regenie:latest $rgcmd
+docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
-## quick check that compilation was successful
+## check that compilation was successful
+echo "------------------------------------------"
 if cmp --silent \
   ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
   ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
 then
-   echo "SUCCESS: Files are identical!"
-   echo -e "\nYou can run regenie using:"
-   echo "docker run -v <host_path>:<mount_path> --rm regenie:latest <command_options>"
- else
-   echo "Uh oh... Files are different!"
+  echo "SUCCESS: Docker image passed the tests!"
+  echo -e "\nYou can run regenie using:"
+  echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
+else
+  echo -e "ERROR: Uh oh... Files are different!\nDocker image did not build successfully"
 fi
 
 # file cleanup
