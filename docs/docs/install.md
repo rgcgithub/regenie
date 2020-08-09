@@ -21,21 +21,19 @@ Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >
 If this library is installed on the system, you should compile using 
 `make HAS_BOOST_IOSTREAM=1`. 
 
-### With docker
+### With Docker
 Alternatively, you can use a Docker image to run **regenie**. 
-A Dockerfile (thanks to Nathan Weeks) is provided in the main directory 
-and can be used to build the image. 
-An example test script on how to do that is located in the `test/` directory 
-(you may need to run `chmod u+x test/test.sh` prior to running the script). 
-To run it, you can use the following command
+A Dockerfile (thanks to Nathan Weeks) is provided in the main directory and 
+running `make docker-build` from the main directory will build the image. 
+To compile the docker image with the Boost Iostream library, you can run
+`make docker-build HAS_BOOST_IOSTREAM=1`. 
 
-```
-test/test.sh .
-```
+To test that the image was built successfully, you can then run 
+`make docker-test`
+(add `HAS_BOOST_IOSTREAM=1` if compilation was done with Boost Iostream library).
 
-For **regenie** with enabled gzip compressed input, use the
-script `test/test_withGz.sh` instead.
-
+Docker images can alternatively be obtained from the 
+[Github repository](https://github.com/rgcgithub/regenie/packages).
 
 ##Computing requirements
 
