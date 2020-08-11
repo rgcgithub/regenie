@@ -40,9 +40,9 @@ struct phenodt {
 };
 
 
-void read_pheno_and_cov(struct in_files*,Files&,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
-void pheno_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
-void covariate_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
+void read_pheno_and_cov(struct in_files*,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
+void pheno_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
+void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
 void getCovBasis(Eigen::MatrixXd&,struct param*);
 void residualize_phenotypes(struct param*,struct phenodt*,mstream&);
 void prep_run(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);

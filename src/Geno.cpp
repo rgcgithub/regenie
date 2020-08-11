@@ -25,6 +25,7 @@
 */
 
 #include "Regenie.hpp"
+#include "Files.hpp"
 #include "Geno.hpp"
 
 using namespace std;
@@ -590,13 +591,9 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
   uint64 snp_pos;
   string line;
   std::vector< string > tmp_str_vec ;
-  ifstream myfile;
+  Files myfile;
 
-  myfile.open (files->file_snps_include.c_str(), ios::in);
-  if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open file specified by --extract :" << files->file_snps_include<< endl;
-    exit(-1);
-  }
+  myfile.openForRead (files->file_snps_include, sout);
 
   // set all the masks to true
   params->n_variants = 0;
@@ -605,7 +602,7 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
   // set chr counts to 0
   std::fill(files->chr_counts.begin(), files->chr_counts.end(), 0);
 
-  while( getline (myfile,line) ){
+  while( myfile.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 1 ){
@@ -622,6 +619,8 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
     }
   }
 
+  myfile.closeFile();
+
 }
 
 
@@ -631,15 +630,11 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
   uint64 snp_pos;
   string line;
   std::vector< string > tmp_str_vec ;
-  ifstream myfile;
+  Files myfile;
 
-  myfile.open (files->file_snps_exclude.c_str(), ios::in);
-  if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open file specified by --exclude :" << files->file_snps_exclude<< endl;
-    exit(-1);
-  }
+  myfile.openForRead (files->file_snps_exclude, sout);
 
-  while( getline (myfile,line) ){
+  while( myfile.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 1 ){
@@ -656,6 +651,7 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
     }
   }
 
+  myfile.closeFile();
 }
 
 void check_samples_include_exclude(struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
@@ -713,21 +709,17 @@ void check_samples_include_exclude(struct in_files* files, struct param* params,
 void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct param* params, mstream& sout) {
 
   uint32_t n_kept = 0;
-  ifstream myfile;
   string line;
   std::vector< string > tmp_str_vec ;
   findID person;
+  Files myfile;
+
   filters->ind_in_analysis.fill(false);
 
-
   // track individuals to include -> remaining are ignored
-  myfile.open (files->file_ind_include.c_str(), ios::in);
-  if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open file specified by --keep :" << files->file_ind_include<< endl;
-    exit(-1);
-  }
+  myfile.openForRead (files->file_ind_include, sout);
 
-  while( getline (myfile,line) ){
+  while( myfile.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 2 ){
@@ -752,23 +744,20 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
 
   sout << "     +number of genotyped individuals to keep in the analysis = " << n_kept << endl;
 
+  myfile.closeFile();
 }
 
 void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param* params, mstream& sout) {
 
   uint32_t n_rm = 0;
-  ifstream myfile;
   string line;
   std::vector< string > tmp_str_vec ;
   findID person;
+  Files myfile;
 
-  myfile.open (files->file_ind_exclude.c_str(), ios::in);
-  if (!myfile.is_open()) {    
-    sout << "ERROR: Cannot open file specified by --remove :" << files->file_ind_exclude<< endl;
-    exit(-1);
-  }
+  myfile.openForRead (files->file_ind_exclude, sout);
 
-  while( getline (myfile,line) ){
+  while( myfile.readLine(line) ){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 2 ){
@@ -792,6 +781,7 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
 
   sout << "     +number of genotyped individuals to exclude from the analysis = " << n_rm << endl;
   
+  myfile.closeFile();
 }
 
 

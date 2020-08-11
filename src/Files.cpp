@@ -35,8 +35,8 @@ Files::Files(){
 Files::~Files(){
 }
 
-// Open file (either regular or gzipped
-void Files::open(std::string filename, mstream& sout){
+// Open file (either regular or gzipped)
+void Files::openForRead(std::string filename, mstream& sout){
 
   // only used if compiled with boost iostream
 # if defined(HAS_BOOST_IOSTREAM)
@@ -71,11 +71,30 @@ bool Files::readLine(std::string& line){
   return  static_cast<bool>( getline(myfile, line) );
 }
 
-void Files::closeFile(){
+
+void Files::ignoreLines(int nlines){
+
+  int linenumber=0;
+  if(nlines < 1) return;
+
+  while(linenumber++ < nlines){
 # if defined(HAS_BOOST_IOSTREAM)
-  if(is_gz) mygzfile.reset();
+    if(is_gz) mygzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    else myfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+# else
+    myfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 #endif
-  myfile.close();
+  }
+}
+
+void Files::closeFile(){
+
+  if( read_mode ){
+# if defined(HAS_BOOST_IOSTREAM)
+    if(is_gz) mygzfile.reset();
+#endif
+    myfile.close();
+  }
 }
 
 // Check file extension

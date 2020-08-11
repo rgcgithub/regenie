@@ -40,8 +40,10 @@ class Files {
   public:
     // variables
     bool is_gz;
-    std::ifstream myfile;
+    bool read_mode = true;
 
+    // for reading
+    std::ifstream myfile;
 # if defined(HAS_BOOST_IOSTREAM)
     boost::iostreams::filtering_istream mygzfile;
 #endif
@@ -49,8 +51,9 @@ class Files {
 
     // functions
     bool checkFileExtension(std::string filename);
-    void open(std::string filename,mstream&);
+    void openForRead(std::string filename,mstream&);
     bool readLine(std::string& line);
+    void ignoreLines(int);
     void closeFile();
 
 

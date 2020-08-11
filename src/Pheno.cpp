@@ -35,13 +35,13 @@ using namespace Eigen;
 using namespace boost;
 
 
-void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
+void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
 
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file.empty());
 
   // read in phenotype (mean-impute for QT)
-  pheno_read(params, files, fClass, filters, pheno_data, ind_in_pheno_and_geno, sout);
+  pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
   if(params->binary_mode && !params->test_mode)
     m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
 
@@ -50,7 +50,7 @@ void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* par
   if(params->strict_mode) pheno_data->new_cov.array() *= pheno_data->masked_indivs.col(0).array().cast<double>();;
 
   // read in covariates
-  if(!files->cov_file.empty()) covariate_read(params, files, fClass, filters, pheno_data, ind_in_cov_and_geno, sout);
+  if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
 
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno * ind_in_cov_and_geno;
@@ -69,7 +69,7 @@ void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* par
 
 }
 
-void pheno_read(struct param* params, struct in_files* files, Files& fClass,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
+void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
   bool all_miss;
@@ -79,10 +79,10 @@ void pheno_read(struct param* params, struct in_files* files, Files& fClass,stru
   std::vector< string > tmp_str_vec;
   vector<bool> pheno_colKeep;
   findID person;
-  ifstream myfile;
+  Files fClass;
 
   sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
-  fClass.open(files->pheno_file, sout);
+  fClass.openForRead(files->pheno_file, sout);
   fClass.readLine(line);
 
   // check that FID and IID are first two entries in header
@@ -263,7 +263,7 @@ void pheno_read(struct param* params, struct in_files* files, Files& fClass,stru
 
 }
 
-void covariate_read(struct param* params, struct in_files* files, Files& fClass,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
+void covariate_read(struct param* params, struct in_files* files,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
   bool keep_cov;
@@ -271,10 +271,10 @@ void covariate_read(struct param* params, struct in_files* files, Files& fClass,
   string line;
   std::vector< string > tmp_str_vec ;
   findID person;
-  ifstream myfile;
+  Files fClass;
 
   sout << left << std::setw(20) << " * covariates" << ": [" << files->cov_file << "] " << flush;
-  fClass.open(files->cov_file, sout);
+  fClass.openForRead(files->cov_file, sout);
   fClass.readLine(line);
 
   // check that FID and IID are first two entries in header
@@ -393,10 +393,10 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   uint32_t indiv_index;
   double in_blup;
   string line, tmp_pheno;
-  string blup_file = files->blup_file;
   std::vector< string > tmp_str_vec ;
   vector<int> read_pheno(params->n_pheno, 0);
   ifstream blup_list_stream, blupf;
+  Files fClass;
   MatrixXb blupf_mask;
 
   // allocate memory
@@ -408,20 +408,16 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     return;
   }
 
-  blup_list_stream.open (blup_file.c_str(), ios::in);
-  if (!blup_list_stream.is_open()) {
-    sout << "ERROR: Cannot open prediction list file : " << blup_file << endl;
-    exit(-1);
-  }
+  sout << " * LOCO predictions : [" << files->blup_file << "] ";
+  fClass.openForRead(files->blup_file, sout);
 
   // get list of files containing blups
-  sout << " * LOCO predictions : [" << blup_file << "] ";
-  while (getline(blup_list_stream, line)){
+  while (fClass.readLine(line)){
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     // each line contains a phenotype name and the corresponding blup file name
     if( tmp_str_vec.size() != 2 ){
-      sout << "ERROR: Incorrectly formatted blup list file : " << blup_file << endl;
+      sout << "ERROR: Incorrectly formatted blup list file : " << files->blup_file << endl;
       exit(-1);
     }
 
@@ -434,7 +430,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     // check that phenotype only has one file
     if(read_pheno[tmp_index] != 0){
-      sout << "ERROR: Phenotype " << tmp_pheno << " appears more than once in blup list file : " << blup_file << endl;
+      sout << "ERROR: Phenotype " << tmp_pheno << " appears more than once in blup list file." << endl;
       exit(1);
     }
 
@@ -449,28 +445,21 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     exit(-1);
   }
   sout << "n_files = " << n_files << endl;
-  blup_list_stream.close();
+  fClass.closeFile();
 
   // read blup file for each phenotype
   for(size_t ph = 0; ph < params->n_pheno; ph++) {
     int i_pheno = files->pheno_index[ph];
 
     sout << "   -file [" <<  files->blup_files[ph];
-    sout << "] for phenotype \'" << files->pheno_names[i_pheno] << "\'";
-
-    blupf.open(files->blup_files[ph].c_str(), ios::in);
-    if (!blupf.is_open()) {
-      sout << "ERROR: Cannot open prediction file : " << files->blup_files[ph] << endl;
-      exit(-1);
-    }
-    sout << endl;
-
+    sout << "] for phenotype \'" << files->pheno_names[i_pheno] << "\'\n";
+    fClass.openForRead(files->blup_files[ph], sout);
 
     // mask all individuals not present in .loco file
     blupf_mask = MatrixXb::Constant(params->n_samples, 1, false);
     n_masked_prior = pheno_data->masked_indivs.col(ph).cast<int>().sum();
     // only read first line which has FID_IID
-    getline(blupf, line);
+    fClass.readLine(line);
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec[0] != "FID_IID") {
@@ -492,7 +481,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     if( n_masked_post < n_masked_prior ){
       sout << "    + " << n_masked_prior - n_masked_post <<
-        " individuals don't have LOCO predictions and are excluded from analysis\n";
+        " individuals don't have LOCO predictions and will be ignore for the trait\n";
     }
 
     // check not everyone is masked
@@ -501,7 +490,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
       exit(1);
     }
 
-    blupf.close();
+    fClass.closeFile();
   }
 
 }

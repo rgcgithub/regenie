@@ -71,7 +71,7 @@ void Data::run() {
     // set up file for reading
     file_read_initialization();
     // read phenotype and covariate files
-    read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);
+    read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);
     // adjust for covariates
     prep_run(&files, &params, &pheno_data, &m_ests, sout);
     // set number of blocks and block size and ridge parameters
@@ -1217,7 +1217,7 @@ void Data::test_snps() {
 
   setNbThreads(params.threads); // set threads   
   file_read_initialization(); // set up files for reading
-  read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);
@@ -1665,12 +1665,12 @@ void Data::test_snps() {
 /////////////////////////////////////////////////
 
 void Data::blup_read_chr(const int chrom) {
-  ifstream blup_list_stream, blupf;
   string line, filename, tmp_pheno;
   std::vector< string > id_strings, tmp_str_vec ;
   int tmp_index;
   double in_blup;
   uint32_t indiv_index;
+  Files blupf;
 
   m_ests.blups = MatrixXd::Zero(params.n_samples, params.n_pheno);
 
@@ -1685,10 +1685,10 @@ void Data::blup_read_chr(const int chrom) {
 
     int i_pheno = files.pheno_index[ph];
     ArrayXb read_indiv = ArrayXb::Constant(params.n_samples, false);
-    blupf.open (files.blup_files[ph].c_str(), ios::in);
+    blupf.openForRead(files.blup_files[ph], sout);
 
     // check header
-    getline (blupf,line);
+    blupf.readLine(line);
     boost::algorithm::split(id_strings, line, is_any_of("\t "));
     if( id_strings[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID." << endl;
@@ -1696,8 +1696,9 @@ void Data::blup_read_chr(const int chrom) {
     }
 
     // skip to chr
-    for (int chr = 1; chr < chrom; chr++) blupf.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    getline (blupf,line);
+    blupf.ignoreLines(chrom-1);
+
+    blupf.readLine(line);
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     // check number of entries is same as in header
@@ -1751,7 +1752,7 @@ void Data::blup_read_chr(const int chrom) {
       exit(-1);
     }
 
-    blupf.close();
+    blupf.closeFile();
   }
 
   sout << "done";
@@ -1971,7 +1972,7 @@ void Data::test_snps_fast() {
 
   setNbThreads(params.threads);
   file_read_initialization(); // set up files for reading
-  read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);
