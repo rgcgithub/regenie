@@ -59,7 +59,6 @@ void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* par
   pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
   if(params->binary_mode) pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
   pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
-  pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
 
   // check sample size
   if( filters->ind_in_analysis.cast<int>().sum() < 1 ) {
@@ -67,16 +66,6 @@ void read_pheno_and_cov(struct in_files* files, Files& fClass, struct param* par
     exit(-1);
   }
   sout << " * number of individuals used in analysis = " << filters->ind_in_analysis.cast<int>().sum() << endl;
-
-
-  // orthonormal basis
-  getCovBasis(pheno_data->new_cov, params);
-
-  // compute offset for BT (only in step 1)
-  if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, sout);
-
-  // residualize phenotypes (skipped for BTs when testing)
-  if(!params->test_mode || !params->binary_mode) residualize_phenotypes(params, pheno_data, sout);
 
 }
 
@@ -372,6 +361,151 @@ void covariate_read(struct param* params, struct in_files* files, Files& fClass,
   fClass.closeFile();
 
 }
+
+// Adjust for covariates (incl. intercept)
+// in step 2, also read blups and check
+void prep_run (struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout){
+
+  // for step 2, check blup files
+  if (params->test_mode){
+    // individuals not in blup file will have their phenotypes masked
+    blup_read(files, params, pheno_data, m_ests, sout);
+  }
+
+  // compute N for each trait
+  pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
+
+  // orthonormal basis
+  getCovBasis(pheno_data->new_cov, params);
+
+  // compute offset for BT (only in step 1)
+  if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, sout);
+
+  // residualize phenotypes (skipped for BTs when testing)
+  if(!params->test_mode || !params->binary_mode) residualize_phenotypes(params, pheno_data, sout);
+
+}
+
+// get list of blup files
+void blup_read(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
+
+  int n_files = 0, tmp_index, n_masked_prior, n_masked_post;
+  uint32_t indiv_index;
+  double in_blup;
+  string line, tmp_pheno;
+  string blup_file = files->blup_file;
+  std::vector< string > tmp_str_vec ;
+  vector<int> read_pheno(params->n_pheno, 0);
+  ifstream blup_list_stream, blupf;
+  MatrixXb blupf_mask;
+
+  // allocate memory
+  m_ests->blups = MatrixXd::Zero(params->n_samples, params->n_pheno);
+
+  // skip reading if specified by user
+  if( params->skip_blups ) {
+    sout << " * no LOCO predictions given. Simple " << ( params->binary_mode ? "logistic":"linear" ) << " regression will be performed"<<endl;
+    return;
+  }
+
+  blup_list_stream.open (blup_file.c_str(), ios::in);
+  if (!blup_list_stream.is_open()) {
+    sout << "ERROR: Cannot open prediction list file : " << blup_file << endl;
+    exit(-1);
+  }
+
+  // get list of files containing blups
+  sout << " * LOCO predictions : [" << blup_file << "] ";
+  while (getline(blup_list_stream, line)){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    // each line contains a phenotype name and the corresponding blup file name
+    if( tmp_str_vec.size() != 2 ){
+      sout << "ERROR: Incorrectly formatted blup list file : " << blup_file << endl;
+      exit(-1);
+    }
+
+    // get index of phenotype in phenotype matrix
+    vector<string>::iterator it = std::find(files->pheno_names.begin(), files->pheno_names.end(), tmp_str_vec[0]);
+    if (it == files->pheno_names.end()) continue; // ignore unrecognized phenotypes
+
+    tmp_index = std::distance(files->pheno_names.begin(), it);
+    files->pheno_index.push_back(tmp_index);
+
+    // check that phenotype only has one file
+    if(read_pheno[tmp_index] != 0){
+      sout << "ERROR: Phenotype " << tmp_pheno << " appears more than once in blup list file : " << blup_file << endl;
+      exit(1);
+    }
+
+    n_files++;
+    read_pheno[tmp_index] = 1;
+    files->blup_files.push_back(tmp_str_vec[1]);
+  }
+
+  // force all phenotypes in phenotype file to be used
+  if(n_files != params->n_pheno) {
+    sout << "ERROR : Number of files (" << n_files <<")  is not equal to the number of phenotypes.\n" ;
+    exit(-1);
+  }
+  sout << "n_files = " << n_files << endl;
+  blup_list_stream.close();
+
+  // read blup file for each phenotype
+  for(size_t ph = 0; ph < params->n_pheno; ph++) {
+    int i_pheno = files->pheno_index[ph];
+
+    sout << "   -file [" <<  files->blup_files[ph];
+    sout << "] for phenotype \'" << files->pheno_names[i_pheno] << "\'";
+
+    blupf.open(files->blup_files[ph].c_str(), ios::in);
+    if (!blupf.is_open()) {
+      sout << "ERROR: Cannot open prediction file : " << files->blup_files[ph] << endl;
+      exit(-1);
+    }
+    sout << endl;
+
+
+    // mask all individuals not present in .loco file
+    blupf_mask = MatrixXb::Constant(params->n_samples, 1, false);
+    n_masked_prior = pheno_data->masked_indivs.col(ph).cast<int>().sum();
+    // only read first line which has FID_IID
+    getline(blupf, line);
+    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+
+    if( tmp_str_vec[0] != "FID_IID") {
+      sout << "ERROR: Header of blup file must start with FID_IID." << endl;
+      exit(-1);
+    }
+
+    for (size_t i = 1; i < tmp_str_vec.size(); i++){
+      // ignore sample if it is not in genotype data
+      if ( params->FID_IID_to_ind.find(tmp_str_vec[i]) == params->FID_IID_to_ind.end()) continue;
+      indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
+
+      blupf_mask( indiv_index , 0 ) = true;
+    }
+
+    // mask samples not in file
+    pheno_data->masked_indivs.col(ph).array() *= blupf_mask.col(0).array();
+    n_masked_post = pheno_data->masked_indivs.col(ph).cast<int>().sum();
+
+    if( n_masked_post < n_masked_prior ){
+      sout << "    + " << n_masked_prior - n_masked_post <<
+        " individuals don't have LOCO predictions and are excluded from analysis\n";
+    }
+
+    // check not everyone is masked
+    if( n_masked_post < 1 ){
+      sout << "ERROR: none of the individuals remaining in the analysis have LOCO predictions from step 1." << "\n Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.\n";
+      exit(1);
+    }
+
+    blupf.close();
+  }
+
+}
+
 
 void getCovBasis(MatrixXd& new_cov,struct param* params){
 

@@ -45,6 +45,8 @@ void pheno_read(struct param*,struct in_files*,Files&,struct filter*,struct phen
 void covariate_read(struct param*,struct in_files*,Files&,struct filter*,struct phenodt*,ArrayXb&,mstream&);
 void getCovBasis(Eigen::MatrixXd&,struct param*);
 void residualize_phenotypes(struct param*,struct phenodt*,mstream&);
+void prep_run(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
+void blup_read(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
 double convertDouble(const std::string&,struct param*,mstream&);
 
 #endif

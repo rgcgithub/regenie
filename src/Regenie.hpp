@@ -232,6 +232,7 @@ struct in_files {
   std::string blup_file;
   std::vector<std::string> blup_files;
   std::vector<std::string> pheno_names;
+  std::vector<int> pheno_index;
   std::vector<int> chr_counts, chr_file_counts;
   uint64 bed_block_size; // prevent overflow
   std::ifstream bed_ifstream;

@@ -58,7 +58,6 @@ class Data {
     uint32_t size1, size2, snp_index_counter, total_chrs_loco;
     Eigen::MatrixXd blup;
     Eigen::VectorXd denum_tstat;
-    std::vector<int> pheno_index;
     Eigen::MatrixXd res, stats, W_hat;
     Eigen::RowVectorXd p_sd_yres;
     Eigen::VectorXd scale_G; // keep track of sd(Y) (1xP) and sd(G) (M*1)
@@ -86,7 +85,6 @@ class Data {
     // step 2 main functions
     void test_snps();
     void set_blocks_for_testing();
-    void blup_read(const std::string);
     void blup_read_chr(const int);
 
     // step 2 using multithreading in eigen

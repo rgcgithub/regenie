@@ -72,6 +72,8 @@ void Data::run() {
     file_read_initialization();
     // read phenotype and covariate files
     read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);
+    // adjust for covariates
+    prep_run(&files, &params, &pheno_data, &m_ests, sout);
     // set number of blocks and block size and ridge parameters
     set_blocks();
     // some initializations
@@ -1216,7 +1218,7 @@ void Data::test_snps() {
   setNbThreads(params.threads); // set threads   
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
-  blup_read(files.blup_file); // read blups
+  prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);
 
@@ -1662,87 +1664,6 @@ void Data::test_snps() {
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 
-// get list of blup files
-void Data::blup_read(const string blup_file) {
-  ifstream blup_list_stream, blupf;
-  string line, tmp_pheno;
-  std::vector< string > tmp_str_vec ;
-  int n_files = 0, tmp_index;
-  double in_blup;
-  vector<int> read_pheno(params.n_pheno, 0);
-
-  // allocate memory
-  m_ests.blups = MatrixXd::Zero(params.n_samples, params.n_pheno);
-
-  // skip reading if specified by user
-  if( params.skip_blups ) {
-    sout << " * no LOCO predictions given. Simple " << ( params.binary_mode ? "logistic":"linear" ) << " regression will be performed"<<endl;
-    return;
-  }
-
-  blup_list_stream.open (blup_file.c_str(), ios::in);
-  if (!blup_list_stream.is_open()) {
-    sout << "ERROR: Cannot open prediction list file : " << blup_file << endl;
-    exit(-1);
-  } 
-
-  // get list of files containing blups 
-  sout << " * loco predictions : [" << blup_file << "] ";
-  while (getline(blup_list_stream, line)){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
-
-    // each line contains a phenotype name and the corresponding blup file name
-    if( tmp_str_vec.size() != 2 ){
-      sout << "ERROR: Incorrectly formatted blup list file : " << blup_file << endl;
-      exit(-1);
-    }
-
-    // get index of phenotype in phenotype matrix
-    vector<string>::iterator it = std::find(files.pheno_names.begin(), files.pheno_names.end(), tmp_str_vec[0]);
-    if (it == files.pheno_names.end()) continue; // ignore unrecognized phenotypes
-
-    tmp_index = std::distance(files.pheno_names.begin(), it);
-    pheno_index.push_back(tmp_index);
-
-    // check that phenotype only has one file
-    if(read_pheno[tmp_index] != 0){
-      sout << "ERROR: Phenotype " << tmp_pheno << " appears more than once in blup list file : " << blup_file << endl;
-      exit(1);
-    }
-
-    n_files++;
-    read_pheno[tmp_index] = 1;
-    files.blup_files.push_back(tmp_str_vec[1]);
-  }
-
-  // force all phenotypes in phenotype file to be used 
-  if(n_files != params.n_pheno) {
-    sout << "ERROR : Number of files (" << n_files <<")  is not equal to the number of phenotypes.\n" ;
-    exit(-1);
-  }
-  sout << "n_files = " << n_files << endl;
-  blup_list_stream.close();
-
-  // read blup file for each phenotype
-  for(size_t ph = 0; ph < params.n_pheno; ph++) {
-    int i_pheno = pheno_index[ph];
-
-    sout << "   -file [" <<  files.blup_files[ph];
-    sout << "] for phenotype \'" << files.pheno_names[i_pheno] << "\'";
-
-    blupf.open(files.blup_files[ph].c_str(), ios::in);
-    if (!blupf.is_open()) {
-      sout << "ERROR: Cannot open prediction file : " << files.blup_files[ph] << endl;
-      exit(-1);
-    }
-
-    sout << endl;
-    blupf.close();
-  }
-
-}
-
-
 void Data::blup_read_chr(const int chrom) {
   ifstream blup_list_stream, blupf;
   string line, filename, tmp_pheno;
@@ -1762,7 +1683,7 @@ void Data::blup_read_chr(const int chrom) {
   // read blup file for each phenotype
   for(size_t ph = 0; ph < params.n_pheno; ph++) {
 
-    int i_pheno = pheno_index[ph];
+    int i_pheno = files.pheno_index[ph];
     ArrayXb read_indiv = ArrayXb::Constant(params.n_samples, false);
     blupf.open (files.blup_files[ph].c_str(), ios::in);
 
@@ -1823,6 +1744,7 @@ void Data::blup_read_chr(const int chrom) {
     }
 
     // force all non-masked samples to have loco predictions
+    //   -> this should not occur as masking of absent samples is done in blup_read() function
     if( (pheno_data.masked_indivs.col(i_pheno).array() * read_indiv).cast<int>().sum() < pheno_data.masked_indivs.col(i_pheno).cast<int>().sum() ){
       sout << "ERROR: All samples included in the analysis (for phenotype " << 
         files.pheno_names[i_pheno]<< ") must have LOCO predictions in file : " << files.blup_files[ph] << "\n";
@@ -2050,7 +1972,7 @@ void Data::test_snps_fast() {
   setNbThreads(params.threads);
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, fClass, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
-  blup_read(files.blup_file); // read blups
+  prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks 
   print_usage_info(&params, &files, sout);
 
