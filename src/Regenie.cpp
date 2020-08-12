@@ -140,6 +140,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("chr", "specify chromosome to test in step 2 (use for each chromosome)", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
+    ("gz", "compress output files (gzip format)")
     ;
 
 
@@ -228,7 +229,14 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("nostream") ) params->streamBGEN = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("early-exit") ) params->early_exit = true;
-
+    if( vm.count("gz") ) {
+# if defined(HAS_BOOST_IOSTREAM)
+      // only works when compiled with boost IO library
+      params->gzOut = true;
+# else
+      sout << "WARNING : REGENIE was not compiled with Boost Iostream library so ignoring option '--gz'.\n";
+#endif
+    }
 
 
     if( vm.count("lowmem") ) {

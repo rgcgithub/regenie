@@ -581,19 +581,19 @@ void Data::output() {
   double performance_measure, rsq, sse, ll_avg, min_val;
   string pfile, out_blup_list, pline, loco_filename;
   string fullpath_str;
-  ofstream outb;
+  Files outb;
 
   sout << "Output" << endl << "------" << endl;
 
   if(params.make_loco || params.binary_mode){
     out_blup_list = files.out_file + "_pred.list";
-    outb.open(out_blup_list.c_str());
+    outb.openForWrite(out_blup_list, sout);
   }
 
   for(size_t ph = 0; ph < params.n_pheno; ++ph ) { 
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
-    loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco";
+    loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco" + (params.gzOut ? ".gz" : "");
 
     if( params.make_loco || params.binary_mode ) {
 
@@ -682,7 +682,7 @@ void Data::output() {
   }
 
   if(params.make_loco || params.binary_mode){
-    outb.close();
+    outb.closeFile();
     sout << "List of blup files written to: [" << out_blup_list << "] " << endl;
   }
 
@@ -1070,16 +1070,16 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
 
 void Data::write_predictions(const int ph){
   // output predictions to file
-  ofstream ofile;
+  Files ofile;
   map<string, uint32_t >::iterator itr_ind;
   string out, id_index;
   uint32_t index;
 
   // for the per chromosome predictions -- only for QT
   if(params.write_blups) {
-    out = files.out_file + "_" + to_string(ph+1);
-    ofile.open(out.c_str());
+    out = files.out_file + "_" + to_string(ph+1) + (params.gzOut ? ".gz" : "");
     sout << "writing file " << out << "..." << flush;
+    ofile.openForWrite(out, sout);
 
     // enforce all chromosomes are printed
     MatrixXd autosomal_pred = MatrixXd::Zero(predictions[0].rows(), params.nChrom);
@@ -1126,13 +1126,13 @@ void Data::write_predictions(const int ph){
       ofile << endl;
     }
 
-    ofile.close();
+    ofile.closeFile();
   }
 
   if(params.make_loco || params.binary_mode){
-    out = files.out_file + "_" + to_string(ph+1) + ".loco";
-    ofile.open(out.c_str());
+    out = files.out_file + "_" + to_string(ph+1) + ".loco" + (params.gzOut ? ".gz" : "");
     sout << "writing LOCO predictions..." << flush;
+    ofile.openForWrite(out, sout);
 
     // output LOCO predictions G_loco * beta_loco for each autosomal chr  
     MatrixXd loco_pred (predictions[0].rows(), params.nChrom);
@@ -1180,7 +1180,7 @@ void Data::write_predictions(const int ph){
       ofile << endl;
     }
 
-    ofile.close();
+    ofile.closeFile();
   }
 }
 

@@ -47,16 +47,16 @@ void Files::openForRead(std::string filename, mstream& sout){
 
   std::ios_base::openmode mode = (is_gz ? std::ios_base::in | std::ios_base::binary : std::ios_base::in ); 
 
-  myfile.open(filename.c_str(), mode);
-  if (!myfile.is_open()) {    
+  infile.open(filename.c_str(), mode);
+  if (!infile) {    
     sout << "ERROR: Cannot open file : " << filename << std::endl;
     exit(-1);
   }
 
 # if defined(HAS_BOOST_IOSTREAM)
   if(is_gz){
-    mygzfile.push(boost::iostreams::gzip_decompressor());
-    mygzfile.push(myfile);
+    ingzfile.push(boost::iostreams::gzip_decompressor());
+    ingzfile.push(infile);
   }
 #endif
 
@@ -65,10 +65,10 @@ void Files::openForRead(std::string filename, mstream& sout){
 bool Files::readLine(std::string& line){
 
 # if defined(HAS_BOOST_IOSTREAM)
-  if(is_gz) return static_cast<bool>( getline(mygzfile, line) );
+  if(is_gz) return static_cast<bool>( getline(ingzfile, line) );
 #endif
 
-  return  static_cast<bool>( getline(myfile, line) );
+  return  static_cast<bool>( getline(infile, line) );
 }
 
 
@@ -79,21 +79,54 @@ void Files::ignoreLines(int nlines){
 
   while(linenumber++ < nlines){
 # if defined(HAS_BOOST_IOSTREAM)
-    if(is_gz) mygzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    else myfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    if(is_gz) ingzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    else infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 # else
-    myfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 #endif
   }
+}
+
+
+// Open file for writing
+void Files::openForWrite(std::string filename, mstream& sout){
+
+  read_mode = false;
+  // only used if compiled with boost iostream
+# if defined(HAS_BOOST_IOSTREAM)
+  is_gz = checkFileExtension(filename);
+#else
+  is_gz = false;
+#endif
+
+  std::ios_base::openmode mode = (is_gz ? std::ios_base::out | std::ios_base::binary : std::ios_base::out ); 
+
+  outfile.open(filename.c_str(), mode);
+  if (!outfile) {    
+    sout << "ERROR: Cannot open file : " << filename << std::endl;
+    exit(-1);
+  }
+
+# if defined(HAS_BOOST_IOSTREAM)
+  if(is_gz){
+    outgzfile.push(boost::iostreams::gzip_compressor());
+    outgzfile.push(outfile);
+  }
+#endif
 }
 
 void Files::closeFile(){
 
   if( read_mode ){
 # if defined(HAS_BOOST_IOSTREAM)
-    if(is_gz) mygzfile.reset();
+    if(is_gz) ingzfile.reset();
 #endif
-    myfile.close();
+    infile.close();
+  } else {
+# if defined(HAS_BOOST_IOSTREAM)
+    if(is_gz) outgzfile.reset();
+#endif
+    outfile.close();
   }
 }
 

@@ -43,9 +43,13 @@ class Files {
     bool read_mode = true;
 
     // for reading
-    std::ifstream myfile;
+    std::ifstream infile;
+    // for writing
+    std::ofstream outfile;
+
 # if defined(HAS_BOOST_IOSTREAM)
-    boost::iostreams::filtering_istream mygzfile;
+    boost::iostreams::filtering_istream ingzfile;
+    boost::iostreams::filtering_ostream outgzfile;
 #endif
 
 
@@ -54,8 +58,35 @@ class Files {
     void openForRead(std::string filename,mstream&);
     bool readLine(std::string& line);
     void ignoreLines(int);
+    void openForWrite(std::string filename,mstream&);
     void closeFile();
 
+    // to write to file
+    template <class S>
+      Files& operator<< (const S& val)
+      {
+# if defined(HAS_BOOST_IOSTREAM)
+        if(is_gz) {
+          outgzfile << val;
+          return *this;
+        }
+#endif
+        outfile << val;
+        return *this;
+      };
+
+    // for std::endl
+    Files& operator<< (std::ostream& (*pfun)(std::ostream&))
+    {
+# if defined(HAS_BOOST_IOSTREAM)
+        if(is_gz) {
+          pfun(outgzfile);
+          return *this;
+        }
+#endif
+      pfun(outfile);
+      return *this;
+    };
 
     Files();
     ~Files();
