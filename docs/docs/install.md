@@ -17,7 +17,8 @@ Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >
 4. This should produce the executable called `regenie`.
 
 **regenie** has been enhanced to allow for gzip compressed input 
-(for phenotype/covariate files) using the Boost Iostream library. 
+(for phenotype/covariate files) and output (for association results files)
+ using the Boost Iostream library. 
 If this library is installed on the system, you should compile using 
 `make HAS_BOOST_IOSTREAM=1`. 
 

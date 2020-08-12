@@ -208,12 +208,10 @@ It is followed by 23 lines containing the genetic predictions for each chromosom
 More specifically, each line has $N+1$ values which are the chromosome number followed by the $N$
 leave-one chromosome out (LOCO) predictions for each individual.
 
-  Samples must be in the bed/pgen/bgen input file and must be included in
-  the analysis (otherwise use `--remove`).
+Samples in this file not in the bed/pgen/bgen input file are ignored. Genotyped samples not 
+present in this file will be ignored in the analysis of the corresponding trait. 
 
-  For each phenotype, samples with missing LOCO predictions must have their corresponding 
-phenotype value set to missing, and **all samples with non-missing phenotype values must have LOCO
-predictions** (otherwise use `--remove`).
+Samples with missing LOCO predictions must have their corresponding phenotype value set to missing.
 
 
 ## Options
@@ -233,6 +231,7 @@ predictions** (otherwise use `--remove`).
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
 |`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
+|`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
 |`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test as fallback for p-values less than|
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
@@ -252,8 +251,8 @@ predictions** (otherwise use `--remove`).
 |`--help`| FLAG | Optional| Prints usage and options list to screen|
 
 When step 1 of **regenie** is run in low memory mode (i.e. using `--lowmem`), 
-temporary files are created on disk (using `--lowmem-prefix tmp_prefix`  
-determines where the files are written [as in `tmp_prefix_l0_Y1`,...,`tmp_prefix_l0_YP` 
+temporary files are created on disk (using `--lowmem-prefix tmp_prefix` determines 
+where the files are written [as in `tmp_prefix_l0_Y1`,...,`tmp_prefix_l0_YP` 
 for P phenotypes]). If the prefix is not specified, the default is to use the 
 prefix specified by `--out` (see below).
 These are automatically deleted at the end of the program (unless the run
@@ -270,7 +269,8 @@ A log file `file.log` of the output is generated.
 **Using `--step 1 --out file`**
 
 For the \(P\) phenotypes, files `file_1.loco`,...,`file_P.loco` are output with the
-per-chromosome LOCO predictions as columns of the files.
+per-chromosome LOCO predictions as rows of the files. 
+If option `--gz` was used, the files will be compressed in gzip format and have extension `.loco.gz`.
 
 Genotyped individuals specified using option `--remove` are excluded from this file. 
  Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
@@ -285,6 +285,7 @@ The list of blup files needed for step 2 (association testing) is written to  `f
 
 By default, results are written to a single file `file.regenie`, which has one line per
 SNP along with a header line.
+If option `--gz` was used, the file will be compressed in gzip format and have extension `.regenie.gz`.
 
 The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
 alternative allele (allele 1), frequency of the alternative allele, and the test performed 
@@ -300,4 +301,5 @@ When using option `--split`, the results are written in separate files for
 each phenotype
 `file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
 with the same format.
+If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
 
