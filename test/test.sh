@@ -5,6 +5,8 @@ if [ "$#" -eq 0 ]; then
 echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
 fi
 
+### Test script for Regenie version >= 1.0.5.6
+## In previous versions, will get error if WITH_GZ is set since option '--gz' did not exist
 REGENIE_PATH="$1" 
 DOCKER_IMAGE=$2
 WITH_GZ=$3
@@ -28,6 +30,7 @@ if [ -z $WITH_GZ ]; then # add suffixes to files
   echo "ERROR: Need to pass indicator for Boost Iostream compilation."; exit 1
 elif (( $WITH_GZ == 1 )); then
   fsuf=.gz
+  arg_gz="--gz"
 fi
 
 # Create test folder to store results and use as mounting point
@@ -46,7 +49,8 @@ rgcmd="--step 1 \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
-  --bt --lowmem \
+  --bt $arg_gz \
+  --lowmem \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
 
@@ -55,8 +59,8 @@ docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 ## quick check that the correct files have been created
 if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_pred.list ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco ]; then
+  [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf ] || \
+  [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf ]; then
   echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
 fi
 
@@ -73,12 +77,19 @@ rgcmd="--step 2 \
   --firth --approx \
   --pThresh 0.01 \
   --pred ${mntpt}test/fit_bin_out_pred.list \
-  --split \
+  --split $arg_gz \
   --out ${mntpt}test/test_bin_out_firth"
 
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
+
 ## check that compilation was successful
+if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
+  # uncompress file (zcat this way should work on OSX)
+  ( zcat < ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ) > ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie
+fi
+
+# compare result files to exemplar file
 echo "------------------------------------------"
 if cmp --silent \
   ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \

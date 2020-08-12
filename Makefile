@@ -28,7 +28,7 @@ INC += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_PATH}/genf
 
 
 ## specify dockerfile 
-REGENIE_VERSION := v1.0.5.5
+REGENIE_VERSION := v1.0.5.6
 DFILE = ./Dockerfile
 TEST_SCRIPT=./test/test.sh
 
