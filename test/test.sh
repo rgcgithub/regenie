@@ -38,7 +38,7 @@ REGENIE_PATH=$(pwd)/  # use absolute path
 # where to mount in container
 mntpt=/docker/ 
 
-echo "** Checking docker \"image ${DOCKER_IMAGE}\" **"
+echo "** Checking docker image \"${DOCKER_IMAGE}\" **"
 echo -e "  -> Mounting directory $REGENIE_PATH to /docker/ \n"
 echo -e "Running step 1 of REGENIE\n=================================="
 # Prepare regenie command to run for Step 1

@@ -26,9 +26,9 @@ LPATHS = -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BG
 LIBS = -lbgen -lzstd -ldb  -lsqlite3 -lboost -lz
 INC += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I./external_libs/ 
 
+REGENIE_VERSION = $(shell cat VERSION)
 
-## specify dockerfile 
-REGENIE_VERSION := v1.0.5.6
+## for docker 
 DFILE = ./Dockerfile
 TEST_SCRIPT=./test/test.sh
 
@@ -40,7 +40,12 @@ ifeq ($(HAS_BOOST_IOSTREAM),1)
 	LIB_BIO = libboost-iostreams-dev ## for docker build
 endif
 
+# pass on version number to software
+CXXFLAGS += -DVERSION_NUMBER=\"$(REGENIE_VERSION)\"
+
+
 OBJECTS = $(patsubst %.cpp,%.o,$(wildcard ./src/*.cpp)) ${PGEN_OBJECTS} 
+
 
 .PHONY: all docker-build docker-test debug clean
 
@@ -59,7 +64,7 @@ ${EFILE}: ${OBJECTS}
 ## For use with Docker
 # create Docker image
 docker-build:	
-	@echo "Building docker image for REGENIE ${REGENIE_VERSION}"
+	@echo "Building docker image for REGENIE v${REGENIE_VERSION}"
 ifeq ($(HAS_BOOST_IOSTREAM),1)
 	@echo Compiling with Boost Iostream library
 endif
@@ -67,10 +72,10 @@ endif
 		--no-cache --pull \
 		--build-arg BOOST_IO=${HAS_BOOST_IOSTREAM} \
 		--build-arg LIB_INSTALL=${LIB_BIO} \
-		-t regenie:${REGENIE_VERSION} .
+		-t regenie:v${REGENIE_VERSION} .
 
 docker-test:	
-	@${TEST_SCRIPT} . "regenie:${REGENIE_VERSION}" ${HAS_BOOST_IOSTREAM}
+	@${TEST_SCRIPT} . "regenie:v${REGENIE_VERSION}" ${HAS_BOOST_IOSTREAM}
 ####
 
 debug: CXXFLAGS = -O0 -g
