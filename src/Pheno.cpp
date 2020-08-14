@@ -382,7 +382,7 @@ void prep_run (struct in_files* files, struct param* params, struct phenodt* phe
   if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, sout);
 
   // residualize phenotypes (skipped for BTs when testing)
-  if(!params->test_mode || !params->binary_mode) residualize_phenotypes(params, pheno_data, sout);
+  if(!params->test_mode || !params->binary_mode) residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
 }
 
@@ -393,10 +393,9 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   uint32_t indiv_index;
   string line, tmp_pheno;
   std::vector< string > tmp_str_vec ;
-  vector<int> read_pheno(params->n_pheno, 0);
-  ifstream blup_list_stream, blupf;
-  Files fClass;
+  vector<bool> read_pheno(params->n_pheno, false);
   MatrixXb blupf_mask;
+  Files fClass;
 
   // allocate memory
   m_ests->blups = MatrixXd::Zero(params->n_samples, params->n_pheno);
@@ -428,13 +427,13 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     files->pheno_index.push_back(tmp_index);
 
     // check that phenotype only has one file
-    if(read_pheno[tmp_index] != 0){
-      sout << "ERROR: Phenotype " << tmp_pheno << " appears more than once in blup list file." << endl;
+    if(read_pheno[tmp_index]){
+      sout << "ERROR: Phenotype \'" << tmp_pheno << "\' appears more than once in blup list file." << endl;
       exit(1);
     }
 
     n_files++;
-    read_pheno[tmp_index] = 1;
+    read_pheno[tmp_index] = true;
     files->blup_files.push_back(tmp_str_vec[1]);
   }
 
@@ -462,7 +461,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec[0] != "FID_IID") {
-      sout << "ERROR: Header of blup file must start with FID_IID." << endl;
+      sout << "ERROR: Header of blup file must start with FID_IID (=" << tmp_str_vec[0] << ").\n";
       exit(-1);
     }
 
@@ -485,7 +484,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     // check not everyone is masked
     if( n_masked_post < 1 ){
-      sout << "ERROR: none of the individuals remaining in the analysis have LOCO predictions from step 1." << "\n Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.\n";
+      sout << "ERROR: none of the individuals remaining in the analysis are in the LOCO predictions file from step 1.\n Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.\n";
       exit(1);
     }
 
@@ -513,7 +512,7 @@ void getCovBasis(MatrixXd& new_cov,struct param* params){
 }
 
 
-void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, mstream& sout) {
+void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
   sout << "   -residualizing and scaling phenotypes...";
   auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -523,8 +522,9 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, ms
   pheno_data->scale_Y = pheno_data->phenotypes.colwise().norm().array() / sqrt(pheno_data->Neff.matrix().transpose().array() - 1);
 
   // check sd is not 0 
-  if(pheno_data->scale_Y.minCoeff() < params->numtol){
-    sout << "ERROR: At least one of the phenotypes has sd=0." << endl;
+  MatrixXd::Index minIndex;
+  if(pheno_data->scale_Y.minCoeff(&minIndex) < params->numtol){
+    sout << "ERROR: Phenotype \'" << pheno_names[minIndex] << "\' has sd=0." << endl;
     exit(-1);
   }
   pheno_data->phenotypes.array().rowwise() /= pheno_data->scale_Y.array();
