@@ -20,10 +20,10 @@ CFLAGS        =
 # detect OS architecture and add flags
 UNAME_S      := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-	INC         = -I${BGEN_PATH}/3rd_party/boost_1_55_0
-	CFLAGS     += -fopenmp
+  INC         = -I${BGEN_PATH}/3rd_party/boost_1_55_0
+  CFLAGS     += -fopenmp
 else ifeq ($(UNAME_S),Darwin)
-	RGFLAGS    += -stdlib=libc++
+  RGFLAGS    += -stdlib=libc++
 endif
 
 
@@ -35,9 +35,9 @@ TEST_SCRIPT   = ./test/test.sh
 
 ## for boost iostream
 ifeq ($(HAS_BOOST_IOSTREAM),1)
-	RG_VERSION := $(RG_VERSION).gz
-	RGFLAGS    += -DHAS_BOOST_IOSTREAM
-	LIB_BIO     = libboost-iostreams-dev ## for docker build
+  RG_VERSION := $(RG_VERSION).gz
+  RGFLAGS    += -DHAS_BOOST_IOSTREAM
+  LIB_BIO     = libboost-iostreams-dev ## for docker build
 endif
 
 # pass on version number to software
@@ -54,7 +54,7 @@ LPATHS        = -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/
 
 LIBS          = -lbgen -lzstd -ldb  -lsqlite3 -lboost
 ifeq ($(HAS_BOOST_IOSTREAM),1)
-	LIBS       += -lboost_iostreams
+  LIBS       += -lboost_iostreams
 endif
 LIBS         += -lz
 
