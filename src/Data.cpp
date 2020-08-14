@@ -1207,9 +1207,9 @@ void Data::test_snps() {
   uint32_t n_ignored_snps = 0;
   uint32_t n_skipped_snps = 0;
   bool  has_converged;
-  Files ofile;
   string out, correction_type;
   vector < string > out_split;
+  Files ofile;
   // use pointer to class since it contains non-copyable elements 
   vector < Files* > ofile_split;
   MatrixXd WX, GW, sqrt_denum, scaleG_pheno;
@@ -2002,7 +2002,8 @@ void Data::test_snps_fast() {
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile.openForWrite(out, sout);
     // header of output file 
-    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ((params.file_type == "bgen")? "INFO ":"") << "TEST ";
+    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+      ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST ";
     for(size_t i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";  
     ofile << endl;
   } else {  // split results in separate files for each phenotype
@@ -2015,7 +2016,8 @@ void Data::test_snps_fast() {
       ofile_split[i]->openForWrite( out_split[i], sout );
       // header of output file 
       if(!params.htp_out){
-        (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ((params.file_type == "bgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
+        (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+          ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
       } else {
         (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
       }
@@ -2137,7 +2139,7 @@ void Data::test_snps_fast() {
 
         if(!params.split_by_pheno) {
           ofile << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-          if(params.file_type == "bgen") ofile << block_info[isnp].info << " ";
+          if(params.file_type == "bgen" || params.file_type == "pgen") ofile << block_info[isnp].info << " ";
           ofile << test_string << " ";
         }
 
@@ -2147,7 +2149,7 @@ void Data::test_snps_fast() {
           if(params.split_by_pheno) {
             if(!params.htp_out){
               (*ofile_split[j]) << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-              if(params.file_type == "bgen") (*ofile_split[j]) << block_info[isnp].info << " ";
+              if(params.file_type == "bgen" || params.file_type == "pgen") (*ofile_split[j]) << block_info[isnp].info << " ";
               (*ofile_split[j]) << test_string << " ";
             } else {
               (*ofile_split[j]) <<  (snpinfo[snpindex]).ID << "\t"<< (snpinfo[snpindex]).chrom << "\t" << (snpinfo[snpindex]).physpos << "\t"<< (snpinfo[snpindex]).allele1 << "\t"<< (snpinfo[snpindex]).allele2 << "\t" << files.pheno_names[j] << "\t" << params.cohort_name << "\t" << model_type << "\t";
@@ -2225,7 +2227,7 @@ void Data::test_snps_fast() {
               }
             } else (*ofile_split[j]) << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j); // for QTs
 
-            if(params.file_type == "bgen") (*ofile_split[j]) << ";INFO=" << block_info[isnp].info;
+            if(params.file_type == "bgen" || params.file_type == "pgen") (*ofile_split[j]) << ";INFO=" << block_info[isnp].info;
           }
 
           if(params.split_by_pheno) (*ofile_split[j]) << endl;
