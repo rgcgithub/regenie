@@ -42,8 +42,8 @@ using boost::math::normal;
 bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct f_ests* fest, mstream& sout) {
   // if firth is used, fit based on penalized log-likelihood
 
-  int niter_cur, niter_search, col_incl;
-  double dev_old, dev_new, denum, mx, deviance_l0 = 0;
+  int niter_cur, col_incl;
+  double dev_old, dev_new=0, denum, mx, deviance_l0 = 0;
   int maxstep_firth = null_fit ? params->maxstep_null : params->maxstep;
   int niter_firth = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
 
@@ -226,8 +226,8 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
 void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct f_ests* fest, variant_block* block_info, mstream& sout) {
   // if firth is used, fit based on penalized log-likelihood
 
-  int niter_cur, niter_search, col_incl;
-  double dl, dev_old, denum, mx, deviance_l0 = 0;
+  int niter_cur, col_incl;
+  double dl=0, dev_old, denum, mx, deviance_l0 = 0;
   int maxstep_firth = null_fit ? params->maxstep_null : params->maxstep;
   int niter_firth = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
   ArrayXd mod_score, betaold, betanew, step_size, etavec, pivec, wvec, hvec, loco_offset, covar_offset;

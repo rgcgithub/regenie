@@ -329,7 +329,7 @@ void Data::set_folds() {
   // check sd(Y) in folds
   if(!params.use_loocv && params.binary_mode){
 
-    uint32_t cum_size_folds = 0, index_i = 0;
+    uint32_t cum_size_folds = 0;
     MatrixXd phenos = ( pheno_data.phenotypes_raw.array() * pheno_data.masked_indivs.array().cast<double>()).matrix();
 
     for(size_t i = 0; i < (params.cv_folds - 1); i++) {
@@ -442,7 +442,7 @@ void Data::setmem() {
 
 void Data::level_0_calculations() {
 
-  int block = 0, nread;
+  int block = 0, nread=0;
   if(params.print_block_betas) params.print_snpcount = 0; 
   snp_index_counter = 0;
   ridgel0 l0;
@@ -905,7 +905,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
       for(size_t i = 0; i < params.cv_folds; ++i ) {
         etavec = (l1_ests.test_offset[ph][i] + l1_ests.test_mat[ph_eff][i] * betaold).array();
         pivec = 1 - 1/(etavec.exp() + 1);
-        wvec =  pivec * (1 - pivec), 0;
+        wvec =  pivec * (1 - pivec);
         zvec = (etavec - l1_ests.test_offset[ph][i].array()) + (l1_ests.test_pheno_raw[ph][i].array() - pivec) / wvec;
 
         XtW = l1_ests.test_mat[ph_eff][i].transpose() * wvec.matrix().asDiagonal();
@@ -1202,7 +1202,7 @@ void Data::test_snps() {
   double chisq_val, bhat, se_b, pval_log, pval_raw;
   double chisq_thr = quantile(complement(chisq, params.alpha_pvalue));
   double zcrit = quantile(complement(nd, .025));
-  double effect_val, outse_val, outp_val;
+  double effect_val, outse_val=0, outp_val=1;
   uint32_t n_failed_tests = 0;
   uint32_t n_ignored_snps = 0;
   uint32_t n_skipped_snps = 0;
@@ -1670,7 +1670,6 @@ void Data::test_snps() {
 void Data::blup_read_chr(const int chrom) {
   string line, filename, tmp_pheno;
   std::vector< string > id_strings, tmp_str_vec ;
-  int tmp_index;
   double in_blup;
   uint32_t indiv_index;
   Files blupf;
@@ -1871,7 +1870,7 @@ double Data::run_firth_correction(int chrom, int snp,  int ph){
 void Data::run_SPA_test(int ph){
 
   int bs = Gblock.Gmat_tmp.rows(), index_j, nnz;
-  double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1, sumG;
+  double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1;
   chi_squared chisq(1);
   double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
   ArrayXd Gmu;
@@ -1912,7 +1911,6 @@ void Data::run_SPA_test(int ph){
     spa_est.Gmod = Gblock.Gmat_tmp.row(snp).transpose().array() / m_ests.Gamma_sqrt.col(ph).array() * pheno_data.masked_indivs.col(ph).array().cast<double>();
     Gmu = spa_est.Gmod * m_ests.Y_hat_p.col(ph).array();
     spa_est.val_a = Gmu.sum(); 
-    sumG = spa_est.Gmod.sum();
 
     if(fastSPA){
       spa_est.val_b = denum_tstat(snp);
@@ -1965,7 +1963,7 @@ void Data::test_snps_fast() {
   std::chrono::high_resolution_clock::time_point t1, t2;
   normal nd(0,1);
   double zcrit = quantile(complement(nd, .025));
-  double effect_val, outse_val, outp_val;
+  double effect_val, outse_val, outp_val=1;
 
 #if defined(_OPENMP)
   omp_set_num_threads(params.threads); // set threads in OpenMP
@@ -2308,8 +2306,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   for(int isnp = 0; isnp < n_snps; isnp++) {
     int snp_index = start + isnp;
     chi_squared chisq(1);
-    double chisq_thr = quantile(complement(chisq, params.alpha_pvalue));
-    double chisq_val, bhat, se_b, pval_log, pval_raw;
+    double pval_raw;
 
     // to store variant information
     variant_block* block_info = &(all_snps_info[isnp]);
@@ -2494,8 +2491,8 @@ void Data::run_firth_correction_snp(int chrom, variant_block* block_info, int ph
 
 void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& Gtmp){
 
-  int index_j, nnz;
-  double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1, sumG;
+  int index_j;
+  double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1;
   chi_squared chisq(1);
   double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
   ArrayXd Gmu;
@@ -2519,7 +2516,6 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
   block_info->Gmod = Gtmp.array() / m_ests.Gamma_sqrt.col(ph).array() * pheno_data.masked_indivs.col(ph).array().cast<double>();
   Gmu = block_info->Gmod * m_ests.Y_hat_p.col(ph).array();
   block_info->val_a = Gmu.sum(); 
-  sumG = block_info->Gmod.sum();
 
   if(block_info->fastSPA){
     block_info->val_b = block_info->denum(ph);

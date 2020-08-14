@@ -267,8 +267,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
 void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
-  int sex, lineread = 0; 
-  double yval;
+  int lineread = 0; 
   string line, tmp_id, fname;
   std::vector< string > tmp_str_vec ;
   ifstream myfile;

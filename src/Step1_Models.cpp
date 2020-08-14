@@ -45,7 +45,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
   auto t1 = std::chrono::high_resolution_clock::now();
 
   int niter_cur;
-  double dev_old, dev_new;
+  double dev_old, dev_new=0;
   ArrayXd Y1, hvec, score;
   ArrayXd betaold, betanew, etavec, pivec, wvec, zvec, loco_offset;
   MatrixXd  X1, XtW, XtWX;

@@ -66,12 +66,11 @@ void print_header(std::ostream& o){
 
   std::ostringstream oss;
   string vnumber;
-  // label version with Boost Iostream library by `.gz` suffix
-# if defined(HAS_BOOST_IOSTREAM)
-  oss << "REGENIE v" << VERSION_NUMBER << ".gz"; 
-# else
-  oss << "  REGENIE v" << VERSION_NUMBER; 
+  // adjust spacing for version with Boost Iostream library (`.gz` suffix)
+#ifndef HAS_BOOST_IOSTREAM
+  oss << "  ";
 #endif
+  oss << "REGENIE v" << VERSION_NUMBER; 
   vnumber = oss.str();
 
   o << left << std::setw(14) << " " << "|" << std::string(30, '=')<< "|" << endl;
@@ -81,7 +80,7 @@ void print_header(std::ostream& o){
 
   o << "Copyright (c) 2020 Joelle Mbatchou and Jonathan Marchini." << endl;
   o << "Distributed under the MIT License.\n";
-# if defined(HAS_BOOST_IOSTREAM)
+#ifdef HAS_BOOST_IOSTREAM
   o << "Compiled with Boost Iostream library.\n";
 #endif
   o << "\n";

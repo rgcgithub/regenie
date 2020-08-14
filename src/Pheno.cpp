@@ -391,7 +391,6 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   int n_files = 0, tmp_index, n_masked_prior, n_masked_post;
   uint32_t indiv_index;
-  double in_blup;
   string line, tmp_pheno;
   std::vector< string > tmp_str_vec ;
   vector<int> read_pheno(params->n_pheno, 0);
