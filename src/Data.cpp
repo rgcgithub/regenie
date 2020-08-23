@@ -205,8 +205,8 @@ void Data::set_blocks() {
   }
 
   // set ridge params 
-  for(size_t i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants / params.lambda[i];
-  for(size_t i = 0; i < params.n_ridge_l1; i++) { 
+  for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants / params.lambda[i];
+  for(int i = 0; i < params.n_ridge_l1; i++) { 
     if(!params.binary_mode)
       params.tau[i] =  (params.total_n_block *  params.n_ridge_l0)  / params.tau[i];
     else {
@@ -240,10 +240,10 @@ void Data::set_blocks() {
   sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]" << endl;
   sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]" << endl;
   sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
-  for(size_t i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / params.lambda[i] << " ";
+  for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / params.lambda[i] << " ";
   sout << "]" <<endl;
   sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
-  for(size_t i = 0; i < params.n_ridge_l1; i++) {
+  for(int i = 0; i < params.n_ridge_l1; i++) {
     if(!params.binary_mode)
       sout << (params.total_n_block *  params.n_ridge_l0)  / params.tau[i] << " ";
     else 
@@ -274,7 +274,8 @@ void Data::set_folds() {
       exit(-1);
     }
 
-    uint32_t n_non_miss = 0, cur_fold = 0, cum_size_folds = 0;
+    uint32_t n_non_miss = 0, cum_size_folds = 0;
+    int cur_fold = 0; 
     for(size_t i = 0; i < params.n_samples; i++){
 
       if( pheno_data.masked_indivs(i, 0) ) n_non_miss++;
@@ -302,7 +303,8 @@ void Data::set_folds() {
         exit(-1);
       }
 
-      uint32_t n_non_miss = 0, cur_fold = 0, cum_size_folds = 0;
+      uint32_t n_non_miss = 0, cum_size_folds = 0;
+      int cur_fold = 0; 
       for(size_t i = 0; i < params.n_samples; i++){
 
         if( in_filters.ind_in_analysis(i) ) n_non_miss++;
@@ -320,7 +322,7 @@ void Data::set_folds() {
       }
 
     } else { // loocv
-      for(size_t i = 0; i < params.cv_folds; i++) params.cv_sizes[i] = 1;
+      for(int i = 0; i < params.cv_folds; i++) params.cv_sizes[i] = 1;
     }
 
   }
@@ -332,7 +334,7 @@ void Data::set_folds() {
     uint32_t cum_size_folds = 0;
     MatrixXd phenos = ( pheno_data.phenotypes_raw.array() * pheno_data.masked_indivs.array().cast<double>()).matrix();
 
-    for(size_t i = 0; i < (params.cv_folds - 1); i++) {
+    for(int i = 0; i < (params.cv_folds - 1); i++) {
       ArrayXd sum = phenos.block(cum_size_folds,0,params.cv_sizes[i],params.n_pheno).colwise().sum();
       ArrayXd n_cv = pheno_data.masked_indivs.block(cum_size_folds,0,params.cv_sizes[i],params.n_pheno).cast<double>().colwise().sum();
       ArrayXd sd_phenos = (sum/n_cv) * (1 - sum/n_cv);
@@ -385,7 +387,7 @@ void Data::setmem() {
   masked_in_folds.resize(params.cv_folds);
   if(params.print_block_betas) params.beta_print_out.resize(params.n_pheno);
 
-  for(size_t i = 0; i < params.n_pheno; ++i ) {
+  for(int i = 0; i < params.n_pheno; ++i ) {
 
     if (params.within_sample_l0) {
       l1_ests.pred_mat[i].resize(params.cv_folds);
@@ -406,7 +408,7 @@ void Data::setmem() {
       if(!params.use_loocv) l1_ests.test_offset[i].resize(params.cv_folds);
     }
 
-    for(size_t j = 0; j < params.cv_folds; ++j ) {
+    for(int j = 0; j < params.cv_folds; ++j ) {
 
       if (params.within_sample_l0) {
         l1_ests.pred_mat[i][j] = MatrixXd::Zero(params.n_samples - params.cv_sizes[j], params.total_n_block * params.n_ridge_l0);
@@ -523,9 +525,9 @@ void Data::level_0_calculations() {
   Gblock.Gmat.resize(0,0); 
   if(params.write_l0_pred && (params.n_pheno > 1) ) {
     // free level 0 predictions for (P-1) indices in test_mat
-    for(size_t ph = 1; ph < params.n_pheno; ++ph ) {
+    for(int ph = 1; ph < params.n_pheno; ++ph ) {
       if(!params.use_loocv){
-        for(size_t i = 0; i < params.cv_folds; ++i ) l1_ests.test_mat[ph][i].resize(0,0);
+        for(int i = 0; i < params.cv_folds; ++i ) l1_ests.test_mat[ph][i].resize(0,0);
         l1_ests.test_mat[ph].resize(0);
       } else {
         l1_ests.test_mat_conc[ph].resize(0,0);
@@ -546,7 +548,7 @@ void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
     l0->GTY.setZero(bs,params.n_pheno);
     uint32_t cum_size_folds = 0;
 
-    for( std::size_t i = 0; i < params.cv_folds; ++i ) {
+    for( int i = 0; i < params.cv_folds; ++i ) {
       l0->GtY[i] = Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes[i]) * pheno_data.phenotypes.block(cum_size_folds, 0, params.cv_sizes[i], params.n_pheno);
       l0->G_folds[i] = Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes[i]) * Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes[i]).transpose();
       l0->GGt += l0->G_folds[i];
@@ -590,7 +592,7 @@ void Data::output() {
     outb.openForWrite(out_blup_list, sout);
   }
 
-  for(size_t ph = 0; ph < params.n_pheno; ++ph ) { 
+  for(int ph = 0; ph < params.n_pheno; ++ph ) { 
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
     loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco" + (params.gzOut ? ".gz" : "");
@@ -714,9 +716,9 @@ void Data::make_predictions(const int ph, const  int val) {
     } 
 
     // store back values in test_mat
-    for( std::size_t m = 0; m < bs_l1; ++m ) 
-      for( std::size_t i = 0; i < params.cv_folds; ++i ) 
-        for( std::size_t k = 0; k < params.cv_sizes[i]; ++k ) 
+    for( int m = 0; m < bs_l1; ++m ) 
+      for( int i = 0; i < params.cv_folds; ++i ) 
+        for( int k = 0; k < params.cv_sizes[i]; ++k ) 
           infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
 
     infile.close();
@@ -726,14 +728,14 @@ void Data::make_predictions(const int ph, const  int val) {
   if(params.within_sample_l0){
     X1 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_mat[ph_eff][0];
     X2 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_pheno[ph][0];
-    for(size_t i = 1; i < params.cv_folds; ++i ) {
+    for(int i = 1; i < params.cv_folds; ++i ) {
       X1 += l1_ests.test_mat[ph_eff][i].transpose() * l1_ests.test_mat[ph_eff][i];
       X2 += l1_ests.test_mat[ph_eff][i].transpose() * l1_ests.test_pheno[ph][i];
     }
     beta_l1 = (X1 + params.tau[val] * ident_l1).llt().solve(X2);
   } else if(params.print_block_betas) {
     beta_avg = MatrixXd::Zero(bs_l1, 1);
-    for(size_t i = 0; i < params.cv_folds; ++i ) {
+    for(int i = 0; i < params.cv_folds; ++i ) {
       beta_avg += l1_ests.beta_hat_level_1[ph][i].col(val);
     }
     beta_avg /= params.cv_folds;
@@ -756,7 +758,7 @@ void Data::make_predictions(const int ph, const  int val) {
     nn = itr->second[1] * params.n_ridge_l0;
     if(nn > 0) { 
       cum_size_folds = 0;
-      for(size_t i = 0; i < params.cv_folds; ++i ) {
+      for(int i = 0; i < params.cv_folds; ++i ) {
         if(!params.within_sample_l0) beta_l1 = l1_ests.beta_hat_level_1[ph][i].col(val);
         predictions[0].block(cum_size_folds, chr_ctr, params.cv_sizes[i], 1) = l1_ests.test_mat[ph_eff][i].block(0, ctr, params.cv_sizes[i], nn) * beta_l1.block(ctr, 0, nn, 1);
         cum_size_folds += params.cv_sizes[i];
@@ -884,9 +886,9 @@ void Data::make_predictions_binary(const int ph, const  int val) {
     } 
 
     // store back values in test_mat
-    for( std::size_t m = 0; m < bs_l1; ++m ) 
-      for( std::size_t i = 0; i < params.cv_folds; ++i ) 
-        for( std::size_t k = 0; k < params.cv_sizes[i]; ++k ) 
+    for( int m = 0; m < bs_l1; ++m ) 
+      for( int i = 0; i < params.cv_folds; ++i ) 
+        for( int k = 0; k < params.cv_sizes[i]; ++k ) 
           infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
 
     infile.close();
@@ -902,7 +904,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
       XtWX = MatrixXd::Zero(bs_l1, bs_l1);
       XtWZ = MatrixXd::Zero(bs_l1, 1);
 
-      for(size_t i = 0; i < params.cv_folds; ++i ) {
+      for(int i = 0; i < params.cv_folds; ++i ) {
         etavec = (l1_ests.test_offset[ph][i] + l1_ests.test_mat[ph_eff][i] * betaold).array();
         pivec = 1 - 1/(etavec.exp() + 1);
         wvec =  pivec * (1 - pivec);
@@ -915,7 +917,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
       betanew = (XtWX + params.tau[val] * ident_l1).llt().solve(XtWZ);
       // compute score
       score = ArrayXd::Zero(betanew.rows());
-      for(size_t i = 0; i < params.cv_folds; ++i ) {
+      for(int i = 0; i < params.cv_folds; ++i ) {
         etavec = (l1_ests.test_offset[ph][i] + l1_ests.test_mat[ph_eff][i] * betanew).array();
         pivec = 1 - 1/(etavec.exp() + 1);
         score += (l1_ests.test_mat[ph_eff][i].transpose() * (l1_ests.test_pheno_raw[ph][i].array() - pivec).matrix()).array();
@@ -937,7 +939,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
     nn = itr->second[1] * params.n_ridge_l0;
     if(nn > 0) { 
       cum_size_folds = 0;
-      for(size_t i = 0; i < params.cv_folds; ++i ) {
+      for(int i = 0; i < params.cv_folds; ++i ) {
         if(!params.within_sample_l0) betanew = l1_ests.beta_hat_level_1[ph][i].col(val);
         predictions[0].block(cum_size_folds, chr_ctr, params.cv_sizes[i], 1) = l1_ests.test_mat[ph_eff][i].block(0, ctr, params.cv_sizes[i], nn) * betanew.block(ctr, 0, nn, 1);
         cum_size_folds += params.cv_sizes[i];
@@ -1039,7 +1041,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     Yvec_chunk = pheno_data.phenotypes_raw.block(j_start, ph, size_chunk, 1);
 
     V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
-    for(size_t i = 0; i < size_chunk; ++i ) {
+    for(int i = 0; i < size_chunk; ++i ) {
       v2 = Xmat_chunk.row(i) * V1.col(i); 
       v2 *= wvec(j_start + i); 
       beta_final.col(i) = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
@@ -1236,7 +1238,7 @@ void Data::test_snps() {
     // header of output file 
     ofile << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << 
       "ALLELE1" << " " << "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " ";
-    for(size_t i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<  
+    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<  
       " " << "CHISQ.Y" << i+1 << " " << "LOG10P.Y" << i+1 << " ";  
     ofile << endl;
 
@@ -1245,7 +1247,7 @@ void Data::test_snps() {
     out_split.resize( params.n_pheno );
     ofile_split.resize( params.n_pheno );
 
-    for(size_t i = 0; i < params.n_pheno; i++) {
+    for(int i = 0; i < params.n_pheno; i++) {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
@@ -1318,7 +1320,7 @@ void Data::test_snps() {
       if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
         sout << "Chromosome " << chrom << " is skipped" << endl;
         skip_snps(chrom_nsnps, &params, &files, &Gblock);
-        block += chrom_nb;
+        // block += chrom_nb;
         snp_count += chrom_nsnps;
         n_skipped_snps += chrom_nsnps;
         continue;
@@ -1353,7 +1355,7 @@ void Data::test_snps() {
           sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
           auto t1 = std::chrono::high_resolution_clock::now();
 
-          for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+          for( int i = 0; i < params.n_pheno; ++i ) {
             has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout); 
             if(!has_converged) {
               sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << endl;
@@ -1387,7 +1389,7 @@ void Data::test_snps() {
         }
         if(params.htp_out) {
           Gblock.genocounts.resize(bs);
-          for( std::size_t j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
+          for( int j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
         }
       }
       if((bb +1) * params.block_size > chrom_nsnps) {
@@ -1404,7 +1406,7 @@ void Data::test_snps() {
         }
         if(params.htp_out) {
           Gblock.genocounts.resize(bs);
-          for( std::size_t j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
+          for( int j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
         }
       }
       Gblock.bad_snps = ArrayXd::Zero(bs);
@@ -1421,7 +1423,7 @@ void Data::test_snps() {
         scale_G = ArrayXd::Ones(bs); // no scaling is applied to the SNPs
         // ensure that snps which failed MAC filter are all polymorphic
         if( (Gblock.bad_snps==1).count() > 0 ) {
-          for(size_t i = 0; i < bs ; i++){
+          for(int i = 0; i < bs ; i++){
             if(Gblock.bad_snps(i) == 1) {
               Gblock.Gmat.row(i).head(10).array() += 1; // +1 to first 10 entries
               if(params.verbose) sout << "WARNING: Ignoring SNP with low variance.\n";
@@ -1437,7 +1439,7 @@ void Data::test_snps() {
 
       if(params.binary_mode) {
 
-        for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+        for( int i = 0; i < params.n_pheno; ++i ) {
 
           // project out covariates from G 
           WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
@@ -1460,7 +1462,7 @@ void Data::test_snps() {
           stats = (Gblock.Gmat * res) / sqrt( pheno_data.Neff(0) );
         else {
           // compute GtG for each phenotype (different missing patterns)
-          for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+          for( int i = 0; i < params.n_pheno; ++i ) {
             scaleG_pheno.col(i) = ( Gblock.Gmat.array().rowwise() * pheno_data.masked_indivs.col(i).transpose().array().cast<double>()).square().matrix().rowwise().sum();
           }
           stats = ( (Gblock.Gmat * res).array() / scaleG_pheno.array().sqrt() ).matrix();
@@ -1469,7 +1471,7 @@ void Data::test_snps() {
       }
 
       // write stats to file
-      for( std::size_t i = 0; i < bs; ++i ) {
+      for( int i = 0; i < bs; ++i ) {
 
         // don't print anything for monomorphic snps
         if(Gblock.bad_snps(i) == 1) {
@@ -1483,7 +1485,7 @@ void Data::test_snps() {
           ofile << test_string << " ";
         }
 
-        for( std::size_t j = 0; j < params.n_pheno; ++j ) {
+        for( int j = 0; j < params.n_pheno; ++j ) {
           if(params.split_by_pheno) {
             if(!params.htp_out){
               (*ofile_split[j]) << (snpinfo[snp_count]).chrom << " " << (snpinfo[snp_count]).physpos << " "<< (snpinfo[snp_count]).ID << " "<< (snpinfo[snp_count]).allele1 << " "<< (snpinfo[snp_count]).allele2 << " " << Gblock.snp_afs(i, 0) << " " ;
@@ -1642,7 +1644,7 @@ void Data::test_snps() {
     ofile.closeFile();
   } else {
     sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
-    for( std::size_t j = 0; j < params.n_pheno; ++j ) {
+    for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
       delete ofile_split[j]; 
       sout << "* [" << out_split[j] << "]" << endl;
@@ -1683,7 +1685,7 @@ void Data::blup_read_chr(const int chrom) {
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // read blup file for each phenotype
-  for(size_t ph = 0; ph < params.n_pheno; ph++) {
+  for(int ph = 0; ph < params.n_pheno; ph++) {
 
     int i_pheno = files.pheno_index[ph];
     ArrayXb read_indiv = ArrayXb::Constant(params.n_samples, false);
@@ -1768,24 +1770,29 @@ void Data::set_blocks_for_testing() {
 
   params.total_n_block = 0;
   int blocks_left = params.n_block;
+  bool chr_tested;
 
   map<int, vector<int> >::iterator itr; 
   map<int, vector<int> > m1;
   for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
-    //int chrom = itr->first;
+    int chrom = itr->first;
     int chrom_nsnps = itr->second[0];
     int nb = ceil((double) chrom_nsnps / params.block_size);
+
+    // don't count chromosomes that are excluded
+    chr_tested = !params.select_chrs || std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom);
+
     if(params.n_block > 0) {
       if(blocks_left > 0) {
         int minb = min(nb, blocks_left);
         //sout << << endl;
         itr->second[1] = minb;
-        params.total_n_block += minb;
+        if(chr_tested) params.total_n_block += minb;
         blocks_left -= minb;
       }
     } else {
       itr->second[1] = nb;
-      params.total_n_block += nb;
+      if(chr_tested) params.total_n_block += nb;
     }
     if(itr->second[1] > 0) m1.insert(pair<int, vector<int> >(itr->first, itr->second)); 
   }
@@ -1875,7 +1882,7 @@ void Data::run_SPA_test(int ph){
   double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
   ArrayXd Gmu;
 
-  for(std::size_t snp = 0; snp < bs; ++snp) {
+  for(int snp = 0; snp < bs; ++snp) {
 
     // skip ignored snps
     if(Gblock.bad_snps(snp) == 1){
@@ -1963,7 +1970,7 @@ void Data::test_snps_fast() {
   std::chrono::high_resolution_clock::time_point t1, t2;
   normal nd(0,1);
   double zcrit = quantile(complement(nd, .025));
-  double effect_val, outse_val, outp_val=1;
+  double effect_val, outse_val=0, outp_val=1;
 
 #if defined(_OPENMP)
   omp_set_num_threads(params.threads); // set threads in OpenMP
@@ -2004,13 +2011,13 @@ void Data::test_snps_fast() {
     // header of output file 
     ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
       ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST ";
-    for(size_t i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";  
+    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";  
     ofile << endl;
   } else {  // split results in separate files for each phenotype
     out_split.resize( params.n_pheno );
     ofile_split.resize( params.n_pheno );
 
-    for(size_t i = 0; i < params.n_pheno; i++) {
+    for(int i = 0; i < params.n_pheno; i++) {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
@@ -2060,7 +2067,6 @@ void Data::test_snps_fast() {
       // skip chromosome if not in list to keep
       if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
         sout << "Chromosome " << chrom << " is skipped" << endl;
-        block += chrom_nb;
         snp_tally.snp_count += chrom_nsnps;
         snp_tally.n_skipped_snps += chrom_nsnps;
         if((params.file_type == "bed")) files.bed_ifstream.seekg(chrom_nsnps * files.bed_block_size, ios_base::cur);
@@ -2095,7 +2101,7 @@ void Data::test_snps_fast() {
           sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
           auto t1 = std::chrono::high_resolution_clock::now();
 
-          for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+          for( int i = 0; i < params.n_pheno; ++i ) {
             has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout); 
             if(!has_converged) {
               sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << ". ";
@@ -2132,7 +2138,7 @@ void Data::test_snps_fast() {
       analyze_block(chrom, bs, &snp_tally, block_info);
 
       // print the results
-      for(size_t isnp = 0; isnp < bs; isnp++) {
+      for(int isnp = 0; isnp < bs; isnp++) {
         uint32_t snpindex = snp_tally.snp_count + isnp;
 
         if( block_info[isnp].ignored ) continue;
@@ -2143,7 +2149,7 @@ void Data::test_snps_fast() {
           ofile << test_string << " ";
         }
 
-        for(size_t j = 0; j < params.n_pheno; ++j) {
+        for(int j = 0; j < params.n_pheno; ++j) {
           if( (params.firth || params.use_SPA) && block_info[isnp].is_corrected[j] ) n_corrected++;
 
           if(params.split_by_pheno) {
@@ -2249,7 +2255,7 @@ void Data::test_snps_fast() {
     ofile.closeFile();
   } else {
     sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
-    for( std::size_t j = 0; j < params.n_pheno; ++j ) {
+    for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
       delete ofile_split[j]; 
       sout << "* [" << out_split[j] << "]" << endl;
@@ -2283,7 +2289,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     ifstream bfile;
     bfile.open( files.bgen_file, ios::in | ios::binary );
     bfile.seekg( first_snp );
-    for(size_t isnp = 0; isnp < n_snps; isnp++) {
+    for(int isnp = 0; isnp < n_snps; isnp++) {
       readChunkFromBGEN(&bfile, &size1, &size2, &(snp_data_blocks[isnp]));
       insize[isnp] = size1;
       outsize[isnp] = size2;
@@ -2293,7 +2299,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   else { 
     // read in N/4 bytes from bed file for each snp
     snp_data_blocks.resize( n_snps );
-    for(size_t isnp = 0; isnp < n_snps; isnp++) {
+    for(int isnp = 0; isnp < n_snps; isnp++) {
       snp_data_blocks[isnp].resize(files.bed_block_size);
       files.bed_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
     }
@@ -2339,7 +2345,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       block_info->stats = ArrayXd::Zero(params.n_pheno); 
       block_info->denum = ArrayXd::Zero(params.n_pheno); 
 
-      for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+      for( int i = 0; i < params.n_pheno; ++i ) {
 
         // project out covariates from G 
         WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
@@ -2371,7 +2377,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 
     block_info->chisq_val = block_info->stats.square(); 
 
-    for( std::size_t i = 0; i < params.n_pheno; ++i ) {
+    for( int i = 0; i < params.n_pheno; ++i ) {
 
       // test statistic & pvalue
       if(!params.use_SPA) check_pval_snp(block_info, chrom, i);
