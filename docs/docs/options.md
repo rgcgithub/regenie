@@ -233,6 +233,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
+|`--write-samples`|FLAG| Optional| flag to write sample IDs for those kept in the analysis for each trait in step 2|
 |`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test as fallback for p-values less than|
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
 |`--spa`| FLAG | Optional| specify to use Saddlepoint approximation as fallback for p-values less than threshold|
