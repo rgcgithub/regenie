@@ -129,7 +129,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 }
 
 
-void read_bgen_sample(const string sample_file, const int n_samples, std::vector<string> &ids, mstream& sout){
+void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::vector<string> &ids, mstream& sout){
 
   int nline = 0;
   string FID, IID, line, tmp_str;
@@ -798,7 +798,7 @@ void get_G(const int block, const int bs, const int chrom, uint32_t &snp_index_c
 
   // set genotype counts to 0
   if(params->htp_out){
-    for( std::size_t i = 0; i < bs; ++i ) gblock->genocounts[i].setZero();
+    for( int i = 0; i < bs; ++i ) gblock->genocounts[i].setZero();
   }
 
   if(params->file_type == "bed") 
@@ -949,7 +949,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
   const int maptogeno[4] = {2, -3, 1, 0};
 
   // only for step 1
-  for(size_t j = 0; j < bs; ) {
+  for(int j = 0; j < bs; ) {
     if(params->keep_snps || params->rm_snps){
       if(snpinfo[snp_index_counter].mask){
         files->bed_ifstream.seekg(files->bed_block_size, ios_base::cur);
@@ -1044,7 +1044,7 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
   int ns;
   double ds, total;
 
-  for(size_t j = 0; j < bs; ) {
+  for(int j = 0; j < bs; ) {
     if(params->keep_snps || params->rm_snps){
       if(snpinfo[snp_index_counter].mask){
         snp_index_counter++;filters->step1_snp_count++;
@@ -1562,7 +1562,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
   int hc, ns;
   double ds, total, eij2;
 
-  for(size_t j = 0; j < bs; j++) {
+  for(int j = 0; j < bs; j++) {
     variant_block* snp_data = &(all_snps_info[j]);
     // reset variant info
     snp_data->Geno = ArrayXd::Zero(params->n_samples);
@@ -1687,7 +1687,7 @@ void skip_snps(const int& bs, struct param* params, struct in_files* files, stru
   if(params->file_type == "bed") {
     files->bed_ifstream.seekg( bs * files->bed_block_size, ios_base::cur);
   } else if(params->file_type == "bgen") {
-    for(size_t snp = 0; snp < bs; snp++) {
+    for(int snp = 0; snp < bs; snp++) {
       gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
       gblock->bgen.ignore_probs();
     }
