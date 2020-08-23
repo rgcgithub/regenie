@@ -195,6 +195,7 @@ struct param {
   bool skip_blups = false;
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
+  bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
   // spa

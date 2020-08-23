@@ -226,13 +226,13 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     if(!params->binary_mode){
       // impute missing with mean
       for(size_t i = 0; i < params->n_samples;i++) 
-        for(size_t j = 0; j < params->n_pheno;j++) {
+        for(int j = 0; j < params->n_pheno;j++) {
           if( pheno_data->phenotypes(i,j) != params->missing_value_double ) {
             pheno_data->phenotypes(i,j) -= total(j) / ns(j);	  
           }  else pheno_data->phenotypes(i,j) = 0.0;
         }
     } else {
-      for(size_t j = 0; j < params->n_pheno; j++) {
+      for(int j = 0; j < params->n_pheno; j++) {
         mean = (pheno_data->masked_indivs.col(j).array()).select( pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).cast<double>().sum();
         pheno_data->phenotypes.col(j).array() = (pheno_data->masked_indivs.col(j).array()).select(pheno_data->phenotypes.col(j).array() - mean, 0);
       }
@@ -248,7 +248,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // check that there cases are present
   if(params->binary_mode){
-    for(size_t j = 0; j < params->n_pheno;j++) {
+    for(int j = 0; j < params->n_pheno;j++) {
       if( ( pheno_data->phenotypes_raw.col(j).array() == 1 ).count() == 0){
         sout << "ERROR: No cases present for phenotype: " << files->pheno_names[j] << endl; 
         exit(-1);
@@ -370,6 +370,7 @@ void prep_run (struct in_files* files, struct param* params, struct phenodt* phe
   if (params->test_mode){
     // individuals not in blup file will have their phenotypes masked
     blup_read(files, params, pheno_data, m_ests, sout);
+    if(params->write_samples) write_ids(files, params, pheno_data, sout);
   }
 
   // compute N for each trait
@@ -446,7 +447,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   fClass.closeFile();
 
   // read blup file for each phenotype
-  for(size_t ph = 0; ph < params->n_pheno; ph++) {
+  for(int ph = 0; ph < params->n_pheno; ph++) {
     int i_pheno = files->pheno_index[ph];
 
     sout << "   -file [" <<  files->blup_files[ph];
@@ -491,6 +492,36 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     fClass.closeFile();
   }
 
+}
+
+
+// write ids of samples included in step 2 (done for each trait)
+void write_ids(struct in_files* files, struct param* params, struct phenodt* pheno_data, mstream& sout){
+
+  uint32_t index;
+  map<string, uint32_t >::iterator itr_ind;
+  string idfile, fid;
+  Files fout;
+
+    sout << " * user specified to write sample IDs for each trait"<<endl;
+
+  for( int ph = 0; ph < params->n_pheno; ph++){
+    idfile = files->out_file + "_" + files->pheno_names[ph] + ".regenie.ids";
+    fout.openForWrite(idfile, sout);
+
+    // go through map and check if individual is not masked
+    for (itr_ind = params->FID_IID_to_ind.begin(); itr_ind != params->FID_IID_to_ind.end(); ++itr_ind) {
+
+      fid = itr_ind->first;
+      index = itr_ind->second;
+
+      if( !pheno_data->masked_indivs(index, ph) ) continue;
+      fout << fid << endl;
+
+    }
+
+    fout.closeFile();
+  } 
 }
 
 

@@ -130,6 +130,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("pred", "file containing the list of predictions files from step 1", cxxopts::value<std::string>(files->blup_file),"FILE")
     ("ignore-pred", "skip reading predictions from step 1 (equivalent to linear/logistic regression with only covariates)")
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
+    ("write-samples", "write IDs of samples included for each trait (only in step 2)")
     ("minMAC", "minimum minor allele count (MAC) for tested variants", cxxopts::value<int>(params->min_MAC),"INT(=5)")
     ("split", "split asssociation results into separate files for each trait")
     ("firth", "use Firth correction for p-values less than threshold")
@@ -227,6 +228,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("print") ) params->print_block_betas = true;
     if( vm.count("nostream") ) params->streamBGEN = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
+    if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("early-exit") ) params->early_exit = true;
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
@@ -504,7 +506,7 @@ void set_ridge_params(int nparams, vector<double>& in_param, const string err_he
     double val = step;
     in_param.resize( nparams);
 
-    for( size_t index_p = 1; index_p < (nparams - 1); index_p++, val += step) in_param[index_p] = val;
+    for( int index_p = 1; index_p < (nparams - 1); index_p++, val += step) in_param[index_p] = val;
     in_param[0] = 0.01;
     in_param[nparams-1] = 0.99;
 

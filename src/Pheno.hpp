@@ -47,6 +47,7 @@ void getCovBasis(Eigen::MatrixXd&,struct param*);
 void residualize_phenotypes(struct param*,struct phenodt*,const std::vector<std::string>&,mstream&);
 void prep_run(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
 void blup_read(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
+void write_ids(struct in_files*,struct param*,struct phenodt*,mstream&);
 double convertDouble(const std::string&,struct param*,mstream&);
 
 #endif
