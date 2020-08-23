@@ -50,7 +50,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
   ArrayXd betaold, betanew, etavec, pivec, wvec, zvec, loco_offset;
   MatrixXd  X1, XtW, XtWX;
 
-  for(size_t i = 0; i < params->n_pheno; ++i ){
+  for(int i = 0; i < params->n_pheno; ++i ){
 
     Y1 = pheno_data->phenotypes_raw.col(i).array() * pheno_data->masked_indivs.col(i).array().cast<double>();
     X1 = (pheno_data->new_cov.array().colwise() * pheno_data->masked_indivs.col(i).array().cast<double>()).matrix();
@@ -97,7 +97,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
       betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * wvec.matrix().asDiagonal() * zvec.matrix()).array();
 
       // start step-halving and stop when deviance decreases 
-      for( size_t niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+      for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
         etavec = ( X1 * betanew.matrix()).array();
         if(params->test_mode) etavec += loco_offset;
@@ -166,14 +166,14 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
   MatrixXd p_sum2 = MatrixXd::Zero(params->n_ridge_l0, params->n_pheno);
 
   if(!params->within_sample_l0 && params->print_block_betas) {
-    for(size_t ph = 0; ph < params->n_pheno; ++ph ) 
+    for(int ph = 0; ph < params->n_pheno; ++ph ) 
       params->beta_print_out[ph] = MatrixXd::Zero(params->n_ridge_l0, bs);
   }
 
   uint32_t i_total = 0, cum_size_folds = 0;
-  for(size_t i = 0; i < params->cv_folds; ++i ) {
+  for(int i = 0; i < params->cv_folds; ++i ) {
     // assign masking within folds
-    for(size_t j = 0; j < params->cv_sizes[i]; ++j) {
+    for(int j = 0; j < params->cv_sizes[i]; ++j) {
       masked_in_folds[i].row(j) = pheno_data->masked_indivs.row(i_total);
       i_total++;
     }
@@ -185,7 +185,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
     //if(i == 0)sout << ww1 << endl;
     if(i>0) low +=  params->cv_sizes[i-1];
     high += params->cv_sizes[i];
-    for(size_t j = 0; j < params->n_ridge_l0; ++j ) {
+    for(int j = 0; j < params->n_ridge_l0; ++j ) {
       ww2 = vmat.transpose() * (l0->GTY - l0->GtY[i]);
       //if(i == 0)sout << ww2 << endl;
       //if(i == 0)sout << "lambda[j] =" << params->lambda[j] << endl;
@@ -196,7 +196,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
       // save beta for each phenotype (only when using out-of-sample pred)
       if(!params->within_sample_l0 && params->print_block_betas)
-        for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+        for(int ph = 0; ph < params->n_pheno; ++ph ) {
           params->beta_print_out[ph].row(j) += beta.col(ph).transpose();
         }
 
@@ -222,7 +222,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
       for(size_t k = 0; k < params->n_samples; ++k ) {
         if( (k < low) | (k >= high) ) {
           if (params->within_sample_l0) {
-            for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+            for(int ph = 0; ph < params->n_pheno; ++ph ) {
               l1->pred_mat[ph][i](kk, block*params->n_ridge_l0 + j) = pred(ph, k);
               l1->pred_pheno[ph][i](kk, 0) = pheno_data->phenotypes(k, ph);
               if (params->binary_mode && (block == 0) && (j == 0) ) {
@@ -233,7 +233,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
           }
           kk+=1;
         } else {
-          for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+          for(int ph = 0; ph < params->n_pheno; ++ph ) {
             l1->test_mat[ph][i](jj, block_eff * params->n_ridge_l0 + j) = pred(ph, k);	      
             l1->test_pheno[ph][i](jj, 0) = pheno_data->phenotypes(k, ph);
             if (params->binary_mode && (block == 0) && (j == 0) ) {
@@ -250,7 +250,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
   // when using only out-of-sample predictions for level 1 input features, center and scale using the whole sample
   if(!params->within_sample_l0){
-    for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+    for(int ph = 0; ph < params->n_pheno; ++ph ) {
       RowVectorXd p_mean, p_invsd;
       p_mean = p_sum.col(ph).transpose() / pheno_data->Neff(ph);
       p_invsd = sqrt( (pheno_data->Neff(ph) - 1) / (p_sum2.col(ph).transpose().array() - pheno_data->Neff(ph) * p_mean.array().square()) );
@@ -263,7 +263,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
       if(params->write_l0_pred) Xout = MatrixXd(params->n_samples, params->n_ridge_l0);
 
       cum_size_folds = 0;
-      for(size_t i = 0; i < params->cv_folds; ++i ) {
+      for(int i = 0; i < params->cv_folds; ++i ) {
         l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes[i], params->n_ridge_l0).rowwise() -= p_mean;
         // mask missing
         l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes[i], params->n_ridge_l0).array().colwise() *= masked_in_folds[i].col(ph).array().cast<double>();
@@ -304,16 +304,16 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
     // Header: [TRAIT PARAM snpID1 ... snpIDk]
     ofile << "TRAIT PARAM " ;
-    for(size_t i = 0; i < bs; ++i ) 
+    for(int i = 0; i < bs; ++i ) 
       ofile << snpinfo[params->print_snpcount++].ID << " ";
     ofile << endl;
 
     // Each line: [pheno# ridge# beta1 ... betak]
-    for(size_t ph = 0; ph < params->n_pheno; ++ph ){ 
+    for(int ph = 0; ph < params->n_pheno; ++ph ){ 
       params->beta_print_out[ph] /= params->cv_folds;
-      for(size_t j = 0; j < params->n_ridge_l0; ++j ) {
+      for(int j = 0; j < params->n_ridge_l0; ++j ) {
         ofile << ph + 1 << " " <<  j + 1 << " ";
-        for(size_t i = 0; i < bs; ++i ) 
+        for(int i = 0; i < bs; ++i ) 
           ofile << params->beta_print_out[ph](j,i) << " ";
         ofile << endl;
       }
@@ -367,19 +367,19 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
     j_start = chunk * target_size;
 
     VtG = l0->GGt_eig_vec.transpose() * Gblock->Gmat.block(0, j_start, bs, size_chunk);
-    for(size_t i = 0; i < size_chunk; ++i ) {
+    for(int i = 0; i < size_chunk; ++i ) {
       z1 = VtG.col(i);
       z2 = DL_inv.array().colwise() * z1.array();
       gvec = z2.transpose() * z1;
       pred = z2.transpose() * l0->Wmat - gvec * pheno_data->phenotypes.row(j_start + i);
       pred.array().colwise() /= 1 - gvec.array();
-      for(size_t ph = 0; ph < params->n_pheno; ++ph )
+      for(int ph = 0; ph < params->n_pheno; ++ph )
         l1->test_mat_conc[ph].block(j_start + i, block_eff * params->n_ridge_l0, 1, params->n_ridge_l0) = pred.col(ph).transpose();
     }
   }
 
   // center and scale within the block
-  for(size_t ph = 0; ph < params->n_pheno; ++ph ) { 
+  for(int ph = 0; ph < params->n_pheno; ++ph ) { 
     // mask missing first
     l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
     p_mean = l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).colwise().sum() / pheno_data->Neff(ph);
@@ -445,7 +445,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
   for (int i = 0; i < 5; i++)
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
 
-  for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+  for(int ph = 0; ph < params->n_pheno; ++ph ) {
     sout << "   -on phenotype " << ph+1 <<" (" << files->pheno_names[ph] << ")..." << flush;
     auto ts1 = std::chrono::high_resolution_clock::now();
     ph_eff = params->write_l0_pred ? 0 : ph;
@@ -455,7 +455,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
 
       // allocate memory 
       if(ph == 0) {
-        for( std::size_t i = 0; i < params->cv_folds; ++i ) 
+        for( int i = 0; i < params->cv_folds; ++i ) 
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
@@ -468,9 +468,9 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
       } 
 
       // store back values in test_mat
-      for( std::size_t m = 0; m < bs_l1; ++m ) 
-        for( std::size_t i = 0; i < params->cv_folds; ++i ) 
-          for( std::size_t k = 0; k < params->cv_sizes[i]; ++k ) 
+      for( int m = 0; m < bs_l1; ++m ) 
+        for( int i = 0; i < params->cv_folds; ++i ) 
+          for( int k = 0; k < params->cv_sizes[i]; ++k ) 
             infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
 
       infile.close();
@@ -481,14 +481,14 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
     if (!params->within_sample_l0){
       XtX_sum.setZero(bs_l1, bs_l1);
       XtY_sum.setZero(bs_l1, 1);
-      for( std::size_t i = 0; i < params->cv_folds; ++i ) {
+      for( int i = 0; i < params->cv_folds; ++i ) {
         l1->X_folds[i] = l1->test_mat[ph_eff][i].transpose() * l1->test_mat[ph_eff][i];
         l1->XtY[i]     = l1->test_mat[ph_eff][i].transpose() * l1->test_pheno[ph][i];
         XtX_sum += l1->X_folds[i];
         XtY_sum += l1->XtY[i];
       }
     }
-    for(size_t i = 0; i < params->cv_folds; ++i ) {
+    for(int i = 0; i < params->cv_folds; ++i ) {
 
       // use either in-sample or out-of-sample predictions
       if (params->within_sample_l0) {
@@ -554,7 +554,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
   int chunk, size_chunk, target_size = params->cv_folds / nchunk;
   int j_start;
 
-  for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+  for(int ph = 0; ph < params->n_pheno; ++ph ) {
     sout << "   -on phenotype " << ph+1 <<" (" << files->pheno_names[ph] <<")..." << flush;
     auto ts1 = std::chrono::high_resolution_clock::now();
     ph_eff = params->write_l0_pred ? 0 : ph;
@@ -596,7 +596,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
       Yvec_chunk = pheno_data->phenotypes.block(j_start, ph, size_chunk, 1);
       Z1 = (Xmat_chunk * eigX.eigenvectors()).transpose();
 
-      for(size_t i = 0; i < size_chunk; ++i ) {
+      for(int i = 0; i < size_chunk; ++i ) {
         Z2 = (dl_inv.array().colwise() * Z1.col(i).array()).matrix();
         calFactor = Z1.col(i).transpose() * Z2;
         pred = wvec.transpose() * Z2;
@@ -643,7 +643,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
   for (int i = 0; i < 6; i++)
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
 
-  for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+  for(int ph = 0; ph < params->n_pheno; ++ph ) {
     sout << "   -on phenotype " << ph+1 <<" (" << files->pheno_names[ph] <<")..." << flush;
     auto ts1 = std::chrono::high_resolution_clock::now();
     ph_eff = params->write_l0_pred ? 0 : ph;
@@ -653,7 +653,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
       // allocate memory 
       if(ph == 0) {
-        for( std::size_t i = 0; i < params->cv_folds; ++i ) 
+        for( int i = 0; i < params->cv_folds; ++i ) 
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
@@ -666,16 +666,16 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
       } 
 
       // store back values in test_mat
-      for( std::size_t m = 0; m < bs_l1; ++m ) 
-        for( std::size_t i = 0; i < params->cv_folds; ++i ) 
-          for( std::size_t k = 0; k < params->cv_sizes[i]; ++k ) 
+      for( int m = 0; m < bs_l1; ++m ) 
+        for( int i = 0; i < params->cv_folds; ++i ) 
+          for( int k = 0; k < params->cv_sizes[i]; ++k ) 
             infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
 
       infile.close();
       //if(ph == 0) sout << endl << "In:\n" << l1->test_mat[ph_eff][0].block(0,0,5,6) << endl;
     }
 
-    for(size_t i = 0; i < params->cv_folds; ++i ) {
+    for(int i = 0; i < params->cv_folds; ++i ) {
       if( l1->pheno_l1_not_converged(ph) ) break;
 
       if( params->within_sample_l0 ){
@@ -684,7 +684,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         W1 = l1->pred_offset[ph][i]; 
       }
 
-      for(size_t j = 0; j < params->n_ridge_l1; ++j ) {
+      for(int j = 0; j < params->n_ridge_l1; ++j ) {
         if( l1->pheno_l1_not_converged(ph) ) break;
 
         // starting values
@@ -716,7 +716,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             XtWX = MatrixXd::Zero(bs_l1, bs_l1);
             XtWZ = MatrixXd::Zero(bs_l1, 1);
 
-            for(size_t k = 0; k < params->cv_folds; ++k ) {
+            for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
                 etavec = (masked_in_folds[k].col(ph).array()).select( (l1->test_offset[ph][k] + l1->test_mat[ph_eff][k] * betaold.matrix()).array() , 0);
                 pivec = 1 - 1/(etavec.exp() + 1);
@@ -740,7 +740,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
             // get the score
             score = ArrayXd::Zero(betanew.size());
-            for(size_t k = 0; k < params->cv_folds; ++k ) {
+            for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
                 etavec = (masked_in_folds[k].col(ph).array()).select( (l1->test_offset[ph][k] + l1->test_mat[ph_eff][k] * betanew.matrix()).array() , 0);
                 pivec = 1 - 1/(etavec.exp() + 1);
@@ -772,7 +772,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         if(!params->within_sample_l0) l1->beta_hat_level_1[ph][i].col(j) = betanew;
 
         // compute mse
-        for(size_t l = 0; l < params->cv_sizes[i]; l++){
+        for(int l = 0; l < params->cv_sizes[i]; l++){
           if(!masked_in_folds[i](l,ph)) continue;
           l1->cumsum_values[0](ph,j) += p1(l); // Sx
           l1->cumsum_values[1](ph,j) += l1->test_pheno_raw[ph][i](l,0); // Sy
@@ -829,7 +829,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   int chunk, size_chunk, target_size = params->cv_folds / nchunk;
   int j_start;
 
-  for(size_t ph = 0; ph < params->n_pheno; ++ph ) {
+  for(int ph = 0; ph < params->n_pheno; ++ph ) {
     sout << "   -on phenotype " << ph+1 <<" (" << files->pheno_names[ph] <<")..." << flush;
     auto ts1 = std::chrono::high_resolution_clock::now();
     ph_eff = params->write_l0_pred ? 0 : ph;
@@ -855,7 +855,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       //if(ph == 0) sout << endl << "In:\n" << l1->test_mat_conc[ph_eff].block(0,0,5,6) << endl;
     }
 
-    for(size_t j = 0; j < params->n_ridge_l1; ++j ) {
+    for(int j = 0; j < params->n_ridge_l1; ++j ) {
       // starting values
       betaold = ArrayXd::Zero(bs_l1);
 
@@ -918,7 +918,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         mask_chunk = pheno_data->masked_indivs.block(j_start, ph, size_chunk,1);
 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
-        for(size_t i = 0; i < size_chunk; ++i ) {
+        for(int i = 0; i < size_chunk; ++i ) {
           if(!mask_chunk(i,0)) continue;
           v2 = Xmat_chunk.row(i) * V1.col(i); 
           v2 *= wvec(j_start + i); 

@@ -75,7 +75,7 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
 
   // with firth approx. => trial 1: use maxstep_null
   // trial 2 => use fallback options (increase maxstep & niter)
-  for( size_t trial = 0; trial < 2; trial++){
+  for( int trial = 0; trial < 2; trial++){
 
     // starting values
     if(null_fit){
@@ -147,7 +147,7 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
 
       // start step-halving and stop when deviance decreases 
       denum = 1;
-      for( size_t niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+      for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
         // adjusted step size
         step_size /= denum;
@@ -325,7 +325,7 @@ void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* para
 
     // start step-halving and stop when deviance decreases 
     denum = 1;
-    for( size_t niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+    for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
       // adjusted step size
       step_size /= denum;

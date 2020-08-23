@@ -98,7 +98,7 @@ struct findID {
 
 void check_bgen(const std::string,struct param*);
 void prep_bgen(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,BgenParser&,mstream&);
-void read_bgen_sample(const std::string,const int,std::vector<std::string> &,mstream&);
+void read_bgen_sample(const std::string,const uint32_t,std::vector<std::string> &,mstream&);
 
 void read_bed_bim_fam(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
