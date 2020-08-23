@@ -50,23 +50,23 @@ bool fit_firth_logistic(int,int,bool,struct param*,struct phenodt*,struct ests*,
 void fit_firth_logistic_snp(int,int,bool,struct param*,struct phenodt*,struct ests*,struct f_ests*,variant_block*,mstream&);
 
 // spa (multithreading in Eigen)
-double solve_K1(const double,const bool,const double,const int,const int,const struct param*,const struct ests*,const struct spa_ests*,const struct geno_block*,mstream&);
-double compute_K(const double,const int,const struct ests*,const struct spa_ests*);
-double compute_K1(const double,const int,const struct ests*,const struct spa_ests*);
-double compute_K2(const double,const int,const struct ests*,const struct spa_ests*);
-double compute_K_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*);
-double compute_K1_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*);
-double compute_K2_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*);
-double get_SPA_pvalue(const double,const double,const bool,const double,const int,const int,const struct param*,const struct ests*,const struct spa_ests*,const struct geno_block*,mstream&);
+double solve_K1(const double,const bool,const double,const int,const int,const struct param*,const struct ests*,const struct spa_ests*,const struct geno_block*,const MatrixXb&,mstream&);
+double compute_K(const double,const int,const struct ests*,const struct spa_ests*,const MatrixXb&);
+double compute_K1(const double,const int,const struct ests*,const struct spa_ests*,const MatrixXb&);
+double compute_K2(const double,const int,const struct ests*,const struct spa_ests*,const MatrixXb&);
+double compute_K_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*,const MatrixXb&);
+double compute_K1_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*,const MatrixXb&);
+double compute_K2_fast(const double,const double,const int,const int,const struct ests*,const struct spa_ests*,const struct geno_block*,const MatrixXb&);
+double get_SPA_pvalue(const double,const double,const bool,const double,const int,const int,const struct param*,const struct ests*,const struct spa_ests*,const struct geno_block*,const MatrixXb&,mstream&);
 
 // spa (multithreading in openmp)
-double solve_K1_snp(const double,const int,const struct param*,const struct ests*,variant_block*,mstream&);
-double compute_K_snp(const double,const struct ests*,variant_block*,const int);
-double compute_K1_snp(const double,const struct ests*,variant_block*,const int);
-double compute_K2_snp(const double,const struct ests*,variant_block*,const int);
-double compute_K_fast_snp(const double,const struct ests*,variant_block*,const int);
-double compute_K1_fast_snp(const double,const struct ests*,variant_block*,const int);
-double compute_K2_fast_snp(const double,const struct ests*,variant_block*,const int);
-double get_SPA_pvalue_snp(const double,const double,const int,struct param*,const struct ests*,variant_block*,mstream&); 
+double solve_K1_snp(const double,const int,const struct param*,const struct ests*,variant_block*,const MatrixXb&,mstream&);
+double compute_K_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double compute_K1_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double compute_K2_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double compute_K_fast_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double compute_K1_fast_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double compute_K2_fast_snp(const double,const struct ests*,variant_block*,const MatrixXb&,const int);
+double get_SPA_pvalue_snp(const double,const double,const int,struct param*,const struct ests*,variant_block*,const MatrixXb&,mstream&); 
 
 #endif

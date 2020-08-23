@@ -1944,14 +1944,14 @@ void Data::run_SPA_test(int ph){
     tval = fabs(zstat);
 
     // solve K'(t)= tval using a mix of Newton-Raphson and bisection method
-    root_K1 = solve_K1(tval, fastSPA, denum_tstat(snp), snp, ph, &params, &m_ests, &spa_est, &Gblock, sout);
+    root_K1 = solve_K1(tval, fastSPA, denum_tstat(snp), snp, ph, &params, &m_ests, &spa_est, &Gblock, pheno_data.masked_indivs.col(ph), sout);
     if( root_K1 == params.missing_value_double ){
       spa_est.SPA_pvals(snp, ph) = params.missing_value_double;
       continue;
     }
 
     // compute pvalue
-    spa_est.SPA_pvals(snp, ph) = get_SPA_pvalue(root_K1, tval, fastSPA, denum_tstat(snp), snp, ph, &params, &m_ests, &spa_est, &Gblock, sout);
+    spa_est.SPA_pvals(snp, ph) = get_SPA_pvalue(root_K1, tval, fastSPA, denum_tstat(snp), snp, ph, &params, &m_ests, &spa_est, &Gblock, pheno_data.masked_indivs.col(ph), sout);
   }
 
 }
@@ -2550,14 +2550,14 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
   tval = fabs(zstat);
 
   // solve K'(t)= tval using a mix of Newton-Raphson and bisection method
-  root_K1 = solve_K1_snp(tval, ph, &params, &m_ests, block_info, sout);
+  root_K1 = solve_K1_snp(tval, ph, &params, &m_ests, block_info, pheno_data.masked_indivs.col(ph), sout);
   if( root_K1 == params.missing_value_double ){
     block_info->test_fail[ph] = true;
     return;
   }
 
   // compute pvalue
-  block_info->pval_log(ph) = get_SPA_pvalue_snp(root_K1, tval, ph, &params, &m_ests, block_info, sout);
+  block_info->pval_log(ph) = get_SPA_pvalue_snp(root_K1, tval, ph, &params, &m_ests, block_info, pheno_data.masked_indivs.col(ph), sout);
 
 }
 

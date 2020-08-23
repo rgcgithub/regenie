@@ -391,7 +391,7 @@ void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* para
 
 
 // SPA (MT in Eigen)
-double solve_K1(const double tval, const bool use_SPAfast, const double denum_t, const int snp, const int ph, const struct param* params, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, mstream& sout){
+double solve_K1(const double tval, const bool use_SPAfast, const double denum_t, const int snp, const int ph, const struct param* params, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, const MatrixXb& mask_vec, mstream& sout){
 
   int niter_cur;
   const int lambda = s_est->pos_score ? 1 : -1; // if score is negative, adjust K' and K''
@@ -400,15 +400,15 @@ double solve_K1(const double tval, const bool use_SPAfast, const double denum_t,
   niter_cur = 0;
   min_x = 0, max_x = std::numeric_limits<double>::infinity();
   t_old = 0;
-  f_old = use_SPAfast ? compute_K1_fast(lambda * t_old, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K1(lambda * t_old, ph, m_ests, s_est);
+  f_old = use_SPAfast ? compute_K1_fast(lambda * t_old, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K1(lambda * t_old, ph, m_ests, s_est, mask_vec);
   f_old *= lambda;
   f_old -= tval; 
 
   while( niter_cur++ < params->niter_max_spa ){
 
-    hess = use_SPAfast ? compute_K2_fast(lambda * t_old, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K2(lambda * t_old, ph, m_ests, s_est);
+    hess = use_SPAfast ? compute_K2_fast(lambda * t_old, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K2(lambda * t_old, ph, m_ests, s_est, mask_vec);
     t_new = t_old - f_old / hess;
-    f_new = use_SPAfast ? compute_K1_fast(lambda * t_new, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K1(lambda * t_new, ph, m_ests, s_est);
+    f_new = use_SPAfast ? compute_K1_fast(lambda * t_new, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K1(lambda * t_new, ph, m_ests, s_est, mask_vec);
     f_new *= lambda;
     f_new -= tval;
 
@@ -421,7 +421,7 @@ double solve_K1(const double tval, const bool use_SPAfast, const double denum_t,
     } else{ // bisection method if t_new went out of bounds and re-compute f_new
       t_new = ( min_x + max_x ) / 2;
       // if( fabs( min_x - t_new ) < params->tol_spa ) break;
-      f_new = use_SPAfast ? compute_K1_fast(lambda * t_new, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K1(lambda * t_new, ph, m_ests, s_est);
+      f_new = use_SPAfast ? compute_K1_fast(lambda * t_new, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K1(lambda * t_new, ph, m_ests, s_est, mask_vec);
       f_new *= lambda;
       f_new -= tval;
     }
@@ -440,20 +440,22 @@ double solve_K1(const double tval, const bool use_SPAfast, const double denum_t,
   return t_new;
 }
 
-double compute_K(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est ){
+double compute_K(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const MatrixXb& mask_vec){
 
-  double val = (1 - m_ests->Y_hat_p.col(ph).array() + m_ests->Y_hat_p.col(ph).array() * ( t / s_est->val_c * s_est->Gmod ).exp() ).log().sum() - t * s_est->val_a / s_est->val_c;
+  double val = mask_vec.array().select((1 - m_ests->Y_hat_p.col(ph).array() + m_ests->Y_hat_p.col(ph).array() * ( t / s_est->val_c * s_est->Gmod ).exp() ).log(), 0).sum() - t * s_est->val_a / s_est->val_c;
 
   return val;
 }
 
-double compute_K_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock){
+double compute_K_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, const MatrixXb& mask_vec){
 
   uint32_t index_j;
   double val = 0;
 
   for( std::size_t j = 0; j < gblock->non_zero_indices_G[snp].size(); ++j ) {
     index_j = gblock->non_zero_indices_G[snp][j];
+    if(!mask_vec(index_j, 0)) continue;
+
     val += log( 1 - m_ests->Y_hat_p(index_j,ph) + m_ests->Y_hat_p(index_j,ph) * exp( t / s_est->val_c * s_est->Gmod(index_j)) );
   }
   val += -t * s_est->val_d / s_est->val_c + t * t / 2 / denum_t * s_est->val_b;
@@ -461,21 +463,23 @@ double compute_K_fast(const double t, const double denum_t, const int snp, const
   return val;
 }
 
-double compute_K1(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est ){
+double compute_K1(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const MatrixXb& mask_vec ){
 
-  double val = ( ( s_est->Gmod * m_ests->Y_hat_p.col(ph).array() / s_est->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / s_est->val_c * s_est->Gmod).exp() ) ).sum();
+  double val = mask_vec.array().select( ( s_est->Gmod * m_ests->Y_hat_p.col(ph).array() / s_est->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / s_est->val_c * s_est->Gmod).exp() ), 0).sum();
   val -= s_est->val_a / s_est->val_c;
 
   return val;
 }
 
-double compute_K1_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock ){
+double compute_K1_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, const MatrixXb& mask_vec){
 
   uint32_t index_j;
   double val = 0;
 
   for( std::size_t j = 0; j < gblock->non_zero_indices_G[snp].size(); ++j ) {
     index_j = gblock->non_zero_indices_G[snp][j];
+    if(!mask_vec(index_j, 0)) continue;
+
     val += ( s_est->Gmod(index_j) * m_ests->Y_hat_p(index_j,ph) / s_est->val_c ) / ( m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / s_est->val_c * s_est->Gmod(index_j)) );
   }
   val += -s_est->val_d / s_est->val_c + t / denum_t * s_est->val_b;
@@ -483,20 +487,22 @@ double compute_K1_fast(const double t, const double denum_t, const int snp, cons
   return val;
 }
 
-double compute_K2(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est ){
+double compute_K2(const double t, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const MatrixXb& mask_vec ){
 
-  double val = ( ( s_est->Gmod.square() * m_ests->Gamma_sqrt.col(ph).array().square() / (s_est->val_c*s_est->val_c) * ( -t / s_est->val_c * s_est->Gmod).exp()) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / s_est->val_c * s_est->Gmod).exp() ).square() ).sum();
+  double val = mask_vec.array().select( ( s_est->Gmod.square() * m_ests->Gamma_sqrt.col(ph).array().square() / (s_est->val_c*s_est->val_c) * ( -t / s_est->val_c * s_est->Gmod).exp()) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / s_est->val_c * s_est->Gmod).exp() ).square(), 0).sum();
 
   return val;
 }
 
-double compute_K2_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock ){
+double compute_K2_fast(const double t, const double denum_t, const int snp, const int ph, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, const MatrixXb& mask_vec){
 
   uint32_t index_j;
   double val = 0, denum;
 
   for( std::size_t j = 0; j < gblock->non_zero_indices_G[snp].size(); ++j ) {
     index_j = gblock->non_zero_indices_G[snp][j];
+    if(!mask_vec(index_j, 0)) continue;
+
     denum = m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / s_est->val_c * s_est->Gmod(index_j));
     val += ( s_est->Gmod(index_j) * s_est->Gmod(index_j) * m_ests->Gamma_sqrt(index_j,ph) * m_ests->Gamma_sqrt(index_j,ph) * exp( -t / s_est->val_c * s_est->Gmod(index_j)) / s_est->val_c / s_est->val_c ) / (denum * denum);
   }
@@ -505,14 +511,14 @@ double compute_K2_fast(const double t, const double denum_t, const int snp, cons
   return val;
 }
 
-double get_SPA_pvalue(const double root, const double tval, const bool use_SPAfast, const double denum_t, const int snp, const int ph, const struct param* params, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, mstream& sout){
+double get_SPA_pvalue(const double root, const double tval, const bool use_SPAfast, const double denum_t, const int snp, const int ph, const struct param* params, const struct ests* m_ests, const struct spa_ests* s_est, const struct geno_block* gblock, const MatrixXb& mask_vec, mstream& sout){
 
   const int lambda = s_est->pos_score ? 1 : -1; // if score is negative, adjust K' and K''
   double kval, k2val, wval, vval, rval, pvalue;
   normal nd(0,1);
 
-  kval = use_SPAfast ? compute_K_fast(lambda * root, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K(lambda * root, ph, m_ests, s_est);
-  k2val = use_SPAfast ? compute_K2_fast(lambda * root, denum_t, snp, ph, m_ests, s_est, gblock) : compute_K2(lambda * root, ph, m_ests, s_est);
+  kval = use_SPAfast ? compute_K_fast(lambda * root, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K(lambda * root, ph, m_ests, s_est, mask_vec);
+  k2val = use_SPAfast ? compute_K2_fast(lambda * root, denum_t, snp, ph, m_ests, s_est, gblock, mask_vec) : compute_K2(lambda * root, ph, m_ests, s_est, mask_vec);
 
   wval = sqrt( 2 * ( root * tval - kval ) );
   vval = root * sqrt( k2val );
@@ -534,7 +540,7 @@ double get_SPA_pvalue(const double root, const double tval, const bool use_SPAfa
 
 
 // SPA (MT in OpenMP)
-double solve_K1_snp(const double tval, const int ph, const struct param* params, const struct ests* m_ests, variant_block* block_info, mstream& sout){
+double solve_K1_snp(const double tval, const int ph, const struct param* params, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, mstream& sout){
 
   int niter_cur;
   int lambda = block_info->pos_score ? 1 : -1; // if score is negative, adjust K' and K''
@@ -543,15 +549,15 @@ double solve_K1_snp(const double tval, const int ph, const struct param* params,
   niter_cur = 0;
   min_x = 0, max_x = std::numeric_limits<double>::infinity();
   t_old = 0;
-  f_old = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_old, m_ests, block_info, ph) : compute_K1_snp(lambda * t_old, m_ests, block_info, ph);
+  f_old = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_old, m_ests, block_info, mask_vec, ph) : compute_K1_snp(lambda * t_old, m_ests, block_info, mask_vec, ph);
   f_old *= lambda;
   f_old -= tval; 
 
   while( niter_cur++ < params->niter_max_spa ){
 
-    hess = block_info->fastSPA ? compute_K2_fast_snp(lambda * t_old, m_ests, block_info, ph) : compute_K2_snp(lambda * t_old, m_ests, block_info, ph);
+    hess = block_info->fastSPA ? compute_K2_fast_snp(lambda * t_old, m_ests, block_info, mask_vec, ph) : compute_K2_snp(lambda * t_old, m_ests, block_info, mask_vec, ph);
     t_new = t_old - f_old / hess;
-    f_new = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, block_info, ph) : compute_K1_snp(lambda * t_new, m_ests, block_info, ph);
+    f_new = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, block_info, mask_vec, ph) : compute_K1_snp(lambda * t_new, m_ests, block_info, mask_vec, ph);
     f_new *= lambda;
     f_new -= tval;
 
@@ -564,7 +570,7 @@ double solve_K1_snp(const double tval, const int ph, const struct param* params,
     } else{ // bisection method if t_new went out of bounds and re-compute f_new
       t_new = ( min_x + max_x ) / 2;
       // if( fabs( min_x - t_new ) < params->tol_spa ) break;
-      f_new = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, block_info, ph) : compute_K1_snp(lambda * t_new, m_ests, block_info, ph);
+      f_new = block_info->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, block_info, mask_vec, ph) : compute_K1_snp(lambda * t_new, m_ests, block_info, mask_vec, ph);
       f_new *= lambda;
       f_new -= tval;
     }
@@ -583,20 +589,22 @@ double solve_K1_snp(const double tval, const int ph, const struct param* params,
   return t_new;
 }
 
-double compute_K_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
-  double val = (1 - m_ests->Y_hat_p.col(ph).array() + m_ests->Y_hat_p.col(ph).array() * ( t / block_info->val_c * block_info->Gmod ).exp() ).log().sum() - t * block_info->val_a / block_info->val_c;
+  double val = mask_vec.array().select( ( 1 - m_ests->Y_hat_p.col(ph).array() + m_ests->Y_hat_p.col(ph).array() * ( t / block_info->val_c * block_info->Gmod ).exp() ).log(), 0).sum() - t * block_info->val_a / block_info->val_c;
 
   return val;
 }
 
-double compute_K_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
   uint32_t index_j;
   double val = 0;
 
   for( std::size_t j = 0; j < block_info->n_non_zero; ++j ) {
     index_j = block_info->non_zero_indices[j];
+    if(!mask_vec(index_j, 0)) continue;
+
     val += log( 1 - m_ests->Y_hat_p(index_j,ph) + m_ests->Y_hat_p(index_j,ph) * exp( t / block_info->val_c * block_info->Gmod(index_j)) );
   }
   val += -t * block_info->val_d / block_info->val_c + t * t / 2 / block_info->denum(ph) * block_info->val_b;
@@ -604,21 +612,23 @@ double compute_K_fast_snp(const double t, const struct ests* m_ests, variant_blo
   return val;
 }
 
-double compute_K1_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K1_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
-  double val = ( ( block_info->Gmod * m_ests->Y_hat_p.col(ph).array() / block_info->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / block_info->val_c * block_info->Gmod).exp() ) ).sum();
+  double val = mask_vec.array().select( ( block_info->Gmod * m_ests->Y_hat_p.col(ph).array() / block_info->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / block_info->val_c * block_info->Gmod).exp() ), 0).sum();
   val -= block_info->val_a / block_info->val_c;
 
   return val;
 }
 
-double compute_K1_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K1_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
   uint32_t index_j;
   double val = 0;
 
   for( std::size_t j = 0; j < block_info->n_non_zero; ++j ) {
     index_j = block_info->non_zero_indices[j];
+    if(!mask_vec(index_j, 0)) continue;
+
     val += ( block_info->Gmod(index_j) * m_ests->Y_hat_p(index_j,ph) / block_info->val_c ) / ( m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / block_info->val_c * block_info->Gmod(index_j)) );
   }
   val += -block_info->val_d / block_info->val_c + t / block_info->denum(ph) * block_info->val_b;
@@ -626,20 +636,22 @@ double compute_K1_fast_snp(const double t, const struct ests* m_ests, variant_bl
   return val;
 }
 
-double compute_K2_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K2_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
-  double val = ( ( block_info->Gmod.square() * m_ests->Gamma_sqrt.col(ph).array().square() / (block_info->val_c*block_info->val_c) * ( -t / block_info->val_c * block_info->Gmod).exp()) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / block_info->val_c * block_info->Gmod).exp() ).square() ).sum();
+  double val = mask_vec.array().select( ( block_info->Gmod.square() * m_ests->Gamma_sqrt.col(ph).array().square() / (block_info->val_c*block_info->val_c) * ( -t / block_info->val_c * block_info->Gmod).exp()) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / block_info->val_c * block_info->Gmod).exp() ).square(), 0).sum();
 
   return val;
 }
 
-double compute_K2_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const int ph){
+double compute_K2_fast_snp(const double t, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, const int ph){
 
   uint32_t index_j;
   double val = 0, denum;
 
   for( std::size_t j = 0; j < block_info->n_non_zero; ++j ) {
     index_j = block_info->non_zero_indices[j];
+    if(!mask_vec(index_j, 0)) continue;
+
     denum = m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / block_info->val_c * block_info->Gmod(index_j));
     val += ( block_info->Gmod(index_j) * block_info->Gmod(index_j) * m_ests->Gamma_sqrt(index_j,ph) * m_ests->Gamma_sqrt(index_j,ph) * exp( -t / block_info->val_c * block_info->Gmod(index_j)) / block_info->val_c / block_info->val_c ) / (denum * denum);
   }
@@ -648,14 +660,14 @@ double compute_K2_fast_snp(const double t, const struct ests* m_ests, variant_bl
   return val;
 }
 
-double get_SPA_pvalue_snp(const double root, const double tval, const int ph, struct param* params, const struct ests* m_ests, variant_block* block_info, mstream& sout){
+double get_SPA_pvalue_snp(const double root, const double tval, const int ph, struct param* params, const struct ests* m_ests, variant_block* block_info, const MatrixXb& mask_vec, mstream& sout){
 
   int lambda = block_info->pos_score ? 1 : -1; // if score is negative, adjust K and K''
   double kval, k2val, wval, vval, rval, pvalue;
   normal nd(0,1);
 
-  kval = block_info->fastSPA ? compute_K_fast_snp(lambda * root, m_ests, block_info, ph) : compute_K_snp(lambda * root, m_ests, block_info, ph);
-  k2val = block_info->fastSPA ? compute_K2_fast_snp(lambda * root, m_ests, block_info, ph) : compute_K2_snp(lambda * root, m_ests, block_info, ph);
+  kval = block_info->fastSPA ? compute_K_fast_snp(lambda * root, m_ests, block_info, mask_vec, ph) : compute_K_snp(lambda * root, m_ests, block_info, mask_vec, ph);
+  k2val = block_info->fastSPA ? compute_K2_fast_snp(lambda * root, m_ests, block_info, mask_vec, ph) : compute_K2_snp(lambda * root, m_ests, block_info, mask_vec, ph);
 
   wval = sqrt( 2 * ( root * tval - kval ) );
   vval = root * sqrt( k2val );
