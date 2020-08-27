@@ -27,6 +27,7 @@
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
+#include "db/sqlite3.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -53,49 +54,51 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   bgen_tmp.summarise( sout.coss ) ;
   bgen_tmp.summarise( cerr ) ;
 
-  
   // get info for variants
-  tmp_snp.offset = bgen_tmp.get_position();
-  while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
+  if( params->with_bgi ) read_bgi_file(bgen_tmp, files, params, filters, snpinfo, chr_read, sout);
+  else {
+    tmp_snp.offset = bgen_tmp.get_position();
+    while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
 
-    bgen_tmp.ignore_probs();
-    assert(alleles.size() == 2) ; // only bi-allelic allowed
+      bgen_tmp.ignore_probs();
+      assert(alleles.size() == 2) ; // only bi-allelic allowed
 
-    tmp_snp.chrom = chrStrToInt(chromosome, params->nChrom);
-    if (tmp_snp.chrom == -1) {
-      sout << "ERROR: Unknown chromosome code in bgen file."<< endl;
-      exit(1);
+      tmp_snp.chrom = chrStrToInt(chromosome, params->nChrom);
+      if (tmp_snp.chrom == -1) {
+        sout << "ERROR: Unknown chromosome code in bgen file."<< endl;
+        exit(1);
+      }
+
+      if( chr_read.empty() || (tmp_snp.chrom != chr_read.back()) ) chr_read.push_back(tmp_snp.chrom);
+
+      tmp_snp.physpos = position;
+      tmp_snp.ID = rsid;
+      tmp_snp.allele1 = alleles[1];
+      tmp_snp.allele2 = alleles[0]; // switch so allele0 is ALT
+
+      // keep track of how many included snps per chromosome there are
+      files->chr_counts[tmp_snp.chrom-1]++;
+
+      // make list of variant IDs if inclusion/exclusion file is given
+      if(params->rm_snps || params->keep_snps) 
+        filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
+
+      // check if snps are in order (same chromosome & non-decreasing positions)
+      if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) nOutofOrder++;
+
+      snpinfo.push_back(tmp_snp);
+      lineread++;
+
+      tmp_snp.offset = bgen_tmp.get_position();
     }
 
-    if( chr_read.empty() || (tmp_snp.chrom != chr_read.back()) ) chr_read.push_back(tmp_snp.chrom);
-
-    tmp_snp.physpos = position;
-    tmp_snp.ID = rsid;
-    tmp_snp.allele1 = alleles[1];
-    tmp_snp.allele2 = alleles[0]; // switch so allele0 is ALT
-
-    // keep track of how many included snps per chromosome there are
-    files->chr_counts[tmp_snp.chrom-1]++;
-
-    // make list of variant IDs if inclusion/exclusion file is given
-    if(params->rm_snps || params->keep_snps) 
-      filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
-
-    // check if snps are in order (same chromosome & non-decreasing positions)
-    if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) nOutofOrder++;
-
-    snpinfo.push_back(tmp_snp);
-    lineread++;
-
-    tmp_snp.offset = bgen_tmp.get_position();
+    if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
   }
-
-  if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
 
   // check if should mask snps
   check_snps_include_exclude(files, params, filters, snpinfo, chr_map, chr_read, sout);
 
-  
+
   // get info on samples
   params->n_samples  = bgen_tmp.number_of_samples();
 
@@ -125,6 +128,102 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
     // setup file for reading the genotype probabilities later
     bgen.open( files->bgen_file ) ;
   }
+
+}
+
+
+// read .bgi file to get SNP info
+void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* params, struct filter* filters, std::vector<snp>& snpinfo, std::vector< int >& chr_read, mstream& sout){
+
+  int nalleles;
+  uint64 lineread = 0, start_pos, variant_bgi_size, variant_bgen_size; 
+  string bgi_file = files->bgen_file + ".bgi";
+  string sql_query = "SELECT * FROM Variant";
+  snp tmp_snp;
+  sqlite3* db;
+  sqlite3_stmt* stmt;
+
+  // get info on first snp from bgenparser
+  uint32_t n_variants = bgen.number_of_variants();
+  std::string chromosome, rsid;
+  uint32_t position ;
+  std::vector< std::string > alleles ;
+  start_pos = bgen.get_position();
+  bgen.read_variant( &chromosome, &position, &rsid, &alleles );
+  bgen.ignore_probs();
+  variant_bgen_size = bgen.get_position() - start_pos;
+
+
+  sout << "   -index bgi file [" << bgi_file<< "]" << endl;
+  if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) {
+    sout <<  "ERROR: Can't open file " << bgi_file << endl;
+    exit(1);
+  }
+
+
+  // header: chromosome|position|rsid|number_of_alleles|allele1|allele2|file_start_position|size_in_bytes
+  sqlite3_prepare( db, sql_query.c_str(), sizeof sql_query, &stmt, NULL );
+
+  bool done = false;
+  uint32_t nOutofOrder = 0;
+  while (!done) {
+    switch (sqlite3_step(stmt)) {
+      case SQLITE_ROW:
+        tmp_snp.chrom = chrStrToInt(std::string( (char *) sqlite3_column_text(stmt, 0) ), params->nChrom);
+        if (tmp_snp.chrom == -1) {
+          sout << "ERROR: Unknown chromosome code in bgi file."<< endl;
+          exit(1);
+        }
+        if( chr_read.empty() || (tmp_snp.chrom != chr_read.back()) ) chr_read.push_back(tmp_snp.chrom);
+
+        tmp_snp.physpos = strtoul( (char *) sqlite3_column_text(stmt, 1), NULL, 10);
+        tmp_snp.ID = std::string( (char *) sqlite3_column_text(stmt, 2) );
+        nalleles = atoi( (char *) sqlite3_column_text(stmt, 3) );
+        assert(nalleles == 2) ; // only bi-allelic allowed
+        tmp_snp.allele1 = std::string( (char *) sqlite3_column_text(stmt, 5) );
+        tmp_snp.allele2 = std::string( (char *) sqlite3_column_text(stmt, 4) ); // switch so allele0 is ALT
+        tmp_snp.offset = strtoull( (char *) sqlite3_column_text(stmt, 6), NULL, 10);
+
+
+        // keep track of how many included snps per chromosome there are
+        files->chr_counts[tmp_snp.chrom-1]++;
+
+        // make list of variant IDs if inclusion/exclusion file is given
+        if(params->rm_snps || params->keep_snps) 
+          filters->snpID_to_ind.insert( std::make_pair( tmp_snp.ID, lineread ) );
+
+        // check if snps are in order (same chromosome & non-decreasing positions)
+        if (!snpinfo.empty() 
+            && (tmp_snp.chrom == snpinfo.back().chrom) 
+            && ( (tmp_snp.physpos < snpinfo.back().physpos) || (tmp_snp.genpos < snpinfo.back().genpos) )) 
+          nOutofOrder++;
+
+        // check if matches with info from bgenparser
+        if(snpinfo.empty()){
+          assert( tmp_snp.offset == start_pos );
+          variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
+          assert( variant_bgi_size == variant_bgen_size );
+        }
+
+        snpinfo.push_back(tmp_snp);
+        lineread++;
+        break;
+
+      case SQLITE_DONE:
+        done = true;
+        break;
+
+      default:
+        sout << "ERROR: Failed reading file.\n";
+        exit(1);
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+
+  assert( snpinfo.size() == n_variants );
+  if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
 
 }
 
@@ -779,7 +878,7 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
   }
 
   sout << "     +number of genotyped individuals to exclude from the analysis = " << n_rm << endl;
-  
+
   myfile.closeFile();
 }
 

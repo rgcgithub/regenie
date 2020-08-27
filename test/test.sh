@@ -2,7 +2,7 @@
 
 #### Working from directory where regenie repo was cloned
 if [ "$#" -eq 0 ]; then
-echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
+  echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
 fi
 
 ### Test script for Regenie version >= 1.0.5.6
@@ -66,9 +66,10 @@ fi
 
 
 echo -e "Running step 2 of REGENIE\n=================================="
-# Prepare regenie command to run for Step 2
+# First command
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
+  --with-bgi \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
@@ -82,26 +83,53 @@ rgcmd="--step 2 \
 
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
-
-## check that compilation was successful
+##  do this way so zcat works on OSX
 if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
-  # uncompress file (zcat this way should work on OSX)
   ( zcat < ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ) > ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie
 fi
 
-# compare result files to exemplar file
 echo "------------------------------------------"
 if cmp --silent \
   ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
   ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
 then
-  echo "SUCCESS: Docker image passed the tests!"
-  echo -e "\nYou can run regenie using:"
-  echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
+  echo -e "Files are identical. Docker image passed 1st test.\n\nSecond test run\n"
 else
-  echo -e "ERROR: Uh oh... Files are different!\nDocker image did not build successfully"
+  echo -e "ERROR: Uh oh... Files are different!\nDocker image did not build successfully."
+  exit 1
+fi
+
+
+# Second command
+rgcmd="--step 2 \
+  --bed ${mntpt}example/example_3chr \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --phenoColList Y2 \
+  --bsize 100 \
+  --chrList 2,3 \
+  --test dominant \
+  --ignore-pred \
+  --write-samples \
+  --out ${mntpt}test/test_out"
+
+docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+
+# check files
+echo "------------------------------------------"
+if [ ! -f "${REGENIE_PATH}test/test_out_Y2.regenie.ids" -o -f "${REGENIE_PATH}test/test_out_Y1.regenie.ids" ]
+then
+  echo "Uh oh, docker image did not build successfully"
+elif (( `grep "mog_" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
+  echo "Uh oh, docker image did not build successfully"
+elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
+  echo "Uh oh, docker image did not build successfully"
+else
+  echo "SUCCESS: Docker image passed the tests!"
+  echo -e "\nYou can run regenie using for example:"
+  echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
 fi
 
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin_out* ${REGENIE_PATH}test/test_bin_out_firth*
+rm ${REGENIE_PATH}test/fit_bin_out* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
 

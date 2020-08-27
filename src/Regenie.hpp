@@ -148,6 +148,7 @@ struct param {
   int nChrom = 23; // total number of chromosome numbers (sex chromosomes collapsed in chr23)
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
   double numtol = 1e-6;
+  double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-16;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
@@ -161,6 +162,7 @@ struct param {
   int n_cov = 0; // number of covariates
   uint32_t n_variants = 0; // number of variants in bgen file
   std::map <std::string, uint32_t> FID_IID_to_ind;
+  bool with_bgi = false; // inpu bgi index file for BGEN format
 
 
   // step 1 

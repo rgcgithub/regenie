@@ -66,6 +66,7 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |---|-------|------|----|
 |`--bgen, --bed, --pgen`  | FILE | Required |Input genetic data file. Either BGEN file eg. `file.bgen`, or bed/bim/fam prefix that assumes`file.bed`, `file.bim`, `file.fam` exist, or pgen/pvar/psam prefix that assumes`file.pgen`, `file.pvar`, `file.psam` exist |
 |`--sample`  | FILE | Optional |Sample file corresponding to input BGEN file|
+|`--with-bgi`  | FLAG | Optional |Specify to use accompanying bgi index file to get variant information (assumes file name is `file.bgen.bgi`|
 |`--keep`  | FILE | Optional | Inclusion file that lists individuals to retain in the analysis|
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
 |`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep **(only works with option `--step 1`)**|
@@ -95,7 +96,8 @@ Tools useful for genetic data file format conversion are : [PLINK](http://www.co
 
 Step 2 of **regenie** can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
 (genotype file can be generated with [PLINK2](https://www.cog-genomics.org/plink/2.0/) using 
-option `--export bgen-1.2 'bits=8'`).
+option `--export bgen-1.2 'bits=8'`) as well as passing on an accompanying .bgi index file 
+(a useful tool to create such file is bgenix which is part of the BGEN library).
 
 To include X chromosome genotypes in step 1 and/or step 2, males should be coded as diploid 
 so that their genotypes are 0/2. This can be done in PLINK by setting the sex of all 
