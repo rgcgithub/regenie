@@ -305,4 +305,5 @@ each phenotype
 `file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
 with the same format.
 If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
-
+If option `--write-samples` was used, IDs of samples used for each trait will be written in files
+`file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
