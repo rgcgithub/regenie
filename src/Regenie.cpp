@@ -353,6 +353,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if(params->test_mode && params->rm_snps) params->rm_snps = false;
     if(params->test_mode && params->keep_snps) params->keep_snps = false;
 
+    if( vm.count("write-samples") && vm.count("bgen") && !vm.count("sample") ){
+      sout << "ERROR : must specify sample file (using --sample) if writing sample IDs to file.\n" << params->err_help;
+      exit(-1);
+    }
+
     if(!params->test_mode && params->setMinMAC){
       sout << "WARNING : Option --minMAC only works in step 2 of REGENIE.\n";
     }

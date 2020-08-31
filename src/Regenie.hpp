@@ -162,6 +162,7 @@ struct param {
   int n_cov = 0; // number of covariates
   uint32_t n_variants = 0; // number of variants in bgen file
   std::map <std::string, uint32_t> FID_IID_to_ind;
+  std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
   bool with_bgi = false; // inpu bgi index file for BGEN format
 
 

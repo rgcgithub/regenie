@@ -500,7 +500,7 @@ void write_ids(struct in_files* files, struct param* params, struct phenodt* phe
 
   uint32_t index;
   map<string, uint32_t >::iterator itr_ind;
-  string idfile, fid;
+  string idfile;
   Files fout;
 
     sout << " * user specified to write sample IDs for each trait"<<endl;
@@ -512,16 +512,17 @@ void write_ids(struct in_files* files, struct param* params, struct phenodt* phe
     // go through map and check if individual is not masked
     for (itr_ind = params->FID_IID_to_ind.begin(); itr_ind != params->FID_IID_to_ind.end(); ++itr_ind) {
 
-      fid = itr_ind->first;
       index = itr_ind->second;
 
       if( !pheno_data->masked_indivs(index, ph) ) continue;
-      fout << fid << endl;
+      fout << params->FIDvec[index][0] << "\t" << params->FIDvec[index][1] << endl;
 
     }
 
     fout.closeFile();
   } 
+
+  params->FIDvec.clear();
 }
 
 

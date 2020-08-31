@@ -104,7 +104,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
   // get sample IDs (from sample file or directly from bgen file)
   if( params->bgenSample ) {
-    read_bgen_sample(files->sample_file, params->n_samples, tmp_ids, sout);
+    read_bgen_sample(files->sample_file, params->n_samples, tmp_ids, params->write_samples, params->FIDvec, sout);
   } else {
     bgen_tmp.get_sample_ids(
         [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
@@ -228,11 +228,13 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 }
 
 
-void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::vector<string> &ids, mstream& sout){
+void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::vector<string> &ids, bool write_samples, std::vector<std::vector<std::string>> &fids, mstream& sout){
 
   int nline = 0;
   string FID, IID, line, tmp_str;
+  std::vector<string> IDvec;
   ifstream myfile;
+  if( write_samples ) IDvec.resize(2);
 
   sout << "   -sample file: " << sample_file << endl;
   myfile.open (sample_file, ios::in);
@@ -264,6 +266,11 @@ void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::v
     } else {
       tmp_str = FID + "_" + IID;
       ids.push_back(tmp_str);
+      if(write_samples) {
+        IDvec[0] = FID;
+        IDvec[1] = IID;
+        fids.push_back(IDvec);
+      }
     }
 
     nline++;
@@ -368,8 +375,9 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
   int lineread = 0; 
   string line, tmp_id, fname;
-  std::vector< string > tmp_str_vec ;
+  std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
+  if( params->write_samples ) IDvec.resize(2);
 
   fname = files->bed_prefix + ".fam";
   sout << left << std::setw(20) << " * fam" << ": [" << fname << "] ";
@@ -395,6 +403,11 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
       exit(1);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_id, lineread ) );
+    if(params->write_samples) {
+      IDvec[0] = tmp_str_vec[0];
+      IDvec[1] = tmp_str_vec[1];
+      params->FIDvec.push_back(IDvec);
+    }
 
     lineread++;
   }
@@ -537,8 +550,9 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
   int lineread = 0;
   string line, tmp_id, fname;
-  std::vector< string > tmp_str_vec ;
+  std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
+  if( params->write_samples ) IDvec.resize(2);
 
   fname = files->pgen_prefix + ".psam";
   sout << left << std::setw(20) << " * psam" << ": [" << fname << "] " << flush;
@@ -581,6 +595,11 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
       exit(1);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_id, lineread ) );
+    if(params->write_samples) {
+      IDvec[0] = tmp_str_vec[0];
+      IDvec[1] = tmp_str_vec[1];
+      params->FIDvec.push_back(IDvec);
+    }
 
     lineread++;
   }
@@ -759,6 +778,7 @@ void check_samples_include_exclude(struct in_files* files, struct param* params,
   std::map <std::string, uint32_t> new_map;
   std::map <std::string, uint32_t>::iterator itr; 
   vector< string > allIDs;
+  vector< vector<string> > newFIDs;
 
   //  keep track of samples to remove 
   filters->ind_in_analysis = ArrayXb::Constant(params->n_samples, true);
@@ -788,12 +808,14 @@ void check_samples_include_exclude(struct in_files* files, struct param* params,
     for( size_t j = 0; j < params->n_samples; j++){
       if( !filters->ind_ignore(j) ){
         new_map.insert( std::make_pair( allIDs[j] , cum_pos ) );
+        if( params->write_samples ) newFIDs.push_back( params->FIDvec[j] );
         cum_pos++;
       }
     }
 
     // save map
     params->FID_IID_to_ind = new_map;
+    if( params->write_samples ) params->FIDvec = newFIDs;
 
     // resize ind_in_analysis
     filters->ind_in_analysis = ArrayXb::Constant(cum_pos, true);
