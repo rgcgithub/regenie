@@ -243,6 +243,12 @@ you can check they are the same using  the following command (the message should
 <td>Sample file corresponding to input BGEN file</td>
 </tr>
 <tr>
+<td><code>--with-bgi</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>Specify to use accompanying bgi index file to get variant information (assumes file name is <code>file.bgen.bgi</code></td>
+</tr>
+<tr>
 <td><code>--keep</code></td>
 <td>FILE</td>
 <td>Optional</td>
@@ -320,7 +326,8 @@ files in Step 1 and Step 2.</p>
 <p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink/">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a>.</p>
 <p>Step 2 of <strong>regenie</strong> can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
 (genotype file can be generated with <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> using 
-option <code>--export bgen-1.2 'bits=8'</code>).</p>
+option <code>--export bgen-1.2 'bits=8'</code>) as well as passing on an accompanying .bgi index file 
+(a useful tool to create such file is bgenix which is part of the BGEN library).</p>
 <p>To include X chromosome genotypes in step 1 and/or step 2, males should be coded as diploid 
 so that their genotypes are 0/2. This can be done in PLINK by setting the sex of all 
 individuals to female before generating the genotype file.
@@ -498,6 +505,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FLAG</td>
 <td>Optional</td>
 <td>flag to keep and impute missing observations for QTs in step 2</td>
+</tr>
+<tr>
+<td><code>--write-samples</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to write sample IDs for those kept in the analysis for each trait in step 2</td>
 </tr>
 <tr>
 <td><code>--firth</code></td>
