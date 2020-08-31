@@ -120,6 +120,8 @@ echo "------------------------------------------"
 if [ ! -f "${REGENIE_PATH}test/test_out_Y2.regenie.ids" -o -f "${REGENIE_PATH}test/test_out_Y1.regenie.ids" ]
 then
   echo "Uh oh, docker image did not build successfully"
+elif (( `head -n 1 "${REGENIE_PATH}test/test_out_Y2.regenie.ids" | tr '\t' '\n' | wc -l` != 2 )); then
+  echo "Uh oh, docker image did not build successfully"
 elif (( `grep "mog_" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
   echo "Uh oh, docker image did not build successfully"
 elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
