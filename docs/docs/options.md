@@ -293,7 +293,7 @@ If option `--gz` was used, the file will be compressed in gzip format and have e
 The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
 alternative allele (allele 1), frequency of the alternative allele, and the test performed 
 (additive/dominant/recessive).
-With BGEN files, the imputation INFO score is also provided. 
+With BGEN/PGEN files, the imputation INFO score is also provided (IMPUTE info score for BGEN and Mach Rsq for PGEN).
 Allele frequency and INFO score, if applicable, are computed using all 
 individuals included in the analysis (so they are the same for all phenotypes).
 
