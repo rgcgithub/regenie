@@ -1,4 +1,4 @@
-/* 
+/*
 
    This file is part of the regenie software package.
 
@@ -149,7 +149,7 @@ void Data::residualize_genotypes() {
           if(params.verbose) sout << "WARNING: Ignoring SNP with low variance.\n";
         }
       }
-    }  
+    }
   }
 
   Gblock.Gmat.array().colwise() /= scale_G.array();
@@ -172,11 +172,11 @@ void Data::set_blocks() {
   params.total_n_block = 0, total_chrs_loco = 0;
   int blocks_left = params.n_block;
   uint32_t n_analyzed = in_filters.ind_in_analysis.cast<int>().sum();
-  map<int, vector<int> >::iterator itr; 
+  map<int, vector<int> >::iterator itr;
   map<int, vector<int> > m1;
 
   // compute number of blocks for each chromosome
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
+  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
     int chrom_nsnps = itr->second[0];
     int nb = ceil(chrom_nsnps * 1.0 / params.block_size);
     if(params.n_block > 0) {
@@ -192,7 +192,7 @@ void Data::set_blocks() {
       params.total_n_block += nb;
     }
 
-    // track how many chromosome will have blups 
+    // track how many chromosome will have blups
     if(itr->second[1] > 0) total_chrs_loco++;
     m1.insert(pair<int, vector<int> >(itr->first, itr->second));
   }
@@ -204,9 +204,9 @@ void Data::set_blocks() {
     exit(-1);
   }
 
-  // set ridge params 
+  // set ridge params
   for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants / params.lambda[i];
-  for(int i = 0; i < params.n_ridge_l1; i++) { 
+  for(int i = 0; i < params.n_ridge_l1; i++) {
     if(!params.binary_mode)
       params.tau[i] =  (params.total_n_block *  params.n_ridge_l0)  / params.tau[i];
     else {
@@ -232,7 +232,7 @@ void Data::set_blocks() {
   */
   if(params.use_loocv) params.cv_folds = params.n_samples;
 
-  uint32_t neff_folds = params.use_loocv ? n_analyzed : params.cv_folds; 
+  uint32_t neff_folds = params.use_loocv ? n_analyzed : params.cv_folds;
 
   // summarize block sizes and ridge params
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]" << endl;
@@ -246,7 +246,7 @@ void Data::set_blocks() {
   for(int i = 0; i < params.n_ridge_l1; i++) {
     if(!params.binary_mode)
       sout << (params.total_n_block *  params.n_ridge_l0)  / params.tau[i] << " ";
-    else 
+    else
       sout << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[i] / 3 ) << " ";
   }
   sout << "]" << endl;
@@ -275,7 +275,7 @@ void Data::set_folds() {
     }
 
     uint32_t n_non_miss = 0, cum_size_folds = 0;
-    int cur_fold = 0; 
+    int cur_fold = 0;
     for(size_t i = 0; i < params.n_samples; i++){
 
       if( pheno_data.masked_indivs(i, 0) ) n_non_miss++;
@@ -304,7 +304,7 @@ void Data::set_folds() {
       }
 
       uint32_t n_non_miss = 0, cum_size_folds = 0;
-      int cur_fold = 0; 
+      int cur_fold = 0;
       for(size_t i = 0; i < params.n_samples; i++){
 
         if( in_filters.ind_in_analysis(i) ) n_non_miss++;
@@ -433,7 +433,7 @@ void Data::setmem() {
 
     }
   }
-  sout << "done" << endl << endl;  
+  sout << "done" << endl << endl;
 }
 
 /////////////////////////////////////////////////
@@ -444,30 +444,33 @@ void Data::setmem() {
 
 void Data::level_0_calculations() {
 
-  int block = 0, nread=0;
-  if(params.print_block_betas) params.print_snpcount = 0; 
+  int block = 0, nread=0, chrom_nsnps_file;
+  if(params.print_block_betas) params.print_snpcount = 0;
   snp_index_counter = 0;
   ridgel0 l0;
 
   if(!params.use_loocv){
     l0.G_folds.resize(params.cv_folds);
-    l0.GtY.resize(params.cv_folds);	  
+    l0.GtY.resize(params.cv_folds);	
   }
 
-  map<int, vector<int> >::iterator itr; 
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
-    int chrom = itr->first;
-    int chrom_nsnps = itr->second[0];
-    int chrom_nb = itr->second[1];
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+
+    int chrom = files.chr_read[itr];
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    int chrom_nsnps = chr_map[chrom][0];
+    int chrom_nb = chr_map[chrom][1];
+    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
 
     if(chrom_nb > 0) sout << "Chromosome " << chrom << endl;
-    //sout << "Ns="<< chrom_nsnps << ";Nfile="<< itr->second[2] << endl;
+    //sout << "Ns="<< chrom_nsnps << ";Nfile="<< chrom_nsnps_file << endl;
 
     // if all snps in chromosome are excluded
-    // stream through file to read next chr 
+    // stream through file to read next chr
     if((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) {
-      skip_snps(itr->second[2], &params, &files, &Gblock);
-      snp_index_counter += itr->second[2];
+      skip_snps(chrom_nsnps_file, &params, &files, &Gblock);
+      snp_index_counter += chrom_nsnps_file;
       continue;
     }
 
@@ -483,7 +486,7 @@ void Data::level_0_calculations() {
 
       get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
 
-      // residualize and scale genotypes 
+      // residualize and scale genotypes
       residualize_genotypes();
 
       // calc working matrices for ridge regressions across folds
@@ -502,27 +505,27 @@ void Data::level_0_calculations() {
     if(params.keep_snps || params.rm_snps){
       nread = snp_index_counter - nread;
       //sout << "Nread =" << nread << "; chr=" << chrom << endl;
-      if(nread < itr->second[2]) {
-        skip_snps(itr->second[2] - nread, &params, &files, &Gblock);
-        snp_index_counter += itr->second[2] - nread;
-        //sout << "Nskipping=" << itr->second[2] - nread << endl;
+      if(nread < chrom_nsnps_file) {
+        skip_snps(chrom_nsnps_file - nread, &params, &files, &Gblock);
+        snp_index_counter += chrom_nsnps_file - nread;
+        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
       }
     }
   }
 
   if(params.early_exit) {
-    sout << "\nDone printing out level 0 predictions. There are " << 
+    sout << "\nDone printing out level 0 predictions. There are " <<
       params.n_samples << " rows and " <<
       params.total_n_block * params.n_ridge_l0 << " columns " <<
       "stored in column-major order. Exiting...\n";
     runtime.stop();
     sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s" << endl;
-    sout << "End time: " << ctime(&runtime.end_time_info) << endl; 
+    sout << "End time: " << ctime(&runtime.end_time_info) << endl;
     exit(1);
   }
 
   // free up memory not used anymore
-  Gblock.Gmat.resize(0,0); 
+  Gblock.Gmat.resize(0,0);
   if(params.write_l0_pred && (params.n_pheno > 1) ) {
     // free level 0 predictions for (P-1) indices in test_mat
     for(int ph = 1; ph < params.n_pheno; ++ph ) {
@@ -555,7 +558,7 @@ void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
       l0->GTY += l0->GtY[i];
       cum_size_folds += params.cv_sizes[i];
     }
-  } else { 
+  } else {
     l0->GGt = Gblock.Gmat * Gblock.Gmat.transpose();
     l0->GTY = Gblock.Gmat * pheno_data.phenotypes;
     SelfAdjointEigenSolver<MatrixXd> esG(l0->GGt);
@@ -592,7 +595,7 @@ void Data::output() {
     outb.openForWrite(out_blup_list, sout);
   }
 
-  for(int ph = 0; ph < params.n_pheno; ++ph ) { 
+  for(int ph = 0; ph < params.n_pheno; ++ph ) {
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
     loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco" + (params.gzOut ? ".gz" : "");
@@ -602,9 +605,9 @@ void Data::output() {
       try {
         // convert to full path using boost filesystem library
         // this can generate errors due to LC_ALL locale being invalid
-        fs::path fullpath; 
+        fs::path fullpath;
         fullpath = fs::absolute(loco_filename);
-        fullpath_str = fullpath.make_preferred().string(); 
+        fullpath_str = fullpath.make_preferred().string();
       } catch ( std::runtime_error& ex ) {
         // use realpath
         char buf[PATH_MAX];
@@ -652,7 +655,7 @@ void Data::output() {
     for(int j = 0; j < params.n_ridge_l1; ++j ) {
       if(!params.binary_mode)
         sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0)  / params.tau[j] ;
-      else 
+      else
         sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[j] / 3 );
 
       // output Rsq and MSE
@@ -713,12 +716,12 @@ void Data::make_predictions(const int ph, const  int val) {
     if (!infile.is_open()) {
       sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
       exit(-1);
-    } 
+    }
 
     // store back values in test_mat
-    for( int m = 0; m < bs_l1; ++m ) 
-      for( int i = 0; i < params.cv_folds; ++i ) 
-        for( int k = 0; k < params.cv_sizes[i]; ++k ) 
+    for( int m = 0; m < bs_l1; ++m )
+      for( int i = 0; i < params.cv_folds; ++i )
+        for( int k = 0; k < params.cv_sizes[i]; ++k )
           infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
 
     infile.close();
@@ -751,12 +754,15 @@ void Data::make_predictions(const int ph, const  int val) {
   }
 
   // sout << "\nFor tau[" << val <<"] = " << params.tau[val] << endl <<  beta_l1 << endl ;
-  int ctr = 0, chr_ctr = 0; 
+  int ctr = 0, chr_ctr = 0;
   int nn, cum_size_folds;
-  map<int, vector<int> >::iterator itr;
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-    nn = itr->second[1] * params.n_ridge_l0;
-    if(nn > 0) { 
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    int chrom = files.chr_read[itr];
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    nn = chr_map[chrom][1] * params.n_ridge_l0;
+    if(nn > 0) {
       cum_size_folds = 0;
       for(int i = 0; i < params.cv_folds; ++i ) {
         if(!params.within_sample_l0) beta_l1 = l1_ests.beta_hat_level_1[ph][i].col(val);
@@ -808,7 +814,7 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
     if (!infile.is_open()) {
       sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
       exit(-1);
-    } 
+    }
 
     // store back values in test_mat_conc
     infile.read( reinterpret_cast<char *> (&l1_ests.test_mat_conc[ph_eff](0,0)), params.n_samples * bs_l1 * sizeof(double) );
@@ -840,10 +846,13 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
 
     int ctr = 0, chr_ctr = 0;
     int nn;
-    map<int, vector<int> >::iterator itr;
-    for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-      nn = itr->second[1] * params.n_ridge_l0;
-      if(nn > 0) { 
+
+    for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+      int chrom = files.chr_read[itr];
+      if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+      nn = chr_map[chrom][1] * params.n_ridge_l0;
+      if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = (l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * b0.block(ctr, 0, nn, size_chunk).transpose().array()).rowwise().sum();
         chr_ctr++;
         ctr += nn;
@@ -883,12 +892,12 @@ void Data::make_predictions_binary(const int ph, const  int val) {
     if (!infile.is_open()) {
       sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
       exit(-1);
-    } 
+    }
 
     // store back values in test_mat
-    for( int m = 0; m < bs_l1; ++m ) 
-      for( int i = 0; i < params.cv_folds; ++i ) 
-        for( int k = 0; k < params.cv_sizes[i]; ++k ) 
+    for( int m = 0; m < bs_l1; ++m )
+      for( int i = 0; i < params.cv_folds; ++i )
+        for( int k = 0; k < params.cv_sizes[i]; ++k )
           infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
 
     infile.close();
@@ -922,7 +931,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
         pivec = 1 - 1/(etavec.exp() + 1);
         score += (l1_ests.test_mat[ph_eff][i].transpose() * (l1_ests.test_pheno_raw[ph][i].array() - pivec).matrix()).array();
       }
-      score -= params.tau[val] * betanew.array(); 
+      score -= params.tau[val] * betanew.array();
 
       // stopping criterion
       if( score.abs().maxCoeff() < params.numtol) break;
@@ -932,12 +941,15 @@ void Data::make_predictions_binary(const int ph, const  int val) {
   }
 
   // compute predictor for each chr
-  int ctr = 0, chr_ctr = 0; 
+  int ctr = 0, chr_ctr = 0;
   int nn, cum_size_folds;
-  map<int, vector<int> >::iterator itr;
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-    nn = itr->second[1] * params.n_ridge_l0;
-    if(nn > 0) { 
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    int chrom = files.chr_read[itr];
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    nn = chr_map[chrom][1] * params.n_ridge_l0;
+    if(nn > 0) {
       cum_size_folds = 0;
       for(int i = 0; i < params.cv_folds; ++i ) {
         if(!params.within_sample_l0) betanew = l1_ests.beta_hat_level_1[ph][i].col(val);
@@ -990,7 +1002,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     if (!infile.is_open()) {
       sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
       exit(-1);
-    } 
+    }
 
     // store back values in test_mat_conc
     infile.read( reinterpret_cast<char *> (&l1_ests.test_mat_conc[ph_eff](0,0)), params.n_samples * bs_l1 * sizeof(double) );
@@ -1016,13 +1028,13 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     etavec = (m_ests.offset_logreg.col(ph) + l1_ests.test_mat_conc[ph_eff] * betaold.matrix()).array();
     pivec = 1 - 1/(etavec.exp() + 1);
     score = ( l1_ests.test_mat_conc[ph_eff].transpose() * (pheno_data.masked_indivs.col(ph).array()).select(pheno_data.phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
-    score -= params.tau[val] * betanew; 
+    score -= params.tau[val] * betanew;
 
     if( score.abs().maxCoeff() < params.numtol) break;
 
     betaold = betanew;
   }
-  // compute Hinv 
+  // compute Hinv
   etavec = (m_ests.offset_logreg.col(ph) + l1_ests.test_mat_conc[ph_eff] * betanew.matrix()).array();
   pivec = 1 - 1/(etavec.exp() + 1);
   wvec = pivec * (1 - pivec);
@@ -1042,18 +1054,22 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
 
     V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
     for(int i = 0; i < size_chunk; ++i ) {
-      v2 = Xmat_chunk.row(i) * V1.col(i); 
-      v2 *= wvec(j_start + i); 
+      v2 = Xmat_chunk.row(i) * V1.col(i);
+      v2 *= wvec(j_start + i);
       beta_final.col(i) = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
     }
 
     // compute predictor for each chr
-    int ctr = 0, chr_ctr = 0; 
+    int ctr = 0, chr_ctr = 0;
     int nn;
-    map<int, vector<int> >::iterator itr;
-    for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-      nn = itr->second[1] * params.n_ridge_l0;
-      if(nn > 0) { 
+
+    for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+      int chrom = files.chr_read[itr];
+      if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+      nn = chr_map[chrom][1] * params.n_ridge_l0;
+
+      if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * beta_final.block(ctr, 0, nn, size_chunk).transpose().array() ).matrix().rowwise().sum();
         chr_ctr++;
         ctr += nn;
@@ -1087,18 +1103,19 @@ void Data::write_predictions(const int ph){
     MatrixXd autosomal_pred = MatrixXd::Zero(predictions[0].rows(), params.nChrom);
 
     int chr, nn, chr_ctr = 0;
-    map<int, vector<int> >::iterator itr;
-    for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-      chr  = itr->first;
-      nn = itr->second[1];
-      if(nn > 0){  
+    for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+      chr = files.chr_read[itr];
+      if( chr_map.find(chr) == chr_map.end() ) continue;
+
+      nn = chr_map[chr][1];
+      if(nn > 0){
         autosomal_pred.col(chr - 1) = predictions[0].col(chr_ctr);
         ++chr_ctr;
       }
     }
 
     // header line : FID_IID for all individuals
-    ofile << "FID_IID "; 
+    ofile << "FID_IID ";
     for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
       id_index = itr_ind->first;
       index = itr_ind->second;
@@ -1119,10 +1136,10 @@ void Data::write_predictions(const int ph){
         // check individual was included in analysis, if not then skip
         if( !in_filters.ind_in_analysis( index ) ) continue;
 
-        // print blup 
+        // print blup
         if( pheno_data.masked_indivs(index, ph) )
           ofile << autosomal_pred(index, chr) << " ";
-        else 
+        else
           ofile << "NA ";
       }
       ofile << endl;
@@ -1136,23 +1153,24 @@ void Data::write_predictions(const int ph){
     sout << "writing LOCO predictions..." << flush;
     ofile.openForWrite(out, sout);
 
-    // output LOCO predictions G_loco * beta_loco for each autosomal chr  
+    // output LOCO predictions G_loco * beta_loco for each autosomal chr
     MatrixXd loco_pred (predictions[0].rows(), params.nChrom);
     loco_pred.colwise() = predictions[0].rowwise().sum();
 
     int chr, nn, chr_ctr = 0;
-    map<int, vector<int> >::iterator itr;
-    for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-      chr  = itr->first;
-      nn = itr->second[1];
-      if(nn > 0) { 
+    for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+      chr = files.chr_read[itr];
+      if( chr_map.find(chr) == chr_map.end() ) continue;
+
+      nn = chr_map[chr][1];
+      if(nn > 0) {
         loco_pred.col(chr - 1) -= predictions[0].col(chr_ctr);
         ++chr_ctr;
       }
     }
 
     // header line : FID_IID for all individuals
-    ofile << "FID_IID "; 
+    ofile << "FID_IID ";
     for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
       id_index = itr_ind->first;
       index = itr_ind->second;
@@ -1173,10 +1191,10 @@ void Data::write_predictions(const int ph){
         // check individual was included in analysis, if not then skip
         if( !in_filters.ind_in_analysis( index ) ) continue;
 
-        // print loco prediction 
+        // print loco prediction
         if( pheno_data.masked_indivs(index, ph) )
           ofile << loco_pred(index, chr) << " ";
-        else 
+        else
           ofile << "NA ";
       }
       ofile << endl;
@@ -1212,17 +1230,17 @@ void Data::test_snps() {
   string out, correction_type;
   vector < string > out_split;
   Files ofile;
-  // use pointer to class since it contains non-copyable elements 
+  // use pointer to class since it contains non-copyable elements
   vector < Files* > ofile_split;
   MatrixXd WX, GW, sqrt_denum, scaleG_pheno;
   RowVectorXd p_sd;
 
 
-  setNbThreads(params.threads); // set threads   
+  setNbThreads(params.threads); // set threads
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
-  set_blocks_for_testing();   // set number of blocks 
+  set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
 
 
@@ -1235,11 +1253,11 @@ void Data::test_snps() {
 
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile.openForWrite(out, sout);
-    // header of output file 
-    ofile << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << 
+    // header of output file
+    ofile << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " <<
       "ALLELE1" << " " << "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " ";
-    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<  
-      " " << "CHISQ.Y" << i+1 << " " << "LOG10P.Y" << i+1 << " ";  
+    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<
+      " " << "CHISQ.Y" << i+1 << " " << "LOG10P.Y" << i+1 << " ";
     ofile << endl;
 
   } else { // split results in separate files for each phenotype
@@ -1251,16 +1269,16 @@ void Data::test_snps() {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
-      // header of output file 
+      // header of output file
       if(!params.htp_out){
-        (*ofile_split[i]) << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " << 
-          "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " << 
+        (*ofile_split[i]) << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " <<
+          "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " <<
           "CHISQ" << " " << "LOG10P" << endl;
       } else {
-        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" << 
-          "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << 
-          "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << 
-          "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << 
+        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" <<
+          "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" <<
+          "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" <<
+          "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" <<
           "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
       }
     }
@@ -1308,11 +1326,12 @@ void Data::test_snps() {
   // start analyzing each chromosome
   int block = 0, chrom, chrom_nsnps, chrom_nb, bs;
   uint32_t snp_count = 0;
-  map<int, vector<int> >::iterator itr; 
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
-    chrom = itr->first;
-    chrom_nsnps = itr->second[0];
-    chrom_nb = itr->second[1];
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    chrom = files.chr_read[itr];
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    chrom_nsnps = chr_map[chrom][0];
+    chrom_nb = chr_map[chrom][1];
 
     if(chrom_nb > 0) {
 
@@ -1332,13 +1351,13 @@ void Data::test_snps() {
       blup_read_chr(chrom);
 
       // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-      if(!params.binary_mode){ 
+      if(!params.binary_mode){
 
-        res = pheno_data.phenotypes - m_ests.blups;  
-        res.array() *= pheno_data.masked_indivs.array().cast<double>(); 
+        res = pheno_data.phenotypes - m_ests.blups;
+        res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-        p_sd = res.colwise().norm(); 
-        p_sd.array() /= sqrt(pheno_data.Neff -1); 
+        p_sd = res.colwise().norm();
+        p_sd.array() /= sqrt(pheno_data.Neff -1);
         res.array().rowwise() /= p_sd.array();
 
       } else {
@@ -1356,7 +1375,7 @@ void Data::test_snps() {
           auto t1 = std::chrono::high_resolution_clock::now();
 
           for( int i = 0; i < params.n_pheno; ++i ) {
-            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout); 
+            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout);
             if(!has_converged) {
               sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << endl;
               exit(-1);
@@ -1419,7 +1438,7 @@ void Data::test_snps() {
         // only do it for firth approx. test with BTs (ests. are unchanged for other tests)
         residualize_genotypes();
         n_ignored_snps += Gblock.bad_snps.sum();
-      } else { 
+      } else {
         scale_G = ArrayXd::Ones(bs); // no scaling is applied to the SNPs
         // ensure that snps which failed MAC filter are all polymorphic
         if( (Gblock.bad_snps==1).count() > 0 ) {
@@ -1441,12 +1460,12 @@ void Data::test_snps() {
 
         for( int i = 0; i < params.n_pheno; ++i ) {
 
-          // project out covariates from G 
+          // project out covariates from G
           WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
           GW = Gblock.Gmat * m_ests.Gamma_sqrt.col(i).asDiagonal();
           Gblock.Gmat_tmp = GW - ((GW * WX) * m_ests.Xt_Gamma_X_inv[i]) * WX.transpose();
           Gblock.Gmat_tmp.array().rowwise() *= pheno_data.masked_indivs.col(i).transpose().array().cast<double>();
-          denum_tstat = Gblock.Gmat_tmp.rowwise().squaredNorm(); 
+          denum_tstat = Gblock.Gmat_tmp.rowwise().squaredNorm();
           sqrt_denum.col(i) = denum_tstat.array().sqrt();
 
           // score test stat for BT
@@ -1496,7 +1515,7 @@ void Data::test_snps() {
             }
           }
 
-          chisq_val = stats(i,j) * stats(i,j); 
+          chisq_val = stats(i,j) * stats(i,j);
           // test statistic & pvalue
           if(!params.use_SPA) {
             pval_log = check_pval(chisq_val, chrom, i, j);
@@ -1510,9 +1529,9 @@ void Data::test_snps() {
 
             // estimate & SE for QT
             if( params.strict_mode )
-              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(pheno_data.Neff(j)) * scale_G(i) ); 
+              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(pheno_data.Neff(j)) * scale_G(i) );
             else
-              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(scaleG_pheno(i,j)) * scale_G(i) ); 
+              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(scaleG_pheno(i,j)) * scale_G(i) );
             se_b = bhat / stats(i,j);
 
           } else {
@@ -1541,7 +1560,7 @@ void Data::test_snps() {
           }
 
 
-          if(!params.split_by_pheno) 
+          if(!params.split_by_pheno)
             ofile << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
           else if(!params.htp_out) (*ofile_split[j]) << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
 
@@ -1576,7 +1595,7 @@ void Data::test_snps() {
                 (*ofile_split[j]) << exp(bhat) << "\t" << exp(bhat - zcrit * se_b) << "\t" << exp(bhat + zcrit * se_b) << "\t" << outp_val << "\t";
 
             } else {
-              // for tests that failed, print NA 
+              // for tests that failed, print NA
               if(outp_val<0){
                 (*ofile_split[j]) << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
               } else{
@@ -1604,7 +1623,7 @@ void Data::test_snps() {
             // info column
             if(params.binary_mode){
               if(outp_val<0){ // only have NA
-                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") << 
+                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") <<
                   "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
               } else {
                 // Firth => only SE
@@ -1612,8 +1631,8 @@ void Data::test_snps() {
                   (*ofile_split[j]) << "\t" << "REGENIE_SE=" << se_b;
                 } else {
                   // SPA/uncorrected logistic => beta & SEs
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat << 
-                    ";" << "REGENIE_SE=" << se_b << 
+                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat <<
+                    ";" << "REGENIE_SE=" << se_b <<
                     ";" << "SE=" << outse_val;
                 }
               }
@@ -1646,7 +1665,7 @@ void Data::test_snps() {
     sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
     for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
-      delete ofile_split[j]; 
+      delete ofile_split[j];
       sout << "* [" << out_split[j] << "]" << endl;
     }
     sout << endl;
@@ -1654,13 +1673,13 @@ void Data::test_snps() {
 
   if(params.firth || params.use_SPA) {
     sout << "Number of tests with ";
-    sout << (params.firth ? "Firth " : "SPA "); 
+    sout << (params.firth ? "Firth " : "SPA ");
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - n_skipped_snps - n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")" << endl;
   }
   sout << "Number of ignored SNPs due to low MAC : " << n_ignored_snps << endl;
 
-} 
+}
 
 
 /////////////////////////////////////////////////
@@ -1751,7 +1770,7 @@ void Data::blup_read_chr(const int chrom) {
     // force all non-masked samples to have loco predictions
     //   -> this should not occur as masking of absent samples is done in blup_read() function
     if( (pheno_data.masked_indivs.col(i_pheno).array() * read_indiv).cast<int>().sum() < pheno_data.masked_indivs.col(i_pheno).cast<int>().sum() ){
-      sout << "ERROR: All samples included in the analysis (for phenotype " << 
+      sout << "ERROR: All samples included in the analysis (for phenotype " <<
         files.pheno_names[i_pheno]<< ") must have LOCO predictions in file : " << files.blup_files[ph] << "\n";
       exit(-1);
     }
@@ -1772,9 +1791,9 @@ void Data::set_blocks_for_testing() {
   int blocks_left = params.n_block;
   bool chr_tested;
 
-  map<int, vector<int> >::iterator itr; 
+  map<int, vector<int> >::iterator itr;
   map<int, vector<int> > m1;
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
+  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
     int chrom = itr->first;
     int chrom_nsnps = itr->second[0];
     int nb = ceil((double) chrom_nsnps / params.block_size);
@@ -1787,21 +1806,23 @@ void Data::set_blocks_for_testing() {
         int minb = min(nb, blocks_left);
         //sout << << endl;
         itr->second[1] = minb;
-        if(chr_tested) params.total_n_block += minb;
-        blocks_left -= minb;
+        if(chr_tested) {
+          params.total_n_block += minb;
+          blocks_left -= minb;
+        }
       }
     } else {
       itr->second[1] = nb;
       if(chr_tested) params.total_n_block += nb;
     }
-    if(itr->second[1] > 0) m1.insert(pair<int, vector<int> >(itr->first, itr->second)); 
+    if(itr->second[1] > 0) m1.insert(pair<int, vector<int> >(itr->first, itr->second));
   }
   chr_map = m1;
 
   // summarize block sizes
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]" << endl;
   sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]" << endl;
-  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]" << endl;  
+  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]" << endl;
 
 }
 
@@ -1814,7 +1835,7 @@ void Data::set_blocks_for_testing() {
 double Data::check_pval(double tstat, int chrom, int snp,  int ph){
 
   chi_squared chisq(1);
-  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
+  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue);
   double pval, logp;
   pval_converged = false;
 
@@ -1824,7 +1845,7 @@ double Data::check_pval(double tstat, int chrom, int snp,  int ph){
 
     // check if pvalue from boost 0 (when tstat is very large)
     // use log10p = log10( 2*f(tstat) ) with f=pdf of chisq(1)
-    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * tstat ) - 0.5 * tstat * M_LOG10E ; 
+    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * tstat ) - 0.5 * tstat * M_LOG10E ;
     else logp = log10(pval);
 
     pval_converged = true;
@@ -1840,7 +1861,7 @@ double Data::check_pval(double tstat, int chrom, int snp,  int ph){
 
 double Data::run_firth_correction(int chrom, int snp,  int ph){
 
-  bool converged_l0, converged_l1; 
+  bool converged_l0, converged_l1;
   double dif_deviance, pval, logp;
   chi_squared chisq(1);
 
@@ -1861,11 +1882,11 @@ double Data::run_firth_correction(int chrom, int snp,  int ph){
   dif_deviance = firth_est.deviance_logistic;
 
   // in case of numerical errors
-  if( dif_deviance < 0 ) 
+  if( dif_deviance < 0 )
     return params.missing_value_double;
 
   pval = cdf(complement(chisq, dif_deviance));
-  if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * dif_deviance ) - 0.5 * dif_deviance * M_LOG10E ; 
+  if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * dif_deviance ) - 0.5 * dif_deviance * M_LOG10E ;
   else logp = log10(pval);
   logp *= -1;
   pval_converged = true;
@@ -1879,7 +1900,7 @@ void Data::run_SPA_test(int ph){
   int bs = Gblock.Gmat_tmp.rows(), index_j, nnz;
   double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1;
   chi_squared chisq(1);
-  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
+  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue);
   ArrayXd Gmu;
 
   for(int snp = 0; snp < bs; ++snp) {
@@ -1895,7 +1916,7 @@ void Data::run_SPA_test(int ph){
     zstat_sq = zstat * zstat;
     if( zstat_sq <= chisq_thr){
       pval = cdf(complement(chisq, zstat_sq));
-      if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * zstat_sq ) - 0.5 * zstat_sq * M_LOG10E ; 
+      if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * zstat_sq ) - 0.5 * zstat_sq * M_LOG10E ;
       else logp = log10(pval);
       logp *= -1;
       spa_est.SPA_pvals(snp, ph) = logp;
@@ -1917,7 +1938,7 @@ void Data::run_SPA_test(int ph){
     score_num = zstat * spa_est.val_c;
     spa_est.Gmod = Gblock.Gmat_tmp.row(snp).transpose().array() / m_ests.Gamma_sqrt.col(ph).array() * pheno_data.masked_indivs.col(ph).array().cast<double>();
     Gmu = spa_est.Gmod * m_ests.Y_hat_p.col(ph).array();
-    spa_est.val_a = Gmu.sum(); 
+    spa_est.val_a = Gmu.sum();
 
     if(fastSPA){
       spa_est.val_b = denum_tstat(snp);
@@ -1930,7 +1951,7 @@ void Data::run_SPA_test(int ph){
       }
     }
 
-    // check if K'(t)= s can be solved 
+    // check if K'(t)= s can be solved
     limK1_low = (spa_est.Gmod < 0).select(spa_est.Gmod, 0 ).sum() - spa_est.val_a ;
     limK1_high = (spa_est.Gmod > 0).select(spa_est.Gmod, 0 ).sum() - spa_est.val_a ;
     if( score_num < limK1_low || score_num > limK1_high ){
@@ -1965,7 +1986,7 @@ void Data::run_SPA_test(int ph){
 
 void Data::test_snps_fast() {
 
-  sout << "Association testing mode"; 
+  sout << "Association testing mode";
 
   std::chrono::high_resolution_clock::time_point t1, t2;
   normal nd(0,1);
@@ -1982,7 +2003,7 @@ void Data::test_snps_fast() {
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
-  set_blocks_for_testing();   // set number of blocks 
+  set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
 
   sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)" << endl;
@@ -2000,7 +2021,7 @@ void Data::test_snps_fast() {
   Files ofile;
   string out, correction_type;
   vector < string > out_split;
-  // use pointer to class since it contains non-copyable elements 
+  // use pointer to class since it contains non-copyable elements
   vector < Files* > ofile_split;
   if(params.test_type == 0) test_string = "ADD";
   else if(params.test_type == 1) test_string = "DOM";
@@ -2008,10 +2029,10 @@ void Data::test_snps_fast() {
   if(!params.split_by_pheno){ // write results in one file
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile.openForWrite(out, sout);
-    // header of output file 
-    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+    // header of output file
+    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " <<
       ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST ";
-    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";  
+    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";
     ofile << endl;
   } else {  // split results in separate files for each phenotype
     out_split.resize( params.n_pheno );
@@ -2021,9 +2042,9 @@ void Data::test_snps_fast() {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
-      // header of output file 
+      // header of output file
       if(!params.htp_out){
-        (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+        (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " <<
           ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
       } else {
         (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
@@ -2056,17 +2077,20 @@ void Data::test_snps_fast() {
   }
 
 
-  map<int, vector<int> >::iterator itr; 
-  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) { 
-    chrom = itr->first;
-    chrom_nsnps = itr->second[0];
-    chrom_nb = itr->second[1];
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+
+    chrom = files.chr_read[itr];
+
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    chrom_nsnps = chr_map[chrom][0];
+    chrom_nb = chr_map[chrom][1];
 
     if(chrom_nb > 0) {
 
       // skip chromosome if not in list to keep
       if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-        sout << "Chromosome " << chrom << " is skipped" << endl;
+        //sout << "Chromosome " << chrom << " is skipped" << endl;
         snp_tally.snp_count += chrom_nsnps;
         snp_tally.n_skipped_snps += chrom_nsnps;
         if((params.file_type == "bed")) files.bed_ifstream.seekg(chrom_nsnps * files.bed_block_size, ios_base::cur);
@@ -2078,13 +2102,13 @@ void Data::test_snps_fast() {
       blup_read_chr(chrom);
 
       // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-      if(!params.binary_mode){ 
+      if(!params.binary_mode){
 
-        res = pheno_data.phenotypes - m_ests.blups;  
-        res.array() *= pheno_data.masked_indivs.array().cast<double>(); 
+        res = pheno_data.phenotypes - m_ests.blups;
+        res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-        p_sd_yres = res.colwise().norm(); 
-        p_sd_yres.array() /= sqrt(pheno_data.Neff -1); 
+        p_sd_yres = res.colwise().norm();
+        p_sd_yres.array() /= sqrt(pheno_data.Neff -1);
         res.array().rowwise() /= p_sd_yres.array();
 
       } else {
@@ -2102,7 +2126,7 @@ void Data::test_snps_fast() {
           auto t1 = std::chrono::high_resolution_clock::now();
 
           for( int i = 0; i < params.n_pheno; ++i ) {
-            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout); 
+            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout);
             if(!has_converged) {
               sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << ". ";
               sout << "Try decreasing the maximum step size using `--maxstep-null` (currently=" << (params.fix_maxstep_null ? params.maxstep_null : params.retry_maxstep_firth)<< ") " <<
@@ -2122,7 +2146,7 @@ void Data::test_snps_fast() {
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
-      sout << " block [" << block + 1 << "] : " << flush; 
+      sout << " block [" << block + 1 << "] : " << flush;
 
       bs = params.block_size;
       if(bb == 0) {
@@ -2194,7 +2218,7 @@ void Data::test_snps_fast() {
                 (*ofile_split[j]) << exp( block_info[isnp].bhat(j) ) << "\t" << exp( block_info[isnp].bhat(j) - zcrit * block_info[isnp].se_b(j) ) << "\t" << exp( block_info[isnp].bhat(j) + zcrit * block_info[isnp].se_b(j) ) << "\t" << outp_val << "\t";
 
             } else {
-              // for tests that failed, print NA 
+              // for tests that failed, print NA
               if(outp_val<0){
                 (*ofile_split[j]) << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
               } else{
@@ -2218,7 +2242,7 @@ void Data::test_snps_fast() {
             // info column
             if(params.binary_mode){
               if(outp_val < 0){
-                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") << 
+                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") <<
                   "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
               } else {
                 // Firth => only SE
@@ -2226,8 +2250,8 @@ void Data::test_snps_fast() {
                   (*ofile_split[j]) << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j);
                 } else {
                   // SPA/uncorrected logistic => beta & SEs
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) << 
-                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) << 
+                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) <<
+                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) <<
                     ";" << "SE=" << outse_val;
                 }
               }
@@ -2257,20 +2281,20 @@ void Data::test_snps_fast() {
     sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
     for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
-      delete ofile_split[j]; 
+      delete ofile_split[j];
       sout << "* [" << out_split[j] << "]" << endl;
     }
     sout << endl;
   }
 
   if(params.firth || params.use_SPA) {
-    sout << "Number of tests with " << (params.firth ? "Firth " : "SPA "); 
+    sout << "Number of tests with " << (params.firth ? "Firth " : "SPA ");
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - snp_tally.n_skipped_snps - snp_tally.n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")" << endl;
   }
   sout << "Number of ignored SNPs due to low MAC : " << snp_tally.n_ignored_snps << endl;
 
-} 
+}
 
 // test SNPs in block
 void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, vector<variant_block> &all_snps_info){
@@ -2296,7 +2320,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     }
     bfile.close();
   } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info);
-  else { 
+  else {
     // read in N/4 bytes from bed file for each snp
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps; isnp++) {
@@ -2319,7 +2343,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     // to store variant information
     variant_block* block_info = &(all_snps_info[isnp]);
 
-    if(params.file_type == "bgen"){ // uncompress and extract the dosages 
+    if(params.file_type == "bgen"){ // uncompress and extract the dosages
       parseSnpfromBGEN(&(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], block_info, sout);
     } else if(params.file_type == "bed"){ // extract hardcalls
       parseSnpfromBed(snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, block_info);
@@ -2333,26 +2357,26 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       (snp_tally->n_ignored_snps)++;
       continue;
     }
-    block_info->pval_log = ArrayXd::Zero(params.n_pheno); 
-    block_info->bhat = ArrayXd::Zero(params.n_pheno); 
-    block_info->se_b = ArrayXd::Zero(params.n_pheno); 
-    block_info->test_fail.assign(params.n_pheno, false); 
-    block_info->is_corrected.assign(params.n_pheno, true); 
+    block_info->pval_log = ArrayXd::Zero(params.n_pheno);
+    block_info->bhat = ArrayXd::Zero(params.n_pheno);
+    block_info->se_b = ArrayXd::Zero(params.n_pheno);
+    block_info->test_fail.assign(params.n_pheno, false);
+    block_info->is_corrected.assign(params.n_pheno, true);
 
 
     if(params.binary_mode) {
       MatrixXd tmpG, WX, GW;
-      block_info->stats = ArrayXd::Zero(params.n_pheno); 
-      block_info->denum = ArrayXd::Zero(params.n_pheno); 
+      block_info->stats = ArrayXd::Zero(params.n_pheno);
+      block_info->denum = ArrayXd::Zero(params.n_pheno);
 
       for( int i = 0; i < params.n_pheno; ++i ) {
 
-        // project out covariates from G 
+        // project out covariates from G
         WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
         // apply mask
         GW = (block_info->Geno * m_ests.Gamma_sqrt.col(i).array() * pheno_data.masked_indivs.col(i).array().cast<double>()).matrix();
         tmpG = GW - WX * (m_ests.Xt_Gamma_X_inv[i] * (WX.transpose() * GW));
-        block_info->denum(i) = tmpG.squaredNorm(); 
+        block_info->denum(i) = tmpG.squaredNorm();
 
         // score test stat for BT
         block_info->stats(i) = (tmpG.array() * res.col(i).array()).sum() / sqrt( block_info->denum(i) );
@@ -2375,7 +2399,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 
     }
 
-    block_info->chisq_val = block_info->stats.square(); 
+    block_info->chisq_val = block_info->stats.square();
 
     for( int i = 0; i < params.n_pheno; ++i ) {
 
@@ -2386,9 +2410,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       if( !params.binary_mode ){
         // estimate & SE for QT
         if( params.strict_mode )
-          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i)) / ( sqrt(pheno_data.Neff(i)) * block_info->scale_fac ); 
+          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i)) / ( sqrt(pheno_data.Neff(i)) * block_info->scale_fac );
         else
-          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i) ) / ( sqrt(block_info->scale_fac_pheno(i)) * block_info->scale_fac ); 
+          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i) ) / ( sqrt(block_info->scale_fac_pheno(i)) * block_info->scale_fac );
         block_info->se_b(i) = block_info->bhat(i) / block_info->stats(i);
       } else {
         // with Firth, get sum. stats from Firth logistic regression
@@ -2450,7 +2474,7 @@ void Data::residualize_geno(variant_block* snp_data){
 void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
 
   chi_squared chisq(1);
-  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
+  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue);
   double pval, logp, LRstat;
   double tstat = block_info->chisq_val(ph);
 
@@ -2459,7 +2483,7 @@ void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
     pval = cdf(complement(chisq, tstat));
 
     // check if pvalue from boost 0 (when tstat is very large)
-    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * tstat ) - 0.5 * tstat * M_LOG10E ; 
+    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * tstat ) - 0.5 * tstat * M_LOG10E ;
     else logp = log10(pval);
 
     logp *= -1;
@@ -2474,7 +2498,7 @@ void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
 
   LRstat = block_info->dif_deviance;
   pval = cdf(complement(chisq, LRstat));
-  if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * LRstat ) - 0.5 * LRstat * M_LOG10E ; 
+  if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * LRstat ) - 0.5 * LRstat * M_LOG10E ;
   else logp = log10(pval);
   logp *= -1;
 
@@ -2502,7 +2526,7 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
   int index_j;
   double pval, logp, zstat, zstat_sq, score_num, tval, limK1_low, limK1_high, root_K1;
   chi_squared chisq(1);
-  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue); 
+  double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue);
   ArrayXd Gmu;
 
   // check test statistic relative to threshold
@@ -2510,7 +2534,7 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
   zstat_sq = zstat * zstat;
   if( zstat_sq <= chisq_thr){
     pval = cdf(complement(chisq, zstat_sq));
-    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * zstat_sq ) - 0.5 * zstat_sq * M_LOG10E ; 
+    if(pval == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * zstat_sq ) - 0.5 * zstat_sq * M_LOG10E ;
     else logp = log10(pval);
     logp *= -1;
     block_info->pval_log(ph) = logp;
@@ -2523,7 +2547,7 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
   score_num = zstat * block_info->val_c;
   block_info->Gmod = Gtmp.array() / m_ests.Gamma_sqrt.col(ph).array() * pheno_data.masked_indivs.col(ph).array().cast<double>();
   Gmu = block_info->Gmod * m_ests.Y_hat_p.col(ph).array();
-  block_info->val_a = Gmu.sum(); 
+  block_info->val_a = Gmu.sum();
 
   if(block_info->fastSPA){
     block_info->val_b = block_info->denum(ph);
@@ -2536,7 +2560,7 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
     }
   }
 
-  // check if K'(t)= s can be solved 
+  // check if K'(t)= s can be solved
   limK1_low = (block_info->Gmod < 0).select(block_info->Gmod, 0 ).sum() - block_info->val_a ;
   limK1_high = (block_info->Gmod > 0).select(block_info->Gmod, 0 ).sum() - block_info->val_a ;
   if( score_num < limK1_low || score_num > limK1_high ){

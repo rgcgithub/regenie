@@ -99,19 +99,19 @@ struct findID {
 void check_bgen(const std::string,struct param*);
 void prep_bgen(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,BgenParser&,mstream&);
 void read_bgen_sample(const std::string,const uint32_t,std::vector<std::string> &,bool,std::vector<std::vector<std::string>> &,mstream&);
-void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
+void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 
 void read_bed_bim_fam(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
-void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
+void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 void read_fam(struct in_files*,struct param*,mstream&);
 void prep_bed(const uint32_t&, struct in_files*,mstream&);
 
 void read_pgen_pvar_psam(struct in_files*,struct param*,struct filter*,struct geno_block*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
-void read_pvar(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::vector< int >&,mstream&);
+void read_pvar(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 void read_psam(struct in_files*,struct param*,mstream&);
 void prep_pgen(const uint32_t,const uint32_t,struct in_files*,struct filter*,struct geno_block*,mstream&);
 
-void check_snps_include_exclude(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,const std::vector< int >&,mstream&);
+void check_snps_include_exclude(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void set_snps_to_keep(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 void set_snps_to_rm(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 
