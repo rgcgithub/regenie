@@ -102,7 +102,9 @@ fi
 
 # Second command
 rgcmd="--step 2 \
-  --bed ${mntpt}example/example_3chr \
+  --bgen ${mntpt}example/example_3chr.bgen \
+  --sample ${mntpt}example/example_3chr.sample \
+  --with-bgi \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --phenoColList Y2 \
