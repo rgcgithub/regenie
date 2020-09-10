@@ -999,8 +999,9 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) gblock->bad_snps(snp) = 1;
     //sout << "SNP#" << snp + 1 << "AC=" << total << " BAD="<< bad_snps(snp)<< endl;
     total /= ns;
+    if( (params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(snp, 0) = total / 2;
+
     if(params->test_mode) {
-      gblock->snp_afs(snp, 0) = total / 2;
       if( (gblock->snp_afs(snp, 0) == 0) || (gblock->snp_afs(snp, 0) == 1) ) gblock->snp_info(snp, 0) = 1;
       else gblock->snp_info(snp, 0) = 1 - info_num / (2 * ns * gblock->snp_afs(snp, 0) * (1 - gblock->snp_afs(snp, 0)));
     }
@@ -1111,7 +1112,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
 
     if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) )  gblock->bad_snps(j) = 1;
     total /= ns;
-    if(params->test_mode) gblock->snp_afs(j, 0) = total / 2;
+    if((params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(j, 0) = total / 2;
 
     if(params->use_SPA) {
       // switch to minor allele
@@ -1189,6 +1190,7 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
     }
 
     total /= ns;
+    if( params->alpha_prior != -1) gblock->snp_afs(j, 0) = total / 2;
 
     //if(j<5) sout << "\nj="<< j+1 << ":" <<  gblock->Gmat.row(j).array().head(5);
     // deal with missing data and center SNPs

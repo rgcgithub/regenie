@@ -173,6 +173,7 @@ struct param {
   int total_n_block = 0; // number of blocks to run across all chrs
   int n_ridge_l0 = 5; // number of ridge parameters at level 0
   int n_ridge_l1 = 5; // number of ridge parameters at level 1
+  double alpha_prior = -1; // to set MAF dependent prior on the effect sizes
   int chunk_mb = 1000; // max amount of memory to use with LOOCV
   bool user_ridge_params_l0 = false; // if user specifies ridge parameters
   bool user_ridge_params_l1 = false; // if user specifies ridge parameters

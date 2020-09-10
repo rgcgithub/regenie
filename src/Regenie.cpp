@@ -45,8 +45,6 @@ MeasureTime::MeasureTime(){ }
 MeasureTime::~MeasureTime(){ }
 
 
-// This example program reads data from a bgen file specified as the first argument
-// and outputs it as a VCF file.
 int main( int argc, char** argv ) {
 
   Data data;
@@ -164,6 +162,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
+    ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ;
 
 
