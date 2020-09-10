@@ -64,7 +64,7 @@ void Data::run() {
     else test_snps();
 
   } else {
-    sout << "Fitting null model" << endl;
+    sout << "Fitting null model\n";
 
     // set number of threads
     setNbThreads(params.threads);
@@ -137,7 +137,14 @@ void Data::residualize_genotypes() {
   MatrixXd::Index  minIndex;
   if(scale_G.array().minCoeff(&minIndex) < params.numtol) { //
     if(!params.test_mode) { // only done in step 1
-      sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+minIndex].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
+      // skip to problematic snp
+      uint true_index = 0;
+      for(size_t i = 0; ; true_index++) {
+        if(snpinfo[in_filters.step1_snp_count+true_index].mask) continue;
+        if(i == minIndex) break;
+        i++;
+      }
+      sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+true_index].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
       exit(1);
     } else {
       Gblock.bad_snps( scale_G.array() < params.numtol ) =  1;
@@ -153,6 +160,12 @@ void Data::residualize_genotypes() {
   }
 
   Gblock.Gmat.array().colwise() /= scale_G.array();
+
+  // to use MAF dependent prior on effect size [only for step 1]
+  // multiply by [p*(1-p)]^(1+alpha)/2
+  if( !params.test_mode && (params.alpha_prior != -1) ){
+    Gblock.Gmat.array().colwise() *= pow(Gblock.snp_afs.col(0).array() * (1-Gblock.snp_afs.col(0).array()), 0.5 * (params.alpha_prior + 1) );
+  }
 
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
@@ -226,7 +239,7 @@ void Data::set_blocks() {
   /*
   // check block size vs sample size
   if(params.use_loocv && params.block_size > n_analyzed){
-  sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!" << endl;
+  sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!\n";
   exit(-1);
   }
   */
@@ -235,13 +248,13 @@ void Data::set_blocks() {
   uint32_t neff_folds = params.use_loocv ? n_analyzed : params.cv_folds;
 
   // summarize block sizes and ridge params
-  sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]" << endl;
-  sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]" << endl;
-  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]" << endl;
-  sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]" << endl;
+  sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
+  sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]\n";
+  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]\n";
+  sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]\n";
   sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
   for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / params.lambda[i] << " ";
-  sout << "]" <<endl;
+  sout << "]\n";
   sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
   for(int i = 0; i < params.n_ridge_l1; i++) {
     if(!params.binary_mode)
@@ -249,14 +262,17 @@ void Data::set_blocks() {
     else
       sout << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[i] / 3 ) << " ";
   }
-  sout << "]" << endl;
+  sout << "]\n";
+
+  // if using maf dependent prior
+  if(!params.test_mode && (params.alpha_prior != -1) ) sout << " * applying a MAF dependent prior to the SNP effect sizes in level 0 models (alpha=" << params.alpha_prior << ")\n";
 
   // print approx. amount of memory needed
   print_usage_info(&params, &files, sout);
 
   // if within sample predictions are used in level 1
   if (params.within_sample_l0) {
-    sout << " * using within-sample predictions from level 0 as features at level 1" << endl;
+    sout << " * using within-sample predictions from level 0 as features at level 1\n";
   }
 
 }
@@ -433,7 +449,7 @@ void Data::setmem() {
 
     }
   }
-  sout << "done" << endl << endl;
+  sout << "done\n" << endl;
 }
 
 /////////////////////////////////////////////////
@@ -478,10 +494,14 @@ void Data::level_0_calculations() {
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
       int bs = params.block_size;
-      if(bb == 0) Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
-      if((bb +1) * params.block_size > chrom_nsnps) {
+      if(bb == 0) {
+        Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
+        if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
+      }
+      if((bb + 1) * params.block_size > chrom_nsnps) {
         bs = chrom_nsnps - (bb * params.block_size) ;
         Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
+        if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
       }
 
       get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
@@ -519,7 +539,7 @@ void Data::level_0_calculations() {
       params.total_n_block * params.n_ridge_l0 << " columns " <<
       "stored in column-major order. Exiting...\n";
     runtime.stop();
-    sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s" << endl;
+    sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s\n";
     sout << "End time: " << ctime(&runtime.end_time_info) << endl;
     exit(1);
   }
@@ -588,7 +608,7 @@ void Data::output() {
   string fullpath_str;
   Files outb;
 
-  sout << "Output" << endl << "------" << endl;
+  sout << "Output\n" << "------\n";
 
   if(params.make_loco || params.binary_mode){
     out_blup_list = files.out_file + "_pred.list";
@@ -688,7 +708,7 @@ void Data::output() {
 
   if(params.make_loco || params.binary_mode){
     outb.closeFile();
-    sout << "List of blup files written to: [" << out_blup_list << "] " << endl;
+    sout << "List of blup files written to: [" << out_blup_list << "] \n";
   }
 
 }
@@ -1214,7 +1234,7 @@ void Data::write_predictions(const int ph){
 
 void Data::test_snps() {
 
-  sout << "Association testing mode" << endl;
+  sout << "Association testing mode\n";
   chi_squared chisq(1);
   normal nd(0,1);
   std::chrono::high_resolution_clock::time_point t1, t2;
@@ -1273,13 +1293,13 @@ void Data::test_snps() {
       if(!params.htp_out){
         (*ofile_split[i]) << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " <<
           "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " <<
-          "CHISQ" << " " << "LOG10P" << endl;
+          "CHISQ" << " " << "LOG10P\n";
       } else {
         (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" <<
           "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" <<
           "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" <<
           "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" <<
-          "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
+          "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info\n";
       }
     }
 
@@ -1301,7 +1321,7 @@ void Data::test_snps() {
   m_ests.Xt_Gamma_X_inv.resize(params.n_pheno);
 
 
-  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)" << endl;
+  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
   if(params.firth || params.use_SPA) {
     sout << " * using ";
     if(params.firth_approx) sout << "fast ";
@@ -1312,7 +1332,7 @@ void Data::test_snps() {
   }
 
   // if testing select chromosomes
-  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes" << endl;
+  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes\n";
   sout << endl;
 
 
@@ -1337,7 +1357,7 @@ void Data::test_snps() {
 
       // skip chromosome if not in list to keep
       if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-        sout << "Chromosome " << chrom << " is skipped" << endl;
+        sout << "Chromosome " << chrom << " is skipped\n";
         skip_snps(chrom_nsnps, &params, &files, &Gblock);
         // block += chrom_nb;
         snp_count += chrom_nsnps;
@@ -1345,7 +1365,7 @@ void Data::test_snps() {
         continue;
       }
 
-      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]" << endl;
+      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
 
       // read polygenic effect predictions from step 1
       blup_read_chr(chrom);
@@ -1662,11 +1682,11 @@ void Data::test_snps() {
     sout << "Association results stored in file : " << out << endl;
     ofile.closeFile();
   } else {
-    sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
+    sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : \n";
     for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
       delete ofile_split[j];
-      sout << "* [" << out_split[j] << "]" << endl;
+      sout << "* [" << out_split[j] << "]\n";
     }
     sout << endl;
   }
@@ -1675,7 +1695,7 @@ void Data::test_snps() {
     sout << "Number of tests with ";
     sout << (params.firth ? "Firth " : "SPA ");
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - n_skipped_snps - n_ignored_snps) * params.n_pheno << ")" <<  endl;
-    sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")" << endl;
+    sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")\n";
   }
   sout << "Number of ignored SNPs due to low MAC : " << n_ignored_snps << endl;
 
@@ -1714,7 +1734,7 @@ void Data::blup_read_chr(const int chrom) {
     blupf.readLine(line);
     boost::algorithm::split(id_strings, line, is_any_of("\t "));
     if( id_strings[0] != "FID_IID") {
-      sout << "ERROR: Header of blup file must start with FID_IID." << endl;
+      sout << "ERROR: Header of blup file must start with FID_IID.\n";
       exit(-1);
     }
 
@@ -1733,7 +1753,7 @@ void Data::blup_read_chr(const int chrom) {
     // check starts with chromosome number
     if(chrStrToInt(tmp_str_vec[0], params.nChrom) != chrom) {
       sout << "ERROR: blup file for phenotype [" << files.pheno_names[i_pheno] << "] start with `" << tmp_str_vec[0]<< "`" <<
-        "instead of chromosome number=" << chrom << "." << endl;
+        "instead of chromosome number=" << chrom << ".\n";
       exit(-1);
     }
 
@@ -1820,9 +1840,9 @@ void Data::set_blocks_for_testing() {
   chr_map = m1;
 
   // summarize block sizes
-  sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]" << endl;
-  sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]" << endl;
-  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]" << endl;
+  sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
+  sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]\n";
+  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]\n";
 
 }
 
@@ -2006,14 +2026,14 @@ void Data::test_snps_fast() {
   set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
 
-  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)" << endl;
+  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
   if(params.firth || params.use_SPA) {
     sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
     sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
     n_corrected = 0;
   }
   // if testing select chromosomes
-  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes" << endl;
+  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes\n";
   sout << endl;
 
 
@@ -2045,9 +2065,9 @@ void Data::test_snps_fast() {
       // header of output file
       if(!params.htp_out){
         (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " <<
-          ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P" << endl;
+          ((params.file_type == "bgen" || params.file_type == "pgen")? "INFO ":"") << "TEST BETA SE CHISQ LOG10P\n";
       } else {
-        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info" << endl;
+        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info\n";
       }
     }
   }
@@ -2090,14 +2110,14 @@ void Data::test_snps_fast() {
 
       // skip chromosome if not in list to keep
       if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-        //sout << "Chromosome " << chrom << " is skipped" << endl;
+        //sout << "Chromosome " << chrom << " is skipped\n";
         snp_tally.snp_count += chrom_nsnps;
         snp_tally.n_skipped_snps += chrom_nsnps;
         if((params.file_type == "bed")) files.bed_ifstream.seekg(chrom_nsnps * files.bed_block_size, ios_base::cur);
         continue;
       }
 
-      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]" << endl;
+      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
       // read polygenic effect predictions from step 1
       blup_read_chr(chrom);
 
@@ -2278,11 +2298,11 @@ void Data::test_snps_fast() {
     sout << "Association results stored in file : " << out << endl;
     ofile.closeFile();
   } else {
-    sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : " << endl;
+    sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : \n";
     for( int j = 0; j < params.n_pheno; ++j ) {
       ofile_split[j]->closeFile();
       delete ofile_split[j];
-      sout << "* [" << out_split[j] << "]" << endl;
+      sout << "* [" << out_split[j] << "]\n";
     }
     sout << endl;
   }
@@ -2290,7 +2310,7 @@ void Data::test_snps_fast() {
   if(params.firth || params.use_SPA) {
     sout << "Number of tests with " << (params.firth ? "Firth " : "SPA ");
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - snp_tally.n_skipped_snps - snp_tally.n_ignored_snps) * params.n_pheno << ")" <<  endl;
-    sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")" << endl;
+    sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")\n";
   }
   sout << "Number of ignored SNPs due to low MAC : " << snp_tally.n_ignored_snps << endl;
 
