@@ -255,6 +255,7 @@ struct filter {
   ArrayXb ind_ignore;
   ArrayXb ind_in_analysis;
   uint32_t step1_snp_count = 0;
+  std::vector<bool> geno_mask;
 
 };
 

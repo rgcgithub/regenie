@@ -134,19 +134,17 @@ void Data::residualize_genotypes() {
   if(params.strict_mode) scale_G = Gblock.Gmat.rowwise().norm() / sqrt(pheno_data.Neff(0) - 1);
   else scale_G = Gblock.Gmat.rowwise().norm() / sqrt(in_filters.ind_in_analysis.cast<double>().sum() - 1);
 
-  MatrixXd::Index  minIndex;
-  if(scale_G.array().minCoeff(&minIndex) < params.numtol) { //
-    if(!params.test_mode) { // only done in step 1
-      // skip to problematic snp
-      uint true_index = 0;
-      for(size_t i = 0; ; true_index++) {
-        if(snpinfo[in_filters.step1_snp_count+true_index].mask) continue;
-        if(i == minIndex) break;
-        i++;
-      }
-      sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+true_index].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
+  // check sd
+  MatrixXd::Index minIndex;
+  if(scale_G.array().minCoeff(&minIndex) < params.numtol) {
+
+    if(!params.test_mode) {
+
+      sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+minIndex].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
       exit(1);
+
     } else {
+
       Gblock.bad_snps( scale_G.array() < params.numtol ) =  1;
       for(int i = 0; i < Gblock.Gmat.rows(); i++){
         // make snps polymorphic
@@ -157,6 +155,7 @@ void Data::residualize_genotypes() {
         }
       }
     }
+
   }
 
   Gblock.Gmat.array().colwise() /= scale_G.array();
@@ -467,7 +466,7 @@ void Data::level_0_calculations() {
 
   if(!params.use_loocv){
     l0.G_folds.resize(params.cv_folds);
-    l0.GtY.resize(params.cv_folds);	
+    l0.GtY.resize(params.cv_folds);
   }
 
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
@@ -1643,12 +1642,13 @@ void Data::test_snps() {
             // info column
             if(params.binary_mode){
               if(outp_val<0){ // only have NA
-                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") <<
+                (*ofile_split[j]) << "\t" << "REGENIE_BETA=NA;" <<
                   "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
               } else {
-                // Firth => only SE
+                // Firth => BETA + SE
                 if(params.firth){
-                  (*ofile_split[j]) << "\t" << "REGENIE_SE=" << se_b;
+                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat <<
+                    ";" << "REGENIE_SE=" << se_b;
                 } else {
                   // SPA/uncorrected logistic => beta & SEs
                   (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat <<
@@ -2262,12 +2262,13 @@ void Data::test_snps_fast() {
             // info column
             if(params.binary_mode){
               if(outp_val < 0){
-                (*ofile_split[j]) << "\t" << (params.firth ? "" : "REGENIE_BETA=NA;") <<
+                (*ofile_split[j]) << "\t" << "REGENIE_BETA=NA;" <<
                   "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
               } else {
-                // Firth => only SE
+                // Firth => BETA + SE
                 if(params.firth){
-                  (*ofile_split[j]) << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j);
+                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) <<
+                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) ;
                 } else {
                   // SPA/uncorrected logistic => beta & SEs
                   (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) <<

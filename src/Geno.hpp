@@ -32,12 +32,11 @@
 struct snp {
   int chrom;
   std::string ID;
-  double genpos; 
+  //double genpos; 
   uint32_t physpos;
   std::string allele1, allele2;
   double MAF;
   uint64 offset;
-  bool mask = false;
 } ;
 
 struct tally {
