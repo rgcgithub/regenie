@@ -67,7 +67,8 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
     //cerr << endl << X1.block(0,0,5,X1.cols()) << endl << endl;
     if(params->test_mode) etavec += loco_offset;
     pivec = 1 - 1 / (etavec.exp() + 1) ;
-    dev_old = -2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ).sum();
+    // bug fix: don't count in masked samples
+    dev_old = (pheno_data->masked_indivs.col(i).array()).select(-2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log()), 0).sum();
 
     niter_cur = 0;
     while(niter_cur++ < params->niter_max){
@@ -90,8 +91,8 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
 
       XtW = X1.transpose() * wvec.matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
-      // working vector z = X*beta + (Y-p)/(p*i(1-p)
-      zvec = (etavec + (Y1 - pivec) / wvec.square()) * pheno_data->masked_indivs.col(i).array().cast<double>();
+      // working vector z = X*beta + (Y-p)/(p*(1-p))
+      zvec = (pheno_data->masked_indivs.col(i).array()).select(etavec + (Y1 - pivec) / wvec.square(), 0);
       if(params->test_mode) zvec -= loco_offset;
       // parameter estimate
       betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * wvec.matrix().asDiagonal() * zvec.matrix()).array();
@@ -103,16 +104,19 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
         if(params->test_mode) etavec += loco_offset;
         pivec = 1 - 1 / (etavec.exp() + 1) ;
 
-        dev_new = -2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ).sum();
+        // bug fix: don't count in masked samples
+        dev_new = (pheno_data->masked_indivs.col(i).array()).select(-2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
         score = X1.transpose() * (Y1 - pivec).matrix(); 
 
-        if( dev_new < dev_old + params->numtol ) break;
+        if( dev_new < dev_old + params->tol ) break;
         // adjusted step size
         betanew = (betaold + betanew) / 2;
       }
 
       // stopping criterion
-      if( score.abs().maxCoeff() < params->numtol) break;
+      if( (score.abs().maxCoeff() < params->tol) || 
+          (abs(dev_new - dev_old)/(0.1 + abs(dev_new)) < params->tol) ) 
+        break;
 
       betaold = betanew;
       dev_old = dev_new;
@@ -120,11 +124,13 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
 
     // If didn't converge
     if(niter_cur > params->niter_max){
-      sout << "WARNING: Logistic regression did not converge! (Increase --niter)\n";
+      sout << "ERROR: Logistic regression did not converge! (Increase --niter)\n";
       exit(-1);
-    }
-    // sout << "Converged in "<< niter_cur << " iterations." << endl;
+    } else if(( pheno_data->masked_indivs.col(i).array() && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps) ).count() > 0)
+      sout << "WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1<<"). ";
 
+
+    // sout << "Converged in "<< niter_cur << " iterations." << endl;
     etavec = (X1 * betanew.matrix()).array();
     if(params->test_mode){
       etavec += loco_offset;
@@ -284,11 +290,15 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
           ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
 
         if (!ofile.is_open()) {
-          sout << "ERROR : Cannote write temporary file " << out_pheno  << endl ;
+          sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
           exit(-1);
         } 
 
         ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
+        if( ofile.fail() ){
+          sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
+          exit(-1);
+        }
         ofile.close();
         //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
       }
@@ -401,11 +411,15 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
         ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
 
       if (!ofile.is_open()) {
-        sout << "ERROR : Cannote write temporary file " << out_pheno  << endl ;
+        sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
         exit(-1);
       } 
 
       ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
+        if( ofile.fail() ){
+          sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
+          exit(-1);
+        }
       ofile.close();
       //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
     }
