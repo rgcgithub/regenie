@@ -232,6 +232,8 @@ phenotypes from the analysis, use option `--strict` in step 1 and 2.
 This can also be used when analyzing a single trait to only keep individuals with 
 complete data by setting the phenotype values of individuals to remove to NA.
 
+Note: imputation is only applied to phenotypes; covariates are not allowed to have missing data.
+
 ### References
 
 [1] L. Breiman (1996) Stacked Regressions. Machine Learning, 24,
