@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.5.9 (Fixed bug printing variant ID  when variant with variance = 0 occurs in step 1).
+
 Version 1.0.5.8 (Fixed bug due to input genotype file not sorted by chromosome and one of options `--extract/--exclude/--chr/--chrList` is used).
 
 Version 1.0.5.7 (New option `--with-bgi` to read variant information from a .bgi index file for BGEN input format; added option `--write-samples` to write IDs of samples analyzed for each trait in step 2; added Mach Rsq imputation quality metric in INFO column for step 2 with PGEN input file format).
