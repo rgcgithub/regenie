@@ -1,4 +1,4 @@
-/* 
+/*
 
    This file is part of the regenie software package.
 
@@ -46,8 +46,8 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
 
   int niter_cur;
   double dev_old, dev_new=0;
-  ArrayXd Y1, hvec, score;
-  ArrayXd betaold, betanew, etavec, pivec, wvec, zvec, loco_offset;
+  ArrayXd Y1, score;
+  ArrayXd betaold, betanew, etavec, pivec, wvec_sqrt, wvec, zvec, loco_offset;
   MatrixXd  X1, XtW, XtWX;
 
   for(int i = 0; i < params->n_pheno; ++i ){
@@ -57,65 +57,58 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
     if(params->test_mode) loco_offset = m_ests->blups.col(i).array() * pheno_data->masked_indivs.col(i).array().cast<double>();
 
     // starting values
+    pivec = ( 0.5 + Y1) / 2;
+    etavec = (pheno_data->masked_indivs.col(i).array()).select( log(pivec/ (1-pivec)), 0);
     betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
-    betaold(0) = ( 0.5 + Y1.sum()) / ( pheno_data->Neff(i) + 1);
-    betaold(0) = log( betaold(0) / (1 - betaold(0) ));
-    if(params->test_mode) betaold(0) -= loco_offset.mean();
-
-    // compute deviance
-    etavec = ( X1 * betaold.matrix()).array();
-    //cerr << endl << X1.block(0,0,5,X1.cols()) << endl << endl;
-    if(params->test_mode) etavec += loco_offset;
-    pivec = 1 - 1 / (etavec.exp() + 1) ;
+    betaold(0) = etavec.mean() - (params->test_mode? loco_offset.mean() : 0);
     // bug fix: don't count in masked samples
-    dev_old = (pheno_data->masked_indivs.col(i).array()).select(-2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log()), 0).sum();
+    dev_old = get_logist_dev(Y1, pivec, pheno_data->masked_indivs.col(i).array());
 
     niter_cur = 0;
     while(niter_cur++ < params->niter_max){
 
-      // linear predictor = offset + X * beta
-      etavec = ( X1 * betaold.matrix()).array();
-      if(params->test_mode) etavec += loco_offset;
+      // p*(1-p)
+      wvec = (pheno_data->masked_indivs.col(i).array()).select(pivec * (1 - pivec), 0);
 
-      // fitted probabilities
-      pivec = 1 - 1 / (etavec.exp() + 1) ;
-
-      // diagonal matrix of sqrt( p*(1-p) )
-      wvec = ( pivec * (1 - pivec) ).sqrt();
-
-      // check none of the values are 0
-      if( ( pheno_data->masked_indivs.col(i).array() && (wvec == 0) ).count() > 0 ){
-        sout << "ERROR: Zeros occured in Var(Y) during logistic regression! (Check covariates)" << endl;
+      // check for zeroes
+      if( pheno_data->masked_indivs.col(i).array().select(wvec,1).minCoeff() == 0){
+        sout << "\nERROR: Zeros occured in Var(Y) during logistic regression.\n";
         exit(-1);
       }
 
-      XtW = X1.transpose() * wvec.matrix().asDiagonal();
+      wvec_sqrt = wvec.sqrt();
+      XtW = X1.transpose() * wvec_sqrt.matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
-      // working vector z = X*beta + (Y-p)/(p*(1-p))
-      zvec = (pheno_data->masked_indivs.col(i).array()).select(etavec + (Y1 - pivec) / wvec.square(), 0);
-      if(params->test_mode) zvec -= loco_offset;
-      // parameter estimate
-      betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * wvec.matrix().asDiagonal() * zvec.matrix()).array();
 
-      // start step-halving and stop when deviance decreases 
+      // working vector z = X*beta + (Y-p)/(p*(1-p))
+      zvec = (pheno_data->masked_indivs.col(i).array()).select(etavec + (Y1 - pivec) / wvec, 0);
+      if(params->test_mode) zvec -= loco_offset;
+
+      // parameter estimate
+      betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * (wvec_sqrt * zvec).matrix()).array();
+
+      // start step-halving
       for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
         etavec = ( X1 * betanew.matrix()).array();
         if(params->test_mode) etavec += loco_offset;
-        pivec = 1 - 1 / (etavec.exp() + 1) ;
+        pivec = (pheno_data->masked_indivs.col(i).array()).select(1 - 1 / (etavec.exp() + 1), 0.5) ;
 
         // bug fix: don't count in masked samples
-        dev_new = (pheno_data->masked_indivs.col(i).array()).select(-2 * (Y1 * pivec.log() + (1-Y1) * (1-pivec).log() ), 0).sum();
-        score = X1.transpose() * (Y1 - pivec).matrix(); 
+        dev_new = get_logist_dev(Y1, pivec, pheno_data->masked_indivs.col(i).array());
 
-        if( dev_new < dev_old + params->tol ) break;
-        // adjusted step size
+        if( (pivec.minCoeff() > 0) && (pivec.maxCoeff() < 1) && isfinite(dev_new) ) break;
+
+        // adjust step size
         betanew = (betaold + betanew) / 2;
+
       }
 
+      score = X1.transpose() * (Y1 - pivec).matrix();
+
       // stopping criterion
-      if( (score.abs().maxCoeff() < params->tol) || 
-          (abs(dev_new - dev_old)/(0.1 + abs(dev_new)) < params->tol) ) 
+      if( (score.abs().maxCoeff() < params->tol) ||
+          (abs(dev_new - dev_old)/(0.1 + abs(dev_new)) < params->tol) )
         break;
 
       betaold = betanew;
@@ -124,28 +117,38 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
 
     // If didn't converge
     if(niter_cur > params->niter_max){
-      sout << "ERROR: Logistic regression did not converge! (Increase --niter)\n";
+      sout << "ERROR: Logistic regression did not converge. (Perhaps increase --niter?)\n";
       exit(-1);
     } else if(( pheno_data->masked_indivs.col(i).array() && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps) ).count() > 0)
-      sout << "WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1<<"). ";
-
-
+      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1<<").";
     // sout << "Converged in "<< niter_cur << " iterations." << endl;
-    etavec = (X1 * betanew.matrix()).array();
+
+
     if(params->test_mode){
-      etavec += loco_offset;
-      m_ests->Y_hat_p.col(i) = (1 - 1 / (etavec.exp() + 1)).matrix() ;
-      m_ests->Gamma_sqrt.col(i) = (m_ests->Y_hat_p.col(i).array() * (1 - m_ests->Y_hat_p.col(i).array()) ).sqrt().matrix();
+      m_ests->Y_hat_p.col(i) = pivec.matrix() ;
+      m_ests->Gamma_sqrt.col(i) = (pivec * (1 - pivec) ).sqrt().matrix();
       XtW = ( X1.array().colwise() * m_ests->Gamma_sqrt.col(i).array()).matrix();
       m_ests->Xt_Gamma_X_inv[i] = (XtW.transpose() * XtW).colPivHouseholderQr().inverse();
     } else m_ests->offset_logreg.col(i) = etavec;
   }
+
 
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
   sout << " (" << duration.count() << "ms) "<< endl;
 
+}
+
+double get_logist_dev(const ArrayXd& Y, const ArrayXd& pi, const ArrayXb& mask){
+
+  double dev = 0;
+
+  for( int i = 0; i < Y.size(); i++){
+    if(mask(i)) dev+= (Y(i) == 1) ? log(1/pi(i)) : log(1/(1-pi(i)));
+  }
+
+  return 2 * dev;
 }
 
 
@@ -161,7 +164,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
   auto t2 = std::chrono::high_resolution_clock::now();
 
   int bs = l0->GGt.rows();
-  int block_eff = params->write_l0_pred ? 0 : block; 
+  int block_eff = params->write_l0_pred ? 0 : block;
   uint32_t low = 0, high = 0;
   string op_name, out_pheno;
   ofstream ofile;
@@ -172,7 +175,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
   MatrixXd p_sum2 = MatrixXd::Zero(params->n_ridge_l0, params->n_pheno);
 
   if(!params->within_sample_l0 && params->print_block_betas) {
-    for(int ph = 0; ph < params->n_pheno; ++ph ) 
+    for(int ph = 0; ph < params->n_pheno; ++ph )
       params->beta_print_out[ph] = MatrixXd::Zero(params->n_ridge_l0, bs);
   }
 
@@ -240,7 +243,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
           kk+=1;
         } else {
           for(int ph = 0; ph < params->n_pheno; ++ph ) {
-            l1->test_mat[ph][i](jj, block_eff * params->n_ridge_l0 + j) = pred(ph, k);	      
+            l1->test_mat[ph][i](jj, block_eff * params->n_ridge_l0 + j) = pred(ph, k);	     
             l1->test_pheno[ph][i](jj, 0) = pheno_data->phenotypes(k, ph);
             if (params->binary_mode && (block == 0) && (j == 0) ) {
               l1->test_pheno_raw[ph][i](jj, 0) = pheno_data->phenotypes_raw(k, ph);
@@ -262,7 +265,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
       p_invsd = sqrt( (pheno_data->Neff(ph) - 1) / (p_sum2.col(ph).transpose().array() - pheno_data->Neff(ph) * p_mean.array().square()) );
 
       // scale printed estimates by the sd
-      if(params->print_block_betas){ 
+      if(params->print_block_betas){
         params->beta_print_out[ph].array().colwise() *= p_invsd.transpose().array();
       }
 
@@ -292,7 +295,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
         if (!ofile.is_open()) {
           sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
           exit(-1);
-        } 
+        }
 
         ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
         if( ofile.fail() ){
@@ -314,16 +317,16 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
     // Header: [TRAIT PARAM snpID1 ... snpIDk]
     ofile << "TRAIT PARAM " ;
-    for(int i = 0; i < bs; ++i ) 
+    for(int i = 0; i < bs; ++i )
       ofile << snpinfo[params->print_snpcount++].ID << " ";
     ofile << endl;
 
     // Each line: [pheno# ridge# beta1 ... betak]
-    for(int ph = 0; ph < params->n_pheno; ++ph ){ 
+    for(int ph = 0; ph < params->n_pheno; ++ph ){
       params->beta_print_out[ph] /= params->cv_folds;
       for(int j = 0; j < params->n_ridge_l0; ++j ) {
         ofile << ph + 1 << " " <<  j + 1 << " ";
-        for(int i = 0; i < bs; ++i ) 
+        for(int i = 0; i < bs; ++i )
           ofile << params->beta_print_out[ph](j,i) << " ";
         ofile << endl;
       }
@@ -389,13 +392,13 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
   }
 
   // center and scale within the block
-  for(int ph = 0; ph < params->n_pheno; ++ph ) { 
+  for(int ph = 0; ph < params->n_pheno; ++ph ) {
     // mask missing first
     l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
     p_mean = l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).colwise().sum() / pheno_data->Neff(ph);
     //if(i == 0)sout << i << " " << p_mean << endl;
     l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).rowwise() -= p_mean;
-    // mask missing again 
+    // mask missing again
     l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
     p_sd = l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).colwise().norm() / sqrt(pheno_data->Neff(ph) -1);
     //if(i == 0)sout << i << " " << p_sd << endl;
@@ -413,7 +416,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
       if (!ofile.is_open()) {
         sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
         exit(-1);
-      } 
+      }
 
       ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
         if( ofile.fail() ){
@@ -467,9 +470,9 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
     // read in level 0 predictions from file
     if(params->write_l0_pred){
 
-      // allocate memory 
+      // allocate memory
       if(ph == 0) {
-        for( int i = 0; i < params->cv_folds; ++i ) 
+        for( int i = 0; i < params->cv_folds; ++i )
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
@@ -479,12 +482,12 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
         exit(-1);
-      } 
+      }
 
       // store back values in test_mat
-      for( int m = 0; m < bs_l1; ++m ) 
-        for( int i = 0; i < params->cv_folds; ++i ) 
-          for( int k = 0; k < params->cv_sizes[i]; ++k ) 
+      for( int m = 0; m < bs_l1; ++m )
+        for( int i = 0; i < params->cv_folds; ++i )
+          for( int k = 0; k < params->cv_sizes[i]; ++k )
             infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
 
       infile.close();
@@ -576,7 +579,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     // read in level 0 predictions from file
     if(params->write_l0_pred){
 
-      // allocate memory (re-use same matrix for all traits) 
+      // allocate memory (re-use same matrix for all traits)
       if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
       in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
@@ -585,7 +588,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
         exit(-1);
-      } 
+      }
 
       // store back values in test_mat_conc
       infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0,0)), params->n_samples * bs_l1 * sizeof(double) );
@@ -665,9 +668,9 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
     // read in level 0 predictions from file
     if(params->write_l0_pred){
 
-      // allocate memory 
+      // allocate memory
       if(ph == 0) {
-        for( int i = 0; i < params->cv_folds; ++i ) 
+        for( int i = 0; i < params->cv_folds; ++i )
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
@@ -677,12 +680,12 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
         exit(-1);
-      } 
+      }
 
       // store back values in test_mat
-      for( int m = 0; m < bs_l1; ++m ) 
-        for( int i = 0; i < params->cv_folds; ++i ) 
-          for( int k = 0; k < params->cv_sizes[i]; ++k ) 
+      for( int m = 0; m < bs_l1; ++m )
+        for( int i = 0; i < params->cv_folds; ++i )
+          for( int k = 0; k < params->cv_sizes[i]; ++k )
             infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
 
       infile.close();
@@ -695,7 +698,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
       if( params->within_sample_l0 ){
         X1 = l1->pred_mat[ph][i];
         Y1 = l1->pred_pheno_raw[ph][i];
-        W1 = l1->pred_offset[ph][i]; 
+        W1 = l1->pred_offset[ph][i];
       }
 
       for(int j = 0; j < params->n_ridge_l1; ++j ) {
@@ -723,7 +726,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             // get the score
             etavec = W1 + (X1 * betanew.matrix()).array();
             pivec = 1 - 1/(etavec.exp() + 1);
-            score = (X1.transpose() * (Y1 - pivec).matrix()).array() - params->tau[j] * betanew; 
+            score = (X1.transpose() * (Y1 - pivec).matrix()).array() - params->tau[j] * betanew;
 
           } else {
 
@@ -759,7 +762,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
                 etavec = (masked_in_folds[k].col(ph).array()).select( (l1->test_offset[ph][k] + l1->test_mat[ph_eff][k] * betanew.matrix()).array() , 0);
                 pivec = 1 - 1/(etavec.exp() + 1);
 
-                score += (l1->test_mat[ph_eff][k].transpose() * (masked_in_folds[k].col(ph).array()).select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();  
+                score += (l1->test_mat[ph_eff][k].transpose() * (masked_in_folds[k].col(ph).array()).select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array(); 
               }
             }
             score -= params->tau[j] * betanew;
@@ -836,9 +839,9 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   uint64 max_bytes = params->chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (bs_l1 * target_size) matrix ]
   int nchunk = ceil( params->cv_folds * bs_l1 * sizeof(double) * 1.0 / max_bytes );
-  if (params->verbose) 
+  if (params->verbose)
     sout << nchunk << " chunks..." << endl;
-  else 
+  else
     sout << endl;
   int chunk, size_chunk, target_size = params->cv_folds / nchunk;
   int j_start;
@@ -851,7 +854,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
     // read in level 0 predictions from file
     if(params->write_l0_pred){
 
-      // allocate memory (re-use same matrix for all traits) 
+      // allocate memory (re-use same matrix for all traits)
       if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
       in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
@@ -860,7 +863,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
         exit(-1);
-      } 
+      }
 
       // store back values in test_mat_conc
       infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0,0)), params->n_samples * bs_l1 * sizeof(double) );
@@ -896,7 +899,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         etavec = (pheno_data->masked_indivs.col(ph).array()).select( (m_ests->offset_logreg.col(ph) + l1->test_mat_conc[ph_eff] * betanew.matrix()).array(), 0);
         pivec = 1 - 1/(etavec.exp() + 1);
         score = ( l1->test_mat_conc[ph_eff].transpose() * (pheno_data->masked_indivs.col(ph).array()).select(pheno_data->phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
-        score -= params->tau[j] * betanew; 
+        score -= params->tau[j] * betanew;
 
         if( score.abs().maxCoeff() < params->numtol) break;
 
@@ -913,7 +916,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       //sout << "Converged in "<< niter_cur << " iterations." << endl;
       //sout << score.abs().maxCoeff() << endl;
 
-      // compute Hinv 
+      // compute Hinv
       etavec = (m_ests->offset_logreg.col(ph) + l1->test_mat_conc[ph_eff] * betanew.matrix()).array();
       pivec = 1 - 1/(etavec.exp() + 1);
       wvec = (pheno_data->masked_indivs.col(ph).array()).select( pivec * (1 - pivec), 0 );
@@ -934,10 +937,10 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
         for(int i = 0; i < size_chunk; ++i ) {
           if(!mask_chunk(i,0)) continue;
-          v2 = Xmat_chunk.row(i) * V1.col(i); 
-          v2 *= wvec(j_start + i); 
+          v2 = Xmat_chunk.row(i) * V1.col(i);
+          v2 *= wvec(j_start + i);
           b_loo = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
-          pred = Xmat_chunk.row(i) * b_loo.col(0); 
+          pred = Xmat_chunk.row(i) * b_loo.col(0);
           pred += m_ests->offset_logreg(j_start + i, ph);
           p1 = 1 - 1/ ( exp(pred) + 1 );
 
