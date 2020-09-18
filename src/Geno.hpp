@@ -56,7 +56,7 @@ struct geno_block {
   std::vector < Eigen::MatrixXd > genocounts;
   Eigen::MatrixXd snp_afs;
   Eigen::MatrixXd snp_info;
-  Eigen::ArrayXd bad_snps;
+  ArrayXb bad_snps;
   std::vector<bool> snp_flipped;
 };
 
