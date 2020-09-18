@@ -516,13 +516,19 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td><code>--firth</code></td>
 <td>FLAG</td>
 <td>Optional</td>
-<td>specify to use Firth likelihood ratio test as fallback for p-values less than</td>
+<td>specify to use Firth likelihood ratio test (LRT) as fallback for p-values less than threshold</td>
 </tr>
 <tr>
 <td><code>--approx</code></td>
 <td>FLAG</td>
 <td>Optional</td>
 <td>flag to use approximate Firth LRT for computational speedup (only works when option <code>--firth</code> is used)</td>
+</tr>
+<tr>
+<td><code>--firth-se</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to compute SE based on effect size and LRT p-value when using Firth correction (instead of based on Hessian of unpenalized log-likelihood)</td>
 </tr>
 <tr>
 <td><code>--spa</code></td>

@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.0 (Improve logistic regression implementation to address convergence issues with low case counts; add new option `--firth-se` to compute SE using effect size estimate and LRT p-value when using Firth correction).
+
 Version 1.0.5.9 (Fixed bug printing variant ID  when variant with variance = 0 occurs in step 1).
 
 Version 1.0.5.8 (Fixed bug due to input genotype file not sorted by chromosome and one of options `--extract/--exclude/--chr/--chrList` is used).

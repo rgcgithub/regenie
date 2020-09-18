@@ -236,8 +236,9 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
 |`--write-samples`|FLAG| Optional| flag to write sample IDs for those kept in the analysis for each trait in step 2|
-|`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test as fallback for p-values less than|
+|`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test (LRT) as fallback for p-values less than threshold|
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
+|`--firth-se`| FLAG | Optional | flag to compute SE based on effect size and LRT p-value when using Firth correction (instead of based on Hessian of unpenalized log-likelihood)|
 |`--spa`| FLAG | Optional| specify to use Saddlepoint approximation as fallback for p-values less than threshold|
 |`--pThresh`| FLOAT | Optional| P-value threshold below which to apply Firth/SPA correction [default is 0.05]
 |`--test`| STRING | Optional | specify to carry out dominant or recessive test [default is additive; argument can be `dominant` or `recessive`]|
