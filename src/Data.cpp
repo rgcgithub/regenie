@@ -145,10 +145,10 @@ void Data::residualize_genotypes() {
 
     } else {
 
-      Gblock.bad_snps( scale_G.array() < params.numtol ) =  1;
+      Gblock.bad_snps = scale_G.array() < params.numtol;
       for(int i = 0; i < Gblock.Gmat.rows(); i++){
         // make snps polymorphic
-        if(Gblock.bad_snps(i) == 1) {
+        if(Gblock.bad_snps(i)) {
           Gblock.Gmat.row(i).head(20).array() += 1; // +1 to first 20 entries
           scale_G(i) = 1;
           if(params.verbose) sout << "WARNING: Ignoring SNP with low variance.\n";
@@ -1327,6 +1327,7 @@ void Data::test_snps() {
     if(params.firth) sout << "Firth ";
     else sout << "SPA ";
     sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
+    if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
     n_corrected = 0;
   }
 
@@ -1447,7 +1448,7 @@ void Data::test_snps() {
           for( int j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
         }
       }
-      Gblock.bad_snps = ArrayXd::Zero(bs);
+      Gblock.bad_snps = ArrayXb::Constant(bs, false);
 
       // get genotype matrix for block (mean impute)
       get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
@@ -1456,19 +1457,19 @@ void Data::test_snps() {
         // residualize and scale genotypes (and identify monomorphic if present)
         // only do it for firth approx. test with BTs (ests. are unchanged for other tests)
         residualize_genotypes();
-        n_ignored_snps += Gblock.bad_snps.sum();
       } else {
         scale_G = ArrayXd::Ones(bs); // no scaling is applied to the SNPs
         // ensure that snps which failed MAC filter are all polymorphic
-        if( (Gblock.bad_snps==1).count() > 0 ) {
+        if( Gblock.bad_snps.cast<int>().sum() > 0 ) {
           for(int i = 0; i < bs ; i++){
-            if(Gblock.bad_snps(i) == 1) {
+            if(Gblock.bad_snps(i)) {
               Gblock.Gmat.row(i).head(10).array() += 1; // +1 to first 10 entries
               if(params.verbose) sout << "WARNING: Ignoring SNP with low variance.\n";
             }
           }
         }
       }
+      n_ignored_snps += Gblock.bad_snps.cast<int>().sum();
 
 
       // perform assoc. testing
@@ -1512,7 +1513,7 @@ void Data::test_snps() {
       for( int i = 0; i < bs; ++i ) {
 
         // don't print anything for monomorphic snps
-        if(Gblock.bad_snps(i) == 1) {
+        if(Gblock.bad_snps(i)) {
           snp_count++;
           continue;
         }
@@ -1560,7 +1561,13 @@ void Data::test_snps() {
               pval_raw = max(params.nl_dbl_dmin, pow(10, -pval_log)); // to prevent overflow
               chisq_val = quantile(complement(chisq, pval_raw));
               bhat = firth_est.bhat_firth;
-              se_b = firth_est.se_b_firth;
+
+              // compute SE from beta & pvalue
+              if( params.back_correct_se && (chisq_val > 0) )
+                se_b = fabs(bhat) / sqrt(chisq_val);
+              else
+                se_b = firth_est.se_b_firth;
+
             } else {
               se_b = 1 / sqrt_denum(i, j);
               // with SPA, calculate test stat based on SPA p-value
@@ -1926,7 +1933,7 @@ void Data::run_SPA_test(int ph){
   for(int snp = 0; snp < bs; ++snp) {
 
     // skip ignored snps
-    if(Gblock.bad_snps(snp) == 1){
+    if(Gblock.bad_snps(snp)){
       spa_est.SPA_pvals(snp, ph) = params.missing_value_double;
       continue;
     }
@@ -2030,6 +2037,7 @@ void Data::test_snps_fast() {
   if(params.firth || params.use_SPA) {
     sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
     sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
+    if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
     n_corrected = 0;
   }
   // if testing select chromosomes
@@ -2440,6 +2448,11 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
         if( params.firth && block_info->is_corrected[i] && !block_info->test_fail[i] ){
           pval_raw = max(params.nl_dbl_dmin, pow(10, - block_info->pval_log(i))); // to prevent overflow
           block_info->chisq_val(i) = quantile(complement(chisq, pval_raw));
+
+          // compute SE from beta & pvalue
+          if( params.back_correct_se && (block_info->chisq_val(i) > 0) )
+            block_info->se_b(i) = fabs(block_info->bhat(i)) / sqrt(block_info->chisq_val(i));
+
         } else {
           block_info->se_b(i) = 1 / sqrt(block_info->denum(i));
           // with SPA, calculate test stat based on SPA p-value

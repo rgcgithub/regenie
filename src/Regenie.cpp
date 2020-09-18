@@ -163,6 +163,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
+    ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
     ;
 
 
@@ -231,6 +232,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("early-exit") ) params->early_exit = true;
+    if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
       // only works when compiled with boost IO library
@@ -341,9 +343,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     } else if(params->firth && !params->binary_mode) {
       // firth correction is only applied to binary traits
+      sout << "WARNING : Option --firth will not be applied (it is only run with binary traits).\n";
       params->firth = false;
     } else if(params->use_SPA && !params->binary_mode) {
       // SPA is only applied to binary traits
+      sout << "WARNING : Option --spa will not be applied (it is only run with binary traits).\n";
       params->use_SPA = false;
     }
 
@@ -378,7 +382,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
 
     // set Firth as default if both Firth and SPA are specified
-    if(params->use_SPA && params->firth) params->use_SPA = false;
+    if(params->use_SPA && params->firth) {
+      sout << "WARNING : Only one of --firth/--spa can be used. Only Firth will be used.\n";
+      params->use_SPA = false;
+    }
 
     // check firth fallback pvalue threshold
     if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){

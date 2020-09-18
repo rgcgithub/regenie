@@ -184,7 +184,7 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
     if(params->firth_approx && null_fit){ // only retry for firth approx null model
       if(!params->fix_maxstep_null) { // don't retry with user-given settings
         if( niter_cur > niter_firth ){ // if failed to converge
-          sout << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep_firth <<";maximum number of iterations=" << niter_firth<<").";
+          sout << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep_firth <<";maximum number of iterations=" << niter_firth<<").\n";
           maxstep_firth = params->retry_maxstep_firth;
           niter_firth = params->retry_niter_firth;
           if(trial == 0) sout << "Retrying with fallback parameters: (maximum step size=" << maxstep_firth <<";maximum number of iterations=" << niter_firth<<").\n";
@@ -207,9 +207,11 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
     if(params->firth_approx) fest->beta_null_firth.block(0,ph,betaold.size(),1) = betaold.matrix();
     else fest->beta_null_firth = betaold.matrix();
   } else {
-    // compute beta_hat & SE
+    // compute beta_hat
     fest->bhat_firth = betaold.tail(1)(0);
-    fest->se_b_firth = sqrt( qr.inverse().diagonal().tail(1)(0) );
+    // compute SE based on Hessian for unpenalized LL
+    if(!params->back_correct_se)
+      fest->se_b_firth = sqrt( qr.inverse().diagonal().tail(1)(0) );
 
     // compute LRT test stat. 
     fest->deviance_logistic = dev_new - deviance_l0;
@@ -371,9 +373,11 @@ void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* para
   if(null_fit) {
     if(!params->firth_approx) block_info->beta_null_firth = betaold.matrix();
   } else {
-    // compute beta_hat & SE
+    // compute beta_hat
     block_info->bhat(ph) = betaold.tail(1)(0);
-    block_info->se_b(ph) = sqrt( qr.inverse().diagonal().tail(1)(0) );
+    // compute SE based on Hessian for unpenalized LL
+    if(!params->back_correct_se)
+      block_info->se_b(ph) = sqrt( qr.inverse().diagonal().tail(1)(0) );
 
     dl -= deviance_l0;
     dl *= -1;

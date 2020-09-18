@@ -210,14 +210,17 @@ struct param {
   bool firth = false;// firth correction using LRT
   bool firth_approx = false; // approx. to Firth LRT
   int niter_max = 30; // max number of iterations for logistic reg.
+  int niter_max_ridge = 500; // max number of iterations for ridge logistic reg.
   double numtol_firth = 1e-5; // tolerance level for firth
   int niter_max_firth = 250; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
+  int niter_max_line_search_ridge = 50; // max number of iterations for line search in ridge logistic reg.
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
   int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
   bool fix_maxstep_null = false; // if user specifies max step size
+  bool back_correct_se = false; // for SE with Firth
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
 
