@@ -130,6 +130,14 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
       XtW = ( X1.array().colwise() * m_ests->Gamma_sqrt.col(i).array()).matrix();
       m_ests->Xt_Gamma_X_inv[i] = (XtW.transpose() * XtW).colPivHouseholderQr().inverse();
     } else m_ests->offset_logreg.col(i) = etavec;
+
+    /*
+    Files fstar;
+    fstar.openForWrite("offsets.txt", sout);
+    fstar << etavec;
+    fstar.closeFile();
+    */
+
   }
 
 
@@ -243,7 +251,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
           kk+=1;
         } else {
           for(int ph = 0; ph < params->n_pheno; ++ph ) {
-            l1->test_mat[ph][i](jj, block_eff * params->n_ridge_l0 + j) = pred(ph, k);	     
+            l1->test_mat[ph][i](jj, block_eff * params->n_ridge_l0 + j) = pred(ph, k);
             l1->test_pheno[ph][i](jj, 0) = pheno_data->phenotypes(k, ph);
             if (params->binary_mode && (block == 0) && (j == 0) ) {
               l1->test_pheno_raw[ph][i](jj, 0) = pheno_data->phenotypes_raw(k, ph);
@@ -708,7 +716,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         betaold = ArrayXd::Zero(bs_l1);
 
         niter_cur = 0;
-        while(niter_cur++ < params->niter_max){
+        while(niter_cur++ < params->niter_max_ridge){
 
           if(params->within_sample_l0) {
             etavec = W1 + (X1 * betaold.matrix()).array();
@@ -735,15 +743,14 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
             for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
-                etavec = (masked_in_folds[k].col(ph).array()).select( (l1->test_offset[ph][k] + l1->test_mat[ph_eff][k] * betaold.matrix()).array() , 0);
-                pivec = 1 - 1/(etavec.exp() + 1);
-                wvec = (masked_in_folds[k].col(ph).array()).select(pivec * (1 - pivec), 0);
-                // check none of the values are 0
-                if( ( masked_in_folds[k].col(ph).array() &&  (wvec == 0) ).count() > 0 ){
+
+                // get w=p*(1-p) and check none of the values are 0
+                if( get_wvec_fold(ph, etavec, pivec, wvec, betaold, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
                 }
+
                 zvec = (masked_in_folds[k].col(ph).array()).select((etavec - l1->test_offset[ph][k].array()) + (l1->test_pheno_raw[ph][k].array() - pivec) / wvec, 0);
 
                 XtW = l1->test_mat[ph_eff][k].transpose() * wvec.matrix().asDiagonal();
@@ -755,16 +762,29 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
             betanew = ((XtWX + params->tau[j] * ident_l1).llt().solve(XtWZ)).array();
 
-            // get the score
-            score = ArrayXd::Zero(betanew.size());
-            for(int k = 0; k < params->cv_folds; ++k ) {
-              if( k != i) {
-                etavec = (masked_in_folds[k].col(ph).array()).select( (l1->test_offset[ph][k] + l1->test_mat[ph_eff][k] * betanew.matrix()).array() , 0);
-                pivec = 1 - 1/(etavec.exp() + 1);
+            // start step-halving
+            for( int niter_search = 1; niter_search <= params->niter_max_line_search_ridge; niter_search++ ){
 
-                score += (l1->test_mat[ph_eff][k].transpose() * (masked_in_folds[k].col(ph).array()).select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array(); 
+              bool invalid_wvec = false;
+              score = ArrayXd::Zero(bs_l1);
+
+              for(int k = 0; k < params->cv_folds; ++k ) {
+                if( k != i) {
+                  // get w=p*(1-p) and check none of the values are 0
+                  invalid_wvec = get_wvec_fold(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]);
+                  if( invalid_wvec ) break;
+
+                  score += (l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();
+                }
               }
+
+              if( !invalid_wvec ) break;
+
+              // adjust step size
+              betanew = (betaold + betanew) / 2;
+
             }
+
             score -= params->tau[j] * betanew;
 
           }
@@ -774,6 +794,9 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
           betaold = betanew;
         }
+
+        //cerr << "\nFold=" << i << " tau = " << params->tau[j] << " beta=" << betanew.matrix().transpose().array() << endl;
+        //if(i==1) exit(-1);
 
         if(niter_cur > params->niter_max){
           sout << "WARNING: Penalized logistic regression did not converge! (Increase --niter)\n";
@@ -796,7 +819,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           l1->cumsum_values[2](ph,j) += p1(l) * p1(l); // Sx2
           l1->cumsum_values[3](ph,j) += l1->test_pheno_raw[ph][i](l,0) * l1->test_pheno_raw[ph][i](l,0); // Sy2
           l1->cumsum_values[4](ph,j) += p1(l) * l1->test_pheno_raw[ph][i](l,0); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik(l1->test_pheno_raw[ph][i](l,0), p1(l)); // Sxy
+          l1->cumsum_values[5](ph,j) += compute_log_lik(l1->test_pheno_raw[ph][i](l,0), p1(l)); // LL
         }
       }
     }
@@ -811,6 +834,14 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
 }
 
+bool get_wvec_fold(int ph, ArrayXd& etavec, ArrayXd& pivec, ArrayXd& wvec, const ArrayXd& beta, const MatrixXb& masks, const MatrixXd& offset, const MatrixXd& test_mat){
+
+  etavec = masks.col(ph).array().select( (offset + test_mat * beta.matrix()).array() , 0);
+  pivec = 1 - 1/(etavec.exp() + 1);
+  wvec = masks.col(ph).array().select(pivec * (1 - pivec), 1);
+
+  return wvec.minCoeff() == 0;
+}
 
 
 void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct ridgel1* l1, mstream& sout) {
