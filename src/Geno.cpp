@@ -155,13 +155,16 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
   sout << "   -index bgi file [" << bgi_file<< "]" << endl;
   if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) {
-    sout <<  "ERROR: Can't open file " << bgi_file << endl;
-    exit(1);
+    sout <<  "ERROR: " << sqlite3_errmsg(db) << endl;
+    exit(-1);
   }
 
 
   // header: chromosome|position|rsid|number_of_alleles|allele1|allele2|file_start_position|size_in_bytes
-  sqlite3_prepare( db, sql_query.c_str(), sizeof sql_query, &stmt, NULL );
+  if( sqlite3_prepare_v2( db, sql_query.c_str(), -1, &stmt, NULL ) != SQLITE_OK ){
+    sout << "ERROR: " << sqlite3_errmsg(db) << endl;
+    exit(-1);
+  }
 
   bool done = false;
   uint32_t nOutofOrder = 0;
@@ -213,8 +216,8 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         break;
 
       default:
-        sout << "ERROR: Failed reading file.\n";
-        exit(1);
+        sout << "ERROR: Failed reading file (" << sqlite3_errmsg(db) << ").\n";
+        exit(-1);
     }
   }
 
@@ -1011,8 +1014,8 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       index++;
     }
 
-    if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) gblock->bad_snps(snp) = 1;
-    //sout << "SNP#" << snp + 1 << "AC=" << total << " BAD="<< bad_snps(snp)<< endl;
+    if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) gblock->bad_snps(snp) = true;
+    //sout << "SNP#" << snp + 1 << "AC=" << total << " BAD="<< (bad_snps(snp)?"BAD":"GOOD")<< endl;
     total /= ns;
     if( (params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(snp, 0) = total / 2;
 
@@ -1050,7 +1053,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
         index++;
       }
       total = ((gblock->Gmat.row(snp).transpose().array()!= -3) && filters->ind_in_analysis).select(gblock->Gmat.row(snp).transpose().array(), 0).sum() / ns;
-      if(total < params->numtol) gblock->bad_snps(snp) = 1;
+      if(total < params->numtol) gblock->bad_snps(snp) = true;
     }
 
     // deal with missing data and center SNPs
@@ -1125,7 +1128,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
       index++;
     }
 
-    if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) )  gblock->bad_snps(j) = 1;
+    if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) )  gblock->bad_snps(j) = true;
     total /= ns;
     if((params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(j, 0) = total / 2;
 
@@ -1148,7 +1151,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
         gblock->Gmat.row(j).array() = (gblock->Gmat.row(j).array() >= 1).select(gblock->Gmat.row(j).array() - 1, gblock->Gmat.row(j).array());
       }
       total = ((gblock->Gmat.row(j).transpose().array() != -3) && filters->ind_in_analysis).select(gblock->Gmat.row(j).transpose().array(), 0).sum() / ns;
-      if(total < params->numtol) gblock->bad_snps(j) = 1;
+      if(total < params->numtol) gblock->bad_snps(j) = true;
     }
 
     //if(j<5) sout << "\nj="<< j+1 << ":" <<  gblock->Gmat.row(j).array().head(5);
