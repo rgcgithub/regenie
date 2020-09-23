@@ -153,6 +153,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("niter", "maximum number of iterations for logistic regression", cxxopts::value<int>(params->niter_max),"INT(=30)")
     ("maxstep-null", "maximum step size in null Firth logistic regression", cxxopts::value<int>(params->maxstep_null),"INT(=25)")
     ("maxiter-null", "maximum number of iterations in null Firth logistic regression", cxxopts::value<int>(params->niter_max_firth_null),"INT(=1000)")
+    ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
+    ("print-pheno", "Print phenotype name when writing sample IDs to file (only for step 2)")
     ;
 
   // extra options
@@ -163,7 +165,6 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
-    ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
     ;
 
 
@@ -231,6 +232,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("nostream") ) params->streamBGEN = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
+    if( vm.count("print-pheno") ) params->print_pheno_name = true;
     if( vm.count("early-exit") ) params->early_exit = true;
     if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
     if( vm.count("gz") ) {

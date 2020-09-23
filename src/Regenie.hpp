@@ -195,6 +195,7 @@ struct param {
   bool rm_missing_qt = true; // remove missing individuals when performing test with QTs
   std::string file_type; // type of the genotype file format;
   bool streamBGEN = true; // use fast version of step 2 when testing with BGEN v1.2 zlib compressed input
+  bool dosage_mode = false; // track if dosages are present for step 2
   bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
@@ -221,6 +222,7 @@ struct param {
   int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
   bool fix_maxstep_null = false; // if user specifies max step size
   bool back_correct_se = false; // for SE with Firth
+  bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
 

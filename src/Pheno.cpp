@@ -480,7 +480,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     if( n_masked_post < n_masked_prior ){
       sout << "    + " << n_masked_prior - n_masked_post <<
-        " individuals don't have LOCO predictions and will be ignore for the trait\n";
+        " individuals don't have LOCO predictions and will be ignored for the trait\n";
     }
 
     // check not everyone is masked
@@ -508,6 +508,9 @@ void write_ids(struct in_files* files, struct param* params, struct phenodt* phe
   for( int ph = 0; ph < params->n_pheno; ph++){
     idfile = files->out_file + "_" + files->pheno_names[ph] + ".regenie.ids";
     fout.openForWrite(idfile, sout);
+
+    // print phenotype name on 1st line (ensure 2 column format)
+    if( params->print_pheno_name ) fout << files->pheno_names[ph] << "\tNA\n"; 
 
     // go through map and check if individual is not masked
     for (itr_ind = params->FID_IID_to_ind.begin(); itr_ind != params->FID_IID_to_ind.end(); ++itr_ind) {
