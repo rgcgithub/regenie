@@ -766,31 +766,42 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             for( int niter_search = 1; niter_search <= params->niter_max_line_search_ridge; niter_search++ ){
 
               bool invalid_wvec = false;
-              score = ArrayXd::Zero(bs_l1);
 
               for(int k = 0; k < params->cv_folds; ++k ) {
                 if( k != i) {
                   // get w=p*(1-p) and check none of the values are 0
                   invalid_wvec = get_wvec_fold(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]);
-                  if( invalid_wvec ) break;
-
-                  score += (l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();
+                  if( invalid_wvec ) break; // do another halving
                 }
               }
 
               if( !invalid_wvec ) break;
 
-              // adjust step size
+              // halve step size
               betanew = (betaold + betanew) / 2;
 
             }
 
+            // compute score
+            score = ArrayXd::Zero(bs_l1);
+            for(int k = 0; k < params->cv_folds; ++k ) {
+              if( k != i) {
+                // get w=p*(1-p) and check none of the values are 0
+                if( get_wvec_fold(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]) ){
+                  sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
+                  l1->pheno_l1_not_converged(ph) = true;
+                  break;
+                }
+                score += (l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();
+              }
+            }
             score -= params->tau[j] * betanew;
+
 
           }
 
           // stopping criterion
-          if( score.abs().maxCoeff() < params->numtol) break;
+          if( (score.abs().maxCoeff() < params->numtol) || l1->pheno_l1_not_converged(ph)) break;
 
           betaold = betanew;
         }
@@ -802,7 +813,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           sout << "WARNING: Penalized logistic regression did not converge! (Increase --niter)\n";
           l1->pheno_l1_not_converged(ph) = true;
           break;
-        }
+        } else if(l1->pheno_l1_not_converged(ph)) break;
         //sout << "Converged in "<< niter_cur << " iterations." << endl;
         //sout << score.abs().maxCoeff() << endl;
 
