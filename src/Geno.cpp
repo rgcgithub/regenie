@@ -128,6 +128,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
     bgen.open( files->bgen_file ) ;
   }
 
+  if (params->test_mode) params->dosage_mode = true;
 }
 
 
@@ -460,6 +461,9 @@ void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct fi
   check_samples_include_exclude(files, params, filters, sout);
 
   prep_pgen(pgen_nsamples, pgen_nvariants, files, filters, gblock, sout);
+
+  if(params->test_mode) params->dosage_mode = gblock->pgr.DosagePresent();
+
 }
 
 
@@ -1709,7 +1713,8 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
     snp_data->fastSPA = params->use_SPA;
     snp_data->n_non_zero = 0;
 
-    ns = 0, total = 0, eij2 = 0;
+    ns = 0, total = 0;
+    if( params->dosage_mode ) eij2 = 0;
     // read genotype data
     // (default is dosages if present, otherwise hardcalls)
     gblock->pgr.Read(gblock->genobuf, start + j, 1);
@@ -1722,7 +1727,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
         if( filters->ind_in_analysis(i) ){
           if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
             total += gblock->genobuf[i];
-            eij2 += gblock->genobuf[i] * gblock->genobuf[i];
+            if( params->dosage_mode ) eij2 += gblock->genobuf[i] * gblock->genobuf[i];
             ns++;
           }
         }
@@ -1750,10 +1755,12 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
     total /= ns;
     snp_data->af = total / 2;
     // mach r2 info score
-    if( snp_data->af == 0 || snp_data->af == 1 )
-      snp_data->info = 1;
-    else
-      snp_data->info = (eij2 / ns - total * total) / (2 * snp_data->af * (1 - snp_data->af));
+    if( params->dosage_mode ){
+      if( snp_data->af == 0 || snp_data->af == 1 )
+        snp_data->info = 1;
+      else
+        snp_data->info = (eij2 / ns - total * total) / (2 * snp_data->af * (1 - snp_data->af));
+    }
 
     if(params->use_SPA) {
       // switch to minor allele
