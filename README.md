@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.1 (Bug fix: Mach R^2 info score is only printed for PGEN input when dosages are present; added flag `--print-pheno` to write the phenotype name in 1st line of sample IDs file [i.e. when using `--write-samples`]).
+
 Version 1.0.6.0 (Improve logistic regression implementation to address convergence issues with low case counts; add new option `--firth-se` to compute SE using effect size estimate and LRT p-value when using Firth correction).
 
 Version 1.0.5.9 (Fixed bug printing variant ID  when variant with variance = 0 occurs in step 1).

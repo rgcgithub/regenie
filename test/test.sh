@@ -113,6 +113,7 @@ rgcmd="--step 2 \
   --test dominant \
   --ignore-pred \
   --write-samples \
+  --print-pheno \
   --out ${mntpt}test/test_out"
 
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
@@ -122,7 +123,9 @@ echo "------------------------------------------"
 if [ ! -f "${REGENIE_PATH}test/test_out_Y2.regenie.ids" -o -f "${REGENIE_PATH}test/test_out_Y1.regenie.ids" ]
 then
   echo "Uh oh, docker image did not build successfully"
-elif (( `head -n 1 "${REGENIE_PATH}test/test_out_Y2.regenie.ids" | tr '\t' '\n' | wc -l` != 2 )); then
+elif (( $(head -n 1 ${REGENIE_PATH}test/test_out_Y2.regenie.ids | cut -f1) != "Y2" )); then
+  echo "Uh oh, docker image did not build successfully"
+elif (( $(head -n 1 "${REGENIE_PATH}test/test_out_Y2.regenie.ids" | tr '\t' '\n' | wc -l) != 2 )); then
   echo "Uh oh, docker image did not build successfully"
 elif (( `grep "mog_" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
   echo "Uh oh, docker image did not build successfully"
