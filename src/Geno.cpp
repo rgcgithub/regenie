@@ -72,8 +72,13 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
       tmp_snp.physpos = position;
       tmp_snp.ID = rsid;
-      tmp_snp.allele1 = alleles[1];
-      tmp_snp.allele2 = alleles[0]; // switch so allele0 is ALT
+      if( params->ref_first ){ // reference is first (i.e. allele0)
+        tmp_snp.allele1 = alleles[0];
+        tmp_snp.allele2 = alleles[1];
+      } else {
+        tmp_snp.allele1 = alleles[1];
+        tmp_snp.allele2 = alleles[0]; // switch so allele0 is ALT
+      }
 
       // keep track of how many included snps per chromosome there are
       files->chr_counts[tmp_snp.chrom-1]++;
@@ -183,8 +188,13 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         tmp_snp.ID = std::string( (char *) sqlite3_column_text(stmt, 2) );
         nalleles = atoi( (char *) sqlite3_column_text(stmt, 3) );
         assert(nalleles == 2) ; // only bi-allelic allowed
-        tmp_snp.allele1 = std::string( (char *) sqlite3_column_text(stmt, 5) );
-        tmp_snp.allele2 = std::string( (char *) sqlite3_column_text(stmt, 4) ); // switch so allele0 is ALT
+        if( params->ref_first ){ // reference is first
+          tmp_snp.allele1 = std::string( (char *) sqlite3_column_text(stmt, 4) );
+          tmp_snp.allele2 = std::string( (char *) sqlite3_column_text(stmt, 5) );
+        } else {
+          tmp_snp.allele1 = std::string( (char *) sqlite3_column_text(stmt, 5) );
+          tmp_snp.allele2 = std::string( (char *) sqlite3_column_text(stmt, 4) ); // switch so allele0 is ALT
+        }
         tmp_snp.offset = strtoull( (char *) sqlite3_column_text(stmt, 6), NULL, 10);
 
 
@@ -335,9 +345,13 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
     tmp_snp.ID = tmp_str_vec[1];
     //tmp_snp.genpos = std::stod( tmp_str_vec[2]);
     tmp_snp.physpos = std::stoul( tmp_str_vec[3],nullptr,0);
-    // take ref allele as last
-    tmp_snp.allele2 = tmp_str_vec[4];
-    tmp_snp.allele1 = tmp_str_vec[5];
+    if( params->ref_first ){ // reference is first
+      tmp_snp.allele1 = tmp_str_vec[4];
+      tmp_snp.allele2 = tmp_str_vec[5];
+    } else { // reference is last
+      tmp_snp.allele1 = tmp_str_vec[5];
+      tmp_snp.allele2 = tmp_str_vec[4];
+    }
 
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in bim file at line " << snpinfo.size()+1 << endl;
@@ -993,11 +1007,17 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       for( std::size_t j = 1; j < probs[i].size(); ++j ) ds += probs[i][j] * j;
 
       if(ds != -3) {
-        ds = 2 - ds; // switch so that allele0 is ALT
+        ds = params->ref_first ? ds : (2 - ds); // if ref-first, no need to switch
+
         if( filters->ind_in_analysis(index) ){
           if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += ds;
-            info_num += 4 * probs[i][0] + probs[i][1] - ds * ds;
+
+            if( params->ref_first )
+              info_num += 4 * probs[i][2] + probs[i][1] - ds * ds;
+            else
+              info_num += 4 * probs[i][0] + probs[i][1] - ds * ds;
+
             ns++;
           }
 
@@ -1030,8 +1050,8 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
 
     if(params->use_SPA) {
       // switch to minor allele
-      switch_alleles = total > 1;
-      if( params->test_type > 0) switch_alleles = false; // skip for DOM/REC test
+      switch_alleles = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
+
       if(switch_alleles){
         gblock->Gmat.row(snp).array() = ( gblock->Gmat.row(snp).array() != -3).select( 2 - gblock->Gmat.row(snp).array(), gblock->Gmat.row(snp).array() );
         total = 2 - total;
@@ -1049,9 +1069,9 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
         if( (gblock->Gmat(snp, index) != -3)  && filters->ind_in_analysis(index) &&
             (!params->strict_mode || (params->strict_mode && masked_indivs(index,0))) ){
           if(params->test_type == 1){ //dominant
-            gblock->Gmat(snp, index) = probs[i][0] + probs[i][1]; // allele0 is ALT
+            gblock->Gmat(snp, index) = params->ref_first ? (probs[i][1] + probs[i][2]) : (probs[i][0] + probs[i][1]);
           } else if(params->test_type == 2){ //recessive
-            gblock->Gmat(snp, index) = probs[i][0];
+            gblock->Gmat(snp, index) = params->ref_first ? probs[i][2] : probs[i][0];
           }
         }
         index++;
@@ -1110,6 +1130,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
       byte_start = i>>2; // 4 samples per byte
       bit_start = (i&3)<<1; // 2 bits per sample
       hc = maptogeno[ (files->inbed[byte_start] >> bit_start)&3 ];
+      if(params->ref_first && (hc != -3)) hc = 2 - hc;
       gblock->Gmat(j, index) = hc;
 
       if(hc != -3) {
@@ -1138,8 +1159,8 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
 
     if(params->use_SPA) {
       // switch to minor allele
-      switch_alleles = total > 1;
-      if( params->test_type > 0) switch_alleles = false; // skip for DOM/REC test
+      switch_alleles = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
+
       if(switch_alleles){
         gblock->Gmat.row(j).array() = ( gblock->Gmat.row(j).array() != -3).select( 2 - gblock->Gmat.row(j).array(), gblock->Gmat.row(j).array() );
         total = 2 - total;
@@ -1453,7 +1474,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
   int ns = 0, hc_val;
-  double prob0, prob1, total = 0, ds, info_num = 0;
+  double prob0, prob1, prob2, total = 0, ds, info_num = 0;
   snp_data->Geno = ArrayXd::Zero(params->n_samples);
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
 
@@ -1476,12 +1497,20 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
     prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
     prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
-    snp_data->Geno(index) = 2 - (prob1 + 2 * (std::max( 1 - prob0 - prob1, 0.0) )); // switch allele0 to ALT
+    prob2 = std::max( 1 - prob0 - prob1, 0.0);
+
+    snp_data->Geno(index) = prob1 + 2 * prob2;
+    if(!params->ref_first) snp_data->Geno(index) = 2 - snp_data->Geno(index); // switch allele0 to ALT
 
     if( filters->ind_in_analysis(index) ){
       if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
         total += snp_data->Geno(index);
-        info_num += 4 * prob0 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
+
+        if( params->ref_first )
+          info_num += 4 * prob2 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
+        else
+          info_num += 4 * prob0 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
+
         ns++;
       }
 
@@ -1516,8 +1545,8 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
   if(params->use_SPA) {
     // switch to minor allele
-    snp_data->flipped = total > 1;
-    if( params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
+    snp_data->flipped = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
+
     if(snp_data->flipped){
       snp_data->Geno = ( snp_data->Geno != -3).select( 2 - snp_data->Geno, snp_data->Geno);
       total = 2 - total;
@@ -1544,12 +1573,13 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
       }
       prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
       prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
+      prob2 = std::max( 1 - prob0 - prob1, 0.0);
 
       if(filters->ind_in_analysis(index)){
         if(params->test_type == 1){ //dominant
-          snp_data->Geno(index) = prob0 + prob1; // allele0 is ALT
+          snp_data->Geno(index) = params->ref_first ? (prob1 + prob2) : (prob0 + prob1);
         } else if(params->test_type == 2){ //recessive
-          snp_data->Geno(index) = prob0; // allele0 is ALT
+          snp_data->Geno(index) = params->ref_first ? prob2 : prob0;
         }
       }
       index++;
@@ -1613,6 +1643,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
     byte_start = i>>2; // 4 samples per byte
     bit_start = (i&3)<<1; // 2 bits per sample
     hc = maptogeno[ (geno_block[byte_start] >> bit_start)&3 ];
+    if(params->ref_first && (hc != -3)) hc = 2 - hc;
     snp_data->Geno(index) = hc;
 
     if(hc != -3) {
@@ -1648,8 +1679,8 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
 
   if(params->use_SPA) {
     // switch to minor allele
-    snp_data->flipped = total > 1;
-    if( params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
+    snp_data->flipped = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
+
     if(snp_data->flipped){
       snp_data->Geno = ( snp_data->Geno != -3).select( 2 - snp_data->Geno, snp_data->Geno);
       total = 2 - total;

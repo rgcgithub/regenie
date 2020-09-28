@@ -104,6 +104,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("bgen", "BGEN file", cxxopts::value<std::string>(files->bgen_file),"FILE")
     ("sample", "sample file corresponding to BGEN file", cxxopts::value<std::string>(files->sample_file),"FILE")
     ("with-bgi", "read variant information in BGEN file from a bgi index file")
+    ("ref-first", "use the first allele as the reference for BGEN or PLINK bed/bim/fam input format [default assumes reference is last]")
     ("keep", "file listing samples to retain in the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(files->file_ind_include),"FILE")
     ("remove", "file listing samples to remove from the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(files->file_ind_exclude),"FILE")
     ("extract", "file with IDs of variants to retain in the analysis", cxxopts::value<std::string>(files->file_snps_include),"FILE")
@@ -207,6 +208,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("pgen") ) params->file_type = "pgen";
     if( vm.count("sample") ) params->bgenSample = true;
     if( vm.count("with-bgi") ) params->with_bgi = true;
+    if( vm.count("ref-first") ) params->ref_first = true;
     if( vm.count("keep") ) params->keep_indivs = true;
     if( vm.count("remove") ) params->rm_indivs = true;
     if( vm.count("extract") ) params->keep_snps = true;
