@@ -1,15 +1,26 @@
 #!/usr/bin/env bash
 
-#### Working from directory where regenie repo was cloned
+### REGENIE TEST SCRIPT for version >= 1.0.6.2
+## For version<1.0.6.2, will get error since option '--ref-first' did not exist
+## For version<1.0.6.1, will get error since option '--print-pheno' did not exist
+## For version<1.0.5.6, will get error if WITH_GZ is set since option '--gz' did not exist
+
+info_msg="Usage: ./test_bash.sh OPTIONS\n"
+info_msg+="  --path  path to Regenie repository\n"
+info_msg+="  --gz    Flag to specify compilation was done with Boost Iostream library\n"
 if [ "$#" -eq 0 ]; then
-  echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
+  echo -e "$info_msg"; exit 1
 fi
 
-### Test script for Regenie version >= 1.0.5.6
-## In previous versions, will get error if WITH_GZ is set since option '--gz' did not exist
-REGENIE_PATH="$1" 
-DOCKER_IMAGE=$2
-WITH_GZ=$3
+while [[ "$#" -gt 0 ]]; do
+  case $1 in
+    --path) REGENIE_PATH="$2"; shift ;;
+    --gz) WITH_GZ=1 ;;
+    *) echo -e "Unknown parameter passed: $1.\n$info_msg"; exit 1 ;;
+  esac
+  shift
+done
+
 
 # quick check src/example folders are present
 if [ ! -d "${REGENIE_PATH}/src" ] || [ ! -d "${REGENIE_PATH}/example" ]; then
@@ -18,30 +29,24 @@ else
   cd $REGENIE_PATH
 fi 
 
-# check docker image
-if [ -z $DOCKER_IMAGE ]; then
-  echo "ERROR: Need to pass docker image tag."; exit 1
-elif [[ "$(docker images -q $DOCKER_IMAGE 2> /dev/null)" == "" ]]; then
-  echo "ERROR: Image with tag \"${DOCKER_IMAGE}\" does not exist!"; exit 1
-fi
-
 # If compiling was done with Boost Iostream library, use gzipped files as input
-if [ -z $WITH_GZ ]; then # add suffixes to files
-  echo "ERROR: Need to pass indicator for Boost Iostream compilation."; exit 1
-elif (( $WITH_GZ == 1 )); then
+if [ "$WITH_GZ" = "1" ]; then
   fsuf=.gz
   arg_gz="--gz"
 fi
 
-# Create test folder to store results and use as mounting point
 REGENIE_PATH=$(pwd)/  # use absolute path
-# where to mount in container
-mntpt=/docker/ 
+mnpt=
+regenie_bin=`ls regenie* | head -n 1`
+help_msg="Update to most recent REGENIE version (using 'git pull') and re-compile the software (using 'make clean && make')."
 
-echo "** Checking docker image \"${DOCKER_IMAGE}\" **"
-echo -e "  -> Mounting directory $REGENIE_PATH to /docker/ \n"
-echo -e "Running step 1 of REGENIE\n=================================="
+if [ ! -f "$regenie_bin" ]; then
+  echo "ERROR: Regenie binary cannot be found. Compile the software first using 'make clean && make'"; exit 1
+fi
+
+
 # Prepare regenie command to run for Step 1
+echo -e "Running step 1 of REGENIE\n=================================="
 rgcmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
@@ -54,19 +59,20 @@ rgcmd="--step 1 \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+# run regenie
+./$regenie_bin $rgcmd
 
 ## quick check that the correct files have been created
 if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_pred.list ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf ]; then
-  echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
 fi
 
 
-echo -e "Running step 2 of REGENIE\n=================================="
 # First command
+echo -e "Running step 2 of REGENIE\n=================================="
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
   --with-bgi \
@@ -81,7 +87,8 @@ rgcmd="--step 2 \
   --split $arg_gz \
   --out ${mntpt}test/test_bin_out_firth"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+# run regenie
+./$regenie_bin $rgcmd
 
 ##  do this way so zcat works on OSX
 if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
@@ -93,18 +100,16 @@ if cmp --silent \
   ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
   ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
 then
-  echo -e "Files are identical. Docker image passed 1st test.\n\nSecond test run\n"
+  echo -e "Files are identical.\n\nRunning second test...\n"
 else
-  echo -e "ERROR: Uh oh... Files are different!\nDocker image did not build successfully."
-  exit 1
+  echo -e "ERROR: Uh oh... Files are different! $help_msg"; exit 1
 fi
 
 
 # Second command
 rgcmd="--step 2 \
-  --bgen ${mntpt}example/example_3chr.bgen \
-  --sample ${mntpt}example/example_3chr.sample \
-  --with-bgi \
+  --bed ${mntpt}example/example_3chr \
+  --ref-first \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --phenoColList Y2 \
@@ -116,25 +121,26 @@ rgcmd="--step 2 \
   --print-pheno \
   --out ${mntpt}test/test_out"
 
-docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+# run regenie
+./$regenie_bin $rgcmd
 
 # check files
 echo "------------------------------------------"
 if [ ! -f "${REGENIE_PATH}test/test_out_Y2.regenie.ids" -o -f "${REGENIE_PATH}test/test_out_Y1.regenie.ids" ]
 then
-  echo "Uh oh, docker image did not build successfully"
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
 elif (( $(head -n 1 ${REGENIE_PATH}test/test_out_Y2.regenie.ids | cut -f1) != "Y2" )); then
-  echo "Uh oh, docker image did not build successfully"
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
 elif (( $(head -n 1 "${REGENIE_PATH}test/test_out_Y2.regenie.ids" | tr '\t' '\n' | wc -l) != 2 )); then
-  echo "Uh oh, docker image did not build successfully"
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
 elif (( `grep "mog_" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
-  echo "Uh oh, docker image did not build successfully"
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
 elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
-  echo "Uh oh, docker image did not build successfully"
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
+elif [ "`cut -d ' ' -f1-5 ${REGENIE_PATH}test/test_out.regenie | sed '2q;d'`" != "`grep \"^2\" ${REGENIE_PATH}example/example_3chr.bim | head -n 1 | awk '{print $1,$4,$2,$5,$6}'`" ]; then
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"
 else
-  echo "SUCCESS: Docker image passed the tests!"
-  echo -e "\nYou can run regenie using for example:"
-  echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
+  echo "SUCCESS: REGENIE build passed the tests!"
 fi
 
 # file cleanup

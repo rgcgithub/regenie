@@ -31,7 +31,7 @@ RG_VERSION    = $(shell cat VERSION)
 
 ## for docker
 DFILE         = ./Dockerfile
-TEST_SCRIPT   = ./test/test.sh
+TEST_SCRIPT   = ./test/test_docker.sh
 
 ## for boost iostream
 ifeq ($(HAS_BOOST_IOSTREAM),1)
