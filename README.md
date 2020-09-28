@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.2 (New option `--ref-first` to use the first allele for each variant as the reference allele for BGEN or PLINK bed/bim/fam file input [default is to use the last allele as the reference]).
+
 Version 1.0.6.1 (Bug fix: Mach R^2 info score is only printed for PGEN input when dosages are present; added flag `--print-pheno` to write the phenotype name in 1st line of sample IDs file [i.e. when using `--write-samples`]).
 
 Version 1.0.6.0 (Improve logistic regression implementation to address convergence issues with low case counts; add new option `--firth-se` to compute SE using effect size estimate and LRT p-value when using Firth correction).
