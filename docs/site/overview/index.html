@@ -328,6 +328,9 @@ This prior has the effect of shrinking the effect size towards zero.</p>
 It also includes a novel, accurate and fast approximate Firth correction which 
 is ~60x faster than the exact Firth correction
 (see the option <code>--firth</code>). </p>
+<p>The p-value reported in <strong>regenie</strong> is based on a likelihood ratio test (LRT), and we use the Hessian of the log-likelihood without the penalty term to estimate the standard error (SE). 
+This may cause an issue in meta-analyses with rare variants, as the effect size estimate and SE may not match with the LRT p-value. 
+Hence, we added an option <code>--firth-se</code> to report a SE computed instead from the effect size estimate and the LRT p-value.</p>
 <h5 id="saddle-point-approxiation-spa-test">Saddle point approxiation (SPA) test</h5>
 <p>The SPA test approximates the null distribution of the test statistic
 by approximating the cumulant generating function of the

@@ -60,15 +60,25 @@ plink \
 
 #### Exclusion files
 
-Quality control filters can be applied using [PLINK2](https://www.cog-genomics.org/plink/2.0/) to filter out samples and
-markers in the genotype file prior to step 1 of **regenie**. For example, to filter out SNPs with MAF below 5%, genotype missingess 
-above 10% and Hardy-Weinberg equilibrium p-value exceeding \(10^{-15}\), and 
+Quality control (QC) filters can be applied using [PLINK2](https://www.cog-genomics.org/plink/2.0/) to filter out samples and
+markers in the genotype file prior to step 1 of **regenie**.
+
+Note: **regenie** will throw an error if 
+a low-variance SNP is included in the step 1 run.
+Hence, the user should run adequate QC filtering prior to running **regenie** 
+to identify and remove such SNPs.
+
+For example, to filter out SNPs with 
+minor allele frequency (MAF) below 1%, 
+minor allele count (MAC) below 100, 
+genotype missingess above 10% and 
+Hardy-Weinberg equilibrium p-value exceeding \(10^{-15}\), and 
 samples with more than 10% missingness,
 
 ```
 plink2 \
   --bfile ukb_cal_allChrs \
-  --maf 0.05 --geno 0.1 --hwe 1e-15 \
+  --maf 0.01 --mac 100 --geno 0.1 --hwe 1e-15 \
   --mind 0.1 \
   --write-snplist --write-samples --no-id-header \
   --out qc_pass
@@ -114,6 +124,7 @@ the traits for testing in step 2 or select a subset of the traits to perform ass
 Step 2 of **regenie** has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data), PLINK bed/bim/fam files, and PLINK2 pgen/pvar/psam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
 machines, we recommend to split the runs over chromosomes (using 8+ threads).
 
+<!---
 #### Sample mismatch 
 
 It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 
@@ -125,14 +136,14 @@ contained in both data sets (we assume that you are testing on BGEN input file)
 expand -t 1 qc_pass.id > qc_pass_space.id   # BGEN sample file is space-seperated
 grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample > fid_iid_step2.keep
 ```
+--->
 
-Running **regenie** tesing on a single chromosome (here chr 1) and using fast Firth correction as fallback,
+Running **regenie** tesing on a single chromosome (here chromosome 1) and using the fast Firth correction as fallback,
 
 ```
 ./regenie \
   --step 2 \
   --bgen ukb_imp_chr1_v2.bgen \
-  --keep fid_iid_step2.keep \
   --phenoFile ukb_phenotypes_BT.txt \
   --covarFile ukb_covariates.txt \
   --bt \

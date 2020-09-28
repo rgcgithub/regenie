@@ -20,9 +20,7 @@ with both **regenie** and BOLT-LMM resulting in stronger association signals rel
 at known peaks of association 
 (note that in the plots, the scaling of the y-axis changes above the upper dashed line).
 
-![QTxy3](img/qt_ex3.png)
-![QTxy1](img/qt_ex1.png)
-![QTxy2](img/qt_ex2.png)
+![QTmanP](img/ManP_exemplarQTs_WB.png)
 <br/><br/>
 
 
@@ -60,10 +58,7 @@ However both **regenie** with Firth and SPA corrections, as well as SAIGE, which
 are all robust to this inflation and show similar agreement for the associations detected.
 
 
-![BTxy1](img/ManP_exemplar_BTs_trait1.png)
-![BTxy2](img/ManP_exemplar_BTs_trait2.png)
-![BTxy3](img/ManP_exemplar_BTs_trait3.png)
-![BTxy4](img/ManP_exemplar_BTs_trait4.png)  
+![BTmanP](img/ManP_exemplarBTs_WB.png)
 <br/>
 
 We assessed the computational requirements of **regenie** and SAIGE using a larger set of 50 

@@ -67,6 +67,7 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--bgen, --bed, --pgen`  | FILE | Required |Input genetic data file. Either BGEN file eg. `file.bgen`, or bed/bim/fam prefix that assumes`file.bed`, `file.bim`, `file.fam` exist, or pgen/pvar/psam prefix that assumes`file.pgen`, `file.pvar`, `file.psam` exist |
 |`--sample`  | FILE | Optional |Sample file corresponding to input BGEN file|
 |`--with-bgi`  | FLAG | Optional |Specify to use accompanying bgi index file to get variant information (assumes file name is `file.bgen.bgi`|
+|`--ref-first`  | FLAG | Optional |Specify to use the first allele as the reference allele for BGEN or PLINK bed/bim/fam file input [default is to use the last allele as the reference]|
 |`--keep`  | FILE | Optional | Inclusion file that lists individuals to retain in the analysis|
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
 |`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep **(only works with option `--step 1`)**|
