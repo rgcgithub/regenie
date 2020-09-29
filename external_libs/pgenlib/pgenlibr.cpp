@@ -251,6 +251,15 @@ bool PgenReader::HardcallPhasePresent() const {
   return ((_info_ptr->gflags & plink2::kfPgenGlobalHardcallPhasePresent) != 0);
 }
 
+// added by J.Mbatchou (09/22/20) to check if dosages are present in PGEN file
+bool PgenReader::DosagePresent() const {
+  if (!_info_ptr) {
+    fprintf(stderr,"pgen is closed");
+    exit(-1);
+  }
+  return ((_info_ptr->gflags & plink2::kfPgenGlobalDosagePresent) != 0);
+}
+
 static const int32_t kGenoRInt32Quads[1024] ALIGNV16 = QUAD_TABLE256(0, 1, 2, -3);
 
 void PgenReader::ReadIntHardcalls(std::vector<int>& buf, int variant_idx, int allele_idx) {

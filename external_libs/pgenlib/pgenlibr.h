@@ -54,6 +54,8 @@ public:
   uint32_t GetMaxAlleleCt() const;
 
   bool HardcallPhasePresent() const;
+  
+  bool DosagePresent() const;
 
   void ReadIntHardcalls(std::vector<int>& buf, int variant_idx, int allele_idx);
 
