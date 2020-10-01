@@ -65,6 +65,8 @@ if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf ] || \
   [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf ]; then
   echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
+elif [ "`grep \"0.456629\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\"`" = "" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
 fi
 
 

@@ -63,10 +63,12 @@ rgcmd="--step 1 \
 ./$regenie_bin $rgcmd
 
 ## quick check that the correct files have been created
-if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_pred.list ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf ]; then
+if [ ! -f "${REGENIE_PATH}test/fit_bin_out.log" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_pred.list" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+elif [ "`grep \"0.456629\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\"`" = "" ]; then
   echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
 fi
 
