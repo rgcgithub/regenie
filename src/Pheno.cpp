@@ -160,7 +160,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
     // read phenotypes 
     all_miss = true;
-    for(int i_pheno = 0, j = 0; j < pheno_colKeep.size(); j++) {
+    int i_pheno = 0;
+    for(size_t j = 0; j < pheno_colKeep.size(); j++) {
 
       if( !pheno_colKeep[j] ) continue;
 

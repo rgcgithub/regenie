@@ -1122,7 +1122,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
     ns = 0, total = 0, index = 0;
     files->bed_ifstream.read( reinterpret_cast<char *> (&files->inbed[0]), files->bed_block_size);
 
-    for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+    for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
       // skip samples that were ignored from the analysis
       if( filters->ind_ignore(i) ) continue;
@@ -1733,7 +1733,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
 void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info){
 
   int hc, ns;
-  double ds, total, eij2;
+  double ds, total, eij2 = 0;
 
   for(int j = 0; j < bs; j++) {
     variant_block* snp_data = &(all_snps_info[j]);
