@@ -999,11 +999,10 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
   double v2;
   string in_pheno;
   ifstream infile;
-  MatrixXd XtWX, XtWZ, V1, Xmat_chunk;
+
   ArrayXd betaold, etavec, pivec, wvec, zvec, betanew, score;
-  VectorXd Yvec_chunk;
+  MatrixXd XtWX, XtWZ, V1, beta_final;
   LLT<MatrixXd> Hinv;
-  MatrixXd beta_final;
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
   uint64 max_bytes = params.chunk_mb * 1e6;
@@ -1033,9 +1032,8 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
   betaold = ArrayXd::Zero(bs_l1);
   int niter_cur = 0;
   while(niter_cur++ < params.niter_max){
-    etavec = (m_ests.offset_logreg.col(ph) + l1_ests.test_mat_conc[ph_eff] * betaold.matrix()).array();
-    pivec = 1 - 1/(etavec.exp() + 1);
-    wvec = (pheno_data.masked_indivs.col(ph).array()).select( pivec * (1 - pivec), 0 );
+
+    get_wvec(ph, etavec, pivec, wvec, betaold, pheno_data.masked_indivs, m_ests.offset_logreg.col(ph), l1_ests.test_mat_conc[ph_eff], params.l1_ridge_eps);
     zvec = (pheno_data.masked_indivs.col(ph).array()).select( (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
     V1 = l1_ests.test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
     XtWX = V1 * l1_ests.test_mat_conc[ph_eff];
@@ -1044,8 +1042,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     betanew = (Hinv.solve(XtWZ)).array();
 
     // get the score
-    etavec = (m_ests.offset_logreg.col(ph) + l1_ests.test_mat_conc[ph_eff] * betaold.matrix()).array();
-    pivec = 1 - 1/(etavec.exp() + 1);
+    get_wvec(ph, etavec, pivec, wvec, betanew, pheno_data.masked_indivs, m_ests.offset_logreg.col(ph), l1_ests.test_mat_conc[ph_eff], params.l1_ridge_eps);
     score = ( l1_ests.test_mat_conc[ph_eff].transpose() * (pheno_data.masked_indivs.col(ph).array()).select(pheno_data.phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
     score -= params.tau[val] * betanew;
 
@@ -1053,10 +1050,8 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
 
     betaold = betanew;
   }
+
   // compute Hinv
-  etavec = (m_ests.offset_logreg.col(ph) + l1_ests.test_mat_conc[ph_eff] * betanew.matrix()).array();
-  pivec = 1 - 1/(etavec.exp() + 1);
-  wvec = pivec * (1 - pivec);
   zvec = (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
   V1 = l1_ests.test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
   XtWX = V1 * l1_ests.test_mat_conc[ph_eff];
@@ -1068,14 +1063,14 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     j_start = chunk * target_size;
     if( (chunk == 0) || (chunk == nchunk - 1) ) beta_final = MatrixXd::Zero(bs_l1, size_chunk);
 
-    Xmat_chunk = l1_ests.test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
-    Yvec_chunk = pheno_data.phenotypes_raw.block(j_start, ph, size_chunk, 1);
+    Ref<MatrixXd> Xmat_chunk = l1_ests.test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
+    Ref<MatrixXd> Yvec_chunk = pheno_data.phenotypes_raw.block(j_start, ph, size_chunk, 1);
 
     V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
     for(int i = 0; i < size_chunk; ++i ) {
       v2 = Xmat_chunk.row(i) * V1.col(i);
       v2 *= wvec(j_start + i);
-      beta_final.col(i) = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
+      beta_final.col(i) = (betanew - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
     }
 
     // compute predictor for each chr

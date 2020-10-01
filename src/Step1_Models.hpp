@@ -70,12 +70,12 @@ void ridge_level_0(const int,struct in_files*,struct param*,struct filter*,struc
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
 
 void ridge_level_1(struct in_files*,struct param*,struct ridgel1*,mstream&);
-bool get_wvec_fold(int ph, Eigen::ArrayXd& etavec, Eigen::ArrayXd& pivec, Eigen::ArrayXd& wvec, const Eigen::ArrayXd& beta, const MatrixXb& masks, const Eigen::MatrixXd& offset, const Eigen::MatrixXd& test_mat);
 void ridge_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,mstream&);
 
 void ridge_logistic_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_logistic_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ests*,struct ridgel1*,mstream&);
 
+bool get_wvec(int ph, Eigen::ArrayXd& etavec, Eigen::ArrayXd& pivec, Eigen::ArrayXd& wvec, const Eigen::ArrayXd& beta, const MatrixXb& masks, const Eigen::MatrixXd& offset, const Eigen::MatrixXd& test_mat,const double);
 double compute_log_lik(const double,const double);
 
 #endif

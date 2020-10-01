@@ -48,7 +48,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
   double dev_old, dev_new=0;
   ArrayXd Y1, score;
   ArrayXd betaold, betanew, etavec, pivec, wvec_sqrt, wvec, zvec, loco_offset;
-  MatrixXd  X1, XtW, XtWX;
+  MatrixXd X1, XtW, XtWX;
 
   for(int i = 0; i < params->n_pheno; ++i ){
 
@@ -57,7 +57,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
     if(params->test_mode) loco_offset = m_ests->blups.col(i).array() * pheno_data->masked_indivs.col(i).array().cast<double>();
 
     // starting values
-    pivec = ( 0.5 + Y1) / 2;
+    pivec = ( 0.5 + Y1 ) / 2;
     etavec = (pheno_data->masked_indivs.col(i).array()).select( log(pivec/ (1-pivec)), 0);
     betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
     betaold(0) = etavec.mean() - (params->test_mode? loco_offset.mean() : 0);
@@ -120,7 +120,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
       sout << "ERROR: Logistic regression did not converge. (Perhaps increase --niter?)\n";
       exit(-1);
     } else if(( pheno_data->masked_indivs.col(i).array() && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps) ).count() > 0)
-      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1<<").";
+      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1 <<").";
     // sout << "Converged in "<< niter_cur << " iterations." << endl;
 
 
@@ -709,13 +709,18 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         W1 = l1->pred_offset[ph][i];
       }
 
+      // starting values for each trait
+      betaold = betanew = ArrayXd::Zero(bs_l1);
+
       for(int j = 0; j < params->n_ridge_l1; ++j ) {
         if( l1->pheno_l1_not_converged(ph) ) break;
 
-        // starting values
-        betaold = ArrayXd::Zero(bs_l1);
 
         niter_cur = 0;
+        // use warm starts (i.e. set final beta of previous ridge param 
+        //   as initial beta for current ridge param)
+        betaold = betanew;
+
         while(niter_cur++ < params->niter_max_ridge){
 
           if(params->within_sample_l0) {
@@ -745,7 +750,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               if( k != i) {
 
                 // get w=p*(1-p) and check none of the values are 0
-                if( get_wvec_fold(ph, etavec, pivec, wvec, betaold, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]) ){
+                if( get_wvec(ph, etavec, pivec, wvec, betaold, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k], params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
@@ -770,7 +775,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               for(int k = 0; k < params->cv_folds; ++k ) {
                 if( k != i) {
                   // get w=p*(1-p) and check none of the values are 0
-                  invalid_wvec = get_wvec_fold(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]);
+                  invalid_wvec = get_wvec(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k], params->l1_ridge_eps);
                   if( invalid_wvec ) break; // do another halving
                 }
               }
@@ -787,7 +792,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
                 // get w=p*(1-p) and check none of the values are 0
-                if( get_wvec_fold(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k]) ){
+                if( get_wvec(ph, etavec, pivec, wvec, betanew, masked_in_folds[k], l1->test_offset[ph][k], l1->test_mat[ph_eff][k], params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
@@ -814,17 +819,23 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           l1->pheno_l1_not_converged(ph) = true;
           break;
         } else if(l1->pheno_l1_not_converged(ph)) break;
-        //sout << "Converged in "<< niter_cur << " iterations." << endl;
-        //sout << score.abs().maxCoeff() << endl;
+        //sout << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
+
 
         etatest = l1->test_offset[ph][i].array() + (l1->test_mat[ph_eff][i] * betanew.matrix()).array();
         p1 = (1 - 1/(etatest.exp() + 1));
 
         if(!params->within_sample_l0) l1->beta_hat_level_1[ph][i].col(j) = betanew;
 
+
         // compute mse
         for(int l = 0; l < params->cv_sizes[i]; l++){
           if(!masked_in_folds[i](l,ph)) continue;
+
+          // if p is 0/1 set to epsilon/1-epsilon
+          if( p1(l) == 0 ) p1(l) = params->l1_ridge_eps;
+          else if( p1(l) == 1 ) p1(l) = 1 - params->l1_ridge_eps;
+
           l1->cumsum_values[0](ph,j) += p1(l); // Sx
           l1->cumsum_values[1](ph,j) += l1->test_pheno_raw[ph][i](l,0); // Sy
           l1->cumsum_values[2](ph,j) += p1(l) * p1(l); // Sx2
@@ -832,6 +843,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           l1->cumsum_values[4](ph,j) += p1(l) * l1->test_pheno_raw[ph][i](l,0); // Sxy
           l1->cumsum_values[5](ph,j) += compute_log_lik(l1->test_pheno_raw[ph][i](l,0), p1(l)); // LL
         }
+
       }
     }
 
@@ -843,15 +855,6 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
   sout << endl;
 
-}
-
-bool get_wvec_fold(int ph, ArrayXd& etavec, ArrayXd& pivec, ArrayXd& wvec, const ArrayXd& beta, const MatrixXb& masks, const MatrixXd& offset, const MatrixXd& test_mat){
-
-  etavec = masks.col(ph).array().select( (offset + test_mat * beta.matrix()).array() , 0);
-  pivec = 1 - 1/(etavec.exp() + 1);
-  wvec = masks.col(ph).array().select(pivec * (1 - pivec), 1);
-
-  return wvec.minCoeff() == 0;
 }
 
 
@@ -867,10 +870,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   ifstream infile;
 
   ArrayXd betaold, etavec, pivec, wvec, zvec, betanew, score;
-  MatrixXd XtWX, XtWZ;
-  MatrixXd V1, Xmat_chunk, b_loo;
-  VectorXd Yvec_chunk;
-  MatrixXb mask_chunk;
+  MatrixXd XtWX, XtWZ, V1, b_loo;
   LLT<MatrixXd> Hinv;
   l1->pheno_l1_not_converged = ArrayXb::Constant(params->n_pheno, false);
 
@@ -914,22 +914,26 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       //if(ph == 0) sout << endl << "In:\n" << l1->test_mat_conc[ph_eff].block(0,0,5,6) << endl;
     }
 
+
+    // starting values for each trait
+    betaold = betanew = ArrayXd::Zero(bs_l1);
+
     for(int j = 0; j < params->n_ridge_l1; ++j ) {
-      // starting values
-      betaold = ArrayXd::Zero(bs_l1);
 
       niter_cur = 0;
+      // use warm starts (i.e. set final beta of previous ridge param 
+      //   as initial beta for current ridge param)
+      betaold = betanew;
+
       while(niter_cur++ < params->niter_max){
 
-        etavec = (pheno_data->masked_indivs.col(ph).array()).select( (m_ests->offset_logreg.col(ph) + l1->test_mat_conc[ph_eff] * betaold.matrix()).array(), 0);
-        pivec = 1 - 1/(etavec.exp() + 1);
-        wvec = (pheno_data->masked_indivs.col(ph).array()).select( pivec * (1 - pivec), 0);
-        // check none of the values are 0
-        if( ( (pheno_data->masked_indivs.col(ph).array()) &&  (wvec == 0) ).count() > 0 ){
-          sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with more common SNPs)" << endl;
+        // get w=p*(1-p) and check none of the values are 0
+        if( get_wvec(ph, etavec, pivec, wvec, betaold, pheno_data->masked_indivs, m_ests->offset_logreg.col(ph), l1->test_mat_conc[ph_eff], params->l1_ridge_eps) ){
+          sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression." << endl;
           l1->pheno_l1_not_converged(ph) = true;
           break;
         }
+
         zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_logreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
         V1 = l1->test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
         XtWX = V1 * l1->test_mat_conc[ph_eff];
@@ -937,9 +941,15 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         Hinv.compute( XtWX + params->tau[j] * ident_l1 );
 
         betanew = (Hinv.solve(XtWZ)).array();
+
+        // get w=p*(1-p) and check none of the values are 0
+        if( get_wvec(ph, etavec, pivec, wvec, betanew, pheno_data->masked_indivs, m_ests->offset_logreg.col(ph), l1->test_mat_conc[ph_eff], params->l1_ridge_eps) ){
+          sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression." << endl;
+          l1->pheno_l1_not_converged(ph) = true;
+          break;
+        }
+
         // get the score
-        etavec = (pheno_data->masked_indivs.col(ph).array()).select( (m_ests->offset_logreg.col(ph) + l1->test_mat_conc[ph_eff] * betanew.matrix()).array(), 0);
-        pivec = 1 - 1/(etavec.exp() + 1);
         score = ( l1->test_mat_conc[ph_eff].transpose() * (pheno_data->masked_indivs.col(ph).array()).select(pheno_data->phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
         score -= params->tau[j] * betanew;
 
@@ -955,46 +965,48 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       }
       if( l1->pheno_l1_not_converged(ph) ) break;
 
-      //sout << "Converged in "<< niter_cur << " iterations." << endl;
-      //sout << score.abs().maxCoeff() << endl;
+      //sout << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
 
       // compute Hinv
-      etavec = (m_ests->offset_logreg.col(ph) + l1->test_mat_conc[ph_eff] * betanew.matrix()).array();
-      pivec = 1 - 1/(etavec.exp() + 1);
-      wvec = (pheno_data->masked_indivs.col(ph).array()).select( pivec * (1 - pivec), 0 );
       zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_logreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
       V1 = l1->test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
       XtWX = V1 * l1->test_mat_conc[ph_eff];
       Hinv.compute( XtWX + params->tau[j] * ident_l1 );
+
 
       // LOOCV estimates
       for(chunk = 0; chunk < nchunk; ++chunk ) {
         size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
         j_start = chunk * target_size;
 
-        Xmat_chunk = l1->test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
-        Yvec_chunk = pheno_data->phenotypes_raw.block(j_start, ph, size_chunk, 1);
-        mask_chunk = pheno_data->masked_indivs.block(j_start, ph, size_chunk,1);
+        Ref<MatrixXd> Xmat_chunk = l1->test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
+        Ref<MatrixXd> Yvec_chunk = pheno_data->phenotypes_raw.block(j_start, ph, size_chunk, 1);
+        Ref<MatrixXb> mask_chunk = pheno_data->masked_indivs.block(j_start, ph, size_chunk,1);
 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
         for(int i = 0; i < size_chunk; ++i ) {
           if(!mask_chunk(i,0)) continue;
           v2 = Xmat_chunk.row(i) * V1.col(i);
           v2 *= wvec(j_start + i);
-          b_loo = (betanew - V1.col(i).array() * (Yvec_chunk(i) - pivec(j_start + i)) / (1 - v2)).matrix();
+          b_loo = (betanew - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
           pred = Xmat_chunk.row(i) * b_loo.col(0);
           pred += m_ests->offset_logreg(j_start + i, ph);
           p1 = 1 - 1/ ( exp(pred) + 1 );
 
+          // if p is 0/1 set to epsilon/1-epsilon
+          if( p1 == 0 ) p1 = params->l1_ridge_eps;
+          else if( p1 == 1 ) p1 = 1 - params->l1_ridge_eps;
+
           // compute mse and rsq
           l1->cumsum_values[0](ph,j) += p1; // Sx
-          l1->cumsum_values[1](ph,j) += Yvec_chunk(i); // Sy
+          l1->cumsum_values[1](ph,j) += Yvec_chunk(i,0); // Sy
           l1->cumsum_values[2](ph,j) += p1 * p1; // Sx2
-          l1->cumsum_values[3](ph,j) += Yvec_chunk(i) * Yvec_chunk(i); // Sy2
-          l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik(Yvec_chunk(i), p1); // Sxy
+          l1->cumsum_values[3](ph,j) += Yvec_chunk(i,0) * Yvec_chunk(i,0); // Sy2
+          l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i,0); // Sxy
+          l1->cumsum_values[5](ph,j) += compute_log_lik(Yvec_chunk(i,0), p1); // Sxy
         }
       }
+
     }
 
     sout << "done";
@@ -1005,6 +1017,33 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
   sout << endl;
 }
+
+
+bool get_wvec(int ph, ArrayXd& etavec, ArrayXd& pivec, ArrayXd& wvec, const ArrayXd& beta, const MatrixXb& masks, const MatrixXd& offset, const MatrixXd& test_mat, const double tol){
+
+  etavec = masks.col(ph).array().select( (offset + test_mat * beta.matrix()).array() , 0);
+  pivec = 1 - 1/(etavec.exp() + 1);
+
+  wvec = ArrayXd::Ones( masks.rows() );// set all entries to 1
+  // avoid 0 weights by setting w to eps when p is within eps of 0/1
+  // (strategy used in glmnet)
+  for (int i = 0; i < masks.rows(); i++){
+    if( !masks(i,ph) ) continue;
+
+    if( pivec(i) < tol) {
+      pivec(i) = 0;
+      wvec(i) = tol;
+    } else if ( pivec(i) > (1-tol) ){
+      pivec(i) = 1;
+      wvec(i) = tol;
+    } else wvec(i) = pivec(i) * (1-pivec(i));
+
+  }
+  //wvec = masks.col(ph).array().select(pivec * (1 - pivec), 1);
+
+  return wvec.minCoeff() == 0;
+}
+
 
 double compute_log_lik(const double y, const double p){
   // negative log likelihood for bernoulli
