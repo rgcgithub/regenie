@@ -718,7 +718,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
         niter_cur = 0;
         // use warm starts (i.e. set final beta of previous ridge param 
-        //   as initial beta for current ridge param)
+        // as initial beta for current ridge param)
         betaold = betanew;
 
         while(niter_cur++ < params->niter_max_ridge){
@@ -832,9 +832,9 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         for(int l = 0; l < params->cv_sizes[i]; l++){
           if(!masked_in_folds[i](l,ph)) continue;
 
-          // if p is 0/1 set to epsilon/1-epsilon
-          if( p1(l) == 0 ) p1(l) = params->l1_ridge_eps;
-          else if( p1(l) == 1 ) p1(l) = 1 - params->l1_ridge_eps;
+          // if p is within eps of 0/1, set to eps/1-eps
+          if( p1(l) < params->l1_ridge_eps ) p1(l) = params->l1_ridge_eps;
+          else if( p1(l) > (1-params->l1_ridge_eps) ) p1(l) = 1 - params->l1_ridge_eps;
 
           l1->cumsum_values[0](ph,j) += p1(l); // Sx
           l1->cumsum_values[1](ph,j) += l1->test_pheno_raw[ph][i](l,0); // Sy
@@ -925,7 +925,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       //   as initial beta for current ridge param)
       betaold = betanew;
 
-      while(niter_cur++ < params->niter_max){
+      while(niter_cur++ < params->niter_max_ridge){
 
         // get w=p*(1-p) and check none of the values are 0
         if( get_wvec(ph, etavec, pivec, wvec, betaold, pheno_data->masked_indivs, m_ests->offset_logreg.col(ph), l1->test_mat_conc[ph_eff], params->l1_ridge_eps) ){
@@ -939,7 +939,6 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         XtWX = V1 * l1->test_mat_conc[ph_eff];
         XtWZ = V1 * zvec.matrix();
         Hinv.compute( XtWX + params->tau[j] * ident_l1 );
-
         betanew = (Hinv.solve(XtWZ)).array();
 
         // get w=p*(1-p) and check none of the values are 0
@@ -968,7 +967,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       //sout << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
 
       // compute Hinv
-      zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_logreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
+      //zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_logreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
       V1 = l1->test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
       XtWX = V1 * l1->test_mat_conc[ph_eff];
       Hinv.compute( XtWX + params->tau[j] * ident_l1 );
@@ -993,9 +992,9 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
           pred += m_ests->offset_logreg(j_start + i, ph);
           p1 = 1 - 1/ ( exp(pred) + 1 );
 
-          // if p is 0/1 set to epsilon/1-epsilon
-          if( p1 == 0 ) p1 = params->l1_ridge_eps;
-          else if( p1 == 1 ) p1 = 1 - params->l1_ridge_eps;
+          // if p is within eps of 0/1, set to eps/1-eps
+          if( p1 < params->l1_ridge_eps ) p1 = params->l1_ridge_eps;
+          else if( p1 > (1-params->l1_ridge_eps) ) p1 = 1 - params->l1_ridge_eps;
 
           // compute mse and rsq
           l1->cumsum_values[0](ph,j) += p1; // Sx
