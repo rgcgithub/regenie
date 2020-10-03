@@ -247,6 +247,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--chr`| INT| Optional| specify which chromosomes to test in step 2 (use for each chromosome to include)|
 |`--chrList` | STRING | Optional | Comma separated list of chromosomes to test in step 2|
 |`--minMAC`| INT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
+|`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|

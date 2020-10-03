@@ -46,6 +46,13 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 
+// if using external LAPACK routines
+#ifdef WITH_OPENBLAS
+#include "lapacke.h"
+#elif defined(WITH_MKL)
+#include "mkl_lapacke.h"
+#endif
+
 #include <boost/algorithm/string/split.hpp>
 #include <boost/algorithm/string.hpp>
 #include <boost/math/distributions.hpp>
@@ -204,6 +211,8 @@ struct param {
   bool skip_blups = false;
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
+  double min_INFO = 0; // minimum INFO score of SNPs (dosages) in testing mode
+  bool setMinINFO = false;
   bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test

@@ -81,6 +81,14 @@ void print_header(std::ostream& o){
 #ifdef HAS_BOOST_IOSTREAM
   o << "Compiled with Boost Iostream library.\n";
 #endif
+
+  // adding BLAS/LAPACK external routines
+#if defined(WITH_MKL)
+  o << "Using Intel MKL with Eigen.\n";
+#elif defined(WITH_OPENBLAS)
+  o << "Using BLAS/LAPACK routines from OpenBLAS with Eigen.\n";
+#endif
+
   o << "\n";
 }
 
@@ -132,6 +140,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
     ("write-samples", "write IDs of samples included for each trait (only in step 2)")
     ("minMAC", "minimum minor allele count (MAC) for tested variants", cxxopts::value<int>(params->min_MAC),"INT(=5)")
+    ("minINFO", "minimum imputation info score (Impute/Mach R^2) for tested variants", cxxopts::value<double>(params->min_INFO),"DOUBLE(=0)")
     ("split", "split asssociation results into separate files for each trait")
     ("firth", "use Firth correction for p-values less than threshold")
     ("approx", "use approximation to Firth correction for computational speedup")
@@ -228,6 +237,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("firth") ) params->firth = true;
     if( vm.count("spa") ) params->use_SPA = true;
     if( vm.count("minMAC") ) params->setMinMAC = true;
+    if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
     if( vm.count("v") ) params->verbose = true;
     if( vm.count("print") ) params->print_block_betas = true;
@@ -367,9 +377,18 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     if(!params->test_mode && params->setMinMAC){
       sout << "WARNING : Option --minMAC only works in step 2 of REGENIE.\n";
+      params->setMinMAC = false;
     }
     if(params->test_mode && params->min_MAC < 1){
       sout << "ERROR : minimum MAC must be at least 1.\n" << params->err_help;
+      exit(-1);
+    }
+    if(!params->test_mode && params->setMinINFO){
+      sout << "WARNING : Option --minINFO only works in step 2 of REGENIE.\n";
+      params->setMinINFO = false;
+    }
+    if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) ){
+      sout << "ERROR : minimum info score must be in [0,1].\n" << params->err_help;
       exit(-1);
     }
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;

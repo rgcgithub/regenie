@@ -108,6 +108,8 @@ void Data::file_read_initialization() {
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
   else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
 
+  if( params.setMinINFO && !params.dosage_mode )
+    sout << "WARNING: Dosages are not present in the genotype file. Option --minINFO is skipped.\n";
 }
 
 
@@ -927,7 +929,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
     betaold = MatrixXd::Zero(bs_l1, 1);
 
     int niter_cur = 0;
-    while(niter_cur++ < params.niter_max){
+    while(niter_cur++ < params.niter_max_ridge){
 
       XtWX = MatrixXd::Zero(bs_l1, bs_l1);
       XtWZ = MatrixXd::Zero(bs_l1, 1);
@@ -1031,7 +1033,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
   // fit logistic on whole data again for optimal ridge param
   betaold = ArrayXd::Zero(bs_l1);
   int niter_cur = 0;
-  while(niter_cur++ < params.niter_max){
+  while(niter_cur++ < params.niter_max_ridge){
 
     get_wvec(ph, etavec, pivec, wvec, betaold, pheno_data.masked_indivs, m_ests.offset_logreg.col(ph), l1_ests.test_mat_conc[ph_eff], params.l1_ridge_eps);
     zvec = (pheno_data.masked_indivs.col(ph).array()).select( (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
@@ -1052,7 +1054,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
   }
 
   // compute Hinv
-  zvec = (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
+  //zvec = (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
   V1 = l1_ests.test_mat_conc[ph_eff].transpose() * wvec.matrix().asDiagonal();
   XtWX = V1 * l1_ests.test_mat_conc[ph_eff];
   Hinv.compute( XtWX + params.tau[val] * ident_l1 );
@@ -1316,6 +1318,7 @@ void Data::test_snps() {
 
 
   sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
+  if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
   if(params.firth || params.use_SPA) {
     sout << " * using ";
     if(params.firth_approx) sout << "fast ";
@@ -1699,7 +1702,10 @@ void Data::test_snps() {
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - n_skipped_snps - n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")\n";
   }
-  sout << "Number of ignored SNPs due to low MAC : " << n_ignored_snps << endl;
+
+  sout << "Number of ignored SNPs due to low MAC "; 
+  if( params.setMinINFO ) sout << "or info score ";
+  sout << ": " << n_ignored_snps << endl;
 
 }
 
@@ -2029,6 +2035,7 @@ void Data::test_snps_fast() {
   print_usage_info(&params, &files, sout);
 
   sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
+  if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
   if(params.firth || params.use_SPA) {
     sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
     sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
@@ -2188,7 +2195,10 @@ void Data::test_snps_fast() {
       for(int isnp = 0; isnp < bs; isnp++) {
         uint32_t snpindex = snp_tally.snp_count + isnp;
 
-        if( block_info[isnp].ignored ) continue;
+        if( block_info[isnp].ignored ) {
+          snp_tally.n_ignored_snps++;
+          continue;
+        }
 
         if(!params.split_by_pheno) {
           ofile << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
@@ -2316,7 +2326,10 @@ void Data::test_snps_fast() {
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - snp_tally.n_skipped_snps - snp_tally.n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")\n";
   }
-  sout << "Number of ignored SNPs due to low MAC : " << snp_tally.n_ignored_snps << endl;
+
+  sout << "Number of ignored SNPs due to low MAC ";
+  if( params.setMinINFO ) sout << "or info score ";
+  sout << ": " << snp_tally.n_ignored_snps << endl;
 
 }
 
@@ -2377,10 +2390,8 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     residualize_geno(block_info);
 
     // skip SNP if fails filters
-    if( block_info->ignored == true ){
-      (snp_tally->n_ignored_snps)++;
-      continue;
-    }
+    if( block_info->ignored ) continue;
+    
     block_info->pval_log = ArrayXd::Zero(params.n_pheno);
     block_info->bhat = ArrayXd::Zero(params.n_pheno);
     block_info->se_b = ArrayXd::Zero(params.n_pheno);

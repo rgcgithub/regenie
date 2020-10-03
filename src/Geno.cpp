@@ -1046,6 +1046,8 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     if(params->test_mode) {
       if( (gblock->snp_afs(snp, 0) == 0) || (gblock->snp_afs(snp, 0) == 1) ) gblock->snp_info(snp, 0) = 1;
       else gblock->snp_info(snp, 0) = 1 - info_num / (2 * ns * gblock->snp_afs(snp, 0) * (1 - gblock->snp_afs(snp, 0)));
+
+      if( params->setMinINFO && ( gblock->snp_info(snp, 0) < params->min_INFO) ) gblock->bad_snps(snp) = true;
     }
 
     if(params->use_SPA) {
@@ -1543,6 +1545,12 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   else
     snp_data->info = 1 - info_num / (2 * ns * snp_data->af * (1 - snp_data->af));
 
+  // check INFO score
+  if( params->setMinINFO && ( snp_data->info < params->min_INFO) ) {
+    snp_data->ignored = true;
+    return;
+  }
+
   if(params->use_SPA) {
     // switch to minor allele
     snp_data->flipped = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
@@ -1785,12 +1793,20 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
 
     total /= ns;
     snp_data->af = total / 2;
+
     // mach r2 info score
     if( params->dosage_mode ){
       if( snp_data->af == 0 || snp_data->af == 1 )
         snp_data->info = 1;
       else
         snp_data->info = (eij2 / ns - total * total) / (2 * snp_data->af * (1 - snp_data->af));
+
+      // check INFO score
+      if( params->setMinINFO && ( snp_data->info < params->min_INFO) ) {
+        snp_data->ignored = true;
+        return;
+      }
+
     }
 
     if(params->use_SPA) {
