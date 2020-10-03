@@ -300,6 +300,16 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
     }
   }
 
+  // check all covariates specified are in the file
+  if( params->select_covs ){
+    sort( filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end() );
+    int ncov_selected = std::unique(filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end()) - filters->cov_colKeep_names.begin();
+    if( ncov_selected != params->n_cov ) {
+      sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
+      exit(-1);
+    }
+  }
+
   // check #covariates is > 0
   if(params->n_cov < 1){ // only intercept will be included
     sout << "n_cov = " << params->n_cov << " (+ intercept)" << endl;
