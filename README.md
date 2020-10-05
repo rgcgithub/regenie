@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.4 (New option `--minINFO` to filter imputed variants in Step 2; added Regenie binary compiled with Intel MKL (only for x86_64 Linux)).
+
 Version 1.0.6.3 (Improved ridge logistic regression to avoid convergence issues in step 1 with low case-count traits).
 
 Version 1.0.6.2 (New option `--ref-first` to use the first allele for each variant as the reference allele for BGEN or PLINK bed/bim/fam file input [default is to use the last allele as the reference]).
