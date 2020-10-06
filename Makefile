@@ -56,7 +56,7 @@ ifneq ($(strip $(MKLROOT)),)
  ifeq ($(UNAME_S),Linux)
   RGFLAGS    += -DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
   INC        += -I${MKLROOT}/include/
-  LPATHS      = -L${MKLROOT}/lib/intel64
+  LIBMKL      = -L${MKLROOT}/lib/intel64/
   LLAPACK     = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
  endif
 else ifneq ($(strip $(OPENBLAS_ROOT)),)
@@ -79,7 +79,7 @@ OBJECTS       = $(patsubst %.cpp,%.o,$(wildcard ./src/*.cpp)) ${PGEN_OBJECTS}
 
 INC          += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I${BGEN_PATH}/db/include/ -I${BGEN_PATH}/3rd_party/sqlite3 -I./external_libs/
 
-LPATHS        = -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
+LPATHS        = ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 
 LIBS          = -lbgen -lzstd -ldb  -lsqlite3 -lboost ${LBIO} ${LLAPACK}
 LIBS         += -ldl -lz
