@@ -1643,7 +1643,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
   snp_data->n_non_zero = 0;
 
   ns = 0, total = 0, index = 0;
-  for (size_t i = 0; i < filters->ind_ignore.size(); i++) {
+  for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
     // skip samples that were ignored from the analysis
     if( filters->ind_ignore(i) ) continue;
