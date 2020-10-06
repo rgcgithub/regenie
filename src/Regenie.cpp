@@ -95,7 +95,7 @@ void print_header(std::ostream& o){
 
 void read_params_and_check(int argc, char *argv[], struct param* params, struct in_files* files, struct filter* filters, MeasureTime* mt, mstream& sout) {
 
-  string webinfo = "For more information, visit the website: https://rgcgithub.github.io/regenie/";
+  string webinfo = "For more information, use option '--help' or visit the website: https://rgcgithub.github.io/regenie/";
 
   cxxopts::Options AllOptions(argv[0], "");
 
