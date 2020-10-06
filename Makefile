@@ -6,10 +6,16 @@
 # 	user can specify to link to it during compilation by
 # 	setting  HAS_BOOST_IOSTREAM to 1
 #
+###############################################################
 #
 # Optional: To use external BLAS/LAPACK routines in Eigen	
-# * If Intel MKL is installed on system, add path to MKLROOT
-# * Else if OpenBLAS is installed on system, add path to OPENBLAS_ROOT
+#  Dependencies: lapacke library
+#   To insall, use: sudo apt-get install liblapacke-dev
+#
+# For Intel MKL, add path of installed library to MKLROOT
+# For OpenBLAS, add path of installed library to OPENBLAS_ROOT
+#  
+#  -> for static compilation of these libraries, set STATIC=1
 #
 #
 
@@ -17,6 +23,7 @@ BGEN_PATH     =
 HAS_BOOST_IOSTREAM := 0
 MKLROOT       = 
 OPENBLAS_ROOT = 
+STATIC       := 0
 
 ############
 
@@ -56,14 +63,27 @@ ifneq ($(strip $(MKLROOT)),)
  ifeq ($(UNAME_S),Linux)
   RGFLAGS    += -DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
   INC        += -I${MKLROOT}/include/
-  LIBMKL      = -L${MKLROOT}/lib/intel64/
-  LLAPACK     = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
+	# dynamic linking
+  ifneq ($(strip $(STATIC)),1)
+   LIBMKL     = -L${MKLROOT}/lib/intel64/
+   LLAPACK    = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
+	# static linking
+  else
+   LLAPACK    = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_gnu_thread.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lgomp -lpthread -lm -lblas -llapack -llapacke
+  endif
  endif
+
 else ifneq ($(strip $(OPENBLAS_ROOT)),)
  ifeq ($(UNAME_S),Linux)
   RGFLAGS    += -DWITH_OPENBLAS -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
   INC        += -I${OPENBLAS_ROOT}/include/
-  LLAPACK     = -Wl,-rpath,${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
+  # dynamic linking
+  ifneq ($(strip $(STATIC)),1)
+   LLAPACK     = -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
+  # static linking
+  else
+   LLAPACK     = -Wl,-Bstatic,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -Wl,-Bdynamic -lgfortran
+  endif
  endif
 endif
 
