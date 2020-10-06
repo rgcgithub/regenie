@@ -9,14 +9,13 @@
 ###############################################################
 #
 # Optional: To use external BLAS/LAPACK routines in Eigen	
-#  Dependencies: lapacke library
-#   To insall, use: sudo apt-get install liblapacke-dev
 #
 # For Intel MKL, add path of installed library to MKLROOT
 # For OpenBLAS, add path of installed library to OPENBLAS_ROOT
+#   note: it also requires lapacke library
 #  
-#  -> for static compilation of these libraries, set STATIC=1
-#
+# For static compilation on Linux systems, set STATIC=1
+#   -> this excludes GLIBC
 #
 
 BGEN_PATH     =
@@ -36,10 +35,13 @@ CFLAGS        =
 # detect OS architecture and add flags
 UNAME_S      := $(shell uname -s)
 ifeq ($(UNAME_S),Linux)
-  INC         = -I${BGEN_PATH}/3rd_party/boost_1_55_0
-  CFLAGS     += -fopenmp
+ INC          = -I${BGEN_PATH}/3rd_party/boost_1_55_0
+ CFLAGS      += -fopenmp
+ ifeq ($(strip $(STATIC)),1)
+  LPATHS      = -static-libgcc -static-libstdc++
+ endif
 else ifeq ($(UNAME_S),Darwin)
-  RGFLAGS    += -stdlib=libc++
+ RGFLAGS     += -stdlib=libc++
 endif
 
 
@@ -49,12 +51,17 @@ RG_VERSION    = $(shell cat VERSION)
 DFILE         = ./Dockerfile
 TEST_SCRIPT   = ./test/test_docker.sh
 
+
 ## for boost iostream
 ifeq ($(HAS_BOOST_IOSTREAM),1)
-  RG_VERSION := $(RG_VERSION).gz
-  RGFLAGS    += -DHAS_BOOST_IOSTREAM
-  LBIO        = -lboost_iostreams
-  LIB_BIO     = libboost-iostreams-dev ## for docker build
+ RG_VERSION  := $(RG_VERSION).gz
+ RGFLAGS     += -DHAS_BOOST_IOSTREAM
+ ifeq ($(strip $(STATIC)),1)
+  SLIBS       = -Wl,-Bstatic -lboost_iostreams
+ else
+  DLIBS       = -lboost_iostreams
+ endif
+ LIB_BIO      = libboost-iostreams-dev ## for docker build
 endif
 
 
@@ -63,13 +70,14 @@ ifneq ($(strip $(MKLROOT)),)
  ifeq ($(UNAME_S),Linux)
   RGFLAGS    += -DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
   INC        += -I${MKLROOT}/include/
-	# dynamic linking
-  ifneq ($(strip $(STATIC)),1)
-   LIBMKL     = -L${MKLROOT}/lib/intel64/
-   LLAPACK    = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
 	# static linking
+  ifeq ($(strip $(STATIC)),1)
+   SLIBS     += -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_gnu_thread.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group
+   DLIBS     += -lgomp -lpthread
+	# dynamic linking
   else
-   LLAPACK    = -Wl,--start-group ${MKLROOT}/lib/intel64/libmkl_intel_lp64.a ${MKLROOT}/lib/intel64/libmkl_gnu_thread.a ${MKLROOT}/lib/intel64/libmkl_core.a -Wl,--end-group -lgomp -lpthread -lm -lblas -llapack -llapacke
+   LIBMKL     = -L${MKLROOT}/lib/intel64/
+   DLIBS     += -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread
   endif
  endif
 
@@ -77,12 +85,13 @@ else ifneq ($(strip $(OPENBLAS_ROOT)),)
  ifeq ($(UNAME_S),Linux)
   RGFLAGS    += -DWITH_OPENBLAS -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
   INC        += -I${OPENBLAS_ROOT}/include/
-  # dynamic linking
-  ifneq ($(strip $(STATIC)),1)
-   LLAPACK     = -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
   # static linking
+  ifeq ($(strip $(STATIC)),1)
+   SLIBS     += -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas
+   DLIBS     += -lgfortran
+  # dynamic linking
   else
-   LLAPACK     = -Wl,-Bstatic,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -Wl,-Bdynamic -lgfortran
+   DLIBS     += -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
   endif
  endif
 endif
@@ -99,10 +108,10 @@ OBJECTS       = $(patsubst %.cpp,%.o,$(wildcard ./src/*.cpp)) ${PGEN_OBJECTS}
 
 INC          += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I${BGEN_PATH}/db/include/ -I${BGEN_PATH}/3rd_party/sqlite3 -I./external_libs/
 
-LPATHS        = ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
+LPATHS       += ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 
-LIBS          = -lbgen -lzstd -ldb  -lsqlite3 -lboost ${LBIO} ${LLAPACK}
-LIBS         += -ldl -lz
+LIBS         += ${SLIBS} -lbgen -lzstd -ldb  -lsqlite3 -lboost
+LIBS         += -lz -Wl,-Bdynamic ${DLIBS} -lm -ldl
 
 
 
@@ -128,7 +137,7 @@ docker-build:
 ifeq ($(HAS_BOOST_IOSTREAM),1)
 	@echo Compiling with Boost Iostream library
 endif
-	@docker build -f ${DFILE} \
+	@docker build --rm -f ${DFILE} \
 		--no-cache --pull \
 		--build-arg BOOST_IO=${HAS_BOOST_IOSTREAM} \
 		--build-arg LIB_INSTALL=${LIB_BIO} \
