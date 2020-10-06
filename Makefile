@@ -46,25 +46,25 @@ TEST_SCRIPT   = ./test/test_docker.sh
 ifeq ($(HAS_BOOST_IOSTREAM),1)
   RG_VERSION := $(RG_VERSION).gz
   RGFLAGS    += -DHAS_BOOST_IOSTREAM
-	LBIO        = -lboost_iostreams
+  LBIO        = -lboost_iostreams
   LIB_BIO     = libboost-iostreams-dev ## for docker build
 endif
 
 
 # Intel MKL or OpenBLAS
 ifneq ($(strip $(MKLROOT)),)
-	ifeq ($(UNAME_S),Linux)
-		RGFLAGS  += -DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
-		INC      += -I${MKLROOT}/include/
-		LPATHS    = -L${MKLROOT}/lib/intel64
-		LLAPACK   = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
-	endif
+ ifeq ($(UNAME_S),Linux)
+  RGFLAGS    += -DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
+  INC        += -I${MKLROOT}/include/
+  LPATHS      = -L${MKLROOT}/lib/intel64
+  LLAPACK     = -Wl,--no-as-needed -lmkl_intel_lp64 -lmkl_gnu_thread -lmkl_core -lgomp -lpthread -lm -lblas -llapack -llapacke
+ endif
 else ifneq ($(strip $(OPENBLAS_ROOT)),)
-	ifeq ($(UNAME_S),Linux)
-		RGFLAGS  += -DWITH_OPENBLAS -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
-		INC      += -I${OPENBLAS_ROOT}/include/
-		LLAPACK   = -Wl,-rpath,${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
-	endif
+ ifeq ($(UNAME_S),Linux)
+  RGFLAGS    += -DWITH_OPENBLAS -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE
+  INC        += -I${OPENBLAS_ROOT}/include/
+  LLAPACK     = -Wl,-rpath,${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
+ endif
 endif
 
 
