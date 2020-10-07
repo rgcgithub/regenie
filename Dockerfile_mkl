@@ -1,0 +1,58 @@
+# Filename: Dockerfile_mkl
+
+# make this global 
+ARG LIB_INSTALL
+ARG LIB_INSTALL2
+
+
+FROM ubuntu:16.04 AS builder
+
+ARG BOOST_IO
+ARG LIB_INSTALL
+ARG STATIC
+
+WORKDIR /src
+
+ADD http://code.enkre.net/bgen/tarball/release/v1.1.7 v1.1.7.tgz
+
+# install BGEN library
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      g++ \
+      make \
+      python3 \
+      zlib1g-dev \
+      apt-transport-https ca-certificates \
+      $LIB_INSTALL \
+      && tar -xzf v1.1.7.tgz \
+      && rm v1.1.7.tgz \
+      && cd v1.1.7 \
+      && python3 waf configure \
+      && python3 waf \
+      && cd ..
+
+# install MKL library (from 
+ADD https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-2019.PUB intel_key.PUB
+RUN apt-key add intel_key.PUB \
+      && sh -c 'echo deb https://apt.repos.intel.com/mkl all main > /etc/apt/sources.list.d/intel-mkl.list' \
+      && apt-get update \
+      && apt-get install intel-mkl-64bit-2018.2-046 -y \
+      && echo "MKL_THREADING_LAYER=GNU" >> /etc/environment
+
+COPY . /src/regenie
+
+WORKDIR /src/regenie
+
+# compile with MKL as static
+RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/mkl/ STATIC=1
+
+
+# no need to install Boost IO and MKL here (static linking)
+FROM ubuntu:16.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libgomp1 \
+      && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /src/regenie/regenie /usr/local/bin
+
+

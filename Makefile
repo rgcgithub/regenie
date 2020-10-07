@@ -50,6 +50,11 @@ RG_VERSION    = $(shell cat VERSION)
 ## for docker
 DFILE         = ./Dockerfile
 TEST_SCRIPT   = ./test/test_docker.sh
+ifeq ($(strip $(STATIC)),1)
+ ifneq ($(strip $(MKLROOT)),)
+  DFILE      = ./Dockerfile_mkl # only for static linking
+ endif
+endif
 
 
 ## for boost iostream
@@ -60,6 +65,7 @@ ifeq ($(HAS_BOOST_IOSTREAM),1)
   SLIBS       = -Wl,-Bstatic -lboost_iostreams
  else
   DLIBS       = -lboost_iostreams
+  LIB_BIO2    = libboost-iostreams-dev ## for docker build
  endif
  LIB_BIO      = libboost-iostreams-dev ## for docker build
 endif
@@ -137,10 +143,21 @@ docker-build:
 ifeq ($(HAS_BOOST_IOSTREAM),1)
 	@echo Compiling with Boost Iostream library
 endif
+ifeq ($(STATIC),1)
+ ifneq ($(strip $(MKLROOT)),)
+	@echo Compiling with Intel MKL library
+ endif
+	@echo Linking = static
+ else
+	@echo Linking = dynamic
+endif
+
 	@docker build --rm -f ${DFILE} \
 		--no-cache --pull \
 		--build-arg BOOST_IO=${HAS_BOOST_IOSTREAM} \
 		--build-arg LIB_INSTALL=${LIB_BIO} \
+		--build-arg LIB_INSTALL2=${LIB_BIO2} \
+		--build-arg STATIC=${STATIC} \
 		-t regenie:v${RG_VERSION} .
 
 docker-test:

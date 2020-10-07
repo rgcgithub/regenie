@@ -4,11 +4,14 @@
 
 # make this global 
 ARG LIB_INSTALL
+ARG LIB_INSTALL2
+
 
 FROM ubuntu:16.04 AS builder
 
 ARG BOOST_IO
 ARG LIB_INSTALL
+ARG STATIC
 
 WORKDIR /src
 
@@ -30,13 +33,13 @@ COPY . /src/regenie
 
 WORKDIR /src/regenie
 
-RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO
+RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC
 
 FROM ubuntu:16.04
-ARG LIB_INSTALL
+ARG LIB_INSTALL2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgomp1 $LIB_INSTALL \
+      libgomp1 $LIB_INSTALL2 \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin
