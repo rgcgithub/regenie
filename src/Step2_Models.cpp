@@ -223,6 +223,30 @@ bool fit_firth_logistic(int chrom, int ph, bool null_fit, struct param* params, 
   return true;
 }
 
+void fit_null_firth(int chrom, struct f_ests* firth_est, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, struct param* params, mstream& sout){
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  firth_est->beta_null_firth = MatrixXd::Zero(firth_est->covs_firth.cols(), params->n_pheno);
+  sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
+
+  for( int i = 0; i < params->n_pheno; ++i ) {
+    bool has_converged = fit_firth_logistic(chrom, i, true, params, pheno_data, m_ests, firth_est, sout);
+    if(!has_converged) {
+      sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files->pheno_names[i] << "." <<
+        " Try decreasing the maximum step size using `--maxstep-null` (currently=" << (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth)<< ") " <<
+        "and increasing the maximum number of iterations using `--maxiter-null` (currently=" << (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) << ").\n";
+      exit(-1);
+    }
+  }
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl;
+
+}
+
 
 
 void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct f_ests* fest, variant_block* block_info, mstream& sout) {

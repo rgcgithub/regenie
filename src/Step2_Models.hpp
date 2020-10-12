@@ -47,6 +47,7 @@ struct spa_ests {
 
 // firth
 bool fit_firth_logistic(int,int,bool,struct param*,struct phenodt*,struct ests*,struct f_ests*,mstream&);
+void fit_null_firth(int,struct f_ests*,struct phenodt*,struct ests*,struct in_files*,struct param*,mstream&);
 void fit_firth_logistic_snp(int,int,bool,struct param*,struct phenodt*,struct ests*,struct f_ests*,variant_block*,mstream&);
 
 // spa (multithreading in Eigen)
