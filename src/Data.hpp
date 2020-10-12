@@ -39,7 +39,7 @@ class Data {
     std::vector<snp> snpinfo;
     phenodt pheno_data;
     geno_block Gblock;
-    std::map<int, std::vector<int>> chr_map;
+    std::map<int, std::vector<int>> chr_map; // first=chr; second=[# SNPs analyzed, #blocks, # SNPs in file]
     ests m_ests;
     ridgel1 l1_ests;
     f_ests firth_est;

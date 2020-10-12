@@ -127,7 +127,7 @@ void readChunkFromPGENFileToG(const int,uint32_t&,std::vector<snp>&,struct param
 void readChunkFromBGEN(std::istream*,uint32_t*,uint32_t*,std::vector<uchar>*);
 void parseSnpfromBGEN(std::vector<uchar>*,const uint32_t,const uint32_t,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const snp*,variant_block*,mstream&);
 void parseSnpfromBed(const std::vector<uchar>,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,variant_block*);
-void readChunkFromPGENFileToG(const int&,const int&,struct param*,struct filter*,struct geno_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,std::vector<variant_block>&);
+void readChunkFromPGENFileToG(const int&,const int&,struct param*,struct filter*,struct geno_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const std::vector<snp>&,std::vector<variant_block>&);
 
 void skip_snps(const int&,struct param*,struct in_files*,struct geno_block*);
 

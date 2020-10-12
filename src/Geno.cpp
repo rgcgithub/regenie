@@ -72,7 +72,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
       tmp_snp.physpos = position;
       tmp_snp.ID = rsid;
-      if( params->ref_first ){ // reference is first (i.e. allele0)
+      if( params->ref_first ) { // reference is first (i.e. allele0)
         tmp_snp.allele1 = alleles[0];
         tmp_snp.allele2 = alleles[1];
       } else {
@@ -529,6 +529,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
     tmp_snp.ID = tmp_str_vec[2];
     tmp_snp.allele1 = tmp_str_vec[3];
     tmp_snp.allele2 = tmp_str_vec[4];
+    tmp_snp.offset = lineread; // store index in file
 
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in pvar file at line " << snpinfo.size()+1 << endl;
@@ -1095,7 +1096,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     }
 
     snp++;
-    if(!params->test_mode) snp_index_counter++;
+    snp_index_counter++;
   }
 
   if(!params->verbose) sout << bs << " snps ";
@@ -1194,7 +1195,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
     }
 
     j++;
-    if(!params->test_mode) snp_index_counter++;
+    snp_index_counter++;
   }
 
   sout << bs << " snps ";
@@ -1248,7 +1249,7 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
     }
 
     j++;
-    if(!params->test_mode) snp_index_counter++;
+    snp_index_counter++;
   }
 
   sout << bs << " snps ";
@@ -1738,12 +1739,14 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
 
 
 // step 2
-void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info){
+void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const vector<snp>& snpinfo, vector<variant_block> &all_snps_info){
 
   int hc, ns;
   double ds, total, eij2 = 0;
+  int cur_index;
 
   for(int j = 0; j < bs; j++) {
+
     variant_block* snp_data = &(all_snps_info[j]);
     // reset variant info
     snp_data->Geno = ArrayXd::Zero(params->n_samples);
@@ -1756,7 +1759,8 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
     if( params->dosage_mode ) eij2 = 0;
     // read genotype data
     // (default is dosages if present, otherwise hardcalls)
-    gblock->pgr.Read(gblock->genobuf, start + j, 1);
+    cur_index = snpinfo[ start + j ].offset;
+    gblock->pgr.Read(gblock->genobuf, cur_index, 1);
 
     for (size_t i = 0; i < params->n_samples; i++) {
 

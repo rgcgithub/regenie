@@ -480,9 +480,6 @@ void Data::level_0_calculations() {
     int chrom_nb = chr_map[chrom][1];
     if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
 
-    if(chrom_nb > 0) sout << "Chromosome " << chrom << endl;
-    //sout << "Ns="<< chrom_nsnps << ";Nfile="<< chrom_nsnps_file << endl;
-
     // if all snps in chromosome are excluded
     // stream through file to read next chr
     if((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) {
@@ -491,7 +488,11 @@ void Data::level_0_calculations() {
       continue;
     }
 
+    if(chrom_nb > 0) sout << "Chromosome " << chrom << endl;
+    //sout << "Ns="<< chrom_nsnps << ";Nfile="<< chrom_nsnps_file << endl;
+
     if(params.keep_snps || params.rm_snps) nread = snp_index_counter;
+
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
       int bs = params.block_size;
@@ -1242,7 +1243,6 @@ void Data::test_snps() {
   uint32_t n_failed_tests = 0;
   uint32_t n_ignored_snps = 0;
   uint32_t n_skipped_snps = 0;
-  bool  has_converged;
   string out, correction_type;
   vector < string > out_split;
   Files ofile;
@@ -1306,6 +1306,7 @@ void Data::test_snps() {
     else if(params.binary_mode & params.use_SPA) correction_type = "-SPA";
     else if(params.binary_mode) correction_type = "-LOG";
     else correction_type = "-LR";
+
     if(params.skip_blups) model_type = test_string + correction_type;
     else model_type = test_string + "-WGR" + correction_type;
   }
@@ -1342,95 +1343,72 @@ void Data::test_snps() {
 
 
   // start analyzing each chromosome
-  int block = 0, chrom, chrom_nsnps, chrom_nb, bs;
+  int block = 0, chrom, chrom_nsnps, nread=0, chrom_nsnps_file=0, chrom_nb, bs, snps_skip;
   uint32_t snp_count = 0;
+  snp_index_counter = 0; // keep track of snps in file
+  
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     chrom = files.chr_read[itr];
     if( chr_map.find(chrom) == chr_map.end() ) continue;
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
+    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
 
-    if(chrom_nb > 0) {
 
-      // skip chromosome if not in list to keep
-      if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-        sout << "Chromosome " << chrom << " is skipped\n";
-        skip_snps(chrom_nsnps, &params, &files, &Gblock);
-        // block += chrom_nb;
-        snp_count += chrom_nsnps;
-        n_skipped_snps += chrom_nsnps;
-        continue;
-      }
+    // if whole chromosome is excluded, stream through file to read next chr
+    if(((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) ||
+        ( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) )
+      ) {
+      snps_skip = (params.keep_snps || params.rm_snps) ? chrom_nsnps_file : chrom_nsnps;
+      skip_snps(snps_skip, &params, &files, &Gblock);
 
-      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
+      // update tallies
+      snp_index_counter += snps_skip;
+      snp_count += chrom_nsnps;
+      n_skipped_snps += chrom_nsnps;
 
-      // read polygenic effect predictions from step 1
-      blup_read_chr(chrom);
+      continue;
+    }
 
-      // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-      if(!params.binary_mode){
 
-        res = pheno_data.phenotypes - m_ests.blups;
-        res.array() *= pheno_data.masked_indivs.array().cast<double>();
+    sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
+    if(params.keep_snps || params.rm_snps) nread = snp_index_counter;
 
-        p_sd = res.colwise().norm();
-        p_sd.array() /= sqrt(pheno_data.Neff -1);
-        res.array().rowwise() /= p_sd.array();
+    // read polygenic effect predictions from step 1
+    blup_read_chr(chrom);
 
-      } else {
+    // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
+    if(!params.binary_mode){
 
-        fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
+      res = pheno_data.phenotypes - m_ests.blups;
+      res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-        res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
-        res.array() /= m_ests.Gamma_sqrt.array();
-        res.array() *= pheno_data.masked_indivs.array().cast<double>();
+      p_sd = res.colwise().norm();
+      p_sd.array() /= sqrt(pheno_data.Neff -1);
+      res.array().rowwise() /= p_sd.array();
 
-        // if using firth approx., fit null penalized model with only covariates and store the estimates (used as offset when computing LRT in full model)
-        if(params.firth_approx){
-          firth_est.beta_null_firth = MatrixXd::Zero(firth_est.covs_firth.cols(), params.n_pheno);
-          sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
-          auto t1 = std::chrono::high_resolution_clock::now();
+    } else {
 
-          for( int i = 0; i < params.n_pheno; ++i ) {
-            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout);
-            if(!has_converged) {
-              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << endl;
-              exit(-1);
-            }
-          }
+      fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
 
-          sout << "done";
-          auto t2 = std::chrono::high_resolution_clock::now();
-          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
-          sout << " (" << duration.count() << "ms) "<< endl;
-        }
+      res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
+      res.array() /= m_ests.Gamma_sqrt.array();
+      res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-      }
-    } else continue;
+      // if using firth approx., fit null penalized model with only covariates and store the estimates (used as offset when computing LRT in full model)
+      if(params.firth_approx) fit_null_firth(chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+
+    }
+
 
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
-      bs = params.block_size;
-      if(bb == 0) {
-        Gblock.Gmat = MatrixXd::Zero(bs,params.n_samples);
-        stats = MatrixXd::Zero(bs, params.n_pheno);
-        Gblock.snp_afs = MatrixXd::Zero(bs, 1);
-        if(params.file_type == "bgen") Gblock.snp_info = MatrixXd::Zero(bs, 1);
-        if(params.binary_mode) sqrt_denum = MatrixXd::Zero(bs, params.n_pheno);
-        else scaleG_pheno = MatrixXd::Zero(bs, params.n_pheno);
-        if(params.use_SPA) {
-          spa_est.SPA_pvals = MatrixXd::Zero(bs, params.n_pheno);
-          Gblock.snp_flipped.resize(bs);
-        }
-        if(params.htp_out) {
-          Gblock.genocounts.resize(bs);
-          for( int j = 0; j < bs; ++j ) Gblock.genocounts[j] = MatrixXd::Zero(6, params.n_pheno);
-        }
-      }
-      if((bb +1) * params.block_size > chrom_nsnps) {
-        bs = chrom_nsnps - (bb * params.block_size) ;
+      bs = ((bb +1) * params.block_size > chrom_nsnps) ? chrom_nsnps - (bb * params.block_size) : params.block_size;
+
+      // resize elements
+      if( (bb == 0) || ((bb +1) * params.block_size > chrom_nsnps) ) {
         Gblock.Gmat = MatrixXd::Zero(bs,params.n_samples);
         stats = MatrixXd::Zero(bs, params.n_pheno);
         Gblock.snp_afs = MatrixXd::Zero(bs, 1);
@@ -1450,6 +1428,7 @@ void Data::test_snps() {
 
       // get genotype matrix for block (mean impute)
       get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
+
 
       if(!params.binary_mode || params.firth_approx){
         // residualize and scale genotypes (and identify monomorphic if present)
@@ -1680,6 +1659,19 @@ void Data::test_snps() {
 
       block++;
     }
+
+
+    // check if need to skip snps at end of chromosome
+    if(params.keep_snps || params.rm_snps){
+      nread = snp_index_counter - nread;
+      //sout << "Nread =" << nread << "; chr=" << chrom << endl;
+      if(nread < chrom_nsnps_file) {
+        skip_snps(chrom_nsnps_file - nread, &params, &files, &Gblock);
+        snp_index_counter += chrom_nsnps_file - nread;
+        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
+      }
+    }
+    
   }
 
   sout << endl;
@@ -1843,7 +1835,7 @@ void Data::set_blocks_for_testing() {
       itr->second[1] = nb;
       if(chr_tested) params.total_n_block += nb;
     }
-    if(itr->second[1] > 0) m1.insert(pair<int, vector<int> >(itr->first, itr->second));
+    m1.insert(pair<int, vector<int> >(itr->first, itr->second));
   }
   chr_map = m1;
 
@@ -2053,6 +2045,7 @@ void Data::test_snps_fast() {
   vector < string > out_split;
   // use pointer to class since it contains non-copyable elements
   vector < Files* > ofile_split;
+
   if(params.test_type == 0) test_string = "ADD";
   else if(params.test_type == 1) test_string = "DOM";
   else test_string = "REC";
@@ -2094,9 +2087,10 @@ void Data::test_snps_fast() {
 
 
   // start analyzing each chromosome
-  int block = 0, chrom, chrom_nsnps, chrom_nb, bs;
-  bool has_converged;
+  int block = 0, chrom, chrom_nsnps, chrom_nb, nread=0, chrom_nsnps_file=0, bs, snps_skip;
   tally snp_tally;
+  snp_index_counter = 0; // keep track of snps in bed file
+
   vector< variant_block > block_info;
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
   m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
@@ -2110,68 +2104,60 @@ void Data::test_snps_fast() {
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
 
     chrom = files.chr_read[itr];
-
     if( chr_map.find(chrom) == chr_map.end() ) continue;
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
+    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
 
-    if(chrom_nb > 0) {
 
-      // skip chromosome if not in list to keep
-      if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-        //sout << "Chromosome " << chrom << " is skipped\n";
-        snp_tally.snp_count += chrom_nsnps;
-        snp_tally.n_skipped_snps += chrom_nsnps;
-        if((params.file_type == "bed")) files.bed_ifstream.seekg(chrom_nsnps * files.bed_block_size, ios_base::cur);
-        continue;
+    // if whole chromosome is excluded, stream through file to read next chr
+    if(((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) ||
+        ( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) )
+      ) {
+      snps_skip = (params.keep_snps || params.rm_snps) ? chrom_nsnps_file : chrom_nsnps;
+      if((params.file_type == "bed")) {
+        files.bed_ifstream.seekg(snps_skip * files.bed_block_size, ios_base::cur);
+        snp_index_counter += snps_skip;
       }
 
-      sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
-      // read polygenic effect predictions from step 1
-      blup_read_chr(chrom);
+      // update tallies
+      snp_tally.snp_count += chrom_nsnps;
+      snp_tally.n_skipped_snps += chrom_nsnps;
 
-      // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-      if(!params.binary_mode){
+      continue;
+    }
 
-        res = pheno_data.phenotypes - m_ests.blups;
-        res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-        p_sd_yres = res.colwise().norm();
-        p_sd_yres.array() /= sqrt(pheno_data.Neff -1);
-        res.array().rowwise() /= p_sd_yres.array();
+    sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
+    if((params.file_type == "bed") && (params.keep_snps || params.rm_snps) ) nread = snp_index_counter;
 
-      } else {
+    // read polygenic effect predictions from step 1
+    blup_read_chr(chrom);
 
-        fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
+    // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
+    if(!params.binary_mode){
 
-        res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
-        res.array() /= m_ests.Gamma_sqrt.array();
-        res.array() *= pheno_data.masked_indivs.array().cast<double>();
+      res = pheno_data.phenotypes - m_ests.blups;
+      res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
-        // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
-        if(params.firth_approx){
-          firth_est.beta_null_firth = MatrixXd::Zero(firth_est.covs_firth.cols(), params.n_pheno);
-          sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
-          auto t1 = std::chrono::high_resolution_clock::now();
+      p_sd_yres = res.colwise().norm();
+      p_sd_yres.array() /= sqrt(pheno_data.Neff -1);
+      res.array().rowwise() /= p_sd_yres.array();
 
-          for( int i = 0; i < params.n_pheno; ++i ) {
-            has_converged = fit_firth_logistic(chrom, i, true, &params, &pheno_data, &m_ests, &firth_est, sout);
-            if(!has_converged) {
-              sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files.pheno_names[i] << ". ";
-              sout << "Try decreasing the maximum step size using `--maxstep-null` (currently=" << (params.fix_maxstep_null ? params.maxstep_null : params.retry_maxstep_firth)<< ") " <<
-                "and increasing the maximum number of iterations using `--maxiter-null` (currently=" << (params.fix_maxstep_null ? params.niter_max_firth_null : params.retry_niter_firth) << ").\n";
-              exit(-1);
-            }
-          }
-          sout << "done";
-          auto t2 = std::chrono::high_resolution_clock::now();
-          auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
-          sout << " (" << duration.count() << "ms) "<< endl;
-        }
+    } else {
 
-      }
-    } else continue;
+      fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
+
+      res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
+      res.array() /= m_ests.Gamma_sqrt.array();
+      res.array() *= pheno_data.masked_indivs.array().cast<double>();
+
+      // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
+      if(params.firth_approx) fit_null_firth(chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+
+    }
+
 
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
@@ -2182,7 +2168,7 @@ void Data::test_snps_fast() {
       if(bb == 0) {
         block_info.resize(bs);
       }
-      if((bb +1) * params.block_size > chrom_nsnps) {
+      if((bb + 1) * params.block_size > chrom_nsnps) {
         bs = chrom_nsnps - (bb * params.block_size);
         block_info.resize(bs);
       }
@@ -2304,6 +2290,19 @@ void Data::test_snps_fast() {
       snp_tally.snp_count += bs;
       block++;
     }
+
+
+    // check if need to skip snps at end of chromosome
+    if((params.file_type == "bed") && (params.keep_snps || params.rm_snps) ) {
+      nread = snp_index_counter - nread;
+      //sout << "Nread =" << nread << "; chr=" << chrom << endl;
+      if(nread < chrom_nsnps_file) {
+        files.bed_ifstream.seekg((chrom_nsnps_file - nread) * files.bed_block_size, ios_base::cur);
+        snp_index_counter += chrom_nsnps_file - nread;
+        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
+      }
+    }
+
   }
 
   sout << endl;
@@ -2342,27 +2341,45 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   vector< uint32_t > insize, outsize;
 
   if(params.file_type == "bgen"){
+    uint64 pos_skip;
+    ifstream bfile;
     snp_data_blocks.resize( n_snps );
     insize.resize(n_snps); outsize.resize(n_snps);
-
-    // extract genotype data blocks single-threaded
-    uint64 first_snp = snpinfo[start].offset;
-    ifstream bfile;
     bfile.open( files.bgen_file, ios::in | ios::binary );
-    bfile.seekg( first_snp );
+
     for(int isnp = 0; isnp < n_snps; isnp++) {
+
+      // extract genotype data blocks single-threaded
+      pos_skip = snpinfo[start + isnp].offset;
+      bfile.seekg( pos_skip );
+
       readChunkFromBGEN(&bfile, &size1, &size2, &(snp_data_blocks[isnp]));
       insize[isnp] = size1;
       outsize[isnp] = size2;
+
     }
     bfile.close();
-  } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info);
+
+  } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
   else {
     // read in N/4 bytes from bed file for each snp
     snp_data_blocks.resize( n_snps );
-    for(int isnp = 0; isnp < n_snps; isnp++) {
+    for(int isnp = 0; isnp < n_snps;) {
+
+      // skip snps that are ignored
+      if(params.keep_snps || params.rm_snps){
+        if(in_filters.geno_mask[snp_index_counter]){
+          files.bed_ifstream.seekg(files.bed_block_size, ios_base::cur);
+          snp_index_counter++;
+          continue;
+        }
+      }
+
       snp_data_blocks[isnp].resize(files.bed_block_size);
       files.bed_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
+
+      isnp++;
+      snp_index_counter++;
     }
   }
 
