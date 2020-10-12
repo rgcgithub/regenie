@@ -70,8 +70,8 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--ref-first`  | FLAG | Optional |Specify to use the first allele as the reference allele for BGEN or PLINK bed/bim/fam file input [default is to use the last allele as the reference]|
 |`--keep`  | FILE | Optional | Inclusion file that lists individuals to retain in the analysis|
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
-|`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep **(only works with option `--step 1`)**|
-|`--exclude`  | FILE | Optional | Exclusion file that lists IDs of variants to remove **(only works with option `--step 1`)**|
+|`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep|
+|`--exclude`  | FILE | Optional | Exclusion file that lists IDs of variants to remove|
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
