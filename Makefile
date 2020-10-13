@@ -52,7 +52,7 @@ DFILE         = ./Dockerfile
 TEST_SCRIPT   = ./test/test_docker.sh
 ifeq ($(strip $(STATIC)),1)
  ifneq ($(strip $(MKLROOT)),)
-  DFILE      = ./Dockerfile_mkl # only for static linking
+  DFILE       = ./Dockerfile_mkl # only for static linking
  endif
 endif
 

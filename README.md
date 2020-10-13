@@ -31,6 +31,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.5 (Enabled options `--extract/--exclude` in step 2).
+
 Version 1.0.6.4 (New option `--minINFO` to filter imputed variants in Step 2; added Regenie binary compiled with Intel MKL (only for x86_64 Linux)).
 
 Version 1.0.6.3 (Improved ridge logistic regression to avoid convergence issues in step 1 with low case-count traits).

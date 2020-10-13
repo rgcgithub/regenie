@@ -140,9 +140,41 @@ elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
 elif [ "`cut -d ' ' -f1-5 ${REGENIE_PATH}test/test_out.regenie | sed '2q;d'`" != "`grep \"^2\" ${REGENIE_PATH}example/example_3chr.bim | head -n 1 | awk '{print $1,$4,$2,$5,$6}'`" ]; then
   echo "Uh oh, REGENIE did not build successfully"
 else
-  echo "SUCCESS: Docker image passed the tests!"
-  echo -e "\nYou can run regenie using for example:"
-  echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
+
+  echo -e "Passed.\n\nRunning third test...\n"
+  # Third command
+  rgcmd="--step 2 \
+    --bed ${mntpt}example/example_3chr \
+    --ref-first \
+    --extract ${mntpt}test/test_out.snplist \
+    --covarFile ${mntpt}example/covariates.txt${fsuf} \
+    --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+    --phenoColList Y2 \
+    --bsize 100 \
+    --test dominant \
+    --ignore-pred \
+    --write-samples \
+    --print-pheno \
+    --out ${mntpt}test/test_out_extract"
+
+  grep -v "^1" ${REGENIE_PATH}example/example_3chr.bim | awk '{ print $2 }' > ${REGENIE_PATH}test/test_out.snplist
+
+  docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+
+  # remove info column from file in run#2
+  cut --complement -d ' ' -f7 ${REGENIE_PATH}test/test_out.regenie > ${REGENIE_PATH}test/test_out.regenie.cut
+
+  if cmp --silent \
+    ${REGENIE_PATH}test/test_out.regenie.cut \
+    ${REGENIE_PATH}test/test_out_extract.regenie 
+    then
+      echo "SUCCESS: Docker image passed the tests!"
+      echo -e "\nYou can run regenie using for example:"
+      echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
+    else
+      echo "Uh oh, REGENIE did not build successfully. $help_msg"
+  fi
+
 fi
 
 # file cleanup

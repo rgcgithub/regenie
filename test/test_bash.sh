@@ -142,7 +142,38 @@ elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
 elif [ "`cut -d ' ' -f1-5 ${REGENIE_PATH}test/test_out.regenie | sed '2q;d'`" != "`grep \"^2\" ${REGENIE_PATH}example/example_3chr.bim | head -n 1 | awk '{print $1,$4,$2,$5,$6}'`" ]; then
   echo "Uh oh, REGENIE did not build successfully. $help_msg"
 else
-  echo "SUCCESS: REGENIE build passed the tests!"
+
+  echo -e "Passed.\n\nRunning third test...\n"
+  # Third command
+  rgcmd="--step 2 \
+    --bed ${mntpt}example/example_3chr \
+    --ref-first \
+    --extract ${mntpt}test/test_out.snplist \
+    --covarFile ${mntpt}example/covariates.txt${fsuf} \
+    --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+    --phenoColList Y2 \
+    --bsize 100 \
+    --chrList 2,3 \
+    --test dominant \
+    --ignore-pred \
+    --write-samples \
+    --print-pheno \
+    --out ${mntpt}test/test_out_extract"
+
+  grep -v "^1" ${REGENIE_PATH}example/example_3chr.bim | awk '{ print $2 }' > ${REGENIE_PATH}test/test_out.snplist
+
+  # run regenie
+  ./$regenie_bin $rgcmd
+
+  if cmp --silent \
+    ${REGENIE_PATH}test/test_out.regenie \
+    ${REGENIE_PATH}test/test_out_extract.regenie 
+    then
+      echo "SUCCESS: REGENIE build passed the tests!"
+    else
+      echo "Uh oh, REGENIE did not build successfully. $help_msg"
+  fi
+
 fi
 
 # file cleanup
