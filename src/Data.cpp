@@ -1236,21 +1236,19 @@ void Data::test_snps() {
   normal nd(0,1);
   std::chrono::high_resolution_clock::time_point t1, t2;
 
-  double chisq_val, bhat, se_b, pval_log, pval_raw;
+  double chisq_val, bhat, se_b, pval_log, pval_raw, info=0;
   double chisq_thr = quantile(complement(chisq, params.alpha_pvalue));
   double zcrit = quantile(complement(nd, .025));
-  double effect_val, outse_val=0, outp_val=1;
   uint32_t n_failed_tests = 0;
   uint32_t n_ignored_snps = 0;
   uint32_t n_skipped_snps = 0;
-  string out, correction_type;
+  string out, tmpstr;
   vector < string > out_split;
+  // output files
   Files ofile;
   // use pointer to class since it contains non-copyable elements
   vector < Files* > ofile_split;
   MatrixXd WX, GW, sqrt_denum, scaleG_pheno;
-  RowVectorXd p_sd;
-
 
   setNbThreads(params.threads); // set threads
   file_read_initialization(); // set up files for reading
@@ -1258,83 +1256,40 @@ void Data::test_snps() {
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
+  print_test_info();
 
-
-  if(params.test_type == 0) test_string = "ADD";
-  else if(params.test_type == 1) test_string = "DOM";
-  else test_string = "REC";
 
   // write results in one file
   if(!params.split_by_pheno){
 
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile.openForWrite(out, sout);
-    // header of output file
-    ofile << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " <<
-      "ALLELE1" << " " << "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " ";
-    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " " << "SE.Y" << i+1 <<
-      " " << "CHISQ.Y" << i+1 << " " << "LOG10P.Y" << i+1 << " ";
-    ofile << endl;
+    ofile << print_header_output();
 
   } else { // split results in separate files for each phenotype
 
     out_split.resize( params.n_pheno );
     ofile_split.resize( params.n_pheno );
 
+    // header of output file
+    if(!params.htp_out) tmpstr = print_header_output_single();
+    else tmpstr = print_header_output_htp();
+
     for(int i = 0; i < params.n_pheno; i++) {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
-      // header of output file
-      if(!params.htp_out){
-        (*ofile_split[i]) << "CHROM" << " " << "GENPOS" << " " << "ID" << " " << "ALLELE0" << " " << "ALLELE1" << " " <<
-          "A1FREQ" << " " << ((params.file_type == "bgen")? "INFO ":"") << "TEST" << " " << "BETA" << " " << "SE" << " " <<
-          "CHISQ" << " " << "LOG10P\n";
-      } else {
-        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "	" << "Alt" << "\t" <<
-          "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" <<
-          "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" <<
-          "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" <<
-          "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info\n";
-      }
+      (*ofile_split[i]) << tmpstr;
     }
 
   }
 
-  if(params.htp_out){
-    if(params.binary_mode & params.firth) correction_type = "-FIRTH";
-    else if(params.binary_mode & params.use_SPA) correction_type = "-SPA";
-    else if(params.binary_mode) correction_type = "-LOG";
-    else correction_type = "-LR";
-
-    if(params.skip_blups) model_type = test_string + correction_type;
-    else model_type = test_string + "-WGR" + correction_type;
-  }
 
 
   // set memory for matrices used to store estimates under H0
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
   m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
   m_ests.Xt_Gamma_X_inv.resize(params.n_pheno);
-
-
-  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
-  if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
-  if(params.firth || params.use_SPA) {
-    sout << " * using ";
-    if(params.firth_approx) sout << "fast ";
-    if(params.firth) sout << "Firth ";
-    else sout << "SPA ";
-    sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
-    if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
-    n_corrected = 0;
-  }
-
-  // if testing select chromosomes
-  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes\n";
-  sout << endl;
-
-
   // set covariates for firth
   if(params.firth){
     firth_est.covs_firth = MatrixXd::Zero(params.n_samples, pheno_data.new_cov.cols() + 1);
@@ -1346,7 +1301,7 @@ void Data::test_snps() {
   int block = 0, chrom, chrom_nsnps, nread=0, chrom_nsnps_file=0, chrom_nb, bs, snps_skip;
   uint32_t snp_count = 0;
   snp_index_counter = 0; // keep track of snps in file
-  
+
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     chrom = files.chr_read[itr];
     if( chr_map.find(chrom) == chr_map.end() ) continue;
@@ -1379,27 +1334,8 @@ void Data::test_snps() {
     blup_read_chr(chrom);
 
     // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-    if(!params.binary_mode){
-
-      res = pheno_data.phenotypes - m_ests.blups;
-      res.array() *= pheno_data.masked_indivs.array().cast<double>();
-
-      p_sd = res.colwise().norm();
-      p_sd.array() /= sqrt(pheno_data.Neff -1);
-      res.array().rowwise() /= p_sd.array();
-
-    } else {
-
-      fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
-
-      res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
-      res.array() /= m_ests.Gamma_sqrt.array();
-      res.array() *= pheno_data.masked_indivs.array().cast<double>();
-
-      // if using firth approx., fit null penalized model with only covariates and store the estimates (used as offset when computing LRT in full model)
-      if(params.firth_approx) fit_null_firth(chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
-
-    }
+    if(params.binary_mode) compute_res_bin(chrom);
+    else compute_res();
 
 
     // analyze by blocks of SNPs
@@ -1412,7 +1348,8 @@ void Data::test_snps() {
         Gblock.Gmat = MatrixXd::Zero(bs,params.n_samples);
         stats = MatrixXd::Zero(bs, params.n_pheno);
         Gblock.snp_afs = MatrixXd::Zero(bs, 1);
-        if(params.file_type == "bgen") Gblock.snp_info = MatrixXd::Zero(bs, 1);
+        Gblock.snp_mac = MatrixXd::Zero(bs, 1);
+        if(params.dosage_mode) Gblock.snp_info = MatrixXd::Zero(bs, 1);
         if(params.binary_mode) sqrt_denum = MatrixXd::Zero(bs, params.n_pheno);
         else scaleG_pheno = MatrixXd::Zero(bs, params.n_pheno);
         if(params.use_SPA) {
@@ -1494,22 +1431,16 @@ void Data::test_snps() {
           snp_count++;
           continue;
         }
+        if( params.dosage_mode ) info = Gblock.snp_info(i,0);
 
-        if(!params.split_by_pheno) {
-          ofile << (snpinfo[snp_count]).chrom << " " << (snpinfo[snp_count]).physpos << " "<< (snpinfo[snp_count]).ID << " "<< (snpinfo[snp_count]).allele1 << " "<< (snpinfo[snp_count]).allele2 << " " << Gblock.snp_afs(i, 0) << " " ;
-          if(params.file_type == "bgen") ofile << Gblock.snp_info(i, 0) << " ";
-          ofile << test_string << " ";
-        }
+        if(!params.htp_out) tmpstr = print_sum_stats_head(snp_count, Gblock.snp_afs(i, 0), info, test_string);
+
+        if(!params.split_by_pheno) ofile << tmpstr;
 
         for( int j = 0; j < params.n_pheno; ++j ) {
           if(params.split_by_pheno) {
-            if(!params.htp_out){
-              (*ofile_split[j]) << (snpinfo[snp_count]).chrom << " " << (snpinfo[snp_count]).physpos << " "<< (snpinfo[snp_count]).ID << " "<< (snpinfo[snp_count]).allele1 << " "<< (snpinfo[snp_count]).allele2 << " " << Gblock.snp_afs(i, 0) << " " ;
-              if(params.file_type == "bgen") (*ofile_split[j]) << Gblock.snp_info(i, 0) << " ";
-              (*ofile_split[j]) << test_string << " ";
-            } else {
-              (*ofile_split[j]) <<  (snpinfo[snp_count]).ID << "\t"<< (snpinfo[snp_count]).chrom << "\t" << (snpinfo[snp_count]).physpos << "\t"<< (snpinfo[snp_count]).allele1 << "\t"<< (snpinfo[snp_count]).allele2 << "\t" << files.pheno_names[j] << "\t" << params.cohort_name << "\t" << model_type << "\t";
-            }
+            if(!params.htp_out) (*ofile_split[j]) << tmpstr;
+            else  (*ofile_split[j]) <<  print_sum_stats_head_htp(snp_count, j, model_type);
           }
 
           chisq_val = stats(i,j) * stats(i,j);
@@ -1526,9 +1457,9 @@ void Data::test_snps() {
 
             // estimate & SE for QT
             if( params.strict_mode )
-              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(pheno_data.Neff(j)) * scale_G(i) );
+              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd_yres(j)) / ( sqrt(pheno_data.Neff(j)) * scale_G(i) );
             else
-              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd(j)) / ( sqrt(scaleG_pheno(i,j)) * scale_G(i) );
+              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd_yres(j)) / ( sqrt(scaleG_pheno(i,j)) * scale_G(i) );
             se_b = bhat / stats(i,j);
 
           } else {
@@ -1562,88 +1493,11 @@ void Data::test_snps() {
 
           }
 
+          if( !pval_converged ) n_failed_tests++;
 
-          if(!params.split_by_pheno)
-            ofile << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
-          else if(!params.htp_out) (*ofile_split[j]) << bhat << ' ' << se_b << ' ' << chisq_val << ' ';
-
-          if( pval_converged ) {
-            if(!params.split_by_pheno) ofile << pval_log << ' ';
-            else {
-              if(!params.htp_out)  (*ofile_split[j]) << pval_log << ' ';
-              else {
-                outp_val = max(params.nl_dbl_dmin, pow(10, - pval_log)); // to prevent overflow
-                if(outp_val == 1) outp_val = 1 - 1e-7;
-              }
-            }
-          } else {
-            n_failed_tests++;
-            //sout << "\nSNP was #" << snp_count+1 << endl;
-            if(!params.split_by_pheno) ofile << "NA" << " ";
-            else {
-              if(!params.htp_out)  (*ofile_split[j]) << "NA" << " ";
-              else outp_val = -1;
-            }
-          }
-
-          // for HTPv4 output
-          if(params.htp_out){
-
-            // Effect / CI bounds / Pvalue columns
-            if(!params.binary_mode || ( params.firth & (outp_val >= 0) ) ){
-
-              if(!params.binary_mode) // QT
-                (*ofile_split[j]) << bhat << "\t" << (bhat - zcrit * se_b) << "\t" << (bhat + zcrit * se_b) << "\t" << outp_val << "\t";
-              else // BT (on OR scale)
-                (*ofile_split[j]) << exp(bhat) << "\t" << exp(bhat - zcrit * se_b) << "\t" << exp(bhat + zcrit * se_b) << "\t" << outp_val << "\t";
-
-            } else {
-              // for tests that failed, print NA
-              if(outp_val<0){
-                (*ofile_split[j]) << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
-              } else{
-                // for spa or uncorrected logistic score test
-                // compute allelic OR
-                effect_val = (2*Gblock.genocounts[i](3,j)+Gblock.genocounts[i](4,j)+.5)*(2*Gblock.genocounts[i](2,j)+Gblock.genocounts[i](1,j)+.5)/(2*Gblock.genocounts[i](5,j)+Gblock.genocounts[i](4,j)+.5)/(2*Gblock.genocounts[i](0,j)+Gblock.genocounts[i](1,j)+.5);
-                // compute SE = log(allelic OR) / zstat
-                outse_val = fabs(log(effect_val)) / quantile(complement(nd, outp_val/2 ));
-
-                (*ofile_split[j]) << effect_val << "\t" << effect_val * exp(- zcrit * outse_val) << "\t" << effect_val * exp(zcrit * outse_val) << "\t" << outp_val << "\t";
-              }
-            }
-
-            // print out AF
-            (*ofile_split[j]) << Gblock.snp_afs(i, 0) << "\t";
-
-            // print counts in cases
-            (*ofile_split[j]) << (int) Gblock.genocounts[i].block(0,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](0,j) << "\t" << (int) Gblock.genocounts[i](1,j) << "\t" << (int) Gblock.genocounts[i](2,j) << "\t";
-
-            // print counts in controls
-            if(params.binary_mode){
-              (*ofile_split[j]) << (int) Gblock.genocounts[i].block(3,j,3,1).sum() << "\t" << (int) Gblock.genocounts[i](3,j) << "\t" << (int) Gblock.genocounts[i](4,j) << "\t" << (int) Gblock.genocounts[i](5,j);
-            } else (*ofile_split[j]) << "NA\tNA\tNA\tNA";
-
-            // info column
-            if(params.binary_mode){
-              if(outp_val<0){ // only have NA
-                (*ofile_split[j]) << "\t" << "REGENIE_BETA=NA;" <<
-                  "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
-              } else {
-                // Firth => BETA + SE
-                if(params.firth){
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat <<
-                    ";" << "REGENIE_SE=" << se_b;
-                } else {
-                  // SPA/uncorrected logistic => beta & SEs
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << bhat <<
-                    ";" << "REGENIE_SE=" << se_b <<
-                    ";" << "SE=" << outse_val;
-                }
-              }
-            } else (*ofile_split[j]) << "\t" << "REGENIE_SE=" << se_b; // fot QTs
-
-            if(params.file_type == "bgen") (*ofile_split[j]) << ";INFO=" << Gblock.snp_info(i,0);
-          }
+          if(!params.split_by_pheno) ofile << print_sum_stats(bhat, se_b, chisq_val, pval_log, j, pval_converged);
+          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(bhat, se_b, chisq_val, pval_log, pval_converged);
+          else (*ofile_split[j]) << print_sum_stats_htp(bhat, se_b, chisq_val, pval_log, Gblock.snp_afs(i, 0), info, Gblock.snp_mac(i, 0), Gblock.genocounts[i], zcrit, j, pval_converged);
 
           if(params.split_by_pheno) (*ofile_split[j]) << endl;
         }
@@ -1671,7 +1525,7 @@ void Data::test_snps() {
         //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
       }
     }
-    
+
   }
 
   sout << endl;
@@ -1689,16 +1543,193 @@ void Data::test_snps() {
   }
 
   if(params.firth || params.use_SPA) {
-    sout << "Number of tests with ";
-    sout << (params.firth ? "Firth " : "SPA ");
+    sout << "Number of tests with " << (params.firth ? "Firth " : "SPA ");
     sout << "correction : (" << n_corrected << "/" << (snpinfo.size() - n_skipped_snps - n_ignored_snps) * params.n_pheno << ")" <<  endl;
     sout << "Number of failed tests : (" << n_failed_tests << "/" << n_corrected << ")\n";
   }
 
-  sout << "Number of ignored SNPs due to low MAC "; 
-  if( params.setMinINFO ) sout << "or info score ";
+  sout << "Number of ignored SNPs due to low MAC " << ( params.setMinINFO ? "or info score " : "");
   sout << ": " << n_ignored_snps << endl;
 
+}
+
+
+void Data::print_test_info(){
+
+  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
+  if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
+  if(params.firth || params.use_SPA) {
+    sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
+    sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
+    if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
+    n_corrected = 0;
+  }
+  // if testing select chromosomes
+  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes\n";
+  sout << endl;
+
+
+  if(params.test_type == 0) test_string = "ADD";
+  else if(params.test_type == 1) test_string = "DOM";
+  else test_string = "REC";
+
+
+  if(params.htp_out){
+    if(params.binary_mode & params.firth) correction_type = "-FIRTH";
+    else if(params.binary_mode & params.use_SPA) correction_type = "-SPA";
+    else if(params.binary_mode) correction_type = "-LOG";
+    else correction_type = "-LR";
+
+    if(params.skip_blups) model_type = test_string + correction_type;
+    else model_type = test_string + "-WGR" + correction_type;
+  }
+
+}
+
+std::string Data::print_header_output(){
+
+  int i;
+  std::ostringstream buffer;
+
+  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ( params.dosage_mode ? "INFO ":"") << "TEST ";
+  for(i = 1; i < params.n_pheno; i++) buffer << "BETA.Y" << i << " SE.Y" << i <<  " CHISQ.Y" << i << " LOG10P.Y" << i << " ";
+  // last phenotype
+  buffer << "BETA.Y" << i << " SE.Y" << i <<  " CHISQ.Y" << i << " LOG10P.Y" << i <<  endl;
+
+  return buffer.str();
+}
+
+
+std::string Data::print_header_output_single(){
+
+  std::ostringstream buffer;
+
+  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ( params.dosage_mode ? "INFO ":"") << "TEST BETA SE CHISQ LOG10P\n";
+
+  return buffer.str();
+}
+
+std::string Data::print_header_output_htp(){
+
+  std::ostringstream buffer;
+
+  buffer << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info\n";
+
+  return buffer.str();
+}
+
+std::string Data::print_sum_stats_head(const int snp_count, const double af, const double info, const string model){
+
+  std::ostringstream buffer;
+
+  buffer << snpinfo[snp_count].chrom << " " << snpinfo[snp_count].physpos << " "<< snpinfo[snp_count].ID << " "<< snpinfo[snp_count].allele1 << " "<< snpinfo[snp_count].allele2 << " " << af << " " ;
+  if(params.dosage_mode) buffer << info << " ";
+  buffer << model << " ";
+
+  return buffer.str();
+}
+
+std::string Data::print_sum_stats_head_htp(const int snp_count, const int ph, const string model){
+
+  std::ostringstream buffer;
+
+  buffer << snpinfo[snp_count].ID << "\t"<< snpinfo[snp_count].chrom << "\t" << snpinfo[snp_count].physpos << "\t"<< snpinfo[snp_count].allele1 << "\t"<< snpinfo[snp_count].allele2 << "\t" << files.pheno_names[ph] << "\t" << params.cohort_name << "\t" << model << "\t";
+
+  return buffer.str();
+}
+
+
+std::string Data::print_sum_stats(const double beta, const double se, const double chisq, const double pv, const int ph, const bool test_pass){
+
+  std::ostringstream buffer;
+  bool last = ((ph+1)==params.n_pheno);
+
+  buffer << beta << ' ' << se << ' ' << chisq << ' ';
+  if(test_pass) buffer << pv;
+  else buffer << "NA";
+  buffer << (last ? "" : " ");
+
+  return buffer.str();
+}
+
+
+std::string Data::print_sum_stats(const double beta, const double se, const double chisq, const double pv, const bool test_pass){
+
+  std::ostringstream buffer;
+
+  buffer << beta << ' ' << se << ' ' << chisq << ' ';
+  if(test_pass) buffer << pv;
+  else buffer << "NA";
+
+  return buffer.str();
+}
+
+
+std::string Data::print_sum_stats_htp(const double beta, const double se, const double chisq, const double pv, const double af, const double info, const double mac, const MatrixXd& genocounts, const double zcrit, const int ph, const bool test_pass){
+
+  std::ostringstream buffer;
+  double outp_val = -1, effect_val, outse_val;
+  normal nd(0,1);
+
+  if( test_pass ) {
+    outp_val = max(params.nl_dbl_dmin, pow(10, - pv)); // to prevent overflow
+    if(outp_val == 1) outp_val = 1 - 1e-7;
+  } 
+
+  // Effect / CI bounds / Pvalue columns
+  if(!params.binary_mode || ( params.firth & (outp_val >= 0) ) ){
+
+    if(!params.binary_mode) // QT
+      buffer << beta << "\t" << (beta - zcrit * se) << "\t" << (beta + zcrit * se) << "\t" << outp_val << "\t";
+    else // BT (on OR scale)
+      buffer << exp(beta) << "\t" << exp(beta - zcrit * se) << "\t" << exp(beta + zcrit * se) << "\t" << outp_val << "\t";
+
+  } else {
+    // for tests that failed, print NA
+    if(outp_val<0){
+      buffer << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
+    } else{
+      // for spa or uncorrected logistic score test
+      // compute allelic OR
+      effect_val = (2*genocounts(3,ph)+genocounts(4,ph)+.5)*(2*genocounts(2,ph)+genocounts(1,ph)+.5)/(2*genocounts(5,ph)+genocounts(4,ph)+.5)/(2*genocounts(0,ph)+genocounts(1,ph)+.5);
+      // compute SE = log(allelic OR) / zstat
+      outse_val = fabs(log(effect_val)) / quantile(complement(nd, outp_val/2 ));
+
+      buffer << effect_val << "\t" << effect_val * exp(- zcrit * outse_val) << "\t" << effect_val * exp(zcrit * outse_val) << "\t" << outp_val << "\t";
+    }
+  }
+
+  // print out AF
+  buffer << af << "\t";
+
+  // print counts in cases
+  buffer << (int) genocounts.block(0,ph,3,1).sum() << "\t" << (int) genocounts(0,ph) << "\t" << (int) genocounts(1,ph) << "\t" << (int) genocounts(2,ph) << "\t";
+
+  // print counts in controls
+  if(params.binary_mode){
+    buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
+  } else buffer << "NA\tNA\tNA\tNA";
+
+  // info column
+  if(params.binary_mode){
+
+    if(outp_val<0){ // only have NA
+      buffer << "\t" << "REGENIE_BETA=NA;" << "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
+    } else {
+      buffer << "\t" << "REGENIE_BETA=" << beta << ";" << "REGENIE_SE=" << se;
+      // SPA/uncorrected logistic => also print SE from allelic OR
+      if(!params.firth) buffer << ";SE=" << outse_val;
+    }
+
+  } else buffer << "\t" << "REGENIE_SE=" << se; // fot QTs
+
+  // info score
+  if(params.dosage_mode) buffer << ";INFO=" << info;
+
+  // mac
+  buffer << ";MAC=" << mac;
+
+  return buffer.str();
 }
 
 
@@ -1789,7 +1820,7 @@ void Data::blup_read_chr(const int chrom) {
 
     // force all non-masked samples to have loco predictions
     //   -> this should not occur as masking of absent samples is done in blup_read() function
-    if( (pheno_data.masked_indivs.col(i_pheno).array() * read_indiv).cast<int>().sum() < pheno_data.masked_indivs.col(i_pheno).cast<int>().sum() ){
+    if( (pheno_data.masked_indivs.col(i_pheno).array() && read_indiv).cast<int>().sum() < pheno_data.masked_indivs.col(i_pheno).cast<int>().sum() ){
       sout << "ERROR: All samples included in the analysis (for phenotype " <<
         files.pheno_names[i_pheno]<< ") must have LOCO predictions in file : " << files.blup_files[ph] << "\n";
       exit(-1);
@@ -2011,7 +2042,13 @@ void Data::test_snps_fast() {
   std::chrono::high_resolution_clock::time_point t1, t2;
   normal nd(0,1);
   double zcrit = quantile(complement(nd, .025));
-  double effect_val, outse_val=0, outp_val=1;
+  double info = 0;
+  string out, tmpstr;
+  vector < string > out_split;
+  // output files
+  Files ofile;
+  // use pointer to class since it contains non-copyable elements
+  vector < Files* > ofile_split;
 
 #if defined(_OPENMP)
   omp_set_num_threads(params.threads); // set threads in OpenMP
@@ -2025,65 +2062,33 @@ void Data::test_snps_fast() {
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
   set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
-
-  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
-  if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
-  if(params.firth || params.use_SPA) {
-    sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
-    sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
-    if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
-    n_corrected = 0;
-  }
-  // if testing select chromosomes
-  if( params.select_chrs ) sout << " * user specified to test only on select chromosomes\n";
-  sout << endl;
+  print_test_info();
 
 
-  // output files
-  Files ofile;
-  string out, correction_type;
-  vector < string > out_split;
-  // use pointer to class since it contains non-copyable elements
-  vector < Files* > ofile_split;
 
-  if(params.test_type == 0) test_string = "ADD";
-  else if(params.test_type == 1) test_string = "DOM";
-  else test_string = "REC";
+  // header of output file
   if(!params.split_by_pheno){ // write results in one file
+
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile.openForWrite(out, sout);
-    // header of output file
-    ofile << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " <<
-      ( params.dosage_mode ? "INFO ":"") << "TEST ";
-    for(int i = 0; i < params.n_pheno; i++) ofile << "BETA.Y" << i + 1 << " SE.Y" << i+1 <<  " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1 << " ";
-    ofile << endl;
+    ofile << print_header_output();
+
   } else {  // split results in separate files for each phenotype
     out_split.resize( params.n_pheno );
     ofile_split.resize( params.n_pheno );
+
+    // header of output file
+    if(!params.htp_out) tmpstr = print_header_output_single();
+    else tmpstr = print_header_output_htp();
 
     for(int i = 0; i < params.n_pheno; i++) {
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
-      // header of output file
-      if(!params.htp_out){
-        (*ofile_split[i]) << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " <<
-          ( params.dosage_mode ? "INFO ":"") << "TEST BETA SE CHISQ LOG10P\n";
-      } else {
-        (*ofile_split[i]) << "Name" << "\t" << "Chr" << "\t" << "Pos" << "\t" << "Ref" << "\t" << "Alt" << "\t" << "Trait" << "\t" << "Cohort" << "\t" << "Model" << "\t" << "Effect" << "\t" << "LCI_Effect" << "\t" << "UCI_Effect" << "\t" << "Pval" << "\t" << "AAF" << "\t" << "Num_Cases"<< "\t" << "Cases_Ref" << "\t" << "Cases_Het" << "\t" << "Cases_Alt" << "\t" << "Num_Controls" << "\t" << "Controls_Ref" << "\t" << "Controls_Het"<< "\t"<< "Controls_Alt" << "\t" << "Info\n";
-      }
+      (*ofile_split[i]) << tmpstr;
     }
-  }
 
-  if(params.htp_out){
-    if(params.binary_mode & params.firth) correction_type = "-FIRTH";
-    else if(params.binary_mode & params.use_SPA) correction_type = "-SPA";
-    else if(params.binary_mode) correction_type = "-LOG";
-    else correction_type = "-LR";
-    if(params.skip_blups) model_type = test_string + correction_type;
-    else model_type = test_string + "-WGR" + correction_type;
   }
-
 
 
   // start analyzing each chromosome
@@ -2136,27 +2141,8 @@ void Data::test_snps_fast() {
     blup_read_chr(chrom);
 
     // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-    if(!params.binary_mode){
-
-      res = pheno_data.phenotypes - m_ests.blups;
-      res.array() *= pheno_data.masked_indivs.array().cast<double>();
-
-      p_sd_yres = res.colwise().norm();
-      p_sd_yres.array() /= sqrt(pheno_data.Neff -1);
-      res.array().rowwise() /= p_sd_yres.array();
-
-    } else {
-
-      fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
-
-      res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
-      res.array() /= m_ests.Gamma_sqrt.array();
-      res.array() *= pheno_data.masked_indivs.array().cast<double>();
-
-      // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
-      if(params.firth_approx) fit_null_firth(chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
-
-    }
+    if(params.binary_mode) compute_res_bin(chrom);
+    else compute_res();
 
 
     // analyze by blocks of SNPs
@@ -2166,10 +2152,12 @@ void Data::test_snps_fast() {
 
       bs = params.block_size;
       if(bb == 0) {
+        Gblock.Gmat.resize(params.n_samples, bs);
         block_info.resize(bs);
       }
       if((bb + 1) * params.block_size > chrom_nsnps) {
         bs = chrom_nsnps - (bb * params.block_size);
+        Gblock.Gmat.resize(params.n_samples, bs);
         block_info.resize(bs);
       }
 
@@ -2185,100 +2173,26 @@ void Data::test_snps_fast() {
           snp_tally.n_ignored_snps++;
           continue;
         }
+        if( params.dosage_mode ) info = block_info[isnp].info;
 
-        if(!params.split_by_pheno) {
-          ofile << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-          if( params.dosage_mode ) ofile << block_info[isnp].info << " ";
-          ofile << test_string << " ";
-        }
+        if(!params.htp_out) tmpstr = print_sum_stats_head(snpindex, block_info[isnp].af, info, test_string);
+
+        if(!params.split_by_pheno) ofile << tmpstr;
 
         for(int j = 0; j < params.n_pheno; ++j) {
+
           if( (params.firth || params.use_SPA) && block_info[isnp].is_corrected[j] ) n_corrected++;
+          if( block_info[isnp].test_fail[j] ) snp_tally.n_failed_tests++;
 
           if(params.split_by_pheno) {
-            if(!params.htp_out){
-              (*ofile_split[j]) << (snpinfo[snpindex]).chrom << " " << (snpinfo[snpindex]).physpos << " "<< (snpinfo[snpindex]).ID << " "<< (snpinfo[snpindex]).allele1 << " "<< (snpinfo[snpindex]).allele2 << " " << block_info[isnp].af << " " ;
-              if( params.dosage_mode ) (*ofile_split[j]) << block_info[isnp].info << " ";
-              (*ofile_split[j]) << test_string << " ";
-            } else {
-              (*ofile_split[j]) <<  (snpinfo[snpindex]).ID << "\t"<< (snpinfo[snpindex]).chrom << "\t" << (snpinfo[snpindex]).physpos << "\t"<< (snpinfo[snpindex]).allele1 << "\t"<< (snpinfo[snpindex]).allele2 << "\t" << files.pheno_names[j] << "\t" << params.cohort_name << "\t" << model_type << "\t";
-            }
+            if(!params.htp_out) (*ofile_split[j]) << tmpstr;
+            else  (*ofile_split[j]) <<  print_sum_stats_head_htp(snpindex, j, model_type);
           }
 
-          if(!params.split_by_pheno) {
-            ofile << block_info[isnp].bhat(j) << ' ' << block_info[isnp].se_b(j)  << ' ' << block_info[isnp].chisq_val(j)  << ' ';
-          } else if(!params.htp_out) (*ofile_split[j]) << block_info[isnp].bhat(j)  << ' ' << block_info[isnp].se_b(j)  << ' ' << block_info[isnp].chisq_val(j)  << ' ';
 
-          if( !block_info[isnp].test_fail[j] ) {
-            if(!params.split_by_pheno) ofile << block_info[isnp].pval_log(j)  << ' ';
-            else {
-              if(!params.htp_out)  (*ofile_split[j]) << block_info[isnp].pval_log(j)  << ' ';
-              else  {
-                outp_val = max(params.nl_dbl_dmin, pow(10, -block_info[isnp].pval_log(j))); // to prevent overflow
-                if(outp_val == 1) outp_val = 1 - 1e-7;
-              }
-            }
-          } else {
-            snp_tally.n_failed_tests++;
-            if(!params.split_by_pheno) ofile << "NA" << " ";
-            else {
-              if(!params.htp_out) (*ofile_split[j]) << "NA" << " ";
-              else outp_val = -1;
-            }
-          }
-
-          // for HTPv4 output
-          if(params.htp_out){
-            if(!params.binary_mode || (params.firth & !block_info[isnp].test_fail[j]) ){
-
-              if(!params.binary_mode) // QT
-                (*ofile_split[j]) << block_info[isnp].bhat(j) << "\t" << block_info[isnp].bhat(j) - zcrit * block_info[isnp].se_b(j) << "\t" << block_info[isnp].bhat(j) + zcrit * block_info[isnp].se_b(j) << "\t" << outp_val << "\t";
-              else // BT (on OR scale)
-                (*ofile_split[j]) << exp( block_info[isnp].bhat(j) ) << "\t" << exp( block_info[isnp].bhat(j) - zcrit * block_info[isnp].se_b(j) ) << "\t" << exp( block_info[isnp].bhat(j) + zcrit * block_info[isnp].se_b(j) ) << "\t" << outp_val << "\t";
-
-            } else {
-              // for tests that failed, print NA
-              if(outp_val<0){
-                (*ofile_split[j]) << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
-              } else{
-                // compute allelic OR (SPA or uncorrected)
-                effect_val = (2*block_info[isnp].genocounts(3,j)+block_info[isnp].genocounts(4,j)+.5)*(2*block_info[isnp].genocounts(2,j)+block_info[isnp].genocounts(1,j)+.5)/(2*block_info[isnp].genocounts(5,j)+block_info[isnp].genocounts(4,j)+.5)/(2*block_info[isnp].genocounts(0,j)+block_info[isnp].genocounts(1,j)+.5);
-                // compute SE = log(allelic OR) / zstat
-                outse_val = fabs(log(effect_val)) / quantile(complement(nd, outp_val/2 ));
-                (*ofile_split[j]) << effect_val << "\t" << effect_val * exp(- zcrit * outse_val) << "\t" << effect_val * exp(zcrit * outse_val) << "\t" << outp_val << "\t";
-              }
-            }
-
-            // print out AF
-            (*ofile_split[j]) << block_info[isnp].af << "\t";
-            // print counts in cases
-            (*ofile_split[j]) << (int) block_info[isnp].genocounts.block(0,j,3,1).sum() << "\t" << (int) block_info[isnp].genocounts(0,j) << "\t" << (int) block_info[isnp].genocounts(1,j) << "\t" << (int) block_info[isnp].genocounts(2,j) << "\t";
-            // print counts in controls
-            if(params.binary_mode){
-              (*ofile_split[j]) << (int) block_info[isnp].genocounts.block(3,j,3,1).sum() << "\t" << (int) block_info[isnp].genocounts(3,j) << "\t" << (int) block_info[isnp].genocounts(4,j) << "\t" << (int) block_info[isnp].genocounts(5,j) ;
-            } else (*ofile_split[j]) << "NA\tNA\tNA\tNA";
-
-            // info column
-            if(params.binary_mode){
-              if(outp_val < 0){
-                (*ofile_split[j]) << "\t" << "REGENIE_BETA=NA;" <<
-                  "REGENIE_SE=NA" << (params.firth ? "" : ";SE=NA");
-              } else {
-                // Firth => BETA + SE
-                if(params.firth){
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) <<
-                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) ;
-                } else {
-                  // SPA/uncorrected logistic => beta & SEs
-                  (*ofile_split[j]) << "\t" << "REGENIE_BETA=" << block_info[isnp].bhat(j) <<
-                    ";" << "REGENIE_SE=" << block_info[isnp].se_b(j) <<
-                    ";" << "SE=" << outse_val;
-                }
-              }
-            } else (*ofile_split[j]) << "\t" << "REGENIE_SE=" << block_info[isnp].se_b(j); // for QTs
-
-            if( params.dosage_mode ) (*ofile_split[j]) << ";INFO=" << block_info[isnp].info;
-          }
+          if(!params.split_by_pheno) ofile << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), j, !block_info[isnp].test_fail[j]);
+          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]);
+          else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af, info, block_info[isnp].mac, block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]);
 
           if(params.split_by_pheno) (*ofile_split[j]) << endl;
         }
@@ -2360,7 +2274,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     }
     bfile.close();
 
-  } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
+  } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
   else {
     // read in N/4 bytes from bed file for each snp
     snp_data_blocks.resize( n_snps );
@@ -2390,7 +2304,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 #pragma omp parallel for schedule(dynamic)
 #endif
   for(int isnp = 0; isnp < n_snps; isnp++) {
-    int snp_index = start + isnp;
+    uint32_t snp_index = start + isnp;
     chi_squared chisq(1);
     double pval_raw;
 
@@ -2398,13 +2312,13 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     variant_block* block_info = &(all_snps_info[isnp]);
 
     if(params.file_type == "bgen"){ // uncompress and extract the dosages
-      parseSnpfromBGEN(&(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], block_info, sout);
+      parseSnpfromBGEN(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
     } else if(params.file_type == "bed"){ // extract hardcalls
-      parseSnpfromBed(snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, block_info);
+      parseSnpfromBed(isnp, chrom, snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, block_info);
     }
 
     // for QTs (or BTs with firth approx): project out covariates & scale
-    residualize_geno(block_info);
+    residualize_geno(isnp, block_info);
 
     // skip SNP if fails filters
     if( block_info->ignored ) continue;
@@ -2414,6 +2328,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     block_info->se_b = ArrayXd::Zero(params.n_pheno);
     block_info->test_fail.assign(params.n_pheno, false);
     block_info->is_corrected.assign(params.n_pheno, true);
+    MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
 
 
     if(params.binary_mode) {
@@ -2426,7 +2341,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
         // project out covariates from G
         WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
         // apply mask
-        GW = (block_info->Geno * m_ests.Gamma_sqrt.col(i).array() * pheno_data.masked_indivs.col(i).array().cast<double>()).matrix();
+        GW = (Geno * m_ests.Gamma_sqrt.col(i).array() * pheno_data.masked_indivs.col(i).array().cast<double>()).matrix();
         tmpG = GW - WX * (m_ests.Xt_Gamma_X_inv[i] * (WX.transpose() * GW));
         block_info->denum(i) = tmpG.squaredNorm();
 
@@ -2441,12 +2356,12 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 
       // score test stat for QT
       if( params.strict_mode ) {
-        block_info->Geno *= in_filters.ind_in_analysis.cast<double>();
-        block_info->stats = (res.array().colwise() * block_info->Geno).matrix().transpose().rowwise().sum() / sqrt( in_filters.ind_in_analysis.cast<float>().sum() );
+        Geno *= in_filters.ind_in_analysis.cast<double>();
+        block_info->stats = (res.array().colwise() * Geno).matrix().transpose().rowwise().sum() / sqrt( in_filters.ind_in_analysis.cast<float>().sum() );
       } else {
         // compute GtG for each phenotype (different missing patterns)
-        block_info->scale_fac_pheno = (pheno_data.masked_indivs.cast<double>().array().colwise() * block_info->Geno).matrix().colwise().squaredNorm();
-        block_info->stats = (block_info->Geno.matrix().transpose() * res).transpose().array() / block_info->scale_fac_pheno.sqrt();
+        block_info->scale_fac_pheno = (pheno_data.masked_indivs.cast<double>().array().colwise() * Geno).matrix().colwise().squaredNorm();
+        block_info->stats = (Geno.matrix().transpose() * res).transpose().array() / block_info->scale_fac_pheno.sqrt();
       }
 
     }
@@ -2456,7 +2371,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     for( int i = 0; i < params.n_pheno; ++i ) {
 
       // test statistic & pvalue
-      if(!params.use_SPA) check_pval_snp(block_info, chrom, i);
+      if(!params.use_SPA) check_pval_snp(block_info, chrom, i, isnp);
 
       // summary stats
       if( !params.binary_mode ){
@@ -2504,31 +2419,54 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 }
 
 
-void Data::residualize_geno(variant_block* snp_data){
+void Data::residualize_geno(int isnp, variant_block* snp_data){
 
   if(snp_data->ignored) return;
 
   if(!params.binary_mode || params.firth_approx){
     // project out covariates
-    MatrixXd beta = pheno_data.new_cov.transpose() * snp_data->Geno.matrix();
-    snp_data->Geno -= (pheno_data.new_cov * beta).array();
+    MatrixXd beta = pheno_data.new_cov.transpose() * Gblock.Gmat.col(isnp);
+    Gblock.Gmat.col(isnp) -= pheno_data.new_cov * beta;
 
     // scale
-    snp_data->scale_fac = snp_data->Geno.matrix().norm();
+    snp_data->scale_fac = Gblock.Gmat.col(isnp).norm();
     snp_data->scale_fac /= sqrt( (params.strict_mode ? pheno_data.Neff(0) : in_filters.ind_in_analysis.cast<float>().sum()) - 1 );
 
     if( snp_data->scale_fac < params.numtol ) {
       snp_data->ignored = true;
       return;
     }
-    snp_data->Geno /= snp_data->scale_fac;
+    Gblock.Gmat.col(isnp).array() /= snp_data->scale_fac;
 
   } else snp_data->scale_fac = 1;
 
 }
 
+void Data::compute_res(){
 
-void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
+  res = pheno_data.phenotypes - m_ests.blups;
+  res.array() *= pheno_data.masked_indivs.array().cast<double>();
+
+  p_sd_yres = res.colwise().norm();
+  p_sd_yres.array() /= sqrt(pheno_data.Neff - 1);
+  res.array().rowwise() /= p_sd_yres.array();
+
+}
+
+void Data::compute_res_bin(int chrom){
+
+  fit_null_logistic(chrom, &params, &pheno_data, &m_ests, sout); // for all phenotypes
+
+  res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
+  res.array() /= m_ests.Gamma_sqrt.array();
+  res.array() *= pheno_data.masked_indivs.array().cast<double>();
+
+  // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
+  if(params.firth_approx) fit_null_firth(chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+
+}
+
+void Data::check_pval_snp(variant_block* block_info, int chrom, int ph, int isnp){
 
   chi_squared chisq(1);
   double chisq_thr = quantile(chisq, 1 - params.alpha_pvalue);
@@ -2550,7 +2488,7 @@ void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
   }
 
   // firth
-  run_firth_correction_snp(chrom, block_info, ph);
+  run_firth_correction_snp(chrom, ph, isnp, block_info);
   if(block_info->test_fail[ph]) return;
 
   LRstat = block_info->dif_deviance;
@@ -2564,16 +2502,16 @@ void Data::check_pval_snp(variant_block* block_info, int chrom, int ph){
 }
 
 
-void Data::run_firth_correction_snp(int chrom, variant_block* block_info, int ph){
+void Data::run_firth_correction_snp(int chrom, int ph, int isnp, variant_block* block_info){
 
   // obtain null deviance (set SNP effect to 0 and compute max. pen. LL)
   if(!params.firth_approx){
-    fit_firth_logistic_snp(chrom, ph, true, &params, &pheno_data, &m_ests, &firth_est, block_info, sout);
+    fit_firth_logistic_snp(chrom, ph, isnp, true, &params, &pheno_data, &m_ests, &firth_est, &Gblock, block_info, sout);
     if(block_info->test_fail[ph]) return ;
   }
 
   // fit full model and compute deviance
-  fit_firth_logistic_snp(chrom, ph, false, &params, &pheno_data, &m_ests, &firth_est, block_info, sout);
+  fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &firth_est, &Gblock, block_info, sout);
 
 }
 

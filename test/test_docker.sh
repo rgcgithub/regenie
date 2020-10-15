@@ -153,8 +153,6 @@ else
     --bsize 100 \
     --test dominant \
     --ignore-pred \
-    --write-samples \
-    --print-pheno \
     --out ${mntpt}test/test_out_extract"
 
   grep -v "^1" ${REGENIE_PATH}example/example_3chr.bim | awk '{ print $2 }' > ${REGENIE_PATH}test/test_out.snplist

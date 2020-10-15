@@ -249,7 +249,7 @@ void fit_null_firth(int chrom, struct f_ests* firth_est, struct phenodt* pheno_d
 
 
 
-void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct f_ests* fest, variant_block* block_info, mstream& sout) {
+void fit_firth_logistic_snp(int chrom, int ph, int isnp, bool null_fit, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct f_ests* fest, struct geno_block* gblock, variant_block* block_info, mstream& sout) {
   // if firth is used, fit based on penalized log-likelihood
 
   int niter_cur, col_incl;
@@ -266,12 +266,12 @@ void fit_firth_logistic_snp(int chrom, int ph, bool null_fit, struct param* para
     if(null_fit){
       Xmat = pheno_data->new_cov; // only covariates
     } else {
-      Xmat = block_info->Geno.matrix(); // only tested SNP
+      Xmat = gblock->Gmat.col(isnp); // only tested SNP
     }
     col_incl = Xmat.cols();
   } else {
     Xmat = MatrixXd::Zero(params->n_samples, pheno_data->new_cov.cols() + 1); // covariates + tested SNP
-    Xmat << pheno_data->new_cov, block_info->Geno.matrix();
+    Xmat << pheno_data->new_cov, gblock->Gmat.col(isnp);
     col_incl = Xmat.cols();
     if( null_fit ) col_incl--;
   }

@@ -45,7 +45,7 @@ class Data {
     f_ests firth_est;
     spa_ests spa_est;
 
-    std::string model_type, test_string;
+    std::string model_type, correction_type, test_string;
 
     uint n_corrected = 0; // to keep track of how many SNPs require correction
     bool pval_converged = false; // keep track of whether SPA/Firth converged
@@ -84,7 +84,18 @@ class Data {
     // step 2 main functions
     void test_snps();
     void set_blocks_for_testing();
+    void print_test_info();
     void blup_read_chr(const int);
+    void compute_res();
+    void compute_res_bin(int);
+    std::string print_header_output();
+    std::string print_header_output_single();
+    std::string print_header_output_htp();
+    std::string print_sum_stats_head(const int,const double,const double,const std::string);
+    std::string print_sum_stats_head_htp(const int,const int,const std::string);
+    std::string print_sum_stats(const double,const double,const double,const double,const int,const bool);
+    std::string print_sum_stats(const double,const double,const double,const double,const bool);
+    std::string print_sum_stats_htp(const double,const double,const double,const double,const double,const double,const double,const Eigen::MatrixXd&,const double,const int,const bool);
 
     // step 2 using multithreading in eigen
     double check_pval(double,int,int,int);
@@ -94,9 +105,9 @@ class Data {
     // step2 using multithreading in openmp
     void test_snps_fast();
     void analyze_block(const int&,const int&,tally*,std::vector<variant_block>&);
-    void residualize_geno(variant_block*);
-    void check_pval_snp(variant_block*,int,int);
-    void run_firth_correction_snp(int,variant_block*,int);
+    void residualize_geno(int,variant_block*);
+    void check_pval_snp(variant_block*,int,int,int);
+    void run_firth_correction_snp(int,int,int,variant_block*);
     void run_SPA_test_snp(variant_block*,int,const Eigen::VectorXd&);
 
 
