@@ -39,6 +39,8 @@ ifeq ($(UNAME_S),Linux)
  CFLAGS      += -fopenmp
  ifeq ($(strip $(STATIC)),1)
   LPATHS      = -static-libgcc -static-libstdc++
+else
+	DLIBS       = -Wl,-Bdynamic
  endif
 else ifeq ($(UNAME_S),Darwin)
  RGFLAGS     += -stdlib=libc++
@@ -64,7 +66,7 @@ ifeq ($(HAS_BOOST_IOSTREAM),1)
  ifeq ($(strip $(STATIC)),1)
   SLIBS       = -Wl,-Bstatic -lboost_iostreams
  else
-  DLIBS       = -lboost_iostreams
+  DLIBS      += -lboost_iostreams
   LIB_BIO2    = libboost-iostreams-dev ## for docker build
  endif
  LIB_BIO      = libboost-iostreams-dev ## for docker build
@@ -117,7 +119,7 @@ INC          += -I${PGEN_PATH} -I${PGEN_PATH}/include/ -I${BGEN_PATH} -I${BGEN_P
 LPATHS       += ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 
 LIBS         += ${SLIBS} -lbgen -lzstd -ldb  -lsqlite3 -lboost
-LIBS         += -lz -Wl,-Bdynamic ${DLIBS} -lm -ldl
+LIBS         += -lz ${DLIBS} -lm -ldl
 
 
 
