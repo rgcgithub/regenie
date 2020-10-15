@@ -618,7 +618,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   // find if sex column is present
   auto scol = find(tmp_str_vec.begin(), tmp_str_vec.end(), "SEX");
   col_found = scol != tmp_str_vec.end();
-  if(col_found) sex_col = distance(tmp_str_vec.begin(), scol);
+  if(col_found) sex_col = std::distance(tmp_str_vec.begin(), scol);
 
   while (getline(myfile, line)) {
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
