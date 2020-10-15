@@ -53,7 +53,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
 
   // mask individuals 
-  filters->ind_in_analysis = ind_in_pheno_and_geno * ind_in_cov_and_geno;
+  filters->ind_in_analysis = ind_in_pheno_and_geno && ind_in_cov_and_geno;
   pheno_data->masked_indivs.array().colwise() *= filters->ind_in_analysis;
   if( params->strict_mode ) filters->ind_in_analysis *= pheno_data->masked_indivs.col(0).array();
   pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
