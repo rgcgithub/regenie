@@ -71,6 +71,7 @@ typedef unsigned int uint;
 typedef unsigned long long uint64;
 typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
+typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
@@ -172,6 +173,7 @@ struct param {
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
   bool with_bgi = false; // input bgi index file for BGEN format
   bool ref_first = false; // ordering of REF/ALT alleles in input genotype file
+  std::vector<bool> sex; // 0 is female, 1 is male
 
 
   // step 1 

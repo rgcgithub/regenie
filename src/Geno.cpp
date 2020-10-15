@@ -108,10 +108,12 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
   // get sample IDs (from sample file or directly from bgen file)
   if( params->bgenSample ) {
-    read_bgen_sample(files->sample_file, params->n_samples, tmp_ids, params->write_samples, params->FIDvec, sout);
+    read_bgen_sample(files->sample_file, params, tmp_ids, sout);
   } else {
     bgen_tmp.get_sample_ids(
         [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
+    // assume all females
+    params->sex.resize(params->n_samples, false);
   }
 
   // check duplicates -- if not, store in map
@@ -241,13 +243,13 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 }
 
 
-void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::vector<string> &ids, bool write_samples, std::vector<std::vector<std::string>> &fids, mstream& sout){
+void read_bgen_sample(const string sample_file, struct param* params, std::vector<string> &ids, mstream& sout){
 
   int nline = 0;
   string FID, IID, line, tmp_str;
   std::vector<string> IDvec;
   ifstream myfile;
-  if( write_samples ) IDvec.resize(2);
+  if( params->write_samples ) IDvec.resize(2);
 
   sout << "   -sample file: " << sample_file << endl;
   myfile.open (sample_file, ios::in);
@@ -279,17 +281,27 @@ void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::v
     } else {
       tmp_str = FID + "_" + IID;
       ids.push_back(tmp_str);
-      if(write_samples) {
+      if(params->write_samples) {
         IDvec[0] = FID;
         IDvec[1] = IID;
-        fids.push_back(IDvec);
+        params->FIDvec.push_back(IDvec);
       }
     }
+
+    // get sex into IID
+    if( !(iss >> FID >> IID) ){
+      sout << "ERROR: Incorrectly formatted sample file at line" << ids.size() + 1 << endl;
+      exit(-1);
+    }
+
+    // save males as 1 (else assume all females=0)
+    if( IID == "1" ) params->sex.push_back(true);
+    else params->sex.push_back(false);
 
     nline++;
   }
 
-  if( n_samples != ids.size() ){
+  if( params->n_samples != ids.size() ){
     sout << "ERROR: Number of samples in BGEN file does not match that in the sample file." << endl;
     exit(-1);
   }
@@ -298,7 +310,7 @@ void read_bgen_sample(const string sample_file, const uint32_t n_samples, std::v
 }
 
 
-void read_bed_bim_fam(struct in_files* files, struct param* params,struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
+void read_bed_bim_fam(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
   uint32_t nsamples_bed;
   read_bim(files, params, filters, snpinfo, sout);
@@ -352,6 +364,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
       tmp_snp.allele1 = tmp_str_vec[5];
       tmp_snp.allele2 = tmp_str_vec[4];
     }
+    tmp_snp.offset = lineread;
 
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in bim file at line " << snpinfo.size()+1 << endl;
@@ -424,6 +437,10 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
       IDvec[1] = tmp_str_vec[1];
       params->FIDvec.push_back(IDvec);
     }
+
+    // save males as 1 (else assume all females=0)
+    if( tmp_str_vec[4] == "1" ) params->sex.push_back(true);
+    else params->sex.push_back(false);
 
     lineread++;
   }
@@ -567,7 +584,8 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
 
 void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
-  int lineread = 0;
+  int lineread = 0, sex_col = 0;
+  bool col_found = false;
   string line, tmp_id, fname;
   std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
@@ -597,6 +615,10 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     cerr << "ERROR: Header does not have the correct format.\n";
     exit(-1);
   }
+  // find if sex column is present
+  auto scol = find(tmp_str_vec.begin(), tmp_str_vec.end(), "SEX");
+  col_found = scol != tmp_str_vec.end();
+  if(col_found) sex_col = distance(tmp_str_vec.begin(), scol);
 
   while (getline(myfile, line)) {
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
@@ -619,6 +641,10 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
       IDvec[1] = tmp_str_vec[1];
       params->FIDvec.push_back(IDvec);
     }
+
+    // save males as 1 (else assume all females=0)
+    if( col_found && tmp_str_vec[sex_col] == "1" ) params->sex.push_back(true);
+    else params->sex.push_back(false);
 
     lineread++;
   }
@@ -958,7 +984,7 @@ void get_G(const int block, const int bs, const int chrom, uint32_t &snp_index_c
   }
 
   if(params->file_type == "bed")
-    readChunkFromBedFileToG(bs, snp_index_counter, snpinfo, params, files, gblock, filters, masked_indivs, phenotypes_raw, sout);
+    readChunkFromBedFileToG(bs, chrom, snp_index_counter, snpinfo, params, files, gblock, filters, masked_indivs, phenotypes_raw, sout);
   else if(params->file_type == "pgen")
     readChunkFromPGENFileToG(bs, snp_index_counter, snpinfo, params, gblock, filters, masked_indivs, sout);
   else
@@ -974,7 +1000,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
 
   int ns, hc_val;
   uint32_t index ;
-  double ds, total, info_num;
+  double ds, total, mac, info_num;
   bool switch_alleles;
   std::string chromosome, rsid;
   uint32_t position ;
@@ -998,7 +1024,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
     gblock->bgen.read_probs( &probs ) ;
 
     ns = 0, hc_val = 0, index = 0;
-    total = 0, info_num = 0;
+    total = 0, mac = 0, info_num = 0;
     for( std::size_t i = 0; i < probs.size(); ++i ) {
 
       // skip samples that were ignored from the analysis
@@ -1013,6 +1039,9 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
         if( filters->ind_in_analysis(index) ){
           if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += ds;
+            // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+            // sex is 1 for males and 0 o.w.
+            if(params->test_mode && (chrom == params->nChrom)) mac +=  ds * 0.5 * (2 - params->sex[i]);
 
             if( params->ref_first )
               info_num += 4 * probs[i][2] + probs[i][1] - ds * ds;
@@ -1025,12 +1054,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
           // get genotype counts (convert to hardcall)
           if( params->htp_out ) {
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
-            if( !params->binary_mode ) {
-              gblock->genocounts[snp].row(hc_val) += masked_indivs.row(index).cast<double>();
-            } else {
-              gblock->genocounts[snp].row(hc_val).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
-              gblock->genocounts[snp].row(3 + hc_val).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
-            }
+            update_genocounts(params->binary_mode, index, hc_val, gblock->genocounts[snp], masked_indivs, phenotypes_raw);
           }
         }
       }
@@ -1039,8 +1063,17 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       index++;
     }
 
-    if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) gblock->bad_snps(snp) = true;
-    //sout << "SNP#" << snp + 1 << "AC=" << total << " BAD="<< (bad_snps(snp)?"BAD":"GOOD")<< endl;
+    if( params->test_mode){
+      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+      mac = min( mac, 2 * ns - mac );
+
+      if(mac < params->min_MAC) { 
+        gblock->bad_snps(snp) = true;
+      }
+      if( params->htp_out ) gblock->snp_mac(snp,0) = mac;
+    }
+
+    //sout << "SNP#" << snp + 1 << "AC=" << mac << " BAD="<< (bad_snps(snp)?"BAD":"GOOD")<< endl;
     total /= ns;
     if( (params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(snp, 0) = total / 2;
 
@@ -1048,7 +1081,9 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       if( (gblock->snp_afs(snp, 0) == 0) || (gblock->snp_afs(snp, 0) == 1) ) gblock->snp_info(snp, 0) = 1;
       else gblock->snp_info(snp, 0) = 1 - info_num / (2 * ns * gblock->snp_afs(snp, 0) * (1 - gblock->snp_afs(snp, 0)));
 
-      if( params->setMinINFO && ( gblock->snp_info(snp, 0) < params->min_INFO) ) gblock->bad_snps(snp) = true;
+      if( params->setMinINFO && ( gblock->snp_info(snp, 0) < params->min_INFO) ) {
+        gblock->bad_snps(snp) = true;
+      }
     }
 
     if(params->use_SPA) {
@@ -1088,26 +1123,23 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, uint32_t &snp_index
       ds = gblock->Gmat(snp, i);
       if( params->use_SPA && filters->ind_in_analysis(i) && ds > 0 ) gblock->non_zero_indices_G[snp].push_back(i);
 
-      if(ds != -3 && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ) ){
-        gblock->Gmat(snp, i) -= total;
-      } else {
-        gblock->Gmat(snp, i) = 0;
-      }
+      // impute missing
+      mean_impute_g(gblock->Gmat(snp, i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
+
     }
 
-    snp++;
-    snp_index_counter++;
+    snp++,snp_index_counter++;
   }
 
   if(!params->verbose) sout << bs << " snps ";
 }
 
 
-void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct in_files* files, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
+void readChunkFromBedFileToG(const int bs, const int chrom, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct in_files* files, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
 
   int hc, ns, byte_start, bit_start;
   uint32_t index ;
-  double total;
+  double total, mac;
   bool switch_alleles;
   // mapping matches the switch of alleles done when reading bim
   const int maptogeno[4] = {2, -3, 1, 0};
@@ -1122,7 +1154,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
       }
     }
 
-    ns = 0, total = 0, index = 0;
+    ns = 0, total = 0, mac = 0, index = 0;
     files->bed_ifstream.read( reinterpret_cast<char *> (&files->inbed[0]), files->bed_block_size);
 
     for (int i = 0; i < filters->ind_ignore.size(); i++) {
@@ -1140,23 +1172,30 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
         if( filters->ind_in_analysis(index) ){
           if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
             total += hc;
+            // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+            // sex is 1 for males and 0 o.w.
+            if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
             ns++;
           }
         }
 
         // get genotype counts
-        if( params->htp_out ) {
-          if( !params->binary_mode ) gblock->genocounts[j].row(hc) += masked_indivs.row(index).cast<double>();
-          else {
-            gblock->genocounts[j].row(hc).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
-            gblock->genocounts[j].row(3 + hc).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
-          }
-        }
+        if( params->htp_out ) 
+          update_genocounts(params->binary_mode, index, hc, gblock->genocounts[j], masked_indivs, phenotypes_raw);
       }
       index++;
     }
 
-    if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) )  gblock->bad_snps(j) = true;
+    if( params->test_mode){
+      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+      mac = min( mac, 2 * ns - mac );
+
+      if(mac < params->min_MAC) { 
+        gblock->bad_snps(j) = true; 
+      }
+      if( params->htp_out ) gblock->snp_mac(j,0) = mac;
+    }
+
     total /= ns;
     if((params->alpha_prior != -1) || params->test_mode) gblock->snp_afs(j, 0) = total / 2;
 
@@ -1188,9 +1227,8 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
       hc = gblock->Gmat(j, i);
       if( params->use_SPA && (hc > 0) ) gblock->non_zero_indices_G[j].push_back(i);
 
-      if(hc != -3 && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ) ) {
-        gblock->Gmat(j, i) -= total;
-      } else gblock->Gmat(j, i) = 0;
+      // impute missing
+      mean_impute_g(gblock->Gmat(j, i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
 
     }
 
@@ -1207,7 +1245,7 @@ void readChunkFromBedFileToG(const int bs, uint32_t &snp_index_counter, vector<s
 void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, mstream& sout) {
 
   int ns;
-  double ds, total;
+  double total;
 
   for(int j = 0; j < bs; ) {
     if(params->keep_snps || params->rm_snps){
@@ -1241,11 +1279,10 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
     //if(j<5) sout << "\nj="<< j+1 << ":" <<  gblock->Gmat.row(j).array().head(5);
     // deal with missing data and center SNPs
     for (size_t i = 0; i < params->n_samples; i++) {
-      ds = gblock->Gmat(j, i);
 
-      if(ds != -3.0 && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ) ) {
-        gblock->Gmat(j, i) -= total;
-      } else gblock->Gmat(j, i) = 0;
+      // impute missing
+      mean_impute_g(gblock->Gmat(j, i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
+
     }
 
     j++;
@@ -1418,7 +1455,7 @@ void readChunkFromBGEN(std::istream* bfile, uint32_t* size1, uint32_t* size2, ve
 }
 
 
-void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const uint32_t outsize, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const snp* infosnp, variant_block* snp_data, mstream& sout){
+void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_block, const uint32_t insize, const uint32_t outsize, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const snp* infosnp, struct geno_block* gblock, variant_block* snp_data, mstream& sout){
 
   uint minploidy = 0, maxploidy = 0, phasing = 0, bits_prob = 0;
   uint16_t numberOfAlleles = 0 ;
@@ -1426,6 +1463,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   uint32_t index;
   string tmp_buffer;
 
+  MapArXd Geno (gblock->Gmat.col(isnp).data(), params->n_samples, 1);
   // reset variant info
   snp_data->ignored = false;
   snp_data->fastSPA = params->use_SPA;
@@ -1477,8 +1515,8 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
   int ns = 0, hc_val;
-  double prob0, prob1, prob2, total = 0, ds, info_num = 0;
-  snp_data->Geno = ArrayXd::Zero(params->n_samples);
+  double prob0, prob1, prob2, total = 0, mac = 0, ds, info_num = 0;
+  Geno = ArrayXd::Zero(params->n_samples);
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
 
   // parse genotype probabilities block
@@ -1493,7 +1531,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
     missing = ((ploidy_n[i]) & 0x80);
     if(missing) {
-      snp_data->Geno(index) = -3;
+      Geno(index) = -3;
       buffer+=2;
       continue;
     }
@@ -1502,30 +1540,28 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
     prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
     prob2 = std::max( 1 - prob0 - prob1, 0.0);
 
-    snp_data->Geno(index) = prob1 + 2 * prob2;
-    if(!params->ref_first) snp_data->Geno(index) = 2 - snp_data->Geno(index); // switch allele0 to ALT
+    Geno(index) = prob1 + 2 * prob2;
+    if(!params->ref_first) Geno(index) = 2 - Geno(index); // switch allele0 to ALT
 
     if( filters->ind_in_analysis(index) ){
       if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
-        total += snp_data->Geno(index);
+        total += Geno(index);
+        // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+        // sex is 1 for males and 0 o.w.
+        if(params->test_mode && (chrom == params->nChrom)) mac +=  Geno(index) * 0.5 * (2 - params->sex[i]);
 
         if( params->ref_first )
-          info_num += 4 * prob2 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
+          info_num += 4 * prob2 + prob1 - Geno(index) * Geno(index);
         else
-          info_num += 4 * prob0 + prob1 - snp_data->Geno(index) * snp_data->Geno(index);
+          info_num += 4 * prob0 + prob1 - Geno(index) * Geno(index);
 
         ns++;
       }
 
       // get genotype counts (convert to hardcall)
       if( params->htp_out ) {
-        hc_val = (int) (snp_data->Geno(index) + 0.5); // round to nearest integer 0/1/2
-        if( !params->binary_mode ) {
-          snp_data->genocounts.row(hc_val) += masked_indivs.row(index).cast<double>();
-        } else {
-          snp_data->genocounts.row(hc_val).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
-          snp_data->genocounts.row(3 + hc_val).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
-        }
+        hc_val = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
+        update_genocounts(params->binary_mode, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
       }
 
     }
@@ -1533,9 +1569,14 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
   }
 
   // check MAC
-  if( params->test_mode && ((total < params->min_MAC) || ((2 * ns - total) < params->min_MAC)) ) {
-    snp_data->ignored = true;
-    return;
+  if( params->test_mode){
+    if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+    mac = min( mac, 2 * ns - mac );
+
+    if(mac < params->min_MAC) { 
+      snp_data->ignored = true;return;
+    }
+    if( params->htp_out ) snp_data->mac = mac;
   }
 
   total /= ns;
@@ -1557,7 +1598,7 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
     snp_data->flipped = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
 
     if(snp_data->flipped){
-      snp_data->Geno = ( snp_data->Geno != -3).select( 2 - snp_data->Geno, snp_data->Geno);
+      Geno = ( Geno != -3).select( 2 - Geno, Geno );
       total = 2 - total;
     }
   }
@@ -1586,14 +1627,14 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
       if(filters->ind_in_analysis(index)){
         if(params->test_type == 1){ //dominant
-          snp_data->Geno(index) = params->ref_first ? (prob1 + prob2) : (prob0 + prob1);
+          Geno(index) = params->ref_first ? (prob1 + prob2) : (prob0 + prob1);
         } else if(params->test_type == 2){ //recessive
-          snp_data->Geno(index) = params->ref_first ? prob2 : prob0;
+          Geno(index) = params->ref_first ? prob2 : prob0;
         }
       }
       index++;
     }
-    total = ((snp_data->Geno != -3) && filters->ind_in_analysis).select(snp_data->Geno, 0).sum() / ns;
+    total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / ns;
     if(total < params->numtol) {
       snp_data->ignored = true;
       return;
@@ -1602,48 +1643,37 @@ void parseSnpfromBGEN(vector<uchar>* geno_block, const uint32_t insize, const ui
 
   // deal with missing data & prep for spa
   for( size_t i = 0; i < params->n_samples; ++i ) {
-    ds = snp_data->Geno(i);
+    ds = Geno(i);
 
     // keep track of number of entries filled so avoid using clear
-    if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) {
-      snp_data->n_non_zero++;
-      if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
-        snp_data->fastSPA = false;
-      } else {
-        if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
-          snp_data->non_zero_indices.push_back(i);
-        else
-          snp_data->non_zero_indices[snp_data->n_non_zero - 1] = i;
-      }
-    }
+    if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) 
+      update_nnz_spa(i, params->n_samples, snp_data);
 
-    if(ds != -3 && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ) ){
-      snp_data->Geno(i) -= total;
-    } else {
-      snp_data->Geno(i) = 0;
-    }
+    // impute missing
+    mean_impute_g(Geno(i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
   }
 
   return;
 }
 
 
-void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, variant_block* snp_data){
+void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_block, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, struct geno_block* gblock, variant_block* snp_data){
 
   int hc, ns, byte_start, bit_start;
   uint32_t index ;
-  double total;
+  double total, mac;
   // mapping matches the switch of alleles done when reading bim
   const int maptogeno[4] = {2, -3, 1, 0};
 
-  snp_data->Geno = ArrayXd::Zero(params->n_samples);
+  MapArXd Geno (gblock->Gmat.col(isnp).data(), params->n_samples, 1);
+  Geno = ArrayXd::Zero(params->n_samples);
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
   // reset variant info
   snp_data->ignored = false;
   snp_data->fastSPA = params->use_SPA;
   snp_data->n_non_zero = 0;
 
-  ns = 0, total = 0, index = 0;
+  ns = 0, total = 0, mac = 0, index = 0;
   for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
     // skip samples that were ignored from the analysis
@@ -1653,34 +1683,35 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
     bit_start = (i&3)<<1; // 2 bits per sample
     hc = maptogeno[ (geno_block[byte_start] >> bit_start)&3 ];
     if(params->ref_first && (hc != -3)) hc = 2 - hc;
-    snp_data->Geno(index) = hc;
+    Geno(index) = hc;
 
     if(hc != -3) {
       if( filters->ind_in_analysis(index) ){
         if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
           total += hc;
+          // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+          // sex is 1 for males and 0 o.w.
+          if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
           ns++;
         }
       }
 
       // get genotype counts
-      if( params->htp_out ) {
-        if( !params->binary_mode ) {
-          snp_data->genocounts.row(hc) += masked_indivs.row(index).cast<double>();
-        } else {
-          snp_data->genocounts.row(hc).array() += masked_indivs.row(index).array().cast<double>() * phenotypes_raw.row(index).array();
-          snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(index).array().cast<double>() * (1 - phenotypes_raw.row(index).array());
-        }
-      }
-
+      if( params->htp_out ) 
+        update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
     }
     index++;
   }
 
   // check MAC
-  if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) ){
-    snp_data->ignored = true;
-    return;
+  if( params->test_mode){
+    if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+    mac = min( mac, 2 * ns - mac );
+
+    if(mac < params->min_MAC) { 
+      snp_data->ignored = true;return;
+    }
+    if( params->htp_out ) snp_data->mac = mac;
   }
 
   total /= ns;
@@ -1691,7 +1722,7 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
     snp_data->flipped = (params->test_type > 0) ? false : (total > 1); // skip for DOM/REC test
 
     if(snp_data->flipped){
-      snp_data->Geno = ( snp_data->Geno != -3).select( 2 - snp_data->Geno, snp_data->Geno);
+      Geno = ( Geno != -3).select( 2 - Geno, Geno);
       total = 2 - total;
     }
   }
@@ -1699,11 +1730,11 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
   // apply dominant/recessive encoding & recompute mean
   if(params->test_type > 0){
     if(params->test_type == 1){ //dominant
-      snp_data->Geno = (snp_data->Geno == 2).select(1, snp_data->Geno);
+      Geno = (Geno == 2).select(1, Geno);
     } else if(params->test_type == 2){ //recessive
-      snp_data->Geno = (snp_data->Geno >= 1).select(snp_data->Geno - 1, snp_data->Geno);
+      Geno = (Geno >= 1).select(Geno - 1, Geno);
     }
-    total = ((snp_data->Geno != -3) && filters->ind_in_analysis).select(snp_data->Geno, 0).sum() / ns;
+    total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / ns;
     if(total < params->numtol) {
       snp_data->ignored = true;
       return;
@@ -1713,86 +1744,83 @@ void parseSnpfromBed(const vector<uchar> geno_block, const struct param* params,
 
   // deal with missing data & prep for spa
   for( size_t i = 0; i < params->n_samples; ++i ) {
-    hc = snp_data->Geno(i);
+    hc = Geno(i);
 
     // keep track of number of entries filled so avoid using clear
-    if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && hc > 0 ) {
-      snp_data->n_non_zero++;
-      if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
-        snp_data->fastSPA = false;
-      } else {
-        if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
-          snp_data->non_zero_indices.push_back(i);
-        else
-          snp_data->non_zero_indices[snp_data->n_non_zero - 1] = i;
-      }
-    }
+    if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && hc > 0 ) 
+      update_nnz_spa(i, params->n_samples, snp_data);
 
-    if(hc != -3 && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ) ){
-      snp_data->Geno(i) -= total;
-    } else {
-      snp_data->Geno(i) = 0;
-    }
+    // impute missing
+    mean_impute_g(Geno(i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
+
   }
 
 }
 
 
 // step 2
-void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const vector<snp>& snpinfo, vector<variant_block> &all_snps_info){
+void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const vector<snp>& snpinfo, vector<variant_block> &all_snps_info){
 
-  int hc, ns;
-  double ds, total, eij2 = 0;
+  int hc, ns, index;
+  double ds, total, mac, eij2 = 0;
   int cur_index;
 
   for(int j = 0; j < bs; j++) {
 
     variant_block* snp_data = &(all_snps_info[j]);
+    MapArXd Geno (gblock->Gmat.col(j).data(), params->n_samples, 1);
     // reset variant info
-    snp_data->Geno = ArrayXd::Zero(params->n_samples);
+    Geno = ArrayXd::Zero(params->n_samples);
     snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
     snp_data->ignored = false;
     snp_data->fastSPA = params->use_SPA;
     snp_data->n_non_zero = 0;
 
-    ns = 0, total = 0;
+    ns = 0, total = 0, mac = 0, index = 0;
     if( params->dosage_mode ) eij2 = 0;
     // read genotype data
     // (default is dosages if present, otherwise hardcalls)
     cur_index = snpinfo[ start + j ].offset;
     gblock->pgr.Read(gblock->genobuf, cur_index, 1);
 
-    for (size_t i = 0; i < params->n_samples; i++) {
+    for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
-      snp_data->Geno(i) = gblock->genobuf[i];
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
 
-      if(gblock->genobuf[i] != -3.0) {
-        if( filters->ind_in_analysis(i) ){
-          if( !params->strict_mode || (params->strict_mode && masked_indivs(i,0)) ){
-            total += gblock->genobuf[i];
-            if( params->dosage_mode ) eij2 += gblock->genobuf[i] * gblock->genobuf[i];
+      Geno(index) = gblock->genobuf[index];
+
+      if(gblock->genobuf[index] != -3.0) {
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
+            total += gblock->genobuf[index];
+            // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+            // sex is 1 for males and 0 o.w.
+            if(params->test_mode && (chrom == params->nChrom)) mac +=  gblock->genobuf[index] * 0.5 * (2 - params->sex[i]);
+            if( params->dosage_mode ) eij2 += gblock->genobuf[index] * gblock->genobuf[index];
             ns++;
           }
         }
 
         // get genotype counts
         if( params->htp_out ) {
-          hc = (int) (snp_data->Geno(i) + 0.5); // round to nearest integer 0/1/2
-          if( !params->binary_mode ) {
-            snp_data->genocounts.row(hc) += masked_indivs.row(i).cast<double>();
-          } else {
-            snp_data->genocounts.row(hc).array() += masked_indivs.row(i).array().cast<double>() * phenotypes_raw.row(i).array();
-            snp_data->genocounts.row(3 + hc).array() += masked_indivs.row(i).array().cast<double>() * (1 - phenotypes_raw.row(i).array());
-          }
+          hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
+          update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
         }
 
       }
+      index++;
     }
 
     // check MAC
-    if( params->test_mode && ((total < params->min_MAC) || (( 2 * ns - total) < params->min_MAC)) ){
-      snp_data->ignored = true;
-      continue;
+    if( params->test_mode){
+      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+      mac = min( mac, 2 * ns - mac );
+
+      if(mac < params->min_MAC) { 
+        snp_data->ignored = true; continue;
+      }
+      if( params->htp_out ) snp_data->mac = mac;
     }
 
     total /= ns;
@@ -1808,7 +1836,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
       // check INFO score
       if( params->setMinINFO && ( snp_data->info < params->min_INFO) ) {
         snp_data->ignored = true;
-        return;
+        continue;
       }
 
     }
@@ -1818,54 +1846,42 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, struct param* par
       snp_data->flipped = total > 1;
       if( params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
       if(snp_data->flipped){
-        snp_data->Geno = ( snp_data->Geno != -3.0).select( 2 - snp_data->Geno, snp_data->Geno);
+        Geno = ( Geno != -3.0).select( 2 - Geno, Geno);
         total = 2 - total;
       }
     }
 
     // apply dominant/recessive encoding & recompute mean
-    // pgen does not contain genotype probs so convert to hardcalls
+    // pgen does not contain genotype probs for dosages so convert to hardcalls
     if(params->test_type > 0){
       for( size_t i = 0; i < params->n_samples; ++i ) {
-        if( (snp_data->Geno(i) == -3.0) || !filters->ind_in_analysis(i) ) continue;
-        hc = (int) (snp_data->Geno(i) + 0.5);
+        if( (Geno(i) == -3.0) || !filters->ind_in_analysis(i) ) continue;
+        hc = (int) (Geno(i) + 0.5);
 
         if(params->test_type == 1){ //dominant
-          snp_data->Geno(i) = (hc == 2 ? 1 : hc);
+          Geno(i) = (hc == 2 ? 1 : hc);
         } else if(params->test_type == 2){ //recessive
-          snp_data->Geno(i) = (hc >= 1 ? hc - 1 : hc);
+          Geno(i) = (hc >= 1 ? hc - 1 : hc);
         }
       }
-      total = ((snp_data->Geno != -3) && filters->ind_in_analysis).select(snp_data->Geno, 0).sum() / ns;
+      total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / ns;
       if( params->test_mode && (total < params->numtol) ) {
         snp_data->ignored = true;
         continue;
       }
     }
 
-
     // deal with missing data & prep for spa
     for( size_t i = 0; i < params->n_samples; ++i ) {
-      ds = snp_data->Geno(i);
+      ds = Geno(i);
 
       // keep track of number of entries filled so avoid using clear
-      if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) {
-        snp_data->n_non_zero++;
-        if(snp_data->n_non_zero > (params->n_samples * 0.5)) {
-          snp_data->fastSPA = false;
-        } else {
-          if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
-            snp_data->non_zero_indices.push_back(i);
-          else
-            snp_data->non_zero_indices[snp_data->n_non_zero - 1] = i;
-        }
-      }
+      if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && ds > 0 ) 
+        update_nnz_spa(i, params->n_samples, snp_data);
 
-      if( (ds != -3.0) && filters->ind_in_analysis(i) && (!params->strict_mode || (params->strict_mode && masked_indivs(i,0))) ) {
-        snp_data->Geno(i) -= total;
-      } else {
-        snp_data->Geno(i) = 0;
-      }
+      // impute missing
+      mean_impute_g(Geno(i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
+
     }
 
   }
@@ -1891,6 +1907,43 @@ void skip_snps(const int& bs, struct param* params, struct in_files* files, stru
 
 }
 
+void update_genocounts(bool binary_mode, int ind, int hc, MatrixXd& genocounts, const Ref<const MatrixXb>& mask, const Ref<const MatrixXd>& ymat){
+
+  if( !binary_mode ) {
+    genocounts.row(hc) += mask.row(ind).cast<double>();
+  } else {
+    genocounts.row(hc).array() += mask.row(ind).array().cast<double>() * ymat.row(ind).array();
+    genocounts.row(3 + hc).array() += mask.row(ind).array().cast<double>() * (1 - ymat.row(ind).array());
+  }
+
+}
+
+
+// to track non-zero entries
+void update_nnz_spa(uint32_t ind, uint32_t nsamples, variant_block* snp_data){
+
+  snp_data->n_non_zero++;
+  if(snp_data->n_non_zero > (nsamples * 0.5)) {
+    snp_data->fastSPA = false;
+  } else {
+    if(snp_data->non_zero_indices.size() < snp_data->n_non_zero)
+      snp_data->non_zero_indices.push_back(ind);
+    else
+      snp_data->non_zero_indices[snp_data->n_non_zero - 1] = ind;
+  }
+
+}
+
+// mean impute (only individuals who are not masked)
+void mean_impute_g(double &geno, const double mu, const bool in_analysis, const bool mask, const bool strict_mode){
+
+  if(geno != -3 && in_analysis && (!strict_mode || (strict_mode && mask) ) ){
+    geno -= mu;
+  } else {
+    geno = 0;
+  }
+
+}
 
 findID getIndivIndex(const string &FID, const string &IID, struct param* params, mstream& sout){
 
