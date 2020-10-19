@@ -493,7 +493,7 @@ void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct fi
 
   prep_pgen(pgen_nsamples, pgen_nvariants, files, filters, gblock, sout);
 
-  if(params->test_mode) params->dosage_mode = gblock->pgr.DosagePresent();
+  params->dosage_mode = gblock->pgr.DosagePresent();
 
 }
 
@@ -1256,7 +1256,10 @@ void readChunkFromPGENFileToG(const int bs, uint32_t &snp_index_counter, vector<
     }
 
     // read genotype data
-    gblock->pgr.Read(gblock->genobuf, snp_index_counter, 1);
+    if( params->dosage_mode )
+      gblock->pgr.Read(gblock->genobuf, snp_index_counter, 1);
+    else
+      gblock->pgr.ReadHardcalls(gblock->genobuf, snp_index_counter, 1);
 
     ns = 0, total = 0;
     for (size_t i = 0; i < params->n_samples; i++) {
@@ -1531,7 +1534,8 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
 
     missing = ((ploidy_n[i]) & 0x80);
     if(missing) {
-      Geno(index) = -3;
+      // bug fix (with imputed data this case should not occur)
+      Geno(index++) = -3;
       buffer+=2;
       continue;
     }
@@ -1778,10 +1782,14 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
 
     ns = 0, total = 0, mac = 0, index = 0;
     if( params->dosage_mode ) eij2 = 0;
+
     // read genotype data
-    // (default is dosages if present, otherwise hardcalls)
     cur_index = snpinfo[ start + j ].offset;
-    gblock->pgr.Read(gblock->genobuf, cur_index, 1);
+    if( params->dosage_mode )
+      gblock->pgr.Read(gblock->genobuf, cur_index, 1);
+    else
+      gblock->pgr.ReadHardcalls(gblock->genobuf, cur_index, 1);
+
 
     for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
