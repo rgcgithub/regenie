@@ -5,7 +5,7 @@ ARG LIB_INSTALL
 ARG LIB_INSTALL2
 
 
-FROM ubuntu:16.04 AS builder
+FROM ubuntu:18.04 AS builder
 
 ARG BOOST_IO
 ARG LIB_INSTALL
@@ -19,6 +19,7 @@ ADD http://code.enkre.net/bgen/tarball/release/v1.1.7 v1.1.7.tgz
 RUN apt-get update && apt-get install -y --no-install-recommends \
       g++ \
       make \
+      gnupg \
       python3 \
       zlib1g-dev \
       apt-transport-https ca-certificates \
@@ -35,7 +36,7 @@ ADD https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS-201
 RUN apt-key add intel_key.PUB \
       && sh -c 'echo deb https://apt.repos.intel.com/mkl all main > /etc/apt/sources.list.d/intel-mkl.list' \
       && apt-get update \
-      && apt-get install intel-mkl-64bit-2018.2-046 -y \
+      && apt-get install intel-mkl-64bit-2018.2-046 -y --no-install-recommends \
       && echo "MKL_THREADING_LAYER=GNU" >> /etc/environment
 
 COPY . /src/regenie
@@ -47,7 +48,7 @@ RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/m
 
 
 # no need to install Boost IO and MKL here (static linking)
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       libgomp1 \

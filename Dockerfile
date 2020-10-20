@@ -7,7 +7,7 @@ ARG LIB_INSTALL
 ARG LIB_INSTALL2
 
 
-FROM ubuntu:16.04 AS builder
+FROM ubuntu:18.04 AS builder
 
 ARG BOOST_IO
 ARG LIB_INSTALL
@@ -35,7 +35,7 @@ WORKDIR /src/regenie
 
 RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC
 
-FROM ubuntu:16.04
+FROM ubuntu:18.04
 ARG LIB_INSTALL2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
