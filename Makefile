@@ -39,8 +39,7 @@ ifeq ($(UNAME_S),Linux)
  CFLAGS      += -fopenmp
  ifeq ($(strip $(STATIC)),1)
   LPATHS      = -static-libgcc -static-libstdc++
-else
-	DLIBS       = -Wl,-Bdynamic
+  DLIBS       = -Wl,-Bdynamic
  endif
 else ifeq ($(UNAME_S),Darwin)
  RGFLAGS     += -stdlib=libc++
