@@ -806,7 +806,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           }
 
           // stopping criterion
-          if( (score.abs().maxCoeff() < params->numtol) || l1->pheno_l1_not_converged(ph)) break;
+          if( (score.abs().maxCoeff() < params->l1_ridge_eps) || l1->pheno_l1_not_converged(ph)) break;
 
           betaold = betanew;
         }
@@ -952,7 +952,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         score = ( l1->test_mat_conc[ph_eff].transpose() * (pheno_data->masked_indivs.col(ph).array()).select(pheno_data->phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
         score -= params->tau[j] * betanew;
 
-        if( score.abs().maxCoeff() < params->numtol) break;
+        if( score.abs().maxCoeff() < params->l1_ridge_eps ) break;
 
         betaold = betanew;
 

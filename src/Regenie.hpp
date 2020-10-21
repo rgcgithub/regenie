@@ -193,7 +193,7 @@ struct param {
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
   int niter_max_ridge = 500; // max number of iterations for ridge logistic reg.
-  int niter_max_line_search_ridge = 50; // max number of iterations for line search in ridge logistic reg.
+  int niter_max_line_search_ridge = 100; // max number of iterations for line search in ridge logistic reg.
   double l1_ridge_eps = 1e-5; // epsilon used to set weights for 0/1 probabilities
   uint32_t print_snpcount = 0; 
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >  beta_print_out;

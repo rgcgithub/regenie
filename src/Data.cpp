@@ -956,7 +956,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
       score -= params.tau[val] * betanew.array();
 
       // stopping criterion
-      if( score.abs().maxCoeff() < params.numtol) break;
+      if( score.abs().maxCoeff() < params.l1_ridge_eps) break;
 
       betaold = betanew;
     }
@@ -1049,7 +1049,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     score = ( l1_ests.test_mat_conc[ph_eff].transpose() * (pheno_data.masked_indivs.col(ph).array()).select(pheno_data.phenotypes_raw.col(ph).array() - pivec, 0).matrix()).array() ;
     score -= params.tau[val] * betanew;
 
-    if( score.abs().maxCoeff() < params.numtol) break;
+    if( score.abs().maxCoeff() < params.l1_ridge_eps) break;
 
     betaold = betanew;
   }
