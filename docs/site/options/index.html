@@ -477,6 +477,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>prefix where to temporarily write the level 0 predictions</td>
 </tr>
 <tr>
+<td><code>--print-prs</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to print whole genome predictions (i.e. PRS) without using LOCO scheme</td>
+</tr>
+<tr>
 <td><code>--nb</code></td>
 <td>INT</td>
 <td>Optional</td>
@@ -493,6 +499,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FLAG</td>
 <td>Optional</td>
 <td>skip reading the file specified by <code>--pred</code> (corresponds to simple linear/logistic regression)</td>
+</tr>
+<tr>
+<td><code>--use-prs</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to use whole genome PRS in <code>--pred</code> (this is output in step 1 when using <code>--print-prs</code>)</td>
 </tr>
 <tr>
 <td><code>--split</code></td>
@@ -671,6 +683,11 @@ If option <code>--gz</code> was used, the files will be compressed in gzip forma
 <p>Individuals with missing phenotype values kept in the analysis 
 are included in the file and have their predictions set to missing.</p>
 <p>The list of blup files needed for step 2 (association testing) is written to  <code>file_pred.list</code>.</p>
+<p>If using <code>--print-prs</code>, files <code>files_1.prs</code>,...,<code>files_P.prs</code> will be written with the 
+whole genome predictions (i.e. PRS) without using LOCO scheme (similar format as the .loco files).
+The list of these files is written to <code>file_prs.list</code> and can be used in step 2 with <code>--pred</code> and 
+specifying flag <code>--use-prs</code>. Note that as these are not obtained using a LOCO scheme, 
+association tests could suffer from proximal contamination.</p>
 <p><strong>Using<code>--step 2 --out file</code></strong> </p>
 <p>By default, results are written to a single file <code>file.regenie</code>, which has one line per
 SNP along with a header line.

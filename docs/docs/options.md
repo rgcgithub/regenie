@@ -230,9 +230,11 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--loocv`| FLAG | Optional| flag to use leave-one out cross validation|
 |`--lowmem`| FLAG | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
 |`--lowmem-prefix`| FILE PREFIX | Optional | prefix where to temporarily write the level 0 predictions|
+|`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
+|`--use-prs`|FLAG| Optional| flag to use whole genome PRS in `--pred` (this is output in step 1 when using `--print-prs`)|
 |`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
@@ -287,6 +289,12 @@ Individuals with missing phenotype values kept in the analysis
 are included in the file and have their predictions set to missing.
 
 The list of blup files needed for step 2 (association testing) is written to  `file_pred.list`.
+
+If using `--print-prs`, files `files_1.prs`,...,`files_P.prs` will be written with the 
+whole genome predictions (i.e. PRS) without using LOCO scheme (similar format as the .loco files).
+The list of these files is written to `file_prs.list` and can be used in step 2 with `--pred` and 
+specifying flag `--use-prs`. Note that as these are not obtained using a LOCO scheme, 
+association tests could suffer from proximal contamination.
 
 **Using`--step 2 --out file`** 
 
