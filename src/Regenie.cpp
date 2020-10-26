@@ -133,10 +133,12 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("lowmem", "reduce memory usage by writing level 0 predictions to temporary files")
     ("lowmem-prefix", "prefix where to write the temporary files in step 1 (default is to use prefix from --out)", cxxopts::value<std::string>(files->loco_tmp_prefix),"PREFIX")
     ("strict", "remove all samples with missingness at any of the traits")
+    ("print-prs", "also output polygenic predictions without using LOCO (=whole genome PRS)")
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
     ("threads", "number of threads", cxxopts::value<int>(params->threads),"INT")
     ("pred", "file containing the list of predictions files from step 1", cxxopts::value<std::string>(files->blup_file),"FILE")
     ("ignore-pred", "skip reading predictions from step 1 (equivalent to linear/logistic regression with only covariates)")
+    ("use-prs", "when using whole genome PRS step 1 output in '--pred'")
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
     ("write-samples", "write IDs of samples included for each trait (only in step 2)")
     ("minMAC", "minimum minor allele count (MAC) for tested variants", cxxopts::value<int>(params->min_MAC),"INT(=5)")
@@ -228,7 +230,9 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
     if( vm.count("strict") ) params->strict_mode = true;
+    if( vm.count("print-prs") ) params->print_prs = true;
     if( vm.count("ignore-pred") ) params->skip_blups = true;
+    if( vm.count("use-prs") ) params->use_prs = true;
     if( vm.count("force-impute") ) params->rm_missing_qt = false;
     if( vm.count("split") ) params->split_by_pheno = true;
     if( vm.count("approx") ) params->firth_approx = true;

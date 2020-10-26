@@ -404,7 +404,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   int n_files = 0, tmp_index, n_masked_prior, n_masked_post;
   uint32_t indiv_index;
   string line, tmp_pheno;
-  std::vector< string > tmp_str_vec ;
+  std::vector< string > tmp_str_vec, tmp_prs_vec;
   vector<bool> read_pheno(params->n_pheno, false);
   MatrixXb blupf_mask;
   Files fClass;
@@ -414,11 +414,11 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   // skip reading if specified by user
   if( params->skip_blups ) {
-    sout << " * no LOCO predictions given. Simple " << ( params->binary_mode ? "logistic":"linear" ) << " regression will be performed"<<endl;
+    sout << " * no step 1 predictions given. Simple " << ( params->binary_mode ? "logistic":"linear" ) << " regression will be performed" <<endl;
     return;
   }
 
-  sout << " * LOCO predictions : [" << files->blup_file << "] ";
+  sout << " * " << (params->use_prs ? "PRS" : "LOCO") << " predictions : [" << files->blup_file << "] ";
   fClass.openForRead(files->blup_file, sout);
 
   // get list of files containing blups
@@ -477,12 +477,23 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
       exit(-1);
     }
 
+    if( params->use_prs ){ // read in second line
+      fClass.readLine(line);
+      boost::algorithm::split(tmp_prs_vec, line, is_any_of("\t "));
+
+      if( tmp_prs_vec[0] != "0") {
+        sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";
+        exit(-1);
+      }
+    }
+
     for (size_t i = 1; i < tmp_str_vec.size(); i++){
       // ignore sample if it is not in genotype data
       if ( params->FID_IID_to_ind.find(tmp_str_vec[i]) == params->FID_IID_to_ind.end()) continue;
       indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
 
       blupf_mask( indiv_index , 0 ) = true;
+      if( params->use_prs ) m_ests->blups(indiv_index, ph) = convertDouble(tmp_prs_vec[i], params, sout);
     }
 
     // mask samples not in file

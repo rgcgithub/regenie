@@ -189,6 +189,7 @@ struct param {
   bool user_ridge_params_l1 = false; // if user specifies ridge parameters
   bool use_loocv = false; // specify whether to use LOOCV [note: this is not used if method=1]
   bool make_loco = true; // specify whether to compute & ouput LOCO predictions
+  bool print_prs = false; // specify to print PRS (i.e. no LOCO used)
   bool write_blups = false; // write BLUP predictions for each chromosome
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
@@ -211,6 +212,7 @@ struct param {
   bool dosage_mode = false; // track if dosages are present for step 2
   bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
+  bool use_prs = false; // adjust for whole genome PRS (no LOCO)
   int min_MAC = 5; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
   double min_INFO = 0; // minimum INFO score of SNPs (dosages) in testing mode
