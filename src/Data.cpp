@@ -606,9 +606,9 @@ void Data::output() {
 
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
-  string pfile, out_blup_list, pline, loco_filename;
-  string fullpath_str;
-  Files outb;
+  string pfile, out_blup_list, out_prs_list, loco_filename, prs_filename;
+  string fullpath_str, path_prs;
+  Files outb, outp;
 
   sout << "Output\n" << "------\n";
 
@@ -616,33 +616,29 @@ void Data::output() {
     out_blup_list = files.out_file + "_pred.list";
     outb.openForWrite(out_blup_list, sout);
   }
+  if(params.print_prs){
+    out_prs_list = files.out_file + "_prs.list";
+    outp.openForWrite(out_prs_list, sout);
+  }
 
   for(int ph = 0; ph < params.n_pheno; ++ph ) {
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
     loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco" + (params.gzOut ? ".gz" : "");
+    prs_filename = files.out_file + "_" + to_string(ph + 1) + ".prs" + (params.gzOut ? ".gz" : "");
 
-    if( params.make_loco || params.binary_mode ) {
+    if( params.make_loco || params.binary_mode || params.print_prs ) {
 
-      try {
-        // convert to full path using boost filesystem library
-        // this can generate errors due to LC_ALL locale being invalid
-        fs::path fullpath;
-        fullpath = fs::absolute(loco_filename);
-        fullpath_str = fullpath.make_preferred().string();
-      } catch ( std::runtime_error& ex ) {
-        // use realpath
-        char buf[PATH_MAX];
-        char *res = realpath(loco_filename.c_str(), buf);
-        if(res) fullpath_str = string(buf);
-        else fullpath_str = loco_filename; // if failed to get full path
-      }
+      fullpath_str = get_fullpath(loco_filename);
+      if(params.print_prs) path_prs = get_fullpath(prs_filename);
 
       if( !params.binary_mode ) { // for quantitative traits
         outb << files.pheno_names[ph]  << " " <<  fullpath_str << endl;
+        if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
       } else { // for binary traits - check level 1 ridge converged
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
           outb << files.pheno_names[ph]  << " " << fullpath_str << endl;
+          if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
         } else {
           if(params.write_l0_pred){ // cleanup level 0 predictions
             pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
@@ -710,8 +706,40 @@ void Data::output() {
 
   if(params.make_loco || params.binary_mode){
     outb.closeFile();
-    sout << "List of blup files written to: [" << out_blup_list << "] \n";
+    sout << "List of blup files written to: [" << out_blup_list << "]\n";
   }
+  if(params.print_prs) {
+    outp.closeFile();
+    sout << "List of files with whole genome PRS written to: [" << 
+      out_prs_list << "]\n";
+  }
+
+}
+
+// convert filename to full path
+std::string get_fullpath(std::string fname){
+
+  string fout;
+
+  try {
+
+    // convert to full path using boost filesystem library
+    // this can generate errors due to LC_ALL locale being invalid
+    fs::path fullpath;
+    fullpath = fs::absolute(fname);
+    fout = fullpath.make_preferred().string();
+
+  } catch ( std::runtime_error& ex ) {
+
+    // use realpath
+    char buf[PATH_MAX];
+    char *res = realpath(fname.c_str(), buf);
+    if(res) fout = string(buf);
+    else fout = fname; // if failed to get full path
+
+  }
+
+  return fout;
 
 }
 
@@ -1105,19 +1133,19 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
 
 void Data::write_predictions(const int ph){
   // output predictions to file
+  string out;
   Files ofile;
-  map<string, uint32_t >::iterator itr_ind;
-  string out, id_index;
-  uint32_t index;
+  MatrixXd pred, prs;
 
-  // for the per chromosome predictions -- only for QT
+  // for the per chromosome predictions (not used)
   if(params.write_blups) {
+
     out = files.out_file + "_" + to_string(ph+1) + (params.gzOut ? ".gz" : "");
     sout << "writing file " << out << "..." << flush;
     ofile.openForWrite(out, sout);
 
     // enforce all chromosomes are printed
-    MatrixXd autosomal_pred = MatrixXd::Zero(predictions[0].rows(), params.nChrom);
+    pred = MatrixXd::Zero(predictions[0].rows(), params.nChrom);
 
     int chr, nn, chr_ctr = 0;
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
@@ -1126,53 +1154,31 @@ void Data::write_predictions(const int ph){
 
       nn = chr_map[chr][1];
       if(nn > 0){
-        autosomal_pred.col(chr - 1) = predictions[0].col(chr_ctr);
+        pred.col(chr - 1) = predictions[0].col(chr_ctr);
         ++chr_ctr;
       }
     }
 
     // header line : FID_IID for all individuals
-    ofile << "FID_IID ";
-    for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
-      id_index = itr_ind->first;
-      index = itr_ind->second;
-
-      // check individual was included in analysis, if not then skip
-      if( !in_filters.ind_in_analysis( index ) ) continue;
-      ofile << id_index << " ";
-    }
-    ofile << endl;
+    ofile << write_ID_header();
 
     // for each row: print chromosome then blups
-    for(chr = 0; chr < params.nChrom; chr++) {
-      ofile << chr + 1 << " ";
-      for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
-        id_index = itr_ind->first;
-        index = itr_ind->second;
-
-        // check individual was included in analysis, if not then skip
-        if( !in_filters.ind_in_analysis( index ) ) continue;
-
-        // print blup
-        if( pheno_data.masked_indivs(index, ph) )
-          ofile << autosomal_pred(index, chr) << " ";
-        else
-          ofile << "NA ";
-      }
-      ofile << endl;
-    }
+    for(chr = 0; chr < params.nChrom; chr++) 
+      ofile << write_chr_row(chr+1, ph, pred.col(chr));
 
     ofile.closeFile();
+
   }
 
   if(params.make_loco || params.binary_mode){
+
     out = files.out_file + "_" + to_string(ph+1) + ".loco" + (params.gzOut ? ".gz" : "");
     sout << "writing LOCO predictions..." << flush;
     ofile.openForWrite(out, sout);
 
     // output LOCO predictions G_loco * beta_loco for each autosomal chr
-    MatrixXd loco_pred (predictions[0].rows(), params.nChrom);
-    loco_pred.colwise() = predictions[0].rowwise().sum();
+    pred.resize(predictions[0].rows(), params.nChrom);
+    pred.colwise() = predictions[0].rowwise().sum();
 
     int chr, nn, chr_ctr = 0;
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
@@ -1181,44 +1187,93 @@ void Data::write_predictions(const int ph){
 
       nn = chr_map[chr][1];
       if(nn > 0) {
-        loco_pred.col(chr - 1) -= predictions[0].col(chr_ctr);
+        pred.col(chr - 1) -= predictions[0].col(chr_ctr);
         ++chr_ctr;
       }
     }
 
     // header line : FID_IID for all individuals
-    ofile << "FID_IID ";
-    for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
-      id_index = itr_ind->first;
-      index = itr_ind->second;
-
-      // check individual was included in analysis, if not then skip
-      if( !in_filters.ind_in_analysis( index ) ) continue;
-      ofile << id_index << " ";
-    }
-    ofile << endl;
+    ofile << write_ID_header();
 
     // print loco predictions for each chromosome
-    for(chr = 0; chr < params.nChrom; chr++) {
-      ofile << chr + 1 << " ";
-      for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
-        id_index = itr_ind->first;
-        index = itr_ind->second;
-
-        // check individual was included in analysis, if not then skip
-        if( !in_filters.ind_in_analysis( index ) ) continue;
-
-        // print loco prediction
-        if( pheno_data.masked_indivs(index, ph) )
-          ofile << loco_pred(index, chr) << " ";
-        else
-          ofile << "NA ";
-      }
-      ofile << endl;
-    }
+    for(chr = 0; chr < params.nChrom; chr++) 
+      ofile << write_chr_row(chr+1, ph, pred.col(chr));
 
     ofile.closeFile();
+
   }
+
+
+  if(params.print_prs){
+
+    out = files.out_file + "_" + to_string(ph+1) + ".prs" + (params.gzOut ? ".gz" : "");
+    sout << "writing whole genome PRS..." << flush;
+    ofile.openForWrite(out, sout);
+
+    // output predictions sum(G * beta)
+    prs.resize(predictions[0].rows(), 1);
+    prs = predictions[0].rowwise().sum();
+
+    // header line : FID_IID for all individuals
+    ofile << write_ID_header();
+
+    // print prs (set chr=0)
+    ofile << write_chr_row(0, ph, prs.col(0));
+
+    ofile.closeFile();
+
+  }
+
+}
+
+std::string Data::write_ID_header(){
+
+  uint32_t index;
+  string out, id_index;
+  std::ostringstream buffer;
+  map<string, uint32_t >::iterator itr_ind;
+
+  buffer << "FID_IID ";
+  for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
+    id_index = itr_ind->first;
+    index = itr_ind->second;
+
+    // check individual was included in analysis, if not then skip
+    if( !in_filters.ind_in_analysis( index ) ) continue;
+    buffer << id_index << " ";
+  }
+  buffer << endl;
+
+  return buffer.str();
+
+}
+
+
+std::string Data::write_chr_row(const int chr, const int ph, const Eigen::MatrixXd& pred){
+
+  uint32_t index;
+  string out, id_index;
+  std::ostringstream buffer;
+  map<string, uint32_t >::iterator itr_ind;
+
+  buffer << chr << " ";
+  for (itr_ind = params.FID_IID_to_ind.begin(); itr_ind != params.FID_IID_to_ind.end(); ++itr_ind) {
+    id_index = itr_ind->first;
+    index = itr_ind->second;
+
+    // check individual was included in analysis, if not then skip
+    if( !in_filters.ind_in_analysis( index ) ) continue;
+
+    // print prs
+    if( pheno_data.masked_indivs(index, ph) )
+      buffer << pred(index, 0) << " ";
+    else
+      buffer << "NA ";
+  }
+  buffer << endl;
+
+  return buffer.str();
+
 }
 
 
@@ -1746,10 +1801,10 @@ void Data::blup_read_chr(const int chrom) {
   uint32_t indiv_index;
   Files blupf;
 
-  m_ests.blups = MatrixXd::Zero(params.n_samples, params.n_pheno);
+  // skip reading if specified by user or if PRS is given (same for all chromosomes)
+  if( params.use_prs || params.skip_blups ) return;
 
-  // skip reading if specified by user
-  if( params.skip_blups ) return;
+  m_ests.blups = MatrixXd::Zero(params.n_samples, params.n_pheno);
 
   sout << "   -reading loco predictions for the chromosome..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();

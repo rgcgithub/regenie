@@ -75,11 +75,13 @@ class Data {
     void level_0_calculations();
     // output of step 1
     void output();
-    void write_predictions(const int);
     void make_predictions(const int,const int);
     void make_predictions_loocv(const int,const int);
     void make_predictions_binary(const int,const int);
     void make_predictions_binary_loocv(const int,const int);
+    void write_predictions(const int);
+    std::string write_ID_header();
+    std::string write_chr_row(const int,const int,const Eigen::MatrixXd&);
 
     // step 2 main functions
     void test_snps();
@@ -114,5 +116,8 @@ class Data {
     Data();
     ~Data();
 };
+
+// extra function
+std::string get_fullpath(std::string);
 
 #endif
