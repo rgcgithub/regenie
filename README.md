@@ -31,6 +31,9 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.7 (New option `--print-prs` in step 1 to print the whole genome predictions (i.e. PRS) without using LOCO; 
+new flag `--use-prs` in step 2 to use these in the association tests).
+
 Version 1.0.6.6 (Fixed MAC calculation for variants on sex chromosomes when sex information is available in the genotype file).
 
 Version 1.0.6.5 (Enabled options `--extract/--exclude` in step 2).
