@@ -97,7 +97,7 @@
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access
 // to this value.  Named with all caps as a consequence.
-#define PLINK2_BASE_VERNUM 702
+#define PLINK2_BASE_VERNUM 703
 
 
 #define _FILE_OFFSET_BITS 64
@@ -134,29 +134,25 @@
 #endif
 
 #ifdef __LP64__
-#  ifndef __SSE2__
-// possible todo: remove this requirement, the 32-bit VecW-using code does most
-// of what we need.  But little point in doing this before we have e.g. an
-// ARM-based machine to test with that scientists would plausibly want to run
-// plink2 on.
-#    error "64-bit builds currently require SSE2.  Try producing a 32-bit build instead."
+#  ifdef __x86_64__
+#    include <emmintrin.h>
+#  else
+#    define SIMDE_ENABLE_NATIVE_ALIASES
+#    include "x86/sse2.h"
 #  endif
-#  include <emmintrin.h>
 #  ifdef __SSE4_2__
 #    define USE_SSE42
 #    include <smmintrin.h>
 #    ifdef __AVX2__
-#      include <immintrin.h>
-#      ifndef __BMI__
-#        error "AVX2 builds require -mbmi as well."
+#      if defined(__BMI__) && defined(__BMI2__) && defined(__LZCNT__)
+#        include <immintrin.h>
+#        define USE_AVX2
+#      else
+// Graceful downgrade, in case -march=native misfires on a VM.  See
+// https://github.com/chrchang/plink-ng/issues/155 .
+#        warning "AVX2 builds require -mbmi, -mbmi2, and -mlzcnt as well.  Downgrading to SSE4.2 build."
+#        undef USE_AVX2
 #      endif
-#      ifndef __BMI2__
-#        error "AVX2 builds require -mbmi2 as well."
-#      endif
-#      ifndef __LZCNT__
-#        error "AVX2 builds require -mlzcnt as well."
-#      endif
-#      define USE_AVX2
 #    endif
 #  endif
 #  define ALIGNV16 __attribute__ ((aligned (16)))
