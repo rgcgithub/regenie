@@ -1177,11 +1177,12 @@ void readChunkFromBedFileToG(const int bs, const int chrom, uint32_t &snp_index_
             if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
             ns++;
           }
-        }
 
-        // get genotype counts
-        if( params->htp_out ) 
-          update_genocounts(params->binary_mode, index, hc, gblock->genocounts[j], masked_indivs, phenotypes_raw);
+          // get genotype counts
+          if( params->htp_out ) 
+            update_genocounts(params->binary_mode, index, hc, gblock->genocounts[j], masked_indivs, phenotypes_raw);
+
+        }
       }
       index++;
     }
@@ -1698,11 +1699,12 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
           if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
           ns++;
         }
-      }
 
-      // get genotype counts
-      if( params->htp_out ) 
-        update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
+        // get genotype counts
+        if( params->htp_out ) 
+          update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
+
+      }
     }
     index++;
   }
@@ -1808,14 +1810,14 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
             if( params->dosage_mode ) eij2 += gblock->genobuf[index] * gblock->genobuf[index];
             ns++;
           }
-        }
 
-        // get genotype counts
-        if( params->htp_out ) {
-          hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
-          update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
-        }
+          // get genotype counts
+          if( params->htp_out ) {
+            hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
+            update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
+          }
 
+        }
       }
       index++;
     }
