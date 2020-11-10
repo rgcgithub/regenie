@@ -190,11 +190,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if (vm.count("help")){
       print_header(std::cout);
       std::cout << AllOptions.help({"", "Main"}) << '\n' << webinfo << "\n\n";
-      exit(-1);
+      exit(0);
     } else if (vm.count("helpFull")) {
       print_header(std::cout);
       std::cout << AllOptions.help({"", "Main", "Additional"}) << '\n' << webinfo << "\n\n";
-      exit(-1);
+      exit(0);
     } 
     
     if (!vm.count("out")){
