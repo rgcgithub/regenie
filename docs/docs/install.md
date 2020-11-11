@@ -7,6 +7,15 @@ The **regenie** source code is hosted on
 
 Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) or Clang version >=3.3 (on Mac OSX)
 
+### Pre-compiled binaries
+
+Pre-compiled binaries are available in the 
+[Github repository](https://github.com/rgcgithub/regenie/releases).
+These are provided for Linux and Mac OSX computing environments and
+are statically linked. 
+For the Linux binaries, user should have GLIBC version >= 2.22 installed.
+
+
 ### Standard installation
 1. **regenie** requires the
   [BGEN library](https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk) so
@@ -22,22 +31,16 @@ Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >
 If this library is installed on the system, you should compile using 
 `make HAS_BOOST_IOSTREAM=1`. 
 
-Pre-compiled binaries are available in the 
-[Github repository](https://github.com/rgcgithub/regenie/releases).
-
 ### With Docker
 Alternatively, you can use a Docker image to run **regenie**. 
-A Dockerfile (thanks to Nathan Weeks) is provided in the main directory and 
-running `make docker-build` from the main directory will build the image. 
-To compile the docker image with the Boost Iostream library, you can run
-`make docker-build HAS_BOOST_IOSTREAM=1`. 
+A guide to using docker is available on 
+the [Github page](https://github.com/rgcgithub/regenie/wiki/Using-docker).
 
-To test that the image was built successfully, you can then run 
-`make docker-test`
-(add `HAS_BOOST_IOSTREAM=1` if compilation was done with Boost Iostream library).
+### With conda
+To install with conda, follow the directions 
+[here](https://anaconda.org/bioconda/regenie).
 
-Docker images are available in the 
-[Github repository](https://github.com/rgcgithub/regenie/packages).
+
 
 ##Computing requirements
 
