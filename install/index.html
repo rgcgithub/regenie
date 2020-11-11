@@ -188,15 +188,8 @@ If this library is installed on the system, you should compile using
 <a href="https://github.com/rgcgithub/regenie/releases">Github repository</a>.</p>
 <h3 id="with-docker">With Docker</h3>
 <p>Alternatively, you can use a Docker image to run <strong>regenie</strong>. 
-A Dockerfile (thanks to Nathan Weeks) is provided in the main directory and 
-running <code>make docker-build</code> from the main directory will build the image. 
-To compile the docker image with the Boost Iostream library, you can run
-<code>make docker-build HAS_BOOST_IOSTREAM=1</code>. </p>
-<p>To test that the image was built successfully, you can then run 
-<code>make docker-test</code>
-(add <code>HAS_BOOST_IOSTREAM=1</code> if compilation was done with Boost Iostream library).</p>
-<p>Docker images are available in the 
-<a href="https://github.com/rgcgithub/regenie/packages">Github repository</a>.</p>
+A guide to using docker is available on 
+the <a href="https://github.com/rgcgithub/regenie/wiki/Using-docker">Github page</a>.</p>
 <h2 id="computing-requirements">Computing requirements</h2>
 <p>We have tested <strong>regenie</strong> on 64-bit Linux and 64-bit Mac OSX computing environments.</p>
 <p>Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. </p>
