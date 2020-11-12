@@ -17,14 +17,14 @@ jobs:
         run: sudo apt install -y --no-install-recommends ${LIB_INSTALL}
 
       - name: Cache Bgen
-        id: cache-bgen
+        id: bgen-cache
         uses: actions/cache@v2
         with:
           path: bgen.tgz
-          key: ${{ runner.os }}-bgentgz
+          key: ${{ runner.os }}-bgen
 
       - name: Download Bgen if not cached
-        if: steps.cache-bgentgz.outputs.cache-hit != 'true'
+        if: steps.bgen-cache.outputs.cache-hit != 'true'
         run: |
           wget -O bgen.tgz "http://code.enkre.net/bgen/tarball/release/${BGEN_VERSION}"
 
