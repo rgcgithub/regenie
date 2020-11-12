@@ -1,0 +1,43 @@
+on: [push, pull_request]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    name: Build
+    env:
+      BOOST_IO: 0
+      STATIC: 1
+      BGEN_VERSION: v1.1.7
+      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v2
+
+      - name: Apt packages
+        run: sudo apt install -y --no-install-recommends ${LIB_INSTALL}
+
+      - name: Cache Bgen
+        id: cache-bgen
+        uses: actions/cache@v2
+        with:
+          path: bgen.tgz
+          key: ${{ runner.os }}-bgentgz
+
+      - name: Download Bgen if not cached
+        if: steps.cache-bgentgz.outputs.cache-hit != 'true'
+        run: |
+          wget -O bgen.tgz "http://code.enkre.net/bgen/tarball/release/${BGEN_VERSION}"
+
+      - name: Install Bgen
+        run: |
+          tar xzf bgen.tgz
+          pushd ${BGEN_VERSION}
+          python3 waf configure
+          python3 waf
+          popd
+
+      - name: Build
+        run: make BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC all
+
+      - name: Test
+        run: ./regenie --help
