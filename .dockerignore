@@ -1,6 +1,7 @@
 # File .dockerignore
 .git
 .gitignore
+.github
 
 # directories to ignore
 example/
