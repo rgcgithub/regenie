@@ -58,8 +58,8 @@
 #include <boost/math/distributions.hpp>
 
 #include "bgen_to_vcf.hpp"
-#include "eigen3.3/Dense"
-#include "eigen3.3/StdVector"
+#include "Eigen/Dense"
+#include "Eigen/StdVector"
 
 #ifdef __linux__
 #include <omp.h>

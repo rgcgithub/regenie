@@ -24,7 +24,7 @@
 
 */
 
-#include "cxxopts/include/cxxopts.hpp"
+#include "cxxopts.hpp"
 #include "Regenie.hpp"
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
