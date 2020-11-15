@@ -50,7 +50,7 @@ RUN cmake \
       -DBGEN_PATH="${BGEN_PATH}" \
       -DWITH_MKL:BOOL=OFF \
       -DWITH_OPENBLAS:BOOL=OFF \
-      -S "${SRC_DIR}"
+      -S "${SRC_DIR}" \
     && make VERBOSE=1 -j${CPU_COUNT} regenie \
     && make install
 
