@@ -15,6 +15,7 @@ ARG STATIC
 ARG CMAKE_VER=3.17.5
 ARG BGEN_PATH=/src/v1.1.7
 ARG SRC_DIR=/src/regenie
+ARG CPU_COUNT=1
 
 WORKDIR /src
 
@@ -50,6 +51,8 @@ RUN cmake \
       -DWITH_MKL:BOOL=OFF \
       -DWITH_OPENBLAS:BOOL=OFF \
       -S "${SRC_DIR}"
+    && make VERBOSE=1 -j${CPU_COUNT} regenie \
+    && make install
 
 FROM ubuntu:18.04
 ARG LIB_INSTALL2
@@ -58,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       libgomp1 $LIB_INSTALL2 \
       && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /src/local/bin/regenie /usr/local/bin
+COPY --from=builder /usr/local/bin/regenie /usr/local/bin
 
 # Avoid this to keep image more for general usage
 # ENTRYPOINT ["/usr/local/bin/regenie"]
