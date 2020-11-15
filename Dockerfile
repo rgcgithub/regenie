@@ -11,7 +11,7 @@ FROM ubuntu:18.04 AS builder
 
 ARG BOOST_IO
 ARG LIB_INSTALL
-ARG STATIC
+ARG SHARED=0
 ARG CMAKE_VER=3.17.5
 ARG BGEN_PATH=/src/v1.1.7
 ARG SRC_DIR=/src/regenie
@@ -27,6 +27,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       make \
       python3 \
       zlib1g-dev \
+      libeigen3-dev \
       $LIB_INSTALL \
       && bash cmake.sh --prefix=/usr/local --skip-license \
       && rm cmake.sh \
@@ -42,7 +43,7 @@ WORKDIR /src/regenie/build
 
 #RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC
 RUN cmake \
-      -DBUILD_SHARED_LIBS:BOOL=OFF \
+      -DBUILD_SHARED_LIBS:BOOL="${SHARED}" \
       -DCMAKE_PREFIX_PATH:PATH=/usr/local \
       -DCMAKE_INSTALL_PREFIX:PATH=/usr/local \
       -DCMAKE_INSTALL_LIBDIR=lib \
