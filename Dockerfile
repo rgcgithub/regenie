@@ -9,7 +9,6 @@ ARG LIB_INSTALL2
 
 FROM ubuntu:18.04 AS builder
 
-ARG BOOST_IO
 ARG LIB_INSTALL
 ARG SHARED=0
 ARG CMAKE_VER=3.17.5
@@ -41,7 +40,6 @@ COPY . /src/regenie
 
 WORKDIR /src/regenie/build
 
-#RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC
 RUN cmake \
       -DBUILD_SHARED_LIBS:BOOL="${SHARED}" \
       -DCMAKE_PREFIX_PATH:PATH=/usr/local \
