@@ -288,15 +288,14 @@ void read_bgen_sample(const string sample_file, struct param* params, std::vecto
       }
     }
 
-    // get sex into IID
+    // get sex into IID (if no sex column, set to 0)
     if( !(iss >> FID >> IID) ){
-      sout << "ERROR: Incorrectly formatted sample file at line" << ids.size() + 1 << endl;
-      exit(-1);
+      params->sex.push_back(false);
+    } else {
+      // save males as 1 (else assume all females=0)
+      if( IID == "1" ) params->sex.push_back(true);
+      else params->sex.push_back(false);
     }
-
-    // save males as 1 (else assume all females=0)
-    if( IID == "1" ) params->sex.push_back(true);
-    else params->sex.push_back(false);
 
     nline++;
   }
