@@ -633,7 +633,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
         l1->cumsum_values[0].row(ph) += pred; // Sx
         // Y is centered so Sy = 0
         l1->cumsum_values[2].row(ph) += pred.array().square().matrix(); // Sx2
-        // Y is scaled so Sy2 = params->n_samples - 1
+        // Y is scaled so Sy2 = params->n_samples - ncov
         l1->cumsum_values[4].row(ph).array() += pred.array() * Yvec_chunk(i,0); // Sxy
       }
     }
@@ -642,7 +642,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
-  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - 1; // Sy2
+  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - params->ncov; // Sy2
 
   sout << endl;
 }

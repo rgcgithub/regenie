@@ -132,9 +132,9 @@ void Data::residualize_genotypes() {
   MatrixXd beta = Gblock.Gmat * pheno_data.new_cov;
   Gblock.Gmat -= beta * pheno_data.new_cov.transpose();
 
-  // scaling
-  if(params.strict_mode) scale_G = Gblock.Gmat.rowwise().norm() / sqrt(pheno_data.Neff(0) - 1);
-  else scale_G = Gblock.Gmat.rowwise().norm() / sqrt(in_filters.ind_in_analysis.cast<double>().sum() - 1);
+  // scaling (use [N-C] where C=#covariates)
+  if(params.strict_mode) scale_G = Gblock.Gmat.rowwise().norm() / sqrt(pheno_data.Neff(0) - params.ncov);
+  else scale_G = Gblock.Gmat.rowwise().norm() / sqrt(in_filters.ind_in_analysis.cast<double>().sum() - params.ncov);
 
   // check sd
   MatrixXd::Index minIndex;
@@ -1467,7 +1467,7 @@ void Data::test_snps() {
 
         // score test stat for QT
         if( params.strict_mode )
-          stats = (Gblock.Gmat * res) / sqrt( pheno_data.Neff(0) );
+          stats = (Gblock.Gmat * res) / sqrt( pheno_data.Neff(0) - params.ncov );
         else {
           // compute GtG for each phenotype (different missing patterns)
           for( int i = 0; i < params.n_pheno; ++i ) {
@@ -1512,7 +1512,7 @@ void Data::test_snps() {
 
             // estimate & SE for QT
             if( params.strict_mode )
-              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd_yres(j)) / ( sqrt(pheno_data.Neff(j)) * scale_G(i) );
+              bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd_yres(j)) / ( sqrt(pheno_data.Neff(j) - params.ncov) * scale_G(i) );
             else
               bhat = stats(i,j) * ( pheno_data.scale_Y(j) * p_sd_yres(j)) / ( sqrt(scaleG_pheno(i,j)) * scale_G(i) );
             se_b = bhat / stats(i,j);
@@ -2412,7 +2412,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       // score test stat for QT
       if( params.strict_mode ) {
         Geno *= in_filters.ind_in_analysis.cast<double>();
-        block_info->stats = (res.array().colwise() * Geno).matrix().transpose().rowwise().sum() / sqrt( in_filters.ind_in_analysis.cast<float>().sum() );
+        block_info->stats = (res.array().colwise() * Geno).matrix().transpose().rowwise().sum() / sqrt( pheno_data.Neff(0) - params.ncov );
       } else {
         // compute GtG for each phenotype (different missing patterns)
         block_info->scale_fac_pheno = (pheno_data.masked_indivs.cast<double>().array().colwise() * Geno).matrix().colwise().squaredNorm();
@@ -2432,7 +2432,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
       if( !params.binary_mode ){
         // estimate & SE for QT
         if( params.strict_mode )
-          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i)) / ( sqrt(pheno_data.Neff(i)) * block_info->scale_fac );
+          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i)) / ( sqrt(pheno_data.Neff(i) - params.ncov) * block_info->scale_fac );
         else
           block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i) ) / ( sqrt(block_info->scale_fac_pheno(i)) * block_info->scale_fac );
         block_info->se_b(i) = block_info->bhat(i) / block_info->stats(i);
@@ -2485,7 +2485,7 @@ void Data::residualize_geno(int isnp, variant_block* snp_data){
 
     // scale
     snp_data->scale_fac = Gblock.Gmat.col(isnp).norm();
-    snp_data->scale_fac /= sqrt( (params.strict_mode ? pheno_data.Neff(0) : in_filters.ind_in_analysis.cast<float>().sum()) - 1 );
+    snp_data->scale_fac /= sqrt( (params.strict_mode ? pheno_data.Neff(0) : in_filters.ind_in_analysis.cast<float>().sum()) - params.ncov );
 
     if( snp_data->scale_fac < params.numtol ) {
       snp_data->ignored = true;
@@ -2503,7 +2503,7 @@ void Data::compute_res(){
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
   p_sd_yres = res.colwise().norm();
-  p_sd_yres.array() /= sqrt(pheno_data.Neff - 1);
+  p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov);
   res.array().rowwise() /= p_sd_yres.array();
 
 }

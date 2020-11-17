@@ -566,6 +566,8 @@ void getCovBasis(MatrixXd& new_cov,struct param* params){
   new_cov *= V.rightCols(non_zero_eigen);
   new_cov.array().rowwise() /= vv1.array();
 
+  params->ncov = non_zero_eigen; // save number of lin. indep. covars.
+
 }
 
 
@@ -576,7 +578,7 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   // residuals (centered) then scale
   MatrixXd beta = pheno_data->phenotypes.transpose() * pheno_data->new_cov;
   pheno_data->phenotypes -= ( (pheno_data->new_cov * beta.transpose()).array() * pheno_data->masked_indivs.array().cast<double>() ).matrix();
-  pheno_data->scale_Y = pheno_data->phenotypes.colwise().norm().array() / sqrt(pheno_data->Neff.matrix().transpose().array() - 1);
+  pheno_data->scale_Y = pheno_data->phenotypes.colwise().norm().array() / sqrt(pheno_data->Neff.matrix().transpose().array() - params->ncov);
 
   // check sd is not 0 
   MatrixXd::Index minIndex;
