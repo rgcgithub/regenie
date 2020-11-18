@@ -2,7 +2,7 @@
 # minor edits were made
 # Filename: Dockerfile
 
-# make this global 
+# make this global
 ARG LIB_INSTALL
 ARG LIB_INSTALL2
 
@@ -15,6 +15,7 @@ ARG CMAKE_VER=3.17.5
 ARG BGEN_PATH=/src/v1.1.7
 ARG SRC_DIR=/src/regenie
 ARG CPU_COUNT=1
+ARG VERBOSE=1
 
 WORKDIR /src
 
@@ -50,7 +51,7 @@ RUN cmake \
       -DWITH_MKL:BOOL=OFF \
       -DWITH_OPENBLAS:BOOL=OFF \
       -S "${SRC_DIR}" \
-    && make VERBOSE=1 -j${CPU_COUNT} regenie \
+    && make VERBOSE=${VERBOSE} -j${CPU_COUNT} regenie \
     && make install
 
 FROM ubuntu:18.04
@@ -64,4 +65,3 @@ COPY --from=builder /usr/local/bin/regenie /usr/local/bin
 
 # Avoid this to keep image more for general usage
 # ENTRYPOINT ["/usr/local/bin/regenie"]
-
