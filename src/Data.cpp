@@ -731,11 +731,17 @@ std::string get_fullpath(std::string fname){
 
   } catch ( std::runtime_error& ex ) {
 
-    // use realpath
-    char buf[PATH_MAX];
-    char *res = realpath(fname.c_str(), buf);
-    if(res) fout = string(buf);
-    else fout = fname; // if failed to get full path
+    try {
+
+      // use realpath
+      char buf[PATH_MAX];
+      char *res = realpath(fname.c_str(), buf);
+      if(res) fout = string(buf);
+      else fout = fname; // if failed to get full path
+
+    } catch ( const std::bad_alloc& ) {
+      fout = fname; // if failed to get full path
+    }
 
   }
 
