@@ -236,7 +236,7 @@ void fit_null_firth(int chrom, struct f_ests* firth_est, struct phenodt* pheno_d
       sout << "ERROR: Firth penalized logistic regression failed to converge for phenotype: " << files->pheno_names[i] << "." <<
         " Try decreasing the maximum step size using `--maxstep-null` (currently=" << (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth)<< ") " <<
         "and increasing the maximum number of iterations using `--maxiter-null` (currently=" << (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) << ").\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
   }
 

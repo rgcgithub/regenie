@@ -65,7 +65,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
       tmp_snp.chrom = chrStrToInt(chromosome, params->nChrom);
       if (tmp_snp.chrom == -1) {
         sout << "ERROR: Unknown chromosome code in bgen file."<< endl;
-        exit(1);
+        exit(EXIT_FAILURE);
       }
 
       if( files->chr_read.empty() || (tmp_snp.chrom != files->chr_read.back()) ) files->chr_read.push_back(tmp_snp.chrom);
@@ -120,7 +120,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   for(size_t i = 0; i < params->n_samples; i++) {
     if (params->FID_IID_to_ind.find(tmp_ids[i]) != params->FID_IID_to_ind.end()) {
       sout << "ERROR: Duplicate individual in bgen file : FID_IID=" << tmp_ids[i] << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_ids[i], i ) );
   }
@@ -164,14 +164,14 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   sout << "   -index bgi file [" << bgi_file<< "]" << endl;
   if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) {
     sout <<  "ERROR: " << sqlite3_errmsg(db) << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
 
   // header: chromosome|position|rsid|number_of_alleles|allele1|allele2|file_start_position|size_in_bytes
   if( sqlite3_prepare_v2( db, sql_query.c_str(), -1, &stmt, NULL ) != SQLITE_OK ){
     sout << "ERROR: " << sqlite3_errmsg(db) << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   bool done = false;
@@ -182,7 +182,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         tmp_snp.chrom = chrStrToInt(std::string( (char *) sqlite3_column_text(stmt, 0) ), params->nChrom);
         if (tmp_snp.chrom == -1) {
           sout << "ERROR: Unknown chromosome code in bgi file."<< endl;
-          exit(1);
+          exit(EXIT_FAILURE);
         }
         if( files->chr_read.empty() || (tmp_snp.chrom != files->chr_read.back()) ) files->chr_read.push_back(tmp_snp.chrom);
 
@@ -230,7 +230,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
       default:
         sout << "ERROR: Failed reading file (" << sqlite3_errmsg(db) << ").\n";
-        exit(-1);
+        exit(EXIT_FAILURE);
     }
   }
 
@@ -255,7 +255,7 @@ void read_bgen_sample(const string sample_file, struct param* params, std::vecto
   myfile.open (sample_file, ios::in);
   if (!myfile.is_open()) {   
     sout << "ERROR: Cannot open sample file." << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // read fid/iid information
@@ -264,19 +264,19 @@ void read_bgen_sample(const string sample_file, struct param* params, std::vecto
 
     if( !(iss >> FID >> IID) ){
       sout << "ERROR: Incorrectly formatted sample file at line" << ids.size() + 1 << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // check first two lines for correct format
     if(nline == 0){
       if( (FID != "ID_1") || (IID != "ID_2") ) {
         sout << "ERROR: Header of the sample file must start with: ID_1 ID_2" << endl;
-        exit(1);
+        exit(EXIT_FAILURE);
       }
     } else if(nline == 1){
       if( (FID != "0") || (IID != "0") ) {
         sout << "ERROR: Second line of sample file must start with: 0 0" << endl;
-        exit(1);
+        exit(EXIT_FAILURE);
       }
     } else {
       tmp_str = FID + "_" + IID;
@@ -302,7 +302,7 @@ void read_bgen_sample(const string sample_file, struct param* params, std::vecto
 
   if( params->n_samples != ids.size() ){
     sout << "ERROR: Number of samples in BGEN file does not match that in the sample file." << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   myfile.close();
@@ -341,7 +341,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {   
     sout << "ERROR: Cannot open bim file." << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   while (getline(myfile, line)) {
@@ -349,7 +349,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
     if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted bim file at line " << snpinfo.size()+1 << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     tmp_snp.chrom = chrStrToInt(tmp_str_vec[0], params->nChrom);
@@ -367,7 +367,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in bim file at line " << snpinfo.size()+1 << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
 
     // keep track of how many included snps per chromosome there are
@@ -381,7 +381,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
       files->chr_read.push_back(tmp_snp.chrom);
       if( tmp_snp.chrom <= minChr_read ){
         sout << "ERROR: Chromosomes in bim file are not in ascending order.\n";
-        exit(-1);
+        exit(EXIT_FAILURE);
       } else minChr_read = tmp_snp.chrom;
     }
 
@@ -412,7 +412,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {   
     sout << "ERROR: Cannot open fam file." << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   while (getline(myfile, line)) {
@@ -420,7 +420,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
     if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted fam file at line " << lineread + 1 << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
@@ -428,7 +428,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
     // check duplicates -- if not, store in map
     if (params->FID_IID_to_ind.find(tmp_id) != params->FID_IID_to_ind.end()) {
       sout << "ERROR: Duplicate individual in fam file : FID_IID=" << tmp_id << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_id, lineread ) );
     if(params->write_samples) {
@@ -458,14 +458,14 @@ void prep_bed(const uint32_t& nsamples, struct in_files* files, mstream& sout) {
   files->bed_ifstream.open(fname.c_str(), std::ios::in | std::ios::binary);
   if (!files->bed_ifstream.is_open()) {   
     sout << "ERROR: Cannot open bed file." << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   uchar header[3];
   files->bed_ifstream.read( reinterpret_cast<char *> (&header[0]), 3);
   if ( (header[0] != 0x6c) || (header[1] != 0x1b) || (header[2] != 0x01) ) {
     sout << "ERROR: Incorrect magic number in bed file.\n";
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   // size of genotype block [(n+3)/4 = ceil(n/4.0)]
@@ -512,15 +512,15 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {
     sout << "ERROR: Cannot open pvar file." << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   while (getline(myfile, line)) { // skip to main header line
     boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
 
     if( tmp_str_vec.size() < 1 ){
-      cerr << "ERROR: No blank lines should be before the header line in pvar file.\n";
-      exit(-1);
+      sout << "ERROR: No blank lines should be before the header line in pvar file.\n";
+      exit(EXIT_FAILURE);
     }
 
     if( tmp_str_vec[0] == "#CHROM" ) break;
@@ -529,7 +529,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
   // check header
   if( (tmp_str_vec.size() < 5) || (tmp_str_vec[1] != "POS") || (tmp_str_vec[2] != "ID") || (tmp_str_vec[3] != "REF") || (tmp_str_vec[4] != "ALT") ){
     cerr << "ERROR: Header of pvar file does not have correct format.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   while (getline(myfile, line)) {
@@ -537,7 +537,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
 
     if( tmp_str_vec.size() < 5 ){
       sout << "ERROR: Incorrectly formatted pvar file at line " << snpinfo.size()+1 << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     tmp_snp.chrom = chrStrToInt(tmp_str_vec[0], params->nChrom);
@@ -549,7 +549,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
 
     if (tmp_snp.chrom == -1) {
       sout << "ERROR: Unknown chromosome code in pvar file at line " << snpinfo.size()+1 << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
 
     // keep track of how many included snps per chromosome there are
@@ -563,7 +563,7 @@ void read_pvar(struct in_files* files, struct param* params, struct filter* filt
       files->chr_read.push_back(tmp_snp.chrom);
       if( tmp_snp.chrom <= minChr_read ){
         sout << "ERROR: Chromosomes in pvar file are not in ascending order.\n";
-        exit(-1);
+        exit(EXIT_FAILURE);
       } else minChr_read = tmp_snp.chrom;
     }
 
@@ -595,7 +595,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   myfile.open(fname.c_str());
   if (!myfile.is_open()) {
     sout << "ERROR: Cannot open psam file." << endl;
-    exit(1);
+    exit(EXIT_FAILURE);
   }
 
   while (getline(myfile, line)) { // skip to main header line
@@ -603,7 +603,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
     if( tmp_str_vec.size() < 1 ){
       cerr << "ERROR: No blank lines should be before the header line in psam file.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if( tmp_str_vec[0] == "#FID" ) break;
@@ -612,7 +612,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   // check header
   if( (tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID")){
     cerr << "ERROR: Header does not have the correct format.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   // find if sex column is present
   auto scol = find(tmp_str_vec.begin(), tmp_str_vec.end(), "SEX");
@@ -624,7 +624,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
     if( tmp_str_vec.size() < 3 ){
       sout << "ERROR: Incorrectly formatted psam file at line " << lineread + 1 << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
@@ -632,7 +632,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     // check duplicates -- if not, store in map
     if (params->FID_IID_to_ind.find(tmp_id ) != params->FID_IID_to_ind.end()) {
       sout << "ERROR: Duplicate individual in fam file : FID_IID=" << tmp_id << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_id, lineread ) );
     if(params->write_samples) {
@@ -677,15 +677,15 @@ void prep_pgen(const uint32_t pgen_ns, const uint32_t pgen_nv, struct in_files* 
 
   if(pgen_samples != pgen_ns){
     cerr << "ERROR: Number of samples in pgen file and psam file don't match.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   if(pgen_variants != pgen_nv){
     cerr << "ERROR: Number of variants in pgen file and pvar file don't match.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   if(pgen_ac != 2){
     cerr << "ERROR: Only bi-allelic variants are accepted.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   gblock->genobuf.resize(filters->ind_in_analysis.size());
@@ -734,7 +734,7 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   // check nonzero
   if(params->n_variants == 0){
     sout << "ERROR: No variant left to include in analysis.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // go through each chromosome in order & save number of snps
@@ -784,7 +784,7 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
 
     if( tmp_str_vec.size() < 1 ){
       sout << "ERROR: Incorrectly formatted file specified by --extract." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
@@ -816,7 +816,7 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
 
     if( tmp_str_vec.size() < 1 ){
       sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
@@ -904,7 +904,7 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
 
     if( tmp_str_vec.size() < 2 ){
       sout << "ERROR: Incorrectly formatted file specified by --keep." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
@@ -919,7 +919,7 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
   // check size
   if( n_kept < 1 ) {
     sout << "ERROR: None of the individuals are in the genotype file.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   sout << "     +number of genotyped individuals to keep in the analysis = " << n_kept << endl;
@@ -942,7 +942,7 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
 
     if( tmp_str_vec.size() < 2 ){
       sout << "ERROR: Incorrectly formatted file specified by --remove." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
@@ -956,7 +956,7 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
 
   if( n_rm == params->n_samples ){
     sout << "ERROR: No individuals remain in the analysis.\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   sout << "     +number of genotyped individuals to exclude from the analysis = " << n_rm << endl;
@@ -1480,7 +1480,7 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
   uLongf dest_size = outsize;
   if( (uncompress( &(geno_block_uncompressed[0]), &dest_size, &((*geno_block)[0]), insize) != Z_OK) || (dest_size != outsize) ){
     sout << "ERROR: Failed to decompress genotype data block for variant: " << infosnp->ID << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // stream to uncompressed block

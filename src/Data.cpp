@@ -143,7 +143,7 @@ void Data::residualize_genotypes() {
     if(!params.test_mode) {
 
       sout << "!! Uh-oh, SNP " << snpinfo[in_filters.step1_snp_count+minIndex].ID << " has low variance (=" << scale_G(minIndex,0) << ").\n";
-      exit(1);
+      exit( EXIT_FAILURE );
 
     } else {
 
@@ -215,7 +215,7 @@ void Data::set_blocks() {
 
   if(params.total_n_block == 0){
     sout << "ERROR: Total number of blocks must be > 0.\n";
-    exit(-1);
+      exit( EXIT_FAILURE );
   }
 
   // set ridge params
@@ -241,7 +241,7 @@ void Data::set_blocks() {
   // check block size vs sample size
   if(params.use_loocv && params.block_size > n_analyzed){
   sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!\n";
-  exit(-1);
+  exit( EXIT_FAILURE );
   }
   */
   if(params.use_loocv) params.cv_folds = params.n_samples;
@@ -288,7 +288,7 @@ void Data::set_folds() {
     uint32_t target_size_folds = floor( pheno_data.Neff(0) / params.cv_folds );
     if( target_size_folds < 1 ){
       sout << "ERROR: Not enough samples are present for " << params.cv_folds<<"-fold CV.\n";
-      exit(-1);
+      exit( EXIT_FAILURE );
     }
 
     uint32_t n_non_miss = 0, cum_size_folds = 0;
@@ -317,7 +317,7 @@ void Data::set_folds() {
       uint32_t target_size_folds = floor( in_filters.ind_in_analysis.cast<double>().sum() / params.cv_folds );
       if( target_size_folds < 1 ){
         sout << "ERROR: Not enough samples are present for " << params.cv_folds<<"-fold CV.\n";
-        exit(-1);
+        exit( EXIT_FAILURE );
       }
 
       uint32_t n_non_miss = 0, cum_size_folds = 0;
@@ -358,7 +358,7 @@ void Data::set_folds() {
 
       if( sd_phenos.minCoeff() < params.numtol ){
         sout << "ERROR: One of the folds has only cases/controls! Either use smaller #folds (option --cv) or use LOOCV (option --loocv).\n";
-        exit(-1);
+        exit( EXIT_FAILURE );
       }
       cum_size_folds += params.cv_sizes[i];
     }
@@ -543,7 +543,7 @@ void Data::level_0_calculations() {
     runtime.stop();
     sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s\n";
     sout << "End time: " << ctime(&runtime.end_time_info) << endl;
-    exit(1);
+    exit( EXIT_SUCCESS );
   }
 
   // free up memory not used anymore
@@ -764,8 +764,8 @@ void Data::make_predictions(const int ph, const  int val) {
     infile.open(in_pheno.c_str(), ios::in | ios::binary );
 
     if (!infile.is_open()) {
-      sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-      exit(-1);
+      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
+      exit(EXIT_FAILURE);
     }
 
     // store back values in test_mat
@@ -862,8 +862,8 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
     infile.open(in_pheno.c_str(), ios::in | ios::binary );
 
     if (!infile.is_open()) {
-      sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-      exit(-1);
+      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
+      exit(EXIT_FAILURE);
     }
 
     // store back values in test_mat_conc
@@ -940,8 +940,8 @@ void Data::make_predictions_binary(const int ph, const  int val) {
     infile.open(in_pheno.c_str(), ios::in | ios::binary );
 
     if (!infile.is_open()) {
-      sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-      exit(-1);
+      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
+      exit(EXIT_FAILURE);
     }
 
     // store back values in test_mat
@@ -1049,8 +1049,8 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
     infile.open(in_pheno.c_str(), ios::in | ios::binary );
 
     if (!infile.is_open()) {
-      sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-      exit(-1);
+      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
+      exit(EXIT_FAILURE);
     }
 
     // store back values in test_mat_conc
@@ -1821,7 +1821,7 @@ void Data::blup_read_chr(const int chrom) {
     boost::algorithm::split(id_strings, line, is_any_of("\t "));
     if( id_strings[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // skip to chr
@@ -1833,14 +1833,14 @@ void Data::blup_read_chr(const int chrom) {
     // check number of entries is same as in header
     if(tmp_str_vec.size() != id_strings.size()) {
       sout << "ERROR: blup file for phenotype [" << files.pheno_names[i_pheno] << "] has different number of entries on line " << chrom + 1 << " compared to the header.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // check starts with chromosome number
     if(chrStrToInt(tmp_str_vec[0], params.nChrom) != chrom) {
       sout << "ERROR: blup file for phenotype [" << files.pheno_names[i_pheno] << "] start with `" << tmp_str_vec[0]<< "`" <<
         "instead of chromosome number=" << chrom << ".\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // read blup data
@@ -1858,7 +1858,7 @@ void Data::blup_read_chr(const int chrom) {
         read_indiv(indiv_index) = true;
       } else {
         sout << "ERROR: Individual appears more than once in blup file [" << files.blup_files[ph] <<"]: FID_IID=" << id_strings[filecol] << endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       in_blup = convertDouble( tmp_str_vec[filecol], &params, sout);
@@ -1868,7 +1868,7 @@ void Data::blup_read_chr(const int chrom) {
         if(pheno_data.masked_indivs(indiv_index, i_pheno)){
           sout << "ERROR: Individual (FID_IID=" << id_strings[filecol] << ") has missing blup prediction at chromosome " << chrom <<" for phenotype " << files.pheno_names[i_pheno]<< ". ";
           sout << "Either set their phenotype to `NA`, specify to ignore them using option '--remove', or skip reading predictions with option '--ignore-pred'.\n" << params.err_help ;
-          exit(-1);
+          exit(EXIT_FAILURE);
         };
       } else m_ests.blups(indiv_index, i_pheno) = in_blup;
     }
@@ -1878,7 +1878,7 @@ void Data::blup_read_chr(const int chrom) {
     if( (pheno_data.masked_indivs.col(i_pheno).array() && read_indiv).cast<int>().sum() < pheno_data.masked_indivs.col(i_pheno).cast<int>().sum() ){
       sout << "ERROR: All samples included in the analysis (for phenotype " <<
         files.pheno_names[i_pheno]<< ") must have LOCO predictions in file : " << files.blup_files[ph] << "\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     blupf.closeFile();

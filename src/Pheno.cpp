@@ -63,7 +63,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   // check sample size
   if( filters->ind_in_analysis.cast<int>().sum() < 1 ) {
     sout << "ERROR: Sample size cannot be < 1\n";
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   sout << " * number of individuals used in analysis = " << filters->ind_in_analysis.cast<int>().sum() << endl;
 
@@ -89,7 +89,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // get phenotype names 
@@ -114,7 +114,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   // check #pheno is > 0
   if(params->n_pheno < 1){
     sout << "ERROR: Need at least one phenotype." << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   sout << "n_pheno = " << params->n_pheno << endl;
 
@@ -142,7 +142,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
     if( tmp_str_vec.size() != (2+pheno_colKeep.size()) ){
       sout << "ERROR: Incorrectly formatted phenotype file." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
@@ -155,7 +155,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
       ind_in_pheno_and_geno( indiv_index ) = true;
     } else {
       sout << "ERROR: Individual appears more than once in phenotype file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // read phenotypes 
@@ -179,7 +179,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
           if(params->within_sample_l0){
             sout << "ERROR: No missing value allowed in phenotype file with option -within" << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
           } else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
             sout << "ERROR: A phenotype value is not "<<
               (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA") <<
@@ -187,7 +187,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
               " IID=" << tmp_str_vec[1] << 
               " Y=" << tmp_str_vec[2+j] << endl;
             //sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
-            exit(-1);
+            exit(EXIT_FAILURE);
           }
 
           pheno_data->phenotypes_raw(indiv_index, i_pheno) = params->missing_value_double;
@@ -219,7 +219,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   // check if all individuals have missing/invalid phenotype
   if(pheno_data->masked_indivs.cast<int>().colwise().sum().array().minCoeff() == 0){
     sout << "ERROR: All individuals have missing/invalid phenotype values." << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   if(!params->binary_mode || !params->test_mode){
@@ -252,7 +252,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     for(int j = 0; j < params->n_pheno;j++) {
       if( ( pheno_data->phenotypes_raw.col(j).array() == 1 ).count() == 0){
         sout << "ERROR: No cases present for phenotype: " << files->pheno_names[j] << endl; 
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
     }
   }
@@ -282,7 +282,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   // get covariate names 
@@ -306,7 +306,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
     int ncov_selected = std::unique(filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end()) - filters->cov_colKeep_names.begin();
     if( ncov_selected != params->n_cov ) {
       sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
   }
 
@@ -328,7 +328,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
 
     if( tmp_str_vec.size() < cov_colKeep.size() ){
       sout << "ERROR: Incorrectly formatted covariate file." << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
@@ -341,7 +341,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
       ind_in_cov_and_geno(indiv_index) = true;
     } else {
       sout << "ERROR: Individual appears more than once in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // read covariate data and check for missing values
@@ -352,7 +352,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
       pheno_data->new_cov(indiv_index, 1 + i_cov) = convertDouble(tmp_str_vec[2+j], params, sout);
       if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) {
         sout << "ERROR: Individual has missing value in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
       i_cov++;
     }
@@ -428,7 +428,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     // each line contains a phenotype name and the corresponding blup file name
     if( tmp_str_vec.size() != 2 ){
       sout << "ERROR: Incorrectly formatted blup list file : " << files->blup_file << endl;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // get index of phenotype in phenotype matrix
@@ -441,7 +441,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     // check that phenotype only has one file
     if(read_pheno[tmp_index]){
       sout << "ERROR: Phenotype \'" << tmp_pheno << "\' appears more than once in blup list file." << endl;
-      exit(1);
+      exit(EXIT_FAILURE);
     }
 
     n_files++;
@@ -452,7 +452,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   // force all phenotypes in phenotype file to be used
   if(n_files != params->n_pheno) {
     sout << "ERROR : Number of files (" << n_files <<")  is not equal to the number of phenotypes.\n" ;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   sout << "n_files = " << n_files << endl;
   fClass.closeFile();
@@ -474,7 +474,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     if( tmp_str_vec[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID (=" << tmp_str_vec[0] << ").\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if( params->use_prs ){ // read in second line
@@ -483,7 +483,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
       if( tmp_prs_vec[0] != "0") {
         sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
     }
 
@@ -508,7 +508,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     // check not everyone is masked
     if( n_masked_post < 1 ){
       sout << "ERROR: none of the individuals remaining in the analysis are in the LOCO predictions file from step 1.\n Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.\n";
-      exit(1);
+    exit(EXIT_FAILURE);
     }
 
     fClass.closeFile();
@@ -584,7 +584,7 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   MatrixXd::Index minIndex;
   if(pheno_data->scale_Y.minCoeff(&minIndex) < params->numtol){
     sout << "ERROR: Phenotype \'" << pheno_names[minIndex] << "\' has sd=0." << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   pheno_data->phenotypes.array().rowwise() /= pheno_data->scale_Y.array();
 
@@ -603,7 +603,7 @@ double convertDouble(const string& phenoValue, struct param* params, mstream& so
   double pheno_d;
   if(sscanf(phenoValue.c_str(), "%lf", &pheno_d) != 1){
     sout << "ERROR: Could not convert value to double: " << phenoValue << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
   return pheno_d;
 }
