@@ -73,7 +73,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
       // check for zeroes
       if( pheno_data->masked_indivs.col(i).array().select(wvec,1).minCoeff() == 0){
         sout << "\nERROR: Zeros occured in Var(Y) during logistic regression.\n";
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       wvec_sqrt = wvec.sqrt();
@@ -118,7 +118,7 @@ void fit_null_logistic(const int chrom, struct param* params, struct phenodt* ph
     // If didn't converge
     if(niter_cur > params->niter_max){
       sout << "ERROR: Logistic regression did not converge. (Perhaps increase --niter?)\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     } else if(( pheno_data->masked_indivs.col(i).array() && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps) ).count() > 0)
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (for phenotype #" << i+1 <<").";
     // sout << "Converged in "<< niter_cur << " iterations." << endl;
@@ -302,13 +302,13 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
         if (!ofile.is_open()) {
           sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
 
         ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
         if( ofile.fail() ){
           sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
         ofile.close();
         //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
@@ -365,7 +365,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
   /*
      if(bs > params->n_samples){
      sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!";
-     exit(-1);
+     exit(EXIT_FAILURE);
      }
      */
 
@@ -423,13 +423,13 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
 
       if (!ofile.is_open()) {
         sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
         if( ofile.fail() ){
           sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
       ofile.close();
       //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
@@ -489,7 +489,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
 
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       // store back values in test_mat
@@ -595,7 +595,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
 
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       // store back values in test_mat_conc
@@ -633,7 +633,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
         l1->cumsum_values[0].row(ph) += pred; // Sx
         // Y is centered so Sy = 0
         l1->cumsum_values[2].row(ph) += pred.array().square().matrix(); // Sx2
-        // Y is scaled so Sy2 = params->n_samples - 1
+        // Y is scaled so Sy2 = params->n_samples - ncov
         l1->cumsum_values[4].row(ph).array() += pred.array() * Yvec_chunk(i,0); // Sxy
       }
     }
@@ -642,7 +642,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
-  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - 1; // Sy2
+  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - params->ncov; // Sy2
 
   sout << endl;
 }
@@ -687,7 +687,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       // store back values in test_mat
@@ -812,7 +812,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         }
 
         //cerr << "\nFold=" << i << " tau = " << params->tau[j] << " beta=" << betanew.matrix().transpose().array() << endl;
-        //if(i==1) exit(-1);
+        //if(i==1) exit(EXIT_FAILURE);
 
         if(niter_cur > params->niter_max){
           sout << "WARNING: Penalized logistic regression did not converge! (Increase --niter)\n";
@@ -904,7 +904,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
       if (!infile.is_open()) {
         sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
 
       // store back values in test_mat_conc

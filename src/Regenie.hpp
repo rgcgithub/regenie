@@ -241,6 +241,7 @@ struct param {
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
+  int ncov; // number of linearly independent covariates
 
 };
 

@@ -50,7 +50,7 @@ void Files::openForRead(std::string filename, mstream& sout){
   infile.open(filename.c_str(), mode);
   if (!infile) {    
     sout << "ERROR: Cannot open file : " << filename << std::endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
 # if defined(HAS_BOOST_IOSTREAM)
@@ -104,7 +104,7 @@ void Files::openForWrite(std::string filename, mstream& sout){
   outfile.open(filename.c_str(), mode);
   if (!outfile) {    
     sout << "ERROR: Cannot open file : " << filename << std::endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
 # if defined(HAS_BOOST_IOSTREAM)

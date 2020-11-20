@@ -190,17 +190,17 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if (vm.count("help")){
       print_header(std::cout);
       std::cout << AllOptions.help({"", "Main"}) << '\n' << webinfo << "\n\n";
-      exit(0);
+      exit(EXIT_SUCCESS);
     } else if (vm.count("helpFull")) {
       print_header(std::cout);
       std::cout << AllOptions.help({"", "Main", "Additional"}) << '\n' << webinfo << "\n\n";
-      exit(0);
+      exit(EXIT_SUCCESS);
     } 
     
     if (!vm.count("out")){
       print_header(std::cout);
       std::cout << "ERROR :You must provide an output prefix using '--out'" << '\n' << webinfo << "\n\n";
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
 
@@ -211,7 +211,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     if( (vm.count("bgen") + vm.count("bed")  + vm.count("pgen"))  != 1 ){
       sout << "ERROR :You must use either --bed,--bgen or --pgen.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if( vm.count("bgen") ) params->file_type = "bgen";
@@ -297,7 +297,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       else if( vm["test"].as<string>() == "recessive") params->test_type = 2; 
       else {
         sout << "ERROR : Unrecognized argument for option --test, must be either 'dominant' or 'recessive'.\n" << params->err_help;
-        exit(-1);
+        exit(EXIT_FAILURE);
       }
     }
 
@@ -305,7 +305,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     else if (params->run_mode == 2 ) params->test_mode = true;
     else {
       sout << "ERROR : Specify which mode regenie should be running using option --step.\n" << params->err_help;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if(!params->test_mode) {
@@ -334,7 +334,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         // parameters must be less in (0, 1)
         if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 ){
           sout << "ERROR : You must specify values for --l0 in (0,1).\n" << params->err_help;
-          exit(-1);
+          exit(EXIT_FAILURE);
         } 
       } else set_ridge_params(params->n_ridge_l0, params->lambda, params->err_help, sout);
 
@@ -349,7 +349,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         params->n_ridge_l1 = params->tau.size();
         if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 ){
           sout << "ERROR : You must specify values for --l1 in (0,1).\n" << params->err_help;
-          exit(-1);
+          exit(EXIT_FAILURE);
         }
       } else set_ridge_params(params->n_ridge_l1, params->tau, params->err_help, sout);
 
@@ -374,7 +374,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     if( vm.count("write-samples") && vm.count("bgen") && !vm.count("sample") ){
       sout << "ERROR : must specify sample file (using --sample) if writing sample IDs to file.\n" << params->err_help;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if(!params->test_mode && params->setMinMAC){
@@ -383,7 +383,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if(params->test_mode && params->min_MAC < 1){
       sout << "ERROR : minimum MAC must be at least 1.\n" << params->err_help;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(!params->test_mode && params->setMinINFO){
       sout << "WARNING : Option --minINFO only works in step 2 of REGENIE.\n";
@@ -391,13 +391,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) ){
       sout << "ERROR : minimum info score must be in [0,1].\n" << params->err_help;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
     if( !vm.count("bsize") ) {
       sout << "ERROR : must specify the block size using '--bsize'.\n" << params->err_help;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     // determine number of threads if not specified
@@ -415,85 +415,85 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     // check firth fallback pvalue threshold
     if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
       sout << "ERROR :Firth fallback p-value threshold must be in (0,1).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     // check SPA fallback pvalue threshold
     if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
       sout << "ERROR :SPA fallback p-value threshold must be in (0,1).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->firth_approx && !params->firth) params->firth_approx = false;
 
     // check arguments for logistic regression 
     if(params->binary_mode && (params->niter_max < 1)){
       sout << "ERROR :Invalid argument for --niter (must be positive integer).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->firth && (params->maxstep_null < 1)){
       sout << "ERROR :Invalid argument for --maxstep-null (must be a positive integer).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->firth && (params->niter_max_firth_null < 1)){
       sout << "ERROR :Invalid argument for --maxiter-null (must be a positive integer).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->nChrom < 2){
       sout << "ERROR :Invalid argument for --nauto (must be > 1).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->rm_indivs && params->keep_indivs ){
       sout << "ERROR :Cannot use both --keep and --remove.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(params->rm_snps && params->keep_snps ){
       sout << "ERROR :Cannot use both --extract and --exclude.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if( params->test_mode && params->select_chrs && std::count( filters->chrKeep_test.begin(), filters->chrKeep_test.end(), -1) ){
       sout << "ERROR :Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if(params->test_mode && !params->skip_blups && !vm.count("pred")) {
       sout << "ERROR :You must specify --pred if using --step 2 (otherwise use --ignore-pred).\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if(params->test_mode && (params->file_type == "pgen") && !params->streamBGEN){
       sout << "ERROR :Cannot use --nostream with PGEN format.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
     if((params->file_type == "bgen") & (!file_exists (files->bgen_file))) {
       sout << "ERROR : " << files->bgen_file  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(vm.count("covarFile") & !file_exists (files->cov_file)) {
       sout << "ERROR : " << files->cov_file  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if(!file_exists (files->pheno_file)) {
       sout << "ERROR : " << files->pheno_file  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bed")) {
       sout << "ERROR : " << files->bed_prefix << ".bed"  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bim")) {
       sout << "ERROR : " << files->bed_prefix << ".bim"  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".fam")) {
       sout << "ERROR : " << files->bed_prefix << ".fam"  << " doesn't exist.\n" << params->err_help ;
-      exit(-1);
+      exit(EXIT_FAILURE);
     }
 
   } catch (const cxxopts::OptionException& e) {
     print_header(cerr);
     cerr << "ERROR: " << e.what() << endl << params->err_help << endl;
-    exit(-1);
+    exit(EXIT_FAILURE);
   }
 
   return;
@@ -507,7 +507,7 @@ void start_log(T arguments, const string out_file, MeasureTime* mt, mstream& sou
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
   if (!sout.coss.is_open()) {
     cerr << "ERROR : Cannot write log file '" << log_name << "'\n" ;
-    exit(-1);
+    exit(EXIT_FAILURE);
   } 
 
   mt->init();
@@ -537,7 +537,7 @@ void set_ridge_params(int nparams, vector<double>& in_param, const string err_he
 
   if(nparams < 2){
     sout << "ERROR : Number of ridge parameters must be at least 2 (=" << nparams << ").\n" << err_help;
-    exit(-1);
+    exit(EXIT_FAILURE);
   } else {
     // endpoints are 0.01 and 0.99 
     double step = 1.0 / ( nparams - 1 );
