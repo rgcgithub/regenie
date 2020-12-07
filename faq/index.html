@@ -165,6 +165,21 @@ at level 1 (e.g. 2,500 with 500K SNPs used and the default <strong>regenie</stro
 final predictions when varying the block size.</p>
 <p><br/></p>
 <ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> What do I do if I get the error "Uh-oh, SNP XX has low variance (=XX)" in step 1? 
+</span></li>
+</ul>
+<p>This is due to variants with very low minor allele count (MAC) being included in step 1. To avoid this, you should use a MAC filter to remove such variants in a pre-processing step before running Regenie.</p>
+<p>For example, in PLINK2 you would use the <code>--mac</code> option and obtain a list of variants that pass the MAC filter (note that if you are using <code>--keep/--remove</code> in Regenie, you should also use it in the PLINK2 command)</p>
+<pre><code>plink2 \
+  --bfile my_bed_file \
+  --mac 100 \
+  --write-snplist \
+  --out snps_pass
+</code></pre>
+
+<p>You would then use the output file in <strong>regenie</strong> as <code>--extract snps_pass.snplist</code> (and this would avoid having to make a new genotype file).</p>
+<p><br/></p>
+<ul>
 <li>
 <p><span style="font-size: large; font-style: italic;color:#404040"> Can <strong>regenie</strong> be run on small sample sizes? 
 </span></p>
