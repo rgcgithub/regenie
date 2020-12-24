@@ -144,6 +144,11 @@ struct BgenParser {
     return m_stream->tellg();
   }
 
+  // added by JMbatchou (12/23/2020)
+  void jumpto( uint64_t pos ){
+    m_stream->seekg( pos, std::ios_base::beg);
+    m_state = e_ReadyForVariant ;
+  }
 
   int number_of_samples() const {
     return m_context.number_of_samples ;
