@@ -103,6 +103,8 @@ void Data::file_read_initialization() {
 
   // prepare genotype data
   files.chr_counts.assign(params.nChrom, 0.0);
+  if(params.rm_snps || params.keep_snps)
+    files.chr_file_counts.assign(params.nChrom, 0.0);
 
   if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
@@ -219,14 +221,11 @@ void Data::set_blocks() {
   }
 
   // set ridge params
-  for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants / params.lambda[i];
+  for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants * (1 - params.lambda[i]) / params.lambda[i];
   for(int i = 0; i < params.n_ridge_l1; i++) {
-    if(!params.binary_mode)
-      params.tau[i] =  (params.total_n_block *  params.n_ridge_l0)  / params.tau[i];
-    else {
-      // Assuming input tau[i] is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
-      params.tau[i] =  (params.total_n_block *  params.n_ridge_l0) * 3 / (M_PI * M_PI) * (1 - params.tau[i]) / params.tau[i];
-    }
+    params.tau[i] =  (params.total_n_block *  params.n_ridge_l0) * (1 - params.tau[i]) / params.tau[i];
+    // Assuming input tau[i] is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
+    if(params.binary_mode) params.tau[i] *= 3 / (M_PI * M_PI);
   }
 
   // for BTs: check if the sample size is lower than 5K (if so, use loocv)
@@ -254,12 +253,12 @@ void Data::set_blocks() {
   sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]\n";
   sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]\n";
   sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
-  for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / params.lambda[i] << " ";
+  for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / (params.n_variants + params.lambda[i]) << " ";
   sout << "]\n";
   sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
   for(int i = 0; i < params.n_ridge_l1; i++) {
     if(!params.binary_mode)
-      sout << (params.total_n_block *  params.n_ridge_l0)  / params.tau[i] << " ";
+      sout << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block *  params.n_ridge_l0 + params.tau[i] ) << " ";
     else
       sout << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[i] / 3 ) << " ";
   }
@@ -461,9 +460,8 @@ void Data::setmem() {
 
 void Data::level_0_calculations() {
 
-  int block = 0, nread=0, chrom_nsnps_file;
+  int block = 0;
   if(params.print_block_betas) params.print_snpcount = 0;
-  snp_index_counter = 0;
   ridgel0 l0;
 
   if(!params.use_loocv){
@@ -478,20 +476,10 @@ void Data::level_0_calculations() {
 
     int chrom_nsnps = chr_map[chrom][0];
     int chrom_nb = chr_map[chrom][1];
-    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
+    if(chrom_nb == 0) continue;
 
-    // if all snps in chromosome are excluded
-    // stream through file to read next chr
-    if((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) {
-      skip_snps(chrom_nsnps_file, &params, &files, &Gblock);
-      snp_index_counter += chrom_nsnps_file;
-      continue;
-    }
-
-    if(chrom_nb > 0) sout << "Chromosome " << chrom << endl;
-    //sout << "Ns="<< chrom_nsnps << ";Nfile="<< chrom_nsnps_file << endl;
-
-    if(params.keep_snps || params.rm_snps) nread = snp_index_counter;
+    sout << "Chromosome " << chrom << endl;
+    //sout << "Ns="<< chrom_nsnps << endl;
 
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
@@ -506,7 +494,7 @@ void Data::level_0_calculations() {
         if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
       }
 
-      get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
+      get_G(block, bs, chrom, in_filters.step1_snp_count, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
 
       // residualize and scale genotypes
       residualize_genotypes();
@@ -523,16 +511,6 @@ void Data::level_0_calculations() {
       block++; in_filters.step1_snp_count += bs;
     }
 
-    // if skipping all snps at end of chromosome
-    if(params.keep_snps || params.rm_snps){
-      nread = snp_index_counter - nread;
-      //sout << "Nread =" << nread << "; chr=" << chrom << endl;
-      if(nread < chrom_nsnps_file) {
-        skip_snps(chrom_nsnps_file - nread, &params, &files, &Gblock);
-        snp_index_counter += chrom_nsnps_file - nread;
-        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
-      }
-    }
   }
 
   if(params.early_exit) {
@@ -559,7 +537,6 @@ void Data::level_0_calculations() {
       }
     }
   }
-
 
 }
 
@@ -672,7 +649,7 @@ void Data::output() {
 
     for(int j = 0; j < params.n_ridge_l1; ++j ) {
       if(!params.binary_mode)
-        sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0)  / params.tau[j] ;
+        sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0)  / (params.total_n_block * params.n_ridge_l0 + params.tau[j] ) ;
       else
         sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[j] / 3 );
 
@@ -1359,9 +1336,8 @@ void Data::test_snps() {
 
 
   // start analyzing each chromosome
-  int block = 0, chrom, chrom_nsnps, nread=0, chrom_nsnps_file=0, chrom_nb, bs, snps_skip;
+  int block = 0, chrom, chrom_nsnps, chrom_nb, bs;
   uint32_t snp_count = 0;
-  snp_index_counter = 0; // keep track of snps in file
 
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     chrom = files.chr_read[itr];
@@ -1369,27 +1345,24 @@ void Data::test_snps() {
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
-    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
+    if(chrom_nb == 0) continue;
 
 
     // if whole chromosome is excluded, stream through file to read next chr
-    if(((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) ||
-        ( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) )
-      ) {
-      snps_skip = (params.keep_snps || params.rm_snps) ? chrom_nsnps_file : chrom_nsnps;
-      skip_snps(snps_skip, &params, &files, &Gblock);
+    if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
 
       // update tallies
-      snp_index_counter += snps_skip;
       snp_count += chrom_nsnps;
       n_skipped_snps += chrom_nsnps;
+
+      // go to next chr
+      skip_snps(snpinfo[snp_count].offset, &params, &files, &Gblock);
 
       continue;
     }
 
 
     sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
-    if(params.keep_snps || params.rm_snps) nread = snp_index_counter;
 
     // read polygenic effect predictions from step 1
     blup_read_chr(chrom);
@@ -1425,7 +1398,7 @@ void Data::test_snps() {
       Gblock.bad_snps = ArrayXb::Constant(bs, false);
 
       // get genotype matrix for block (mean impute)
-      get_G(block, bs, chrom, snp_index_counter, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
+      get_G(block, bs, chrom, snp_count, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
 
 
       if(!params.binary_mode || params.firth_approx){
@@ -1573,18 +1546,6 @@ void Data::test_snps() {
       sout << " (" << duration1.count() << "ms) "<< endl;
 
       block++;
-    }
-
-
-    // check if need to skip snps at end of chromosome
-    if(params.keep_snps || params.rm_snps){
-      nread = snp_index_counter - nread;
-      //sout << "Nread =" << nread << "; chr=" << chrom << endl;
-      if(nread < chrom_nsnps_file) {
-        skip_snps(chrom_nsnps_file - nread, &params, &files, &Gblock);
-        snp_index_counter += chrom_nsnps_file - nread;
-        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
-      }
     }
 
   }
@@ -2153,9 +2114,8 @@ void Data::test_snps_fast() {
 
 
   // start analyzing each chromosome
-  int block = 0, chrom, chrom_nsnps, chrom_nb, nread=0, chrom_nsnps_file=0, bs, snps_skip;
+  int block = 0, chrom, chrom_nsnps, chrom_nb, bs;
   tally snp_tally;
-  snp_index_counter = 0; // keep track of snps in bed file
 
   vector< variant_block > block_info;
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
@@ -2174,29 +2134,24 @@ void Data::test_snps_fast() {
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
-    if(params.keep_snps || params.rm_snps) chrom_nsnps_file = chr_map[chrom][2];
-
+    if(chrom_nb == 0) continue;
 
     // if whole chromosome is excluded, stream through file to read next chr
-    if(((params.keep_snps || params.rm_snps) && (chrom_nb == 0)) ||
-        ( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) )
-      ) {
-      snps_skip = (params.keep_snps || params.rm_snps) ? chrom_nsnps_file : chrom_nsnps;
-      if((params.file_type == "bed")) {
-        files.bed_ifstream.seekg(snps_skip * files.bed_block_size, ios_base::cur);
-        snp_index_counter += snps_skip;
-      }
+    if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
 
       // update tallies
       snp_tally.snp_count += chrom_nsnps;
       snp_tally.n_skipped_snps += chrom_nsnps;
+
+      // go to next chr
+      if(params.file_type == "bed") 
+        jumpto_bed( snpinfo[snp_tally.snp_count].offset, &files );
 
       continue;
     }
 
 
     sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
-    if((params.file_type == "bed") && (params.keep_snps || params.rm_snps) ) nread = snp_index_counter;
 
     // read polygenic effect predictions from step 1
     blup_read_chr(chrom);
@@ -2266,18 +2221,6 @@ void Data::test_snps_fast() {
       block++;
     }
 
-
-    // check if need to skip snps at end of chromosome
-    if((params.file_type == "bed") && (params.keep_snps || params.rm_snps) ) {
-      nread = snp_index_counter - nread;
-      //sout << "Nread =" << nread << "; chr=" << chrom << endl;
-      if(nread < chrom_nsnps_file) {
-        files.bed_ifstream.seekg((chrom_nsnps_file - nread) * files.bed_block_size, ios_base::cur);
-        snp_index_counter += chrom_nsnps_file - nread;
-        //sout << "Nskipping=" << chrom_nsnps_file - nread << endl;
-      }
-    }
-
   }
 
   sout << endl;
@@ -2326,7 +2269,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 
       // extract genotype data blocks single-threaded
       pos_skip = snpinfo[start + isnp].offset;
-      bfile.seekg( pos_skip );
+      bfile.seekg( pos_skip, ios_base::beg );
 
       readChunkFromBGEN(&bfile, &size1, &size2, &(snp_data_blocks[isnp]));
       insize[isnp] = size1;
@@ -2341,15 +2284,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps;) {
 
-      // skip snps that are ignored
-      if(params.keep_snps || params.rm_snps){
-        if(in_filters.geno_mask[snp_index_counter]){
-          files.bed_ifstream.seekg(files.bed_block_size, ios_base::cur);
-          snp_index_counter++;
-          continue;
-        }
-      }
-
+      jumpto_bed( snpinfo[start + isnp].offset, &files );
       snp_data_blocks[isnp].resize(files.bed_block_size);
       files.bed_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
 

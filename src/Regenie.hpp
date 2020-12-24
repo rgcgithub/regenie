@@ -168,6 +168,7 @@ struct param {
   uint32_t n_samples = 0; // number of samples
   int n_pheno = 0; // number of phenotypes
   int n_cov = 0; // number of covariates
+  int ncov; // number of linearly independent covariates
   uint32_t n_variants = 0; // number of variants in bgen file
   std::map <std::string, uint32_t> FID_IID_to_ind;
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
@@ -241,7 +242,9 @@ struct param {
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
-  int ncov; // number of linearly independent covariates
+  bool set_range = false;
+  std::string range_chr; // to allow for 'chr#' as input
+  double range_min, range_max; // use genomic region to filter variants
 
 };
 

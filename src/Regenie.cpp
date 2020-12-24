@@ -146,10 +146,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("split", "split asssociation results into separate files for each trait")
     ("firth", "use Firth correction for p-values less than threshold")
     ("approx", "use approximation to Firth correction for computational speedup")
-    ("spa", "use Saddlecxxoptsint approximation (SPA) for p-values less than threshold")
+    ("spa", "use Saddlepoint approximation (SPA) for p-values less than threshold")
     ("pThresh", "P-value threshold below which to apply Firth/SPA correction", cxxopts::value<double>(params->alpha_pvalue),"FLOAT(=0.05)")
     ("chr", "specify chromosome to test in step 2 (use for each chromosome)", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
+    ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(params->range_chr),"CHR:MINPOS-MAXPOS")
     ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
     ("gz", "compress output files (gzip format)")
     ;
@@ -244,6 +245,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
     if( vm.count("v") ) params->verbose = true;
+    if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
     if( vm.count("nostream") ) params->streamBGEN = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
@@ -299,6 +301,25 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         sout << "ERROR : Unrecognized argument for option --test, must be either 'dominant' or 'recessive'.\n" << params->err_help;
         exit(EXIT_FAILURE);
       }
+    }
+    if( vm.count("range") ) { // Format: Chr:min-max
+      vector< string > str1;
+      double p0, p1;
+      boost::algorithm::split(tmp_str_vec, params->range_chr, is_any_of(":"));
+      if( tmp_str_vec.size() != 2 ){
+        sout << "ERROR : Wrong format for --range (must be Chr:MinPos-MaxPos).\n" << params->err_help;
+        exit(EXIT_FAILURE);
+      }
+      params->range_chr = tmp_str_vec[0];
+      boost::algorithm::split(str1, tmp_str_vec[1], is_any_of("-"));
+      if( str1.size() != 2 ){
+        sout << "ERROR : Wrong format for --range (must be Chr:MinPos-MaxPos).\n" << params->err_help;
+        exit(EXIT_FAILURE);
+      }
+      p0 = convertDouble( str1[0], params, sout );
+      p1 = convertDouble( str1[1], params, sout );
+      params->range_min = min(p0,p1);
+      params->range_max = max(p0,p1);
     }
 
     if ( params->run_mode == 1 ) params->test_mode = false;
@@ -358,6 +379,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       if(params->use_SPA) params->use_SPA = false;
       params->streamBGEN = false;
       params->test_type = 0;
+      if( vm.count("range") ) {
+        params->set_range = false; 
+        sout << "WARNING : Option --range only works for step 2.\n";
+      }
 
     } else if(params->firth && !params->binary_mode) {
       // firth correction is only applied to binary traits

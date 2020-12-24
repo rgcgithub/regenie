@@ -106,7 +106,7 @@ void read_fam(struct in_files*,struct param*,mstream&);
 void prep_bed(const uint32_t&, struct in_files*,mstream&);
 
 void read_pgen_pvar_psam(struct in_files*,struct param*,struct filter*,struct geno_block*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
-void read_pvar(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
+uint64 read_pvar(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 void read_psam(struct in_files*,struct param*,mstream&);
 void prep_pgen(const uint32_t,const uint32_t,struct in_files*,struct filter*,struct geno_block*,mstream&);
 
@@ -118,23 +118,24 @@ void check_samples_include_exclude(struct in_files*,struct param*,struct filter*
 void set_IDs_to_rm(struct in_files*,struct filter*,struct param*,mstream&);
 void set_IDs_to_keep(struct in_files*,struct filter*,struct param*,mstream&);
 
-void get_G(const int,const int,const int,uint32_t&,std::vector<snp>&,struct param*,struct in_files*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
+void get_G(const int,const int,const int,const uint32_t,std::vector<snp>&,struct param*,struct in_files*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
 
-void readChunkFromBGENFileToG(const int,const int,uint32_t&,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
-void readChunkFromBedFileToG(const int,const int,uint32_t&,std::vector<snp>&,struct param*,struct in_files*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
-void readChunkFromPGENFileToG(const int,uint32_t&,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,mstream&);
+void readChunkFromBGENFileToG(const int,const int,const uint32_t,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
+void readChunkFromBedFileToG(const int,const int,const uint32_t,std::vector<snp>&,struct param*,struct in_files*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
+void readChunkFromPGENFileToG(const int,const uint32_t,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,mstream&);
 
 void readChunkFromBGEN(std::istream*,uint32_t*,uint32_t*,std::vector<uchar>*);
 void parseSnpfromBGEN(const int,const int&,std::vector<uchar>*,const uint32_t,const uint32_t,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const snp*,struct geno_block*,variant_block*,mstream&);
 void parseSnpfromBed(const int,const int&,const std::vector<uchar>,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,variant_block*);
 void readChunkFromPGENFileToG(const int&,const int&,const int&,struct param*,struct filter*,struct geno_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const std::vector<snp>&,std::vector<variant_block>&);
 
-void skip_snps(const int&,struct param*,struct in_files*,struct geno_block*);
+void skip_snps(uint64,struct param*,struct in_files*,struct geno_block*);
+void jumpto_bed(uint64,struct in_files*);
 void update_genocounts(bool,int,int,Eigen::MatrixXd&,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
 void update_nnz_spa(uint32_t,uint32_t,variant_block*);
 void mean_impute_g(double &,const double,const bool,const bool,const bool);
 
-
+bool in_range(std::string,uint32_t,struct param*);
 findID getIndivIndex(const std::string&,const std::string&,struct param*,mstream&);
 
 
