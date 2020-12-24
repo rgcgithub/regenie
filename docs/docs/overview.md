@@ -38,7 +38,7 @@ several hundred thousand (\(M\)) common markers from a micro-array.
 
 #### Ridge regression (level 0)
 
-**regenie** reads in the \(M\) markers in blocks of \(B\) consecutive markers (`--b` option).
+**regenie** reads in the \(M\) markers in blocks of \(B\) consecutive markers (`--bsize` option).
 
 In each block, a set of ridge regression
   predictors are calculated for a small range of \(J\) shrinkage

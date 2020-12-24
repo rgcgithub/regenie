@@ -248,6 +248,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--test`| STRING | Optional | specify to carry out dominant or recessive test [default is additive; argument can be `dominant` or `recessive`]|
 |`--chr`| INT| Optional| specify which chromosomes to test in step 2 (use for each chromosome to include)|
 |`--chrList` | STRING | Optional | Comma separated list of chromosomes to test in step 2|
+|`--range` | STRING | Optional | specify chromosome region for variants to test in step 2 [format=CHR:MINPOS-MAXPOS] |
 |`--minMAC`| INT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
