@@ -303,21 +303,17 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       }
     }
     if( vm.count("range") ) { // Format: Chr:min-max
-      vector< string > str1;
-      double p0, p1;
-      boost::algorithm::split(tmp_str_vec, params->range_chr, is_any_of(":"));
-      if( tmp_str_vec.size() != 2 ){
-        sout << "ERROR : Wrong format for --range (must be Chr:MinPos-MaxPos).\n" << params->err_help;
+      char tmp_chr[20];
+      double p0 = -1, p1 = -1;
+
+      if(sscanf( params->range_chr.c_str(), "%[^:]:%lf-%lf", tmp_chr, &p0, &p1 ) != 3
+          || (p0 < 0) || (p1 < 0) ){ 
+        cerr << tmp_chr << "\t" << p0 << "\t" << p1 << endl;
+        sout << "ERROR : Wrong format for --range (must be CHR:MINPOS-MAXPOS).\n" << params->err_help;
         exit(EXIT_FAILURE);
       }
-      params->range_chr = tmp_str_vec[0];
-      boost::algorithm::split(str1, tmp_str_vec[1], is_any_of("-"));
-      if( str1.size() != 2 ){
-        sout << "ERROR : Wrong format for --range (must be Chr:MinPos-MaxPos).\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
-      p0 = convertDouble( str1[0], params, sout );
-      p1 = convertDouble( str1[1], params, sout );
+
+      params->range_chr = tmp_chr;
       params->range_min = min(p0,p1);
       params->range_max = max(p0,p1);
     }
