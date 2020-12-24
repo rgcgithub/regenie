@@ -462,6 +462,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       sout << "ERROR :Invalid argument for --nauto (must be > 1).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
+    if(params->set_range && (chrStrToInt(params->range_chr, params->nChrom) == -1)){
+      sout << "ERROR :Unrecognized chromosome for --range (=" << params->range_chr << 
+        ").\n" << params->err_help ;
+      exit(EXIT_FAILURE);
+    }
     if(params->rm_indivs && params->keep_indivs ){
       sout << "ERROR :Cannot use both --keep and --remove.\n" << params->err_help ;
       exit(EXIT_FAILURE);
