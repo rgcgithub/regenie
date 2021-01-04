@@ -153,23 +153,23 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* params, struct filter* filters, std::vector<snp>& snpinfo, mstream& sout){
 
   int nalleles;
-  uint64 lineread = 0, start_pos, variant_bgi_size, variant_bgen_size;
+  uint64 lineread = 0, variant_bgi_size, variant_bgen_size;
   string bgi_file = files->bgen_file + ".bgi";
   string sql_query = "SELECT * FROM Variant";
   snp tmp_snp;
   sqlite3* db;
   sqlite3_stmt* stmt;
 
-  // get info on first snp from bgenparser
   uint32_t n_variants = bgen.number_of_variants();
-  std::string chromosome, rsid;
   uint32_t position ;
+  std::string chromosome, rsid;
   std::vector< std::string > alleles ;
-  start_pos = bgen.get_position();
-  bgen.read_variant( &chromosome, &position, &rsid, &alleles );
-  bgen.ignore_probs();
-  variant_bgen_size = bgen.get_position() - start_pos;
 
+  // edit sql statement if chromosome position range is given
+  if( params->set_range ){
+    string tmp_q = sql_query + " WHERE chromosome=" + params->range_chr + " AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
+    sql_query = tmp_q;
+  }
 
   sout << "   -index bgi file [" << bgi_file<< "]" << endl;
   if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) {
@@ -211,10 +211,14 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         }
         tmp_snp.offset = strtoull( (char *) sqlite3_column_text(stmt, 6), NULL, 10);
 
-        // check if matches with info from bgenparser
-        if(snpinfo.empty()){
-          assert( tmp_snp.offset == start_pos );
+        // check if matches with info from bgenparser for first read variant
+        if( snpinfo.empty() ){
+          bgen.jumpto(tmp_snp.offset);
+          bgen.read_variant( &chromosome, &position, &rsid, &alleles );
+          bgen.ignore_probs();
+          variant_bgen_size = bgen.get_position() - tmp_snp.offset;
           variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
+          assert( tmp_snp.ID == rsid );
           assert( variant_bgi_size == variant_bgen_size );
         }
 
@@ -228,9 +232,6 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         if(params->rm_snps || params->keep_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
 
         lineread++;
-
-        // if specified range
-        if(params->set_range && !in_range(chromosome, tmp_snp.physpos, params)) continue;
 
         // make list of variant IDs if inclusion/exclusion file is given
         if(params->rm_snps || params->keep_snps)
@@ -254,7 +255,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   sqlite3_finalize(stmt);
   sqlite3_close(db);
 
-  assert( lineread == n_variants );
+  if( !params->set_range ) assert( lineread == n_variants );
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
 
 }
