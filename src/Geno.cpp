@@ -83,13 +83,14 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
       // check if snps are in order (same chromosome & non-decreasing positions)
       if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) )) nOutofOrder++;
 
-      // keep track of total number of variants per chromosome in file
-      if(params->rm_snps || params->keep_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
-
       lineread++;
 
-      // if specified range
-      if(params->set_range && !in_range(chromosome, position, params)) {
+      // if specified chrlist/range
+      if(
+          (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
+          ||
+          (params->set_range && !in_range(chromosome, position, params))
+        ) {
         // go to next variant (get its offset first)
         tmp_snp.offset = bgen_tmp.get_position();
         continue;
@@ -138,7 +139,6 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   // check if should mask samples
   check_samples_include_exclude(files, params, filters, sout);
 
-
   // prepare file
   if( !params->streamBGEN ) {
     // setup file for reading the genotype probabilities later
@@ -168,6 +168,10 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   // edit sql statement if chromosome position range is given
   if( params->set_range ){
     string tmp_q = sql_query + " WHERE chromosome=" + params->range_chr + " AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
+    sql_query = tmp_q;
+  } else if( params->select_chrs ){
+    
+    string tmp_q = sql_query + " WHERE chromosome IN (" + bgi_chrList(filters) + ")";
     sql_query = tmp_q;
   }
 
@@ -228,9 +232,6 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
             && ( (tmp_snp.physpos < snpinfo.back().physpos) ))
           nOutofOrder++;
 
-        // keep track of total number of variants per chromosome in file
-        if(params->rm_snps || params->keep_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
-
         lineread++;
 
         // make list of variant IDs if inclusion/exclusion file is given
@@ -255,7 +256,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   sqlite3_finalize(stmt);
   sqlite3_close(db);
 
-  if( !params->set_range ) assert( lineread == n_variants );
+  if( !params->set_range && !params->select_chrs) assert( lineread == n_variants );
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bgen file : " << nOutofOrder << endl;
 
 }
@@ -399,13 +400,14 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
     // check if snps are in order (same chromosome & non-decreasing positions)
     if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) )) nOutofOrder++;
 
-    // keep track of total number of variants per chromosome in file
-    if(params->rm_snps || params->keep_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
-
     lineread++;
 
-    // if specified range
-    if(params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params)) continue;
+    // if specified chrlist/range
+    if(
+        (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
+        ||
+        (params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params))
+      ) continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
     if(params->rm_snps || params->keep_snps)
@@ -590,13 +592,14 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
     // check if snps are in order (same chromosome & non-decreasing positions)
     if (!snpinfo.empty() && (tmp_snp.chrom == snpinfo.back().chrom) && ( (tmp_snp.physpos < snpinfo.back().physpos) )) nOutofOrder++;
 
-    // keep track of total number of variants per chromosome in file
-    if(params->rm_snps || params->keep_snps) files->chr_file_counts[tmp_snp.chrom-1]++;
-
     lineread++;
 
-    // if specified range
-    if(params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params)) continue;
+    // if specified chrlist/range
+    if(
+        (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
+        ||
+        (params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params))
+      ) continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
     if(params->rm_snps || params->keep_snps)
@@ -774,11 +777,10 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   // go through each chromosome in order & save number of snps
   // and save how many are actually read
   vector<int> tmp_v;
-  tmp_v.resize(3, 0);
+  tmp_v.resize(2, 0);
   for(size_t j = 0; j < files->chr_read.size(); j++){
     int i = files->chr_read[j];
     tmp_v[0] = files->chr_counts[i-1];
-    if(params->keep_snps || params->rm_snps) tmp_v[2] = files->chr_file_counts[i-1];
     chr_map.insert(pair<int, vector<int> >(i, tmp_v));
   }
 
@@ -1910,6 +1912,26 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
 
   }
 
+}
+
+bool in_chrList(const int snp_chr, struct filter* filters){
+
+  return ( filters->chrKeep_test.find(snp_chr)!= filters->chrKeep_test.end() );
+}
+
+string bgi_chrList(struct filter* filters){
+
+  int nchr_kept = filters->chrKeep_test.size();
+  std::ostringstream buffer;
+  map<int, bool >::iterator itr;
+
+  int ic = 0;
+  for (itr = filters->chrKeep_test.begin(); itr != filters->chrKeep_test.end(); ++itr) {
+    buffer << "'" << to_string(itr->first) << "'";
+    if(++ic < nchr_kept) buffer << ",";
+  }
+
+  return buffer.str();
 }
 
 bool in_range(string snp_chr, uint32_t snp_pos, struct param* params){

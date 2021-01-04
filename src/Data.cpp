@@ -103,8 +103,6 @@ void Data::file_read_initialization() {
 
   // prepare genotype data
   files.chr_counts.assign(params.nChrom, 0.0);
-  if(params.rm_snps || params.keep_snps)
-    files.chr_file_counts.assign(params.nChrom, 0.0);
 
   if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
@@ -1347,21 +1345,6 @@ void Data::test_snps() {
     chrom_nb = chr_map[chrom][1];
     if(chrom_nb == 0) continue;
 
-
-    // if whole chromosome is excluded, stream through file to read next chr
-    if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-
-      // update tallies
-      snp_count += chrom_nsnps;
-      n_skipped_snps += chrom_nsnps;
-
-      // go to next chr
-      skip_snps(snpinfo[snp_count].offset, &params, &files, &Gblock);
-
-      continue;
-    }
-
-
     sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
 
     // read polygenic effect predictions from step 1
@@ -1871,9 +1854,6 @@ void Data::set_blocks_for_testing() {
     int chrom_nsnps = itr->second[0];
     int nb = ceil((double) chrom_nsnps / params.block_size);
 
-    // don't count chromosomes that are excluded
-    chr_tested = !params.select_chrs || std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom);
-
     if(params.n_block > 0) {
       if(blocks_left > 0) {
         int minb = min(nb, blocks_left);
@@ -2135,21 +2115,6 @@ void Data::test_snps_fast() {
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
     if(chrom_nb == 0) continue;
-
-    // if whole chromosome is excluded, stream through file to read next chr
-    if( params.select_chrs && !std::count( in_filters.chrKeep_test.begin(), in_filters.chrKeep_test.end(), chrom) ) {
-
-      // update tallies
-      snp_tally.snp_count += chrom_nsnps;
-      snp_tally.n_skipped_snps += chrom_nsnps;
-
-      // go to next chr
-      if(params.file_type == "bed") 
-        jumpto_bed( snpinfo[snp_tally.snp_count].offset, &files );
-
-      continue;
-    }
-
 
     sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
 

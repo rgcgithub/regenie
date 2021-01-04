@@ -263,7 +263,7 @@ struct in_files {
   std::vector<std::string> blup_files;
   std::vector<std::string> pheno_names;
   std::vector<int> pheno_index;
-  std::vector<int> chr_counts, chr_file_counts, chr_read;
+  std::vector<int> chr_counts, chr_read;
   uint64 bed_block_size; // prevent overflow
   std::ifstream bed_ifstream;
   std::vector<uchar> inbed;
@@ -275,7 +275,7 @@ struct filter {
   // to filter phenotype/covariates/genotype
   std::vector<std::string> pheno_colKeep_names;
   std::vector<std::string> cov_colKeep_names;
-  std::vector<int> chrKeep_test;
+  std::map <int, bool> chrKeep_test;
   std::map <std::string, uint64> snpID_to_ind;
   ArrayXb ind_ignore;
   ArrayXb ind_in_analysis;

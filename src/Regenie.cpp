@@ -286,13 +286,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->select_chrs = true;
       boost::algorithm::split(tmp_str_vec, vm["chrList"].as<string>(), is_any_of(","));
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
-        filters->chrKeep_test.push_back( chrStrToInt(tmp_str_vec[ichr], params->nChrom) );
+        filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
     }
     if( vm.count("chr") ) {
       params->select_chrs = true;
       tmp_str_vec = vm["chr"].as<std::vector<string>>();
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
-        filters->chrKeep_test.push_back( chrStrToInt(tmp_str_vec[ichr], params->nChrom) );
+        filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
     }
     if( vm.count("test") ) {
       if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
@@ -476,7 +476,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       exit(EXIT_FAILURE);
     }
 
-    if( params->test_mode && params->select_chrs && std::count( filters->chrKeep_test.begin(), filters->chrKeep_test.end(), -1) ){
+    if( params->test_mode && params->select_chrs && (filters->chrKeep_test.find(-1) != filters->chrKeep_test.end()) ){
       sout << "ERROR :Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
