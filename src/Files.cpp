@@ -38,11 +38,14 @@ Files::~Files(){
 // Open file (either regular or gzipped)
 void Files::openForRead(std::string filename, mstream& sout){
 
-  // only used if compiled with boost iostream
-# if defined(HAS_BOOST_IOSTREAM)
   is_gz = checkFileExtension(filename);
-#else
-  is_gz = false;
+
+  // only used if compiled with boost iostream
+# if not defined(HAS_BOOST_IOSTREAM)
+  if(is_gz) {
+    sout << "ERROR: Cannot read gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').\n";
+    exit(EXIT_FAILURE);
+  }
 #endif
 
   std::ios_base::openmode mode = (is_gz ? std::ios_base::in | std::ios_base::binary : std::ios_base::in ); 
@@ -92,11 +95,14 @@ void Files::ignoreLines(int nlines){
 void Files::openForWrite(std::string filename, mstream& sout){
 
   read_mode = false;
-  // only used if compiled with boost iostream
-# if defined(HAS_BOOST_IOSTREAM)
   is_gz = checkFileExtension(filename);
-#else
-  is_gz = false;
+
+  // only used if compiled with boost iostream
+# if not defined(HAS_BOOST_IOSTREAM)
+  if(is_gz) {
+    sout << "ERROR: Cannot write gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').\n";
+    exit(EXIT_FAILURE);
+  }
 #endif
 
   std::ios_base::openmode mode = (is_gz ? std::ios_base::out | std::ios_base::binary : std::ios_base::out ); 
