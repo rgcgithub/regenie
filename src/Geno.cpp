@@ -714,11 +714,11 @@ void prep_pgen(const uint32_t pgen_ns, const uint32_t pgen_nv, struct in_files* 
   pgen_variants = gblock->pgr.GetVariantCt();
   pgen_ac = gblock->pgr.GetMaxAlleleCt();
 
-  if(pgen_samples != pgen_ns){
+  if(pgen_samples != (int) pgen_ns){
     cerr << "ERROR: Number of samples in pgen file and psam file don't match.\n";
     exit(EXIT_FAILURE);
   }
-  if(pgen_variants != pgen_nv){
+  if(pgen_variants != (int) pgen_nv){
     cerr << "ERROR: Number of variants in pgen file and pvar file don't match.\n";
     exit(EXIT_FAILURE);
   }
@@ -1034,7 +1034,7 @@ void get_G(const int block, const int bs, const int chrom, const uint32_t snpcou
 
 void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpcount, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
 
-  int ns, hc_val;
+  int ns, hc_val, nmales;
   uint32_t index ;
   double ds, total, mac, info_num;
   bool switch_alleles;
@@ -1054,7 +1054,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
     assert(chrStrToInt(chromosome, params->nChrom) == chrom);
     gblock->bgen.read_probs( &probs ) ;
 
-    ns = 0, hc_val = 0, index = 0;
+    ns = 0, hc_val = 0, index = 0, nmales = 0;
     total = 0, mac = 0, info_num = 0;
     for( std::size_t i = 0; i < probs.size(); ++i ) {
 
@@ -1072,7 +1072,10 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
             total += ds;
             // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
             // sex is 1 for males and 0 o.w.
-            if(params->test_mode && (chrom == params->nChrom)) mac +=  ds * 0.5 * (2 - params->sex[i]);
+            if(params->test_mode && (chrom == params->nChrom)) {
+              mac +=  ds * 0.5 * (2 - params->sex[i]);
+              if(params->sex[i]) nmales++;
+            }
 
             if( params->ref_first )
               info_num += 4 * probs[i][2] + probs[i][1] - ds * ds;
@@ -1095,8 +1098,10 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
     }
 
     if( params->test_mode){
-      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
-      mac = min( mac, 2 * ns - mac );
+      if(chrom != params->nChrom) {
+        mac = total; // use MAC assuming diploid coding
+        mac = min( mac, 2 * ns - mac );
+      } else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
 
       if(mac < params->min_MAC) { 
         gblock->bad_snps(snp) = true;
@@ -1167,7 +1172,7 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
 
 void readChunkFromBedFileToG(const int bs, const int chrom, const uint32_t snpcount, vector<snp>& snpinfo, struct param* params, struct in_files* files, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout) {
 
-  int hc, ns, byte_start, bit_start;
+  int hc, ns, byte_start, bit_start, nmales;
   uint32_t index ;
   double total, mac;
   bool switch_alleles;
@@ -1176,9 +1181,9 @@ void readChunkFromBedFileToG(const int bs, const int chrom, const uint32_t snpco
 
   // only for step 1
   for(int j = 0; j < bs; j++) {
-    
-    ns = 0, total = 0, mac = 0, index = 0;
 
+    ns = 0, total = 0, mac = 0, index = 0, nmales = 0;
+    
     // set to correct position
     jumpto_bed(snpinfo[snpcount + j].offset, files);
     files->bed_ifstream.read( reinterpret_cast<char *> (&files->inbed[0]), files->bed_block_size);
@@ -1200,7 +1205,10 @@ void readChunkFromBedFileToG(const int bs, const int chrom, const uint32_t snpco
             total += hc;
             // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
             // sex is 1 for males and 0 o.w.
-            if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
+            if(params->test_mode && (chrom == params->nChrom)) {
+              mac +=  hc * 0.5 * (2 - params->sex[i]);
+              if(params->sex[i]) nmales++;
+            }
             ns++;
           }
 
@@ -1214,8 +1222,10 @@ void readChunkFromBedFileToG(const int bs, const int chrom, const uint32_t snpco
     }
 
     if( params->test_mode){
-      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
-      mac = min( mac, 2 * ns - mac );
+      if(chrom != params->nChrom) {
+        mac = total; // use MAC assuming diploid coding
+        mac = min( mac, 2 * ns - mac );
+      } else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
 
       if(mac < params->min_MAC) { 
         gblock->bad_snps(j) = true; 
@@ -1393,7 +1403,7 @@ void check_bgen(const string bgen_file, struct param* params){
   // sample size
   std::memcpy(&nindivs, &(buffer[0]), 4);
   //cout << "N:"<< nindivs ;
-  assert( nindivs == bgen_ck.number_of_samples() );
+  assert( ((int) nindivs) == bgen_ck.number_of_samples() );
   buffer += 4;
   // num alleles
   std::memcpy(&numberOfAlleles, &(buffer[0]), 2);
@@ -1534,7 +1544,7 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
 
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
-  int ns = 0, hc_val;
+  int ns = 0, hc_val, nmales = 0;
   double prob0, prob1, prob2, total = 0, mac = 0, ds, info_num = 0;
   Geno = ArrayXd::Zero(params->n_samples);
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
@@ -1569,7 +1579,10 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
         total += Geno(index);
         // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
         // sex is 1 for males and 0 o.w.
-        if(params->test_mode && (chrom == params->nChrom)) mac +=  Geno(index) * 0.5 * (2 - params->sex[i]);
+        if(params->test_mode && (chrom == params->nChrom)) {
+          mac +=  Geno(index) * 0.5 * (2 - params->sex[i]);
+          if(params->sex[i]) nmales++;
+        }
 
         if( params->ref_first )
           info_num += 4 * prob2 + prob1 - Geno(index) * Geno(index);
@@ -1592,7 +1605,10 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
   // check MAC
   if( params->test_mode){
     if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
-    mac = min( mac, 2 * ns - mac );
+
+
+    if(chrom != params->nChrom) mac = min( mac, 2 * ns - mac );
+    else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
 
     if(mac < params->min_MAC) { 
       snp_data->ignored = true;return;
@@ -1680,7 +1696,7 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
 
 void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_block, const struct param* params, const struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, struct geno_block* gblock, variant_block* snp_data){
 
-  int hc, ns, byte_start, bit_start;
+  int hc, ns, byte_start, bit_start, nmales;
   uint32_t index ;
   double total, mac;
   // mapping matches the switch of alleles done when reading bim
@@ -1694,7 +1710,7 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
   snp_data->fastSPA = params->use_SPA;
   snp_data->n_non_zero = 0;
 
-  ns = 0, total = 0, mac = 0, index = 0;
+  ns = 0, total = 0, mac = 0, index = 0, nmales = 0;
   for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
     // skip samples that were ignored from the analysis
@@ -1712,7 +1728,10 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
           total += hc;
           // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
           // sex is 1 for males and 0 o.w.
-          if(params->test_mode && (chrom == params->nChrom)) mac +=  hc * 0.5 * (2 - params->sex[i]);
+          if(params->test_mode && (chrom == params->nChrom)) {
+            mac +=  hc * 0.5 * (2 - params->sex[i]);
+            if(params->sex[i]) nmales++;
+          }
           ns++;
         }
 
@@ -1728,10 +1747,13 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
   // check MAC
   if( params->test_mode){
     if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
-    mac = min( mac, 2 * ns - mac );
+
+    if(chrom != params->nChrom) mac = min( mac, 2 * ns - mac );
+    else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
 
     if(mac < params->min_MAC) { 
-      snp_data->ignored = true;return;
+      snp_data->ignored = true;
+      return;
     }
     if( params->htp_out ) snp_data->mac = mac;
   }
@@ -1783,7 +1805,7 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
 // step 2
 void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const vector<snp>& snpinfo, vector<variant_block> &all_snps_info){
 
-  int hc, ns, index;
+  int hc, ns, index, nmales;
   double ds, total, mac, eij2 = 0;
   int cur_index;
 
@@ -1798,7 +1820,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
     snp_data->fastSPA = params->use_SPA;
     snp_data->n_non_zero = 0;
 
-    ns = 0, total = 0, mac = 0, index = 0;
+    ns = 0, total = 0, mac = 0, index = 0, nmales = 0;
     if( params->dosage_mode ) eij2 = 0;
 
     // read genotype data
@@ -1822,7 +1844,10 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
             total += gblock->genobuf[index];
             // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
             // sex is 1 for males and 0 o.w.
-            if(params->test_mode && (chrom == params->nChrom)) mac +=  gblock->genobuf[index] * 0.5 * (2 - params->sex[i]);
+            if(params->test_mode && (chrom == params->nChrom)) {
+              mac +=  gblock->genobuf[index] * 0.5 * (2 - params->sex[i]);
+              if(params->sex[i]) nmales++;
+            }
             if( params->dosage_mode ) eij2 += gblock->genobuf[index] * gblock->genobuf[index];
             ns++;
           }
@@ -1840,11 +1865,14 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
 
     // check MAC
     if( params->test_mode){
-      if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
-      mac = min( mac, 2 * ns - mac );
+      if(chrom != params->nChrom) {
+        mac = total; // use MAC assuming diploid coding
+        mac = min( mac, 2 * ns - mac );
+      } else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
 
       if(mac < params->min_MAC) { 
-        snp_data->ignored = true; continue;
+        snp_data->ignored = true; 
+        continue;
       }
       if( params->htp_out ) snp_data->mac = mac;
     }
