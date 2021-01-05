@@ -1845,12 +1845,10 @@ void Data::set_blocks_for_testing() {
 
   params.total_n_block = 0;
   int blocks_left = params.n_block;
-  bool chr_tested;
 
   map<int, vector<int> >::iterator itr;
   map<int, vector<int> > m1;
   for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
-    int chrom = itr->first;
     int chrom_nsnps = itr->second[0];
     int nb = ceil((double) chrom_nsnps / params.block_size);
 
@@ -1859,14 +1857,12 @@ void Data::set_blocks_for_testing() {
         int minb = min(nb, blocks_left);
         //sout << << endl;
         itr->second[1] = minb;
-        if(chr_tested) {
-          params.total_n_block += minb;
-          blocks_left -= minb;
-        }
+        params.total_n_block += minb;
+        blocks_left -= minb;
       }
     } else {
       itr->second[1] = nb;
-      if(chr_tested) params.total_n_block += nb;
+      params.total_n_block += nb;
     }
     m1.insert(pair<int, vector<int> >(itr->first, itr->second));
   }
