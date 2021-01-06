@@ -32,6 +32,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 1.0.6.9 (Improved step 2 for BGEN format files not in v1.2 or 8-bit encoding).
+
 Version 1.0.6.8 (New option `--range` to specify a chromosome region of variants to test in step 2).
 
 Version 1.0.6.7 (New option `--print-prs` in step 1 to print the whole genome predictions (i.e. PRS) without using LOCO; 
