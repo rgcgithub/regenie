@@ -245,7 +245,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("v") ) params->verbose = true;
     if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
-    if( vm.count("nostream") ) params->streamBGEN = false;
+    if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;
     if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("print-pheno") ) params->print_pheno_name = true;
@@ -484,7 +484,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       exit(EXIT_FAILURE);
     }
 
-    if(params->test_mode && (params->file_type == "pgen") && !params->streamBGEN){
+    if(params->test_mode && (params->file_type == "pgen") && !params->fastMode){
       sout << "ERROR :Cannot use --nostream with PGEN format.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
@@ -601,10 +601,11 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
       total_ram += 2 * params->n_pheno + params->block_size; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
     }
-    if((params->file_type == "bed") && params->streamBGEN) total_ram += params->block_size/32.0; //for extracting snp_data_block
+    if((params->file_type == "bed") && params->fastMode) total_ram += params->block_size/4.0/sizeof(double); //for extracting snp_data_block
   }
 
   total_ram *= params->n_samples * sizeof(double);
+  total_ram += params->nvs_stored * sizeof(struct snp);
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   total_ram /= 1024.0 * 1024.0; 
   if( total_ram > 1000 ) {

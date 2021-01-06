@@ -169,7 +169,7 @@ struct param {
   int n_pheno = 0; // number of phenotypes
   int n_cov = 0; // number of covariates
   int ncov; // number of linearly independent covariates
-  uint32_t n_variants = 0; // number of variants in bgen file
+  uint32_t n_variants = 0, nvs_stored = 0; // number of variants in genotype file
   std::map <std::string, uint32_t> FID_IID_to_ind;
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
   bool with_bgi = false; // input bgi index file for BGEN format
@@ -210,7 +210,8 @@ struct param {
   // step 2
   bool rm_missing_qt = true; // remove missing individuals when performing test with QTs
   std::string file_type; // type of the genotype file format;
-  bool streamBGEN = true; // use fast version of step 2 when testing with BGEN v1.2 zlib compressed input
+  bool streamBGEN = true; //  for BGEN v1.2 with 8-bit encoding
+  bool fastMode = true; // use fast version of step 2 
   bool dosage_mode = false; // track if dosages are present for step 2
   bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;

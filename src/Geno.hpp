@@ -124,6 +124,7 @@ void readChunkFromBGENFileToG(const int,const int,const uint32_t,std::vector<snp
 void readChunkFromBedFileToG(const int,const int,const uint32_t,std::vector<snp>&,struct param*,struct in_files*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
 void readChunkFromPGENFileToG(const int,const uint32_t,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,mstream&);
 
+void readChunkFromBGENFileToG(const int,const int,const uint32_t,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,std::vector<variant_block>&,mstream&);
 void readChunkFromBGEN(std::istream*,uint32_t*,uint32_t*,std::vector<uchar>*);
 void parseSnpfromBGEN(const int,const int&,std::vector<uchar>*,const uint32_t,const uint32_t,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const snp*,struct geno_block*,variant_block*,mstream&);
 void parseSnpfromBed(const int,const int&,const std::vector<uchar>,const struct param*,const struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,variant_block*);

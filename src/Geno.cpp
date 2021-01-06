@@ -1444,6 +1444,159 @@ void check_bgen(const string bgen_file, struct param* params){
 }
 
 
+// for step 2 (using MT in OpenMP and BGEN library API)
+void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpcount, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info, mstream& sout) {
+
+  int ns, hc_val, nmales;
+  uint32_t index ;
+  double ds, total, mac, info_num;
+  std::string chromosome, rsid;
+  uint32_t position ;
+  std::vector< std::string > alleles ;
+  std::vector< std::vector< double > > probs ;
+
+  for(int snp = 0; snp < bs; snp++) {
+
+    variant_block* snp_data = &(all_snps_info[snp]);
+    MapArXd Geno (gblock->Gmat.col(snp).data(), params->n_samples, 1);
+    // reset variant info
+    Geno = ArrayXd::Zero(params->n_samples);
+    snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
+    snp_data->ignored = false;
+    snp_data->fastSPA = params->use_SPA;
+    snp_data->n_non_zero = 0;
+
+    ns = 0, hc_val = 0, index = 0, nmales = 0;
+    total = 0, mac = 0, info_num = 0;
+
+    // set to correct position
+    gblock->bgen.jumpto( snpinfo[ snpcount + snp ].offset );
+    gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
+    gblock->bgen.read_probs( &probs ) ;
+    //sout << "["<< chrom << "]SNPid stored ("<< snpinfo[snpcount+bs].chrom <<") = " << snpinfo[snpcount+bs].ID<< "/ SNPIDread ("<<chromosome<<")= " << rsid << endl; exit 1;
+    //assert(chrStrToInt(chromosome, params->nChrom) == chrom);
+
+    for( std::size_t i = 0; i < probs.size(); ++i ) {
+
+      // skip samples that were ignored from the analysis
+      if( filters->ind_ignore(i) ) continue;
+
+      ds = 0;
+      for( std::size_t j = 1; j < probs[i].size(); ++j ) ds += probs[i][j] * j;
+
+      if(ds != -3) {
+        ds = params->ref_first ? ds : (2 - ds); // if ref-first, no need to switch
+
+        if( filters->ind_in_analysis(index) ){
+          if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
+            total += ds;
+            // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+            // sex is 1 for males and 0 o.w.
+            if(params->test_mode && (chrom == params->nChrom)) {
+              mac +=  ds * 0.5 * (2 - params->sex[i]);
+              if(params->sex[i]) nmales++;
+            }
+
+            if( params->ref_first )
+              info_num += 4 * probs[i][2] + probs[i][1] - ds * ds;
+            else
+              info_num += 4 * probs[i][0] + probs[i][1] - ds * ds;
+
+            ns++;
+          }
+
+          // get genotype counts (convert to hardcall)
+          if( params->htp_out ) {
+            hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
+            update_genocounts(params->binary_mode, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
+          }
+        }
+      }
+
+      Geno(index) = ds;
+      index++;
+    }
+
+    // check MAC
+    if( params->test_mode){
+      if(chrom != params->nChrom) {
+        mac = total; // use MAC assuming diploid coding
+        mac = min( mac, 2 * ns - mac );
+      } else mac = min(mac, 2 * ns - nmales - mac); // males are 0/1
+
+      if(mac < params->min_MAC) { 
+        snp_data->ignored = true; 
+        continue;
+      }
+      if( params->htp_out ) snp_data->mac = mac;
+    }
+
+    //sout << "SNP#" << snp + 1 << "AC=" << mac << " BAD="<< (bad_snps(snp)?"BAD":"GOOD")<< endl;
+    total /= ns;
+    snp_data->af = total / 2;
+
+    if(params->test_mode) {
+      if( (snp_data->af == 0) || (snp_data->af == 1) ) snp_data->info = 1;
+      else snp_data->info = 1 - info_num / (2 * ns * snp_data->af * (1 - snp_data->af));
+
+      if( params->setMinINFO && ( snp_data->info < params->min_INFO) ) {
+        snp_data->ignored = true;
+        continue;
+      }
+    }
+
+    if(params->use_SPA) {
+      // switch to minor allele
+      snp_data->flipped = total > 1;
+      if(params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
+      if(snp_data->flipped){
+        Geno = ( Geno != -3.0).select( 2 - Geno, Geno);
+        total = 2 - total;
+      }
+    }
+
+    // apply dominant/recessive encoding & recompute mean
+    if(params->test_type > 0){
+      index = 0;
+      for( std::size_t i = 0; i < probs.size(); ++i ) {
+        // skip samples that were ignored from the analysis
+        if( filters->ind_ignore(i) ) continue;
+
+        if( (Geno(index) != -3)  && filters->ind_in_analysis(index) &&
+            (!params->strict_mode || (params->strict_mode && masked_indivs(index,0))) ){
+          if(params->test_type == 1){ //dominant
+            Geno(index) = params->ref_first ? (probs[i][1] + probs[i][2]) : (probs[i][0] + probs[i][1]);
+          } else if(params->test_type == 2){ //recessive
+            Geno(index) = params->ref_first ? probs[i][2] : probs[i][0];
+          }
+        }
+        index++;
+      }
+
+      total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / ns;
+      if(total < params->numtol) {
+        snp_data->ignored = true;
+        continue;
+      }
+    }
+
+    // deal with missing data and center SNPs
+    for( std::size_t i = 0; i < params->n_samples; ++i ) {
+      ds = Geno(i);
+
+      // keep track of number of entries filled so avoid using clear
+      if( params->use_SPA && (snp_data->fastSPA) && filters->ind_in_analysis(i) && (ds > 0) ) 
+        update_nnz_spa(i, params->n_samples, snp_data);
+
+      // impute missing
+      mean_impute_g(Geno(i), total, filters->ind_in_analysis(i), masked_indivs(i,0), params->strict_mode);
+
+    }
+
+  }
+
+}
+
 // for step 2 (using MT in openmp)
 void readChunkFromBGEN(std::istream* bfile, uint32_t* size1, uint32_t* size2, vector<uchar>* geno_block){
 
@@ -1898,7 +2051,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
     if(params->use_SPA) {
       // switch to minor allele
       snp_data->flipped = total > 1;
-      if( params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
+      if(params->test_type > 0) snp_data->flipped = false; // skip for DOM/REC test
       if(snp_data->flipped){
         Geno = ( Geno != -3.0).select( 2 - Geno, Geno);
         total = 2 - total;

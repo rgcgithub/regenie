@@ -60,7 +60,7 @@ void Data::run() {
 
   if(params.test_mode) {
     if(params.streamBGEN) check_bgen(files.bgen_file, &params);
-    if(params.streamBGEN) test_snps_fast();
+    if(params.fastMode) test_snps_fast();
     else test_snps();
 
   } else {
@@ -110,6 +110,7 @@ void Data::file_read_initialization() {
 
   if( params.setMinINFO && !params.dosage_mode )
     sout << "WARNING: Dosages are not present in the genotype file. Option --minINFO is skipped.\n";
+  params.nvs_stored = snpinfo.size();
 }
 
 
@@ -1267,7 +1268,7 @@ std::string Data::write_chr_row(const int chr, const int ph, const Eigen::Matrix
 
 void Data::test_snps() {
 
-  sout << "Association testing mode\n";
+  sout << "Association testing mode using parallelization in Eigen\n";
   chi_squared chisq(1);
   normal nd(0,1);
   std::chrono::high_resolution_clock::time_point t1, t2;
@@ -1558,6 +1559,11 @@ void Data::test_snps() {
 
 }
 
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////    Functions needed in testing mode
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
 
 void Data::print_test_info(){
 
@@ -2219,7 +2225,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   vector< vector < uchar > > snp_data_blocks;
   vector< uint32_t > insize, outsize;
 
-  if(params.file_type == "bgen"){
+  if((params.file_type == "bgen") && params.streamBGEN){
     uint64 pos_skip;
     ifstream bfile;
     snp_data_blocks.resize( n_snps );
@@ -2239,8 +2245,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     }
     bfile.close();
 
-  } else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
-  else {
+  } else if((params.file_type == "bgen") && !params.streamBGEN) readChunkFromBGENFileToG(n_snps, chrom, start, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
+  else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
+  else if(params.file_type == "bed"){
     // read in N/4 bytes from bed file for each snp
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps;) {
@@ -2268,7 +2275,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     // to store variant information
     variant_block* block_info = &(all_snps_info[isnp]);
 
-    if(params.file_type == "bgen"){ // uncompress and extract the dosages
+    if((params.file_type == "bgen") && params.streamBGEN){ // uncompress and extract the dosages
       parseSnpfromBGEN(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
     } else if(params.file_type == "bed"){ // extract hardcalls
       parseSnpfromBed(isnp, chrom, snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, block_info);
