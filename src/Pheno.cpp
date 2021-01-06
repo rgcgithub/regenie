@@ -84,6 +84,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
   fClass.openForRead(files->pheno_file, sout);
   fClass.readLine(line);
+  check_str(line); // remove carriage returns at the end of line if any
 
   // check that FID and IID are first two entries in header
   boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
@@ -277,6 +278,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   sout << left << std::setw(20) << " * covariates" << ": [" << files->cov_file << "] " << flush;
   fClass.openForRead(files->cov_file, sout);
   fClass.readLine(line);
+  check_str(line); // remove carriage returns at the end of line if any
 
   // check that FID and IID are first two entries in header
   boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
@@ -594,6 +596,13 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   sout << " (" << duration.count() << "ms) "<< endl;
 }
 
+void check_str(string& mystring ){
+
+  // check there are no '\r' at the end
+  if( !mystring.empty() && mystring[mystring.size() - 1] == '\r' )
+    mystring.erase(mystring.size() - 1);
+
+}
 
 double convertDouble(const string& phenoValue, struct param* params, mstream& sout){
 
