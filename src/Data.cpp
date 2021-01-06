@@ -104,12 +104,19 @@ void Data::file_read_initialization() {
   // prepare genotype data
   files.chr_counts.assign(params.nChrom, 0.0);
 
-  if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
-  else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
-  else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
+  try {
+    if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
+    else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
+    else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
+  } catch (bad_alloc& badAlloc)
+  {
+    cerr << "ERROR: bad_alloc caught, not enough memory (" << badAlloc.what() << ")\n";
+    exit(EXIT_FAILURE);
+  }
 
   if( params.setMinINFO && !params.dosage_mode )
     sout << "WARNING: Dosages are not present in the genotype file. Option --minINFO is skipped.\n";
+
   params.nvs_stored = snpinfo.size();
 }
 
