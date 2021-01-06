@@ -108,7 +108,6 @@ fi
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example_3chr.bgen \
   --sample ${mntpt}example/example_3chr.sample \
-  --with-bgi \
   --ref-first \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
