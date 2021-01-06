@@ -77,7 +77,6 @@ fi
 echo -e "Running step 2 of REGENIE\n=================================="
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
-  --with-bgi \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
