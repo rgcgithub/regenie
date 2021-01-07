@@ -90,6 +90,7 @@ class Data {
     void blup_read_chr(const int);
     void compute_res();
     void compute_res_bin(int);
+    void setup_output(Files*,std::string&,std::vector<Files*>&,std::vector<std::string>&);
     std::string print_header_output();
     std::string print_header_output_single();
     std::string print_header_output_htp();

@@ -1301,34 +1301,7 @@ void Data::test_snps() {
   set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
   print_test_info();
-
-
-  // write results in one file
-  if(!params.split_by_pheno){
-
-    out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
-    ofile.openForWrite(out, sout);
-    ofile << print_header_output();
-
-  } else { // split results in separate files for each phenotype
-
-    out_split.resize( params.n_pheno );
-    ofile_split.resize( params.n_pheno );
-
-    // header of output file
-    if(!params.htp_out) tmpstr = print_header_output_single();
-    else tmpstr = print_header_output_htp();
-
-    for(int i = 0; i < params.n_pheno; i++) {
-      out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
-      ofile_split[i] = new Files;
-      ofile_split[i]->openForWrite( out_split[i], sout );
-      (*ofile_split[i]) << tmpstr;
-    }
-
-  }
-
-
+  setup_output(&ofile, out, ofile_split, out_split); // result file
 
   // set memory for matrices used to store estimates under H0
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
@@ -1571,6 +1544,36 @@ void Data::test_snps() {
 ////    Functions needed in testing mode
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
+
+void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_split, std::vector< string >& out_split){
+
+  string tmpstr;
+
+  if(!params.split_by_pheno){ // single file
+
+    out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
+    ofile->openForWrite(out, sout);
+    (*ofile) << print_header_output();
+
+  } else { // split results in separate files for each phenotype
+
+    out_split.resize( params.n_pheno );
+    ofile_split.resize( params.n_pheno );
+
+    // header of output file
+    if(!params.htp_out) tmpstr = print_header_output_single();
+    else tmpstr = print_header_output_htp();
+
+    for(int i = 0; i < params.n_pheno; i++) {
+      out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
+      ofile_split[i] = new Files;
+      ofile_split[i]->openForWrite( out_split[i], sout );
+      (*ofile_split[i]) << tmpstr;
+    }
+
+  }
+
+}
 
 void Data::print_test_info(){
 
@@ -2074,32 +2077,7 @@ void Data::test_snps_fast() {
   set_blocks_for_testing();   // set number of blocks
   print_usage_info(&params, &files, sout);
   print_test_info();
-
-
-
-  // header of output file
-  if(!params.split_by_pheno){ // write results in one file
-
-    out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
-    ofile.openForWrite(out, sout);
-    ofile << print_header_output();
-
-  } else {  // split results in separate files for each phenotype
-    out_split.resize( params.n_pheno );
-    ofile_split.resize( params.n_pheno );
-
-    // header of output file
-    if(!params.htp_out) tmpstr = print_header_output_single();
-    else tmpstr = print_header_output_htp();
-
-    for(int i = 0; i < params.n_pheno; i++) {
-      out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
-      ofile_split[i] = new Files;
-      ofile_split[i]->openForWrite( out_split[i], sout );
-      (*ofile_split[i]) << tmpstr;
-    }
-
-  }
+  setup_output(&ofile, out, ofile_split, out_split); // result file
 
 
   // start analyzing each chromosome
