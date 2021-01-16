@@ -138,7 +138,7 @@ void mean_impute_g(double &,const double,const bool,const bool,const bool);
 
 bool in_chrList(const int,struct filter*);
 std::string bgi_chrList(struct filter*);
-bool in_range(std::string,uint32_t,struct param*);
+bool in_range(int,uint32_t,struct param*);
 findID getIndivIndex(const std::string&,const std::string&,struct param*,mstream&);
 
 

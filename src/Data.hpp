@@ -68,11 +68,16 @@ class Data {
     void scale_genotypes(bool);
 
     // step 1 
+    void set_parallel_l0();
+    void write_l0_master();
+    void prep_parallel_l0();
+    void prep_parallel_l1();
     void set_blocks();
     void set_folds();
     void setmem();
     void calc_cv_matrices(const int,struct ridgel0*);
     void level_0_calculations();
+    void exit_early();
     // output of step 1
     void output();
     void make_predictions(const int,const int);
@@ -82,6 +87,7 @@ class Data {
     void write_predictions(const int);
     std::string write_ID_header();
     std::string write_chr_row(const int,const int,const Eigen::MatrixXd&);
+    void rm_l0_files(int ph);
 
     // step 2 main functions
     void test_snps();

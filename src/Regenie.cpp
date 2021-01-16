@@ -131,6 +131,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("l1", "number of ridge parameters to use when fitting model across blocks [evenly spaced in (0,1)]", cxxopts::value<int>(params->n_ridge_l1),"INT(=5)")
     ("lowmem", "reduce memory usage by writing level 0 predictions to temporary files")
     ("lowmem-prefix", "prefix where to write the temporary files in step 1 (default is to use prefix from --out)", cxxopts::value<std::string>(files->loco_tmp_prefix),"PREFIX")
+    ("split-l0", "split level 0 across N jobs and set prefix of output files", cxxopts::value<std::string>(),"PREFIX,N")
+    ("run-l0", "run level 0 for job K in {1..N} using master file created from '--split-l0'", cxxopts::value<std::string>(),"FILE,K")
+    ("run-l1", "run level 1 using master file from '--split-l0'", cxxopts::value<std::string>(files->split_file),"FILE")
+    ("keep-l0", "avoid deleting the level 0 predictions written on disk after fitting the level 1 models")
     ("strict", "remove all samples with missingness at any of the traits")
     ("print-prs", "also output polygenic predictions without using LOCO (=whole genome PRS)")
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
@@ -149,7 +153,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("pThresh", "P-value threshold below which to apply Firth/SPA correction", cxxopts::value<double>(params->alpha_pvalue),"FLOAT(=0.05)")
     ("chr", "specify chromosome to test in step 2 (use for each chromosome)", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
-    ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(params->range_chr),"CHR:MINPOS-MAXPOS")
+    ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(),"CHR:MINPOS-MAXPOS")
     ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
     ("gz", "compress output files (gzip format)")
     ;
@@ -199,7 +203,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     
     if (!vm.count("out")){
       print_header(std::cout);
-      std::cout << "ERROR :You must provide an output prefix using '--out'" << '\n' << webinfo << "\n\n";
+      std::cout << "ERROR: You must provide an output prefix using '--out'" << '\n' << webinfo << "\n\n";
       exit(EXIT_FAILURE);
     }
 
@@ -210,7 +214,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     vector< string > tmp_str_vec;
 
     if( (vm.count("bgen") + vm.count("bed")  + vm.count("pgen"))  != 1 ){
-      sout << "ERROR :You must use either --bed,--bgen or --pgen.\n" << params->err_help ;
+      sout << "ERROR: You must use either --bed,--bgen or --pgen.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
 
@@ -250,6 +254,11 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("print-pheno") ) params->print_pheno_name = true;
     if( vm.count("early-exit") ) params->early_exit = true;
+    if( vm.count("lowmem") ) params->write_l0_pred = true;
+    if( vm.count("keep-l0") ) params->rm_l0_pred = false;
+    if( vm.count("split-l0") ) params->split_l0 = true;
+    if( vm.count("run-l0") ) params->run_l0_only = params->write_l0_pred = true;
+    if( vm.count("run-l1") ) params->run_l1_only = params->write_l0_pred = true;
     if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
@@ -261,9 +270,6 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
 
 
-    if( vm.count("lowmem") ) {
-      params->write_l0_pred = true;
-    }
     if( vm.count("phenoColList") ) {
       params->select_phenos = true;
       boost::algorithm::split(tmp_str_vec, vm["phenoColList"].as<string>(), is_any_of(","));
@@ -292,26 +298,50 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
         filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
     }
+    if( vm.count("split-l0") ) { // Format: FILE,INT
+      boost::algorithm::split(tmp_str_vec, vm["split-l0"].as<string>(), is_any_of(","));
+      if(tmp_str_vec.size() != 2 ){
+        sout << "ERROR: Wrong format for --split-l0 (must be FILE,INT).\n" << params->err_help;
+        exit(EXIT_FAILURE);
+      }
+      files->split_file = tmp_str_vec[0];
+      params->njobs = atoi( tmp_str_vec[1].c_str() );
+    }
+    if( vm.count("run-l0") ) { // Format: FILE,INT
+      boost::algorithm::split(tmp_str_vec, vm["run-l0"].as<string>(), is_any_of(","));
+      if(tmp_str_vec.size() != 2 ){
+        sout << "ERROR: Wrong format for --run-l0 (must be FILE,INT).\n" << params->err_help;
+        exit(EXIT_FAILURE);
+      }
+      files->split_file = tmp_str_vec[0];
+      params->job_num = atoi( tmp_str_vec[1].c_str() );
+      if(params->job_num < 1 ){
+        sout << "ERROR: Invalid job number for --run-l0 (must be >=1).\n" << params->err_help;
+        exit(EXIT_FAILURE);
+      }
+    }
     if( vm.count("test") ) {
       if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
       else if( vm["test"].as<string>() == "recessive") params->test_type = 2; 
       else {
-        sout << "ERROR : Unrecognized argument for option --test, must be either 'dominant' or 'recessive'.\n" << params->err_help;
+        sout << "ERROR: Unrecognized argument for option --test, must be either 'dominant' or 'recessive'.\n" << params->err_help;
         exit(EXIT_FAILURE);
       }
     }
     if( vm.count("range") ) { // Format: Chr:min-max
       char tmp_chr[20];
       double p0 = -1, p1 = -1;
+      string tmpd = vm["range"].as<string>();
 
-      if(sscanf( params->range_chr.c_str(), "%[^:]:%lf-%lf", tmp_chr, &p0, &p1 ) != 3
+      if(sscanf( tmpd.c_str(), "%[^:]:%lf-%lf", tmp_chr, &p0, &p1 ) != 3
           || (p0 < 0) || (p1 < 0) ){ 
-        cerr << tmp_chr << "\t" << p0 << "\t" << p1 << endl;
-        sout << "ERROR : Wrong format for --range (must be CHR:MINPOS-MAXPOS).\n" << params->err_help;
+        //cerr << tmp_chr << "\t" << p0 << "\t" << p1 << endl;
+        sout << "ERROR: Wrong format for --range (must be CHR:MINPOS-MAXPOS).\n" << params->err_help;
         exit(EXIT_FAILURE);
       }
 
-      params->range_chr = tmp_chr;
+      tmpd = tmp_chr;
+      params->range_chr = chrStrToInt(tmpd, params->nChrom);
       params->range_min = min(p0,p1);
       params->range_max = max(p0,p1);
     }
@@ -319,7 +349,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if ( params->run_mode == 1 ) params->test_mode = false;
     else if (params->run_mode == 2 ) params->test_mode = true;
     else {
-      sout << "ERROR : Specify which mode regenie should be running using option --step.\n" << params->err_help;
+      sout << "ERROR: Specify which mode regenie should be running using option --step.\n" << params->err_help;
       exit(EXIT_FAILURE);
     }
 
@@ -348,7 +378,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         params->n_ridge_l0 = params->lambda.size();
         // parameters must be less in (0, 1)
         if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 ){
-          sout << "ERROR : You must specify values for --l0 in (0,1).\n" << params->err_help;
+          sout << "ERROR: You must specify values for --l0 in (0,1).\n" << params->err_help;
           exit(EXIT_FAILURE);
         } 
       } else set_ridge_params(params->n_ridge_l0, params->lambda, params->err_help, sout);
@@ -363,7 +393,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         params->tau.erase( unique( params->tau.begin(), params->tau.end() ), params->tau.end() );
         params->n_ridge_l1 = params->tau.size();
         if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 ){
-          sout << "ERROR : You must specify values for --l1 in (0,1).\n" << params->err_help;
+          sout << "ERROR: You must specify values for --l1 in (0,1).\n" << params->err_help;
           exit(EXIT_FAILURE);
         }
       } else set_ridge_params(params->n_ridge_l1, params->tau, params->err_help, sout);
@@ -392,7 +422,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if(params->test_mode && params->use_loocv) params->use_loocv = false;
 
     if( vm.count("write-samples") && vm.count("bgen") && !vm.count("sample") ){
-      sout << "ERROR : must specify sample file (using --sample) if writing sample IDs to file.\n" << params->err_help;
+      sout << "ERROR: must specify sample file (using --sample) if writing sample IDs to file.\n" << params->err_help;
       exit(EXIT_FAILURE);
     }
 
@@ -401,7 +431,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->setMinMAC = false;
     }
     if(params->test_mode && params->min_MAC < 1){
-      sout << "ERROR : minimum MAC must be at least 1.\n" << params->err_help;
+      sout << "ERROR: minimum MAC must be at least 1.\n" << params->err_help;
       exit(EXIT_FAILURE);
     }
     if(!params->test_mode && params->setMinINFO){
@@ -409,13 +439,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->setMinINFO = false;
     }
     if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) ){
-      sout << "ERROR : minimum info score must be in [0,1].\n" << params->err_help;
+      sout << "ERROR: minimum info score must be in [0,1].\n" << params->err_help;
       exit(EXIT_FAILURE);
     }
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
     if( !vm.count("bsize") ) {
-      sout << "ERROR : must specify the block size using '--bsize'.\n" << params->err_help;
+      sout << "ERROR: must specify the block size using '--bsize'.\n" << params->err_help;
       exit(EXIT_FAILURE);
     }
 
@@ -423,6 +453,21 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if(params->threads < 1){
       params->threads = std::thread::hardware_concurrency(); //may return 0 when not able to detect
       if(params->threads < 1) params->threads = 1;
+    }
+
+    // check parallel l0
+    if(params->test_mode && 
+        (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
+      sout << "WARNING : Options --split-l0/--run-l0/--run-l1 only work in step 1.\n";
+      params->split_l0 = params->run_l0_only = params->run_l1_only = false;
+    } else if( vm.count("nb") && 
+        (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
+      sout << "WARNING : Options --split-l0/--run-l0/--run-l1 cannot be used with --nb.\n";
+      params->split_l0 = params->run_l0_only = params->run_l1_only = false;
+    }
+    if( (vm.count("run-l0")||vm.count("run-l1")) && !file_exists(files->split_file) ){
+      sout << "ERROR: " << files->split_file  << " doesn't exist.\n" << params->err_help ;
+      exit(EXIT_FAILURE);
     }
 
     // set Firth as default if both Firth and SPA are specified
@@ -433,89 +478,86 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     // check firth fallback pvalue threshold
     if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
-      sout << "ERROR :Firth fallback p-value threshold must be in (0,1).\n" << params->err_help ;
+      sout << "ERROR: Firth fallback p-value threshold must be in (0,1).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     // check SPA fallback pvalue threshold
     if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
-      sout << "ERROR :SPA fallback p-value threshold must be in (0,1).\n" << params->err_help ;
+      sout << "ERROR: SPA fallback p-value threshold must be in (0,1).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->firth_approx && !params->firth) params->firth_approx = false;
 
     // check arguments for logistic regression 
     if(params->binary_mode && (params->niter_max < 1)){
-      sout << "ERROR :Invalid argument for --niter (must be positive integer).\n" << params->err_help ;
+      sout << "ERROR: Invalid argument for --niter (must be positive integer).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->firth && (params->maxstep_null < 1)){
-      sout << "ERROR :Invalid argument for --maxstep-null (must be a positive integer).\n" << params->err_help ;
+      sout << "ERROR: Invalid argument for --maxstep-null (must be a positive integer).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->firth && (params->niter_max_firth_null < 1)){
-      sout << "ERROR :Invalid argument for --maxiter-null (must be a positive integer).\n" << params->err_help ;
+      sout << "ERROR: Invalid argument for --maxiter-null (must be a positive integer).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->nChrom < 2){
-      sout << "ERROR :Invalid argument for --nauto (must be > 1).\n" << params->err_help ;
+      sout << "ERROR: Invalid argument for --nauto (must be > 1).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
-    if(params->set_range && (chrStrToInt(params->range_chr, params->nChrom) == -1)){
-      sout << "ERROR :Unrecognized chromosome for --range (=" << params->range_chr << 
-        ").\n" << params->err_help ;
+    if(params->set_range && (params->range_chr == -1)){
+      sout << "ERROR: Unrecognized chromosome in --range.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->rm_indivs && params->keep_indivs ){
-      sout << "ERROR :Cannot use both --keep and --remove.\n" << params->err_help ;
+      sout << "ERROR: Cannot use both --keep and --remove.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(params->rm_snps && params->keep_snps ){
-      sout << "ERROR :Cannot use both --extract and --exclude.\n" << params->err_help ;
+      sout << "ERROR: Cannot use both --extract and --exclude.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
 
     if( params->test_mode && params->select_chrs && (filters->chrKeep_test.find(-1) != filters->chrKeep_test.end()) ){
-      sout << "ERROR :Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
+      sout << "ERROR: Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
 
     if(params->test_mode && !params->skip_blups && !vm.count("pred")) {
-      sout << "ERROR :You must specify --pred if using --step 2 (otherwise use --ignore-pred).\n" << params->err_help ;
+      sout << "ERROR: You must specify --pred if using --step 2 (otherwise use --ignore-pred).\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
 
     if(params->test_mode && (params->file_type == "pgen") && !params->fastMode){
-      sout << "ERROR :Cannot use --nostream with PGEN format.\n" << params->err_help ;
+      sout << "ERROR: Cannot use --nostream with PGEN format.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
-
     if(params->file_type == "bgen") {
       if(!file_exists (files->bgen_file)) {
-        sout << "ERROR : " << files->bgen_file  << " doesn't exist.\n" << params->err_help ;
+        sout << "ERROR: " << files->bgen_file  << " doesn't exist.\n" << params->err_help ;
         exit(EXIT_FAILURE);
       }
       string bgifile = files->bgen_file + ".bgi";
       params->with_bgi = file_exists (bgifile) ;
     }
-
     if(vm.count("covarFile") & !file_exists (files->cov_file)) {
-      sout << "ERROR : " << files->cov_file  << " doesn't exist.\n" << params->err_help ;
+      sout << "ERROR: " << files->cov_file  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if(!file_exists (files->pheno_file)) {
-      sout << "ERROR : " << files->pheno_file  << " doesn't exist.\n" << params->err_help ;
+      sout << "ERROR: " << files->pheno_file  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bed")) {
-      sout << "ERROR : " << files->bed_prefix << ".bed"  << " doesn't exist.\n" << params->err_help ;
+      sout << "ERROR: " << files->bed_prefix << ".bed"  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bim")) {
-      sout << "ERROR : " << files->bed_prefix << ".bim"  << " doesn't exist.\n" << params->err_help ;
+      sout << "ERROR: " << files->bed_prefix << ".bim"  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
     if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".fam")) {
-      sout << "ERROR : " << files->bed_prefix << ".fam"  << " doesn't exist.\n" << params->err_help ;
+      sout << "ERROR: " << files->bed_prefix << ".fam"  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
 
@@ -535,7 +577,7 @@ void start_log(T arguments, const string out_file, MeasureTime* mt, mstream& sou
   string log_name = out_file + ".log";
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
   if (!sout.coss.is_open()) {
-    cerr << "ERROR : Cannot write log file '" << log_name << "'\n" ;
+    cerr << "ERROR: Cannot write log file '" << log_name << "'\n" ;
     exit(EXIT_FAILURE);
   } 
 
@@ -565,7 +607,7 @@ void start_log(T arguments, const string out_file, MeasureTime* mt, mstream& sou
 void set_ridge_params(int nparams, vector<double>& in_param, const string err_help, mstream& sout){
 
   if(nparams < 2){
-    sout << "ERROR : Number of ridge parameters must be at least 2 (=" << nparams << ").\n" << err_help;
+    sout << "ERROR: Number of ridge parameters must be at least 2 (=" << nparams << ").\n" << err_help;
     exit(EXIT_FAILURE);
   } else {
     // endpoints are 0.01 and 0.99 
@@ -589,10 +631,12 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
   if(!params->test_mode){
     // Step 1
     // 4P + max( B + PRT, PRT) + #chrs [P:#traits;R=#ridge l0;T=#predictions from l0]
-    total_ram = 4 * params->n_pheno + params->nChrom;
     int t_eff = ( params->write_l0_pred ? 1 : params->total_n_block );
     int p_eff = ( params->write_l0_pred ? 1 : params->n_pheno );
-    total_ram += std::max( params->block_size + params->n_pheno * params->n_ridge_l0 * t_eff, p_eff * params->n_ridge_l0 * params->total_n_block );
+    int b_eff = ( params->run_l0_only ? (params->maxBlock - params->minBlock) : params->total_n_block );
+
+    total_ram = 4 * params->n_pheno + params->nChrom;
+    total_ram += std::max( params->block_size + params->n_pheno * params->n_ridge_l0 * t_eff, p_eff * params->n_ridge_l0 * b_eff );
   } else {
     // Step 2
     // 3P + B
@@ -617,12 +661,13 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
   sout << " * approximate memory usage : " << ram_int << ram_unit << endl;
 
   ///// Disk space usage
-  if(!params->test_mode && params->write_l0_pred){
+  if(!params->test_mode && !params->run_l1_only && params->write_l0_pred){
     if(files->loco_tmp_prefix.empty()) files->loco_tmp_prefix = files->out_file;
     sout << " * writing level 0 predictions to disk" << endl;
     sout << "   -temporary files will have prefix [" << files->loco_tmp_prefix << "_l0_Y]" << endl;
     // N*P*T*R
-    total_ram = params->n_pheno * params->total_n_block * params->n_ridge_l0;
+    int b_eff = ( params->run_l0_only ? (params->maxBlock - params->minBlock) : params->total_n_block );
+    total_ram = params->n_pheno * b_eff * params->n_ridge_l0;
     total_ram *= params->n_samples * sizeof(double);
     total_ram /= 1024.0 * 1024.0; 
     if( total_ram > 1000 ) {

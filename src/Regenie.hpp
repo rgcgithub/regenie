@@ -65,7 +65,6 @@
 #include <omp.h>
 #endif
 
-
 typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned long long uint64;
@@ -163,6 +162,8 @@ struct param {
   int threads = 0;
   bool verbose = false;
   bool early_exit = false;
+  bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
+  int njobs, job_num, minBlock, maxBlock;
 
   // for input data
   uint32_t n_samples = 0; // number of samples
@@ -193,6 +194,7 @@ struct param {
   bool print_prs = false; // specify to print PRS (i.e. no LOCO used)
   bool write_blups = false; // write BLUP predictions for each chromosome
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
+  bool rm_l0_pred = true; // specify whether to delete written level 0 predictions after level 1
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
   int niter_max_ridge = 500; // max number of iterations for ridge logistic reg.
   int niter_max_line_search_ridge = 100; // max number of iterations for line search in ridge logistic reg.
@@ -244,7 +246,7 @@ struct param {
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
   bool set_range = false;
-  std::string range_chr; // to allow for 'chr#' as input
+  int range_chr; 
   double range_min, range_max; // use genomic region to filter variants
 
 };
@@ -259,6 +261,7 @@ struct in_files {
   std::string file_snps_include, file_snps_exclude;
   std::string cov_file, pheno_file;
   std::string loco_tmp_prefix = "";
+  std::string split_file;
   std::string out_file;
   std::string blup_file;
   std::vector<std::string> blup_files;
@@ -268,6 +271,8 @@ struct in_files {
   uint64 bed_block_size; // prevent overflow
   std::ifstream bed_ifstream;
   std::vector<uchar> inbed;
+  std::vector<int> bstart, btot; // for parallel l0
+  std::vector<std::string> mprefix; // for parallel l0
 
 };
 

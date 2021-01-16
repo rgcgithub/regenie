@@ -69,6 +69,7 @@ double get_logist_dev(const Eigen::ArrayXd& Y, const Eigen::ArrayXd& pi, const A
 void ridge_level_0(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
 
+void set_mem_l1(struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_1(struct in_files*,struct param*,struct ridgel1*,mstream&);
 void ridge_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,mstream&);
 
@@ -78,5 +79,9 @@ void ridge_logistic_level_1_loocv(struct in_files*,struct param*,struct phenodt*
 bool get_wvec(int ph, Eigen::ArrayXd& etavec, Eigen::ArrayXd& pivec, Eigen::ArrayXd& wvec, const Eigen::ArrayXd& beta, const MatrixXb& masks, const Eigen::MatrixXd& offset, const Eigen::MatrixXd& test_mat,const double);
 double compute_log_lik(const double,const double);
 
+void read_l0(int,int,struct in_files*,struct param*,struct ridgel1*,mstream&);
+void read_l0_chunk(int,int,int,int,const std::string,struct param*,struct ridgel1*,mstream&);
+
+long getSize(std::string fname);
 #endif
 

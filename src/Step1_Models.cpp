@@ -295,7 +295,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
       // write predictions to file if specified
       if(params->write_l0_pred) {
         out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-        if(block == 0)
+        if((!params->run_l0_only && (block == 0)) || (params->run_l0_only && (block == params->minBlock)) )
           ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
         else
           ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
@@ -311,7 +311,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
           exit(EXIT_FAILURE);
         }
         ofile.close();
-        //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
+        //if(block ==0 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 3, 3) << endl;
       }
 
     }
@@ -416,7 +416,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
     if(params->write_l0_pred) {
       Xout = l1->test_mat_conc[ph].block(0, 0, params->n_samples, params->n_ridge_l0);
       out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      if(block == 0)
+      if((!params->run_l0_only && (block == 0)) || (params->run_l0_only && (block == params->minBlock)) )
         ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
       else
         ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
@@ -450,7 +450,45 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
 ////          level 1 models
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
-//
+void set_mem_l1(struct in_files* files, struct param* params, struct filter* filters, struct ests* m_ests, struct geno_block* Gblock, struct phenodt* pheno_data, struct ridgel1* l1, vector<MatrixXb>& masked_in_folds, mstream& sout){ // when l0 was run in parallel
+
+  // store pheno info for l1
+  if(!params->use_loocv) {
+
+    uint32_t low = 0, high = 0;
+    uint32_t i_total = 0, cum_size_folds = 0;
+    for(int i = 0; i < params->cv_folds; ++i ) {
+      // assign masking within folds
+      for(int j = 0; j < params->cv_sizes[i]; ++j) {
+        masked_in_folds[i].row(j) = pheno_data->masked_indivs.row(i_total);
+        i_total++;
+      }
+
+      // set lower and upper index bounds for fold
+      if(i>0) low +=  params->cv_sizes[i-1];
+      high += params->cv_sizes[i];
+
+      // store predictions
+      uint32_t jj = 0;
+      for(size_t k = 0; k < params->n_samples; ++k ) {
+        if( (k >= low) && (k < high) ) {
+          for(int ph = 0; ph < params->n_pheno; ++ph ) {
+            l1->test_pheno[ph][i](jj, 0) = pheno_data->phenotypes(k, ph);
+            if (params->binary_mode) {
+              l1->test_pheno_raw[ph][i](jj, 0) = pheno_data->phenotypes_raw(k, ph);
+              l1->test_offset[ph][i](jj, 0) = m_ests->offset_logreg(k, ph);
+            }
+          }
+          jj++;
+        }
+      }
+      cum_size_folds += params->cv_sizes[i];
+    }
+
+  }
+
+}
+
 void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1* l1, mstream& sout) {
 
   sout << endl << " Level 1 ridge..." << endl << flush;
@@ -484,21 +522,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
-      in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-      if (!infile.is_open()) {
-        sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(EXIT_FAILURE);
-      }
-
-      // store back values in test_mat
-      for( int m = 0; m < bs_l1; ++m )
-        for( int i = 0; i < params->cv_folds; ++i )
-          for( int k = 0; k < params->cv_sizes[i]; ++k )
-            infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
-
-      infile.close();
+      read_l0(ph, ph_eff, files, params, l1, sout);
       //if(ph == 0) sout << endl << "In:\n" << l1->test_mat[ph_eff][0].block(0,0,5,6) << endl;
     }
 
@@ -590,19 +614,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
       // allocate memory (re-use same matrix for all traits)
       if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
-      in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-      if (!infile.is_open()) {
-        sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(EXIT_FAILURE);
-      }
-
-      // store back values in test_mat_conc
-      infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0,0)), params->n_samples * bs_l1 * sizeof(double) );
-
-      infile.close();
-      //if(ph == 0) sout << endl << "In:\n" << l1->test_mat_conc[ph_eff].block(0,0,5,6) << endl;
+      read_l0(ph, ph_eff, files, params, l1, sout);
     }
 
     xtx = l1->test_mat_conc[ph_eff].transpose() * l1->test_mat_conc[ph_eff];
@@ -682,22 +694,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes[i], bs_l1);
       }
 
-      in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-      if (!infile.is_open()) {
-        sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(EXIT_FAILURE);
-      }
-
-      // store back values in test_mat
-      for( int m = 0; m < bs_l1; ++m )
-        for( int i = 0; i < params->cv_folds; ++i )
-          for( int k = 0; k < params->cv_sizes[i]; ++k )
-            infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
-
-      infile.close();
-      //if(ph == 0) sout << endl << "In:\n" << l1->test_mat[ph_eff][0].block(0,0,5,6) << endl;
+      read_l0(ph, ph_eff, files, params, l1, sout);
     }
 
     for(int i = 0; i < params->cv_folds; ++i ) {
@@ -899,19 +896,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       // allocate memory (re-use same matrix for all traits)
       if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
-      in_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-      if (!infile.is_open()) {
-        sout << "ERROR : Cannote read temporary file " << in_pheno  << endl ;
-        exit(EXIT_FAILURE);
-      }
-
-      // store back values in test_mat_conc
-      infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0,0)), params->n_samples * bs_l1 * sizeof(double) );
-
-      infile.close();
-      //if(ph == 0) sout << endl << "In:\n" << l1->test_mat_conc[ph_eff].block(0,0,5,6) << endl;
+      read_l0(ph, ph_eff, files, params, l1, sout);
     }
 
 
@@ -1051,4 +1036,80 @@ double compute_log_lik(const double y, const double p){
   return(ll);
 }
 
+void read_l0(int ph, int ph_eff, struct in_files* files, struct param* params, struct ridgel1* l1, mstream& sout){
 
+  int start, np;
+  string fin;
+ 
+  // all blocks in same file
+  if(!params->run_l1_only){
+
+    start = 0;
+    np = params->total_n_block * params->n_ridge_l0;
+    fin = files->loco_tmp_prefix;
+
+    read_l0_chunk(ph, ph_eff, start, np, fin, params, l1, sout);
+
+  } else { // blocks in separate file
+
+    for(int i = 0; i < files->bstart.size(); i++){
+
+      start = files->bstart[i] * params->n_ridge_l0;
+      np = files->btot[i] * params->n_ridge_l0;
+      fin = files->mprefix[i];
+
+      read_l0_chunk(ph, ph_eff, start, np, fin, params, l1, sout);
+    }
+
+
+  }
+
+}
+
+// read in l0 predictors in columns [start,start+np)
+void read_l0_chunk(int ph, int ph_eff, int start, int np, const string prefix, struct param* params, struct ridgel1* l1, mstream& sout){
+
+  string in_pheno = prefix + "_l0_Y" + to_string(ph+1);
+  ifstream infile;
+
+  infile.open(in_pheno.c_str(), ios::in | ios::binary );
+  if (!infile.is_open()) {
+    sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
+    exit(EXIT_FAILURE);
+  } else if( getSize(in_pheno) != (sizeof(double) * params->n_samples * np )){
+    sout << "ERROR : File " << in_pheno << " is not the right size.\n" << endl ;
+    exit(EXIT_FAILURE);
+  }
+  //cerr << in_pheno << "  " << getSize(in_pheno) << endl;
+
+  // store back values in test_mat
+  if(params->use_loocv) {
+
+    infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0, start)), params->n_samples * np * sizeof(double) );
+
+    //if(ph == 0) sout << endl << "In:\n" << l1->test_mat_conc[ph_eff].block(0,0,5,6) << endl;
+  } else {
+
+    int nt = 0;
+
+    for( int m = start; nt < np; nt++, m++ )
+      for( int i = 0; i < params->cv_folds; ++i )
+        for( int k = 0; k < params->cv_sizes[i]; ++k )
+          infile.read( reinterpret_cast<char *> (&l1->test_mat[ph_eff][i](k,m)), sizeof(double) );
+
+  //if(start==0) cerr << endl <<l1->test_mat[ph_eff][0].block(0,0,3,3) << endl;
+
+  }
+
+  infile.close();
+  
+}
+
+long getSize(string fname){
+  
+  struct stat stat_buf;
+  int rc = stat(fname.c_str(), &stat_buf);
+
+  return ( rc == 0 ? stat_buf.st_size : -1);
+
+}

@@ -70,6 +70,8 @@ void Data::run() {
     setNbThreads(params.threads);
     // set up file for reading
     file_read_initialization();
+    // if splitting l0 into many jobs
+    if(params.split_l0) set_parallel_l0();
     // read phenotype and covariate files
     read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);
     // adjust for covariates
@@ -189,6 +191,61 @@ void Data::residualize_genotypes() {
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
 
+void Data::set_parallel_l0(){
+
+  // compute the number of blocks
+  set_blocks();
+
+  // Make master file for L0 jobs
+  write_l0_master();
+
+  // exit software
+  exit_early();
+}
+
+void Data::write_l0_master(){
+
+  sout << " * running level 0 in parallel\n";
+  if(params.njobs <= 1){
+    sout << "ERROR: Number of jobs must be >1.\n";
+    exit(EXIT_FAILURE);
+  } else if(params.njobs > params.total_n_block){
+    sout << "   -WARNING: Number of jobs cannot be greater than number of blocks.\n";
+    params.njobs = params.total_n_block;
+  }
+  sout << "   -using " << params.njobs << " jobs\n";
+
+  int nall = params.total_n_block / params.njobs;
+  int remainder = params.total_n_block - nall * params.njobs;
+  int bcount = 0, nb;
+  string fout = files.split_file + ".master";
+  ofstream ofile;
+
+  sout << left << std::setw(20) << "   -master file written to [" << fout << "]\n";
+
+  // open master
+  ofile.open(fout.c_str(), ios::out );
+
+  if (!ofile.is_open()) {
+    sout << "ERROR : Cannot write to file " << fout  << endl ;
+    exit(EXIT_FAILURE);
+  }
+
+  // header
+  ofile << "START NBLOCKS PREFIX\n";
+
+  // split blocks in chunks of ~B/njobs
+  for(int i = 0; i < params.njobs; i++ ){
+    nb = nall + (i < remainder ? 1 : 0);
+    ofile << bcount << " " << nb <<
+      " " << files.split_file << "_chunk" << i << endl;
+    bcount += nb;
+  }
+
+  ofile.close();
+
+}
+
 void Data::set_blocks() {
 
   params.total_n_block = 0, total_chrs_loco = 0;
@@ -226,6 +283,10 @@ void Data::set_blocks() {
       exit( EXIT_FAILURE );
   }
 
+  if(params.split_l0) return;
+  else if(params.run_l0_only) prep_parallel_l0();
+  else if(params.run_l1_only) prep_parallel_l1();
+
   // set ridge params
   for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants * (1 - params.lambda[i]) / params.lambda[i];
   for(int i = 0; i < params.n_ridge_l1; i++) {
@@ -256,7 +317,7 @@ void Data::set_blocks() {
   // summarize block sizes and ridge params
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
   sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]\n";
-  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]\n";
+  sout << left << std::setw(20) << " * # blocks" << ": [" << (params.run_l0_only ? (params.maxBlock - params.minBlock) : params.total_n_block )<< "]\n";
   sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]\n";
   sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
   for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / (params.n_variants + params.lambda[i]) << " ";
@@ -466,6 +527,13 @@ void Data::setmem() {
 
 void Data::level_0_calculations() {
 
+  if(params.run_l1_only) {
+    set_mem_l1(&files, &params, &in_filters, &m_ests, &Gblock, &pheno_data, &l1_ests, masked_in_folds, sout);
+    sout << " (skipping to level 1 models)";
+    return;
+  }
+
+  bool early_stop = false;
   int block = 0;
   if(params.print_block_betas) params.print_snpcount = 0;
   ridgel0 l0;
@@ -484,21 +552,34 @@ void Data::level_0_calculations() {
     int chrom_nb = chr_map[chrom][1];
     if(chrom_nb == 0) continue;
 
-    sout << "Chromosome " << chrom << endl;
+    if( !params.run_l0_only || 
+        ((block+chrom_nb)>params.minBlock)
+      ) {
+      sout << "Chromosome " << chrom << endl;
+    } else { // skip whole chromosome
+      block+=chrom_nb; in_filters.step1_snp_count += chrom_nsnps;
+      continue;
+    }
     //sout << "Ns="<< chrom_nsnps << endl;
 
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
       int bs = params.block_size;
-      if(bb == 0) {
-        Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
-        if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
-      }
-      if((bb + 1) * params.block_size > chrom_nsnps) {
+      if((bb + 1) * params.block_size > chrom_nsnps) 
         bs = chrom_nsnps - (bb * params.block_size) ;
-        Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
-        if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
+
+      // skip blocks not analyzed at beginning of chr
+      if(params.run_l0_only){
+        if(block < params.minBlock){
+          block++; in_filters.step1_snp_count += bs;
+          continue;
+        } else if(block >= params.maxBlock) {
+          early_stop = true; break;
+        }
       }
+
+      Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
+      if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
 
       get_G(block, bs, chrom, in_filters.step1_snp_count, snpinfo, &params, &files, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, sout);
 
@@ -517,6 +598,7 @@ void Data::level_0_calculations() {
       block++; in_filters.step1_snp_count += bs;
     }
 
+    if(early_stop) break;
   }
 
   if(params.early_exit) {
@@ -524,11 +606,8 @@ void Data::level_0_calculations() {
       params.n_samples << " rows and " <<
       params.total_n_block * params.n_ridge_l0 << " columns " <<
       "stored in column-major order. Exiting...\n";
-    runtime.stop();
-    sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s\n";
-    sout << "End time: " << ctime(&runtime.end_time_info) << endl;
-    exit( EXIT_SUCCESS );
-  }
+    exit_early();
+  } else if(params.run_l0_only) exit_early();
 
   // free up memory not used anymore
   Gblock.Gmat.resize(0,0);
@@ -578,6 +657,129 @@ void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
   sout << " (" << duration.count() << "ms) "<< endl;
 }
 
+// identify which block to analyze
+void Data::prep_parallel_l0(){
+
+  string line;
+  string fin = files.split_file; // master file
+  std::vector< string > tmp_str_vec ;
+  ifstream infile;
+  infile.open(fin.c_str(), ios::in);
+
+  if (!infile.is_open()) {
+    sout << "ERROR : Cannot read file " << fin  << endl ;
+    exit(EXIT_FAILURE);
+  }
+
+  // check header
+  if(!getline(infile, line) || (line != "START NBLOCKS PREFIX") ){
+    sout << "ERROR: Unrecognized master file.\n"; 
+    exit(EXIT_FAILURE);
+  }
+
+  // skip to line job_num
+  int nskip=1;
+  while( (nskip++ < params.job_num) && !infile.eof() )
+    infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
+  if( (--nskip != params.job_num) || infile.eof() ){
+    sout << "ERROR: Could not read line " << params.job_num+1 << " (check number of lines in file).\n";
+    exit(EXIT_FAILURE);
+  }
+  
+  // read in line
+  getline(infile, line);
+  boost::algorithm::split(tmp_str_vec, line, is_any_of(" "));
+
+  if( tmp_str_vec.size() != 3 ){
+    sout << "ERROR: Could not read line " << params.job_num + 1 << " (check number of lines in file).\n"; 
+    exit(EXIT_FAILURE);
+  }
+
+  params.minBlock = atoi(tmp_str_vec[0].c_str());
+  params.maxBlock = params.minBlock + atoi(tmp_str_vec[1].c_str());
+  files.loco_tmp_prefix = tmp_str_vec[2];
+
+  // check params
+  if( (params.minBlock < 0) || 
+      (params.maxBlock > params.total_n_block)
+    ) {
+    sout << "ERROR: Invalid block information in master file at line " << params.job_num + 1 << ".\n";
+    exit(EXIT_FAILURE);
+  }
+
+  // print info
+  sout << " * running jobs in parallel (Job #" << params.job_num << ")\n";
+
+  infile.close();
+
+}
+
+
+void Data::prep_parallel_l1(){
+
+  int nblocks = 0, lineread=0; // make sure all blocks are read
+  string line;
+  string fin = files.split_file; // master file
+  std::vector< string > tmp_str_vec ;
+  ifstream infile;
+  infile.open(fin.c_str(), ios::in);
+
+  if (!infile.is_open()) {
+    sout << "ERROR : Cannot read file " << fin  << endl ;
+    exit(EXIT_FAILURE);
+  }
+
+  // check header
+  if(!getline(infile, line) || (line != "START NBLOCKS PREFIX") ){
+    sout << "ERROR: Unrecognized master file.\n"; 
+    exit(EXIT_FAILURE);
+  }
+
+  while( getline(infile, line) ){
+    boost::algorithm::split(tmp_str_vec, line, is_any_of(" "));
+
+    if( tmp_str_vec.size() != 3 ){
+      sout << "ERROR: Could not read line " << lineread + 2 << " (check number of lines in file).\n"; 
+      exit(EXIT_FAILURE);
+    }
+
+    files.bstart.push_back( atoi(tmp_str_vec[0].c_str()) );
+    files.btot.push_back( atoi(tmp_str_vec[1].c_str()) );
+    files.mprefix.push_back( tmp_str_vec[2] );
+
+    // check params
+    if( (files.bstart[lineread] < 0) || (files.bstart[lineread]>params.total_n_block) || (files.btot[lineread] < 0) ){
+      sout << "ERROR: Invalid block information in master file at line " << lineread + 2 << ".\n";
+      exit(EXIT_FAILURE);
+    }
+
+    nblocks += files.btot[lineread]; // update # blocks
+    lineread++;
+  }
+
+  if(nblocks != params.total_n_block){
+    sout << "ERROR: Number of blocks in master file '" << fin << "' doesn't match that in the analysis.\n";
+    exit(EXIT_FAILURE);
+  }
+
+  // print info
+  params.job_num = lineread;
+  sout << " * using results from running " << params.job_num << " parallel jobs at level 0.\n";
+
+  infile.close();
+
+}
+
+void Data::exit_early(){
+
+    runtime.stop();
+    sout << "\nElapsed time : " << std::chrono::duration<double>(runtime.end - runtime.begin).count() << "s\n";
+    sout << "End time: " << ctime(&runtime.end_time_info) << endl;
+    exit( EXIT_SUCCESS );
+
+}
+
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -623,10 +825,7 @@ void Data::output() {
           outb << files.pheno_names[ph]  << " " << fullpath_str << endl;
           if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
         } else {
-          if(params.write_l0_pred){ // cleanup level 0 predictions
-            pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-            remove(pfile.c_str());
-          }
+          if(params.write_l0_pred) rm_l0_files(ph); // cleanup level 0 predictions
           sout << "Level 1 logistic did not converge. LOCO predictions calculations are skipped.\n\n";
           continue;
         }
@@ -680,10 +879,8 @@ void Data::output() {
 
 
     // delete file used to store l0 predictions
-    if(params.write_l0_pred){
-      pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      remove(pfile.c_str());
-    }
+    if(params.write_l0_pred && params.rm_l0_pred)
+      rm_l0_files(ph);
 
   }
 
@@ -695,6 +892,22 @@ void Data::output() {
     outp.closeFile();
     sout << "List of files with whole genome PRS written to: [" << 
       out_prs_list << "]\n";
+  }
+
+}
+
+void Data::rm_l0_files(int ph){
+
+  string pfile;
+
+  if(!params.run_l1_only){
+    pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
+    remove(pfile.c_str());
+  } else {
+    for(int i = 0; i < files.bstart.size(); i++){
+      pfile = files.mprefix[i] + "_l0_Y" + to_string(ph+1);
+      remove(pfile.c_str());
+    }
   }
 
 }
@@ -747,24 +960,8 @@ void Data::make_predictions(const int ph, const  int val) {
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
   // read in level 0 predictions from file
-  if(params.write_l0_pred){
-
-    in_pheno = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-    infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-    if (!infile.is_open()) {
-      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
-      exit(EXIT_FAILURE);
-    }
-
-    // store back values in test_mat
-    for( int m = 0; m < bs_l1; ++m )
-      for( int i = 0; i < params.cv_folds; ++i )
-        for( int k = 0; k < params.cv_sizes[i]; ++k )
-          infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
-
-    infile.close();
-  }
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
 
 
   if(params.within_sample_l0){
@@ -845,21 +1042,8 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
 
 
   // read in level 0 predictions from file
-  if(params.write_l0_pred){
-
-    in_pheno = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-    infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-    if (!infile.is_open()) {
-      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
-      exit(EXIT_FAILURE);
-    }
-
-    // store back values in test_mat_conc
-    infile.read( reinterpret_cast<char *> (&l1_ests.test_mat_conc[ph_eff](0,0)), params.n_samples * bs_l1 * sizeof(double) );
-
-    infile.close();
-  }
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
 
   // fit model on whole data again for optimal ridge param
   xtx = l1_ests.test_mat_conc[ph_eff].transpose() * l1_ests.test_mat_conc[ph_eff];
@@ -923,24 +1107,8 @@ void Data::make_predictions_binary(const int ph, const  int val) {
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
   // read in level 0 predictions from file
-  if(params.write_l0_pred){
-
-    in_pheno = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-    infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-    if (!infile.is_open()) {
-      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
-      exit(EXIT_FAILURE);
-    }
-
-    // store back values in test_mat
-    for( int m = 0; m < bs_l1; ++m )
-      for( int i = 0; i < params.cv_folds; ++i )
-        for( int k = 0; k < params.cv_sizes[i]; ++k )
-          infile.read( reinterpret_cast<char *> (&l1_ests.test_mat[ph_eff][i](k,m)), sizeof(double) );
-
-    infile.close();
-  }
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
 
   // fit model using out-of-sample level 0 predictions from whole data
   if(params.within_sample_l0){
@@ -1032,21 +1200,8 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
   int j_start;
 
   // read in level 0 predictions from file
-  if(params.write_l0_pred){
-
-    in_pheno = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-    infile.open(in_pheno.c_str(), ios::in | ios::binary );
-
-    if (!infile.is_open()) {
-      sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
-      exit(EXIT_FAILURE);
-    }
-
-    // store back values in test_mat_conc
-    infile.read( reinterpret_cast<char *> (&l1_ests.test_mat_conc[ph_eff](0,0)), params.n_samples * bs_l1 * sizeof(double) );
-
-    infile.close();
-  }
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
 
   // fit logistic on whole data again for optimal ridge param
   betaold = ArrayXd::Zero(bs_l1);

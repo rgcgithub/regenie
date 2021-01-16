@@ -89,7 +89,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
       if(
           (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
           ||
-          (params->set_range && !in_range(chromosome, position, params))
+          (params->set_range && !in_range(tmp_snp.chrom, position, params))
         ) {
         // go to next variant (get its offset first)
         tmp_snp.offset = bgen_tmp.get_position();
@@ -167,7 +167,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
   // edit sql statement if chromosome position range is given
   if( params->set_range ){
-    string tmp_q = sql_query + " WHERE chromosome=" + params->range_chr + " AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
+    string tmp_q = sql_query + " WHERE chromosome=" + to_string(params->range_chr) + " AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
     sql_query = tmp_q;
   } else if( params->select_chrs ){
     
@@ -406,7 +406,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
     if(
         (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
         ||
-        (params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params))
+        (params->set_range && !in_range(tmp_snp.chrom, tmp_snp.physpos, params))
       ) continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
@@ -598,7 +598,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
     if(
         (params->select_chrs && !in_chrList(tmp_snp.chrom, filters))
         ||
-        (params->set_range && !in_range(tmp_str_vec[0], tmp_snp.physpos, params))
+        (params->set_range && !in_range(tmp_snp.chrom, tmp_snp.physpos, params))
       ) continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
@@ -2115,7 +2115,7 @@ string bgi_chrList(struct filter* filters){
   return buffer.str();
 }
 
-bool in_range(string snp_chr, uint32_t snp_pos, struct param* params){
+bool in_range(int snp_chr, uint32_t snp_pos, struct param* params){
 
   if( snp_chr != params->range_chr ) return false;
   else if ( snp_pos < params->range_min ) return false;
