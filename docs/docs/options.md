@@ -230,6 +230,10 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--loocv`| FLAG | Optional| flag to use leave-one out cross validation|
 |`--lowmem`| FLAG | Optional | flag to reduce memory usage by writing level 0 predictions to disk (details below). This is very useful if the number of traits is large (e.g. greater than 10)|
 |`--lowmem-prefix`| FILE PREFIX | Optional | prefix where to temporarily write the level 0 predictions|
+|`--split-l0`| PREFIX,N | Optional | split level 0 across N jobs and set prefix of output files of level 0 predictions|
+|`--run-l0`| FILE,K | Optional | run level 0 for job K in {1..N} specifying the master file created from '--split-l0'|
+|`--run-l1`| FILE | Optional | run level 1 specifying the master file from '--split-l0'|
+|`--keep-l0`| FLAG | Optional | avoid deleting the level 0 predictions written on disk after fitting the level 1 models|
 |`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
