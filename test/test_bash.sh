@@ -47,14 +47,15 @@ fi
 
 # Prepare regenie command to run for Step 1
 echo -e "Running step 1 of REGENIE\n=================================="
-rgcmd="--step 1 \
+basecmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
-  --bt $arg_gz \
+  --bt $arg_gz"
+rgcmd="$basecmd \
   --lowmem \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
@@ -72,8 +73,55 @@ elif [ "`grep \"0.4504\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\
   echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
 fi
 
+#### Run step 1 splitting across 2 jobs for level 0
+njobs=4
+echo -e "Re-running step 1 splitting in $njobs jobs"
+# pt1 - run regenie before l0
+rgcmd="$basecmd \
+  --split-l0 ${mntpt}test/fit_bin_parallel,$njobs \
+  --out ${mntpt}test/fit_bin_l0"
 
-# First command
+./$regenie_bin $rgcmd
+if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel.master" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+fi
+
+# pt2 - run regenie for l0
+nj=`seq 1 $njobs`
+for job in $nj; do
+  rgcmd="$basecmd \
+    --run-l0 ${mntpt}test/fit_bin_parallel.master,$job \
+    --out ${mntpt}test/fit_bin_l0"
+
+  ./$regenie_bin $rgcmd
+  if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel_chunk$((job-1))_l0_Y1" ]; then
+    echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  fi
+done
+
+# pt3 - run regenie for l1
+rgcmd="$basecmd \
+  --run-l1 ${mntpt}test/fit_bin_parallel.master \
+  --out ${mntpt}test/fit_bin_l1"
+
+./$regenie_bin $rgcmd
+
+if [ ! -f "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+elif ! cmp --silent \
+  "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" \
+  "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" 
+then
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+elif ! cmp --silent \
+  "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" \
+  "${REGENIE_PATH}test/fit_bin_l1_2.loco$fsuf" 
+then
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+fi
+
+
+# First step 2command
 echo -e "Running step 2 of REGENIE\n=================================="
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
@@ -173,5 +221,5 @@ fi
 
 
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin_out* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
+rm ${REGENIE_PATH}test/fit_bin* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
 
