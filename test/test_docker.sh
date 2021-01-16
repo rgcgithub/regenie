@@ -45,14 +45,15 @@ echo "** Checking docker image \"${DOCKER_IMAGE}\" **"
 echo -e "  -> Mounting directory $REGENIE_PATH to /docker/ \n"
 echo -e "Running step 1 of REGENIE\n=================================="
 # Prepare regenie command to run for Step 1
-rgcmd="--step 1 \
+basecmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
-  --bt $arg_gz \
+  --bt $arg_gz"
+rgcmd="$basecmd \
   --lowmem \
   --lowmem-prefix tmp_rg \
   --out ${mntpt}test/fit_bin_out"
@@ -60,13 +61,61 @@ rgcmd="--step 1 \
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
 ## quick check that the correct files have been created
-if [ ! -f ${REGENIE_PATH}test/fit_bin_out.log ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_pred.list ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf ] || \
-  [ ! -f ${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf ]; then
+if [ ! -f "${REGENIE_PATH}test/fit_bin_out.log" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_pred.list" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" ] || \
+  [ ! -f "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" ]; then
   echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
 elif [ "`grep \"0.4504\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\"`" = "" ]; then
   echo "Step 1 of REGENIE did not finish successfully. Check the docker image and re-build if needed."; exit 1
+fi
+
+#### Run step 1 splitting across jobs for level 0
+njobs=4
+echo -e "Re-running step 1 splitting in $njobs jobs"
+# pt1 - run regenie before l0
+rgcmd="$basecmd \
+  --split-l0 ${mntpt}test/fit_bin_parallel,$njobs \
+  --out ${mntpt}test/fit_bin_l0"
+
+docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+                     
+if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel.master" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+fi
+
+# pt2 - run regenie for l0
+nj=`seq 1 $njobs`
+for job in $nj; do
+  rgcmd="$basecmd \
+    --run-l0 ${mntpt}test/fit_bin_parallel.master,$job \
+    --out ${mntpt}test/fit_bin_l0"
+
+  docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+  if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel_chunk$((job-1))_l0_Y1" ]; then
+    echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  fi
+done
+
+# pt3 - run regenie for l1
+rgcmd="$basecmd \
+  --run-l1 ${mntpt}test/fit_bin_parallel.master \
+  --out ${mntpt}test/fit_bin_l1"
+
+docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
+
+if [ ! -f "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" ]; then
+  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+elif ! cmp --silent \
+  "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" \
+  "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" 
+then
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+elif ! cmp --silent \
+  "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" \
+  "${REGENIE_PATH}test/fit_bin_l1_2.loco$fsuf" 
+then
+  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
 fi
 
 
@@ -174,5 +223,5 @@ else
 fi
 
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin_out* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
+rm ${REGENIE_PATH}test/fit_bin* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
 

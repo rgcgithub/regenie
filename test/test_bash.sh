@@ -73,7 +73,7 @@ elif [ "`grep \"0.4504\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\
   echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
 fi
 
-#### Run step 1 splitting across 2 jobs for level 0
+#### Run step 1 splitting across jobs for level 0
 njobs=4
 echo -e "Re-running step 1 splitting in $njobs jobs"
 # pt1 - run regenie before l0
@@ -121,7 +121,7 @@ then
 fi
 
 
-# First step 2command
+# First step 2 command
 echo -e "Running step 2 of REGENIE\n=================================="
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \

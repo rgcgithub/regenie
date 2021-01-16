@@ -443,7 +443,6 @@ void Data::set_folds() {
 void Data::setmem() {
   sout << " * setting memory..." << flush;
 
-  Gblock.Gmat = MatrixXd::Zero(params.block_size, params.n_samples);
   set_folds();
   l1_ests.cumsum_values.resize(6);
   predictions.resize(1);
@@ -904,7 +903,7 @@ void Data::rm_l0_files(int ph){
     pfile = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
     remove(pfile.c_str());
   } else {
-    for(int i = 0; i < files.bstart.size(); i++){
+    for(size_t i = 0; i < files.bstart.size(); i++){
       pfile = files.mprefix[i] + "_l0_Y" + to_string(ph+1);
       remove(pfile.c_str());
     }
