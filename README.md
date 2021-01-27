@@ -32,7 +32,7 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-Version 1.0.7 (Enabled level 0 of step 1 to be run in parallel [see Wiki for details]).
+Version 1.0.7 (Enabled for level 0 models in step 1 to be run in parallel [see [Wiki](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for details]).
 
 Version 1.0.6.9 (Improved step 2 for BGEN format files not in v1.2 or 8-bit encoding).
 

@@ -92,7 +92,7 @@ for job in $nj; do
     --out ${mntpt}test/fit_bin_l0"
 
   docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
-  if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel_chunk$((job-1))_l0_Y1" ]; then
+  if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel_job${job}_l0_Y1" ]; then
     echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
   fi
 done
