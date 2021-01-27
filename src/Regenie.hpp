@@ -37,7 +37,6 @@
 #include <random>
 #include <map>
 #include <fstream>
-#include <string>
 #include <math.h>       /* exp */
 #include <stdio.h>
 #include <stdlib.h>
@@ -53,8 +52,6 @@
 #include "mkl_lapacke.h"
 #endif
 
-#include <boost/algorithm/string/split.hpp>
-#include <boost/algorithm/string.hpp>
 #include <boost/math/distributions.hpp>
 
 #include "bgen_to_vcf.hpp"
@@ -64,6 +61,8 @@
 #ifdef __linux__
 #include <omp.h>
 #endif
+
+#define MAXFILELEN 2001
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -163,7 +162,7 @@ struct param {
   bool verbose = false;
   bool early_exit = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
-  int njobs, job_num, minBlock, maxBlock;
+  int njobs, job_num, parallel_nGeno, parallel_nBlocks, parallel_nSnps;
 
   // for input data
   uint32_t n_samples = 0; // number of samples

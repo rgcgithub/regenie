@@ -257,7 +257,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("lowmem") ) params->write_l0_pred = true;
     if( vm.count("keep-l0") ) params->rm_l0_pred = false;
     if( vm.count("split-l0") ) params->split_l0 = true;
-    if( vm.count("run-l0") ) params->run_l0_only = params->write_l0_pred = true;
+    if( vm.count("run-l0") ) { params->run_l0_only = params->write_l0_pred = params->keep_snps = true; params->rm_snps = false;}
     if( vm.count("run-l1") ) params->run_l1_only = params->write_l0_pred = true;
     if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
     if( vm.count("gz") ) {
@@ -272,7 +272,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     if( vm.count("phenoColList") ) {
       params->select_phenos = true;
-      boost::algorithm::split(tmp_str_vec, vm["phenoColList"].as<string>(), is_any_of(","));
+      tmp_str_vec = string_split(vm["phenoColList"].as<string>(),",");
       filters->pheno_colKeep_names.insert( 
           filters->pheno_colKeep_names.end(),
           std::begin( tmp_str_vec ), 
@@ -280,7 +280,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if( vm.count("covarColList") ) {
       params->select_covs = true;
-      boost::algorithm::split(tmp_str_vec, vm["covarColList"].as<string>(), is_any_of(","));
+      tmp_str_vec = string_split(vm["covarColList"].as<string>(),",");
       filters->cov_colKeep_names.insert( 
           filters->cov_colKeep_names.end(),
           std::begin( tmp_str_vec ), 
@@ -288,7 +288,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if( vm.count("chrList") ) {
       params->select_chrs = true;
-      boost::algorithm::split(tmp_str_vec, vm["chrList"].as<string>(), is_any_of(","));
+      tmp_str_vec = string_split(vm["chrList"].as<string>(),",");
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
         filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
     }
@@ -299,7 +299,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
     }
     if( vm.count("split-l0") ) { // Format: FILE,INT
-      boost::algorithm::split(tmp_str_vec, vm["split-l0"].as<string>(), is_any_of(","));
+      tmp_str_vec = string_split(vm["split-l0"].as<string>(),",");
       if(tmp_str_vec.size() != 2 ){
         sout << "ERROR: Wrong format for --split-l0 (must be FILE,INT).\n" << params->err_help;
         exit(EXIT_FAILURE);
@@ -308,7 +308,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->njobs = atoi( tmp_str_vec[1].c_str() );
     }
     if( vm.count("run-l0") ) { // Format: FILE,INT
-      boost::algorithm::split(tmp_str_vec, vm["run-l0"].as<string>(), is_any_of(","));
+      tmp_str_vec = string_split(vm["run-l0"].as<string>(),",");
       if(tmp_str_vec.size() != 2 ){
         sout << "ERROR: Wrong format for --run-l0 (must be FILE,INT).\n" << params->err_help;
         exit(EXIT_FAILURE);
@@ -370,7 +370,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       // user specified ridge parameters to use at l0
       if( vm.count("setl0") ) {
         params->user_ridge_params_l0 = true;
-        boost::algorithm::split(tmp_str_vec, vm["setl0"].as<string>(), is_any_of(","));
+        tmp_str_vec = string_split(vm["setl0"].as<string>(),",");
         for( size_t val = 0; val < tmp_str_vec.size(); val++)
           params->lambda.push_back(convertDouble( tmp_str_vec[val], params, sout));
         std::sort(params->lambda.begin(), params->lambda.end());
@@ -386,13 +386,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       // user specified ridge parameters to use at l1
       if( vm.count("setl1") ) {
         params->user_ridge_params_l1 = true;
-        boost::algorithm::split(tmp_str_vec, vm["setl1"].as<string>(), is_any_of(","));
+        tmp_str_vec = string_split(vm["setl1"].as<string>(),",");
         for( size_t val = 0; val < tmp_str_vec.size(); val++)
           params->tau.push_back(convertDouble( tmp_str_vec[val], params, sout));
         std::sort(params->tau.begin(), params->tau.end());
         params->tau.erase( unique( params->tau.begin(), params->tau.end() ), params->tau.end() );
         params->n_ridge_l1 = params->tau.size();
-        if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 ){
+        if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 || (params->n_ridge_l1 == 0) ){
           sout << "ERROR: You must specify values for --l1 in (0,1).\n" << params->err_help;
           exit(EXIT_FAILURE);
         }
@@ -633,7 +633,7 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
     // 4P + max( B + PRT, PRT) + #chrs [P:#traits;R=#ridge l0;T=#predictions from l0]
     int t_eff = ( params->write_l0_pred ? 1 : params->total_n_block );
     int p_eff = ( params->write_l0_pred ? 1 : params->n_pheno );
-    int b_eff = ( params->run_l0_only ? (params->maxBlock - params->minBlock) : params->total_n_block );
+    int b_eff = params->total_n_block;
 
     total_ram = 4 * params->n_pheno + params->nChrom;
     total_ram += std::max( params->block_size + params->n_pheno * params->n_ridge_l0 * t_eff, p_eff * params->n_ridge_l0 * b_eff );
@@ -666,7 +666,7 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
     sout << " * writing level 0 predictions to disk" << endl;
     sout << "   -temporary files will have prefix [" << files->loco_tmp_prefix << "_l0_Y]" << endl;
     // N*P*T*R
-    int b_eff = ( params->run_l0_only ? (params->maxBlock - params->minBlock) : params->total_n_block );
+    int b_eff = params->total_n_block;
     total_ram = params->n_pheno * b_eff * params->n_ridge_l0;
     total_ram *= params->n_samples * sizeof(double);
     total_ram /= 1024.0 * 1024.0; 
@@ -691,5 +691,4 @@ int chrStrToInt(const string chrom, const int nChrom) {
 
   return -1;
 }
-
 

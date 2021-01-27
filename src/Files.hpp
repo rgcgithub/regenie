@@ -92,4 +92,6 @@ class Files {
     ~Files();
 };
 
+std::vector<std::string> string_split(std::string const&,const char*);
+
 #endif

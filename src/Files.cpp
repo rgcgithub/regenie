@@ -140,3 +140,26 @@ void Files::closeFile(){
 bool Files::checkFileExtension(std::string filename) {
   return fs::extension(filename) == ".gz";
 }
+
+// Split string by tokens
+std::vector<std::string> string_split(std::string const& s, const char* delims) {
+
+  std::vector<std::string> out;
+
+  if(s.size() == 0) return out;
+
+  const char* p = s.c_str(); //beginning of string
+  const char* q = strpbrk(p+1, delims);//to first delimiter
+
+  for( ; q != NULL; q = strpbrk(p, delims)){
+    out.push_back( std::string(p,q) );// add to vector using range constructor
+    p = q + 1;
+  }
+
+  // check string after last delimiter
+  if(p && (p[0] != '\0')) out.push_back( std::string(p) );
+
+  return(out);
+
+}
+

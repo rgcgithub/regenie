@@ -295,7 +295,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
       // write predictions to file if specified
       if(params->write_l0_pred) {
         out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-        if((!params->run_l0_only && (block == 0)) || (params->run_l0_only && (block == params->minBlock)) )
+        if(block == 0)
           ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
         else
           ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
@@ -416,7 +416,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
     if(params->write_l0_pred) {
       Xout = l1->test_mat_conc[ph].block(0, 0, params->n_samples, params->n_ridge_l0);
       out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      if((!params->run_l0_only && (block == 0)) || (params->run_l0_only && (block == params->minBlock)) )
+      if(block == 0)
         ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
       else
         ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
@@ -1052,7 +1052,7 @@ void read_l0(int ph, int ph_eff, struct in_files* files, struct param* params, s
 
   } else { // blocks in separate file
 
-    for(int i = 0; i < files->bstart.size(); i++){
+    for(size_t i = 0; i < files->bstart.size(); i++){
 
       start = files->bstart[i] * params->n_ridge_l0;
       np = files->btot[i] * params->n_ridge_l0;
@@ -1076,7 +1076,7 @@ void read_l0_chunk(int ph, int ph_eff, int start, int np, const string prefix, s
   if (!infile.is_open()) {
     sout << "ERROR : Cannot read temporary file " << in_pheno  << endl ;
     exit(EXIT_FAILURE);
-  } else if( getSize(in_pheno) != (sizeof(double) * params->n_samples * np )){
+  } else if( getSize(in_pheno) != (long) (sizeof(double) * params->n_samples * np )){
     sout << "ERROR : File " << in_pheno << " is not the right size.\n" << endl ;
     exit(EXIT_FAILURE);
   }

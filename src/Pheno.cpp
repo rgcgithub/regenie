@@ -87,7 +87,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   check_str(line); // remove carriage returns at the end of line if any
 
   // check that FID and IID are first two entries in header
-  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+  tmp_str_vec = string_split(line,"\t ");
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
     exit(EXIT_FAILURE);
@@ -139,7 +139,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // read in data
   while( fClass.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() != (2+pheno_colKeep.size()) ){
       sout << "ERROR: Incorrectly formatted phenotype file." << endl;
@@ -281,7 +281,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   check_str(line); // remove carriage returns at the end of line if any
 
   // check that FID and IID are first two entries in header
-  boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+  tmp_str_vec = string_split(line,"\t ");
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
     exit(EXIT_FAILURE);
@@ -326,7 +326,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
 
   // read in data
   while( fClass.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < cov_colKeep.size() ){
       sout << "ERROR: Incorrectly formatted covariate file." << endl;
@@ -425,7 +425,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   // get list of files containing blups
   while (fClass.readLine(line)){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     // each line contains a phenotype name and the corresponding blup file name
     if( tmp_str_vec.size() != 2 ){
@@ -472,7 +472,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     n_masked_prior = pheno_data->masked_indivs.col(ph).cast<int>().sum();
     // only read first line which has FID_IID
     fClass.readLine(line);
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID (=" << tmp_str_vec[0] << ").\n";
@@ -481,7 +481,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     if( params->use_prs ){ // read in second line
       fClass.readLine(line);
-      boost::algorithm::split(tmp_prs_vec, line, is_any_of("\t "));
+      tmp_prs_vec = string_split(line,"\t ");
 
       if( tmp_prs_vec[0] != "0") {
         sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";

@@ -70,6 +70,7 @@ class Data {
     // step 1 
     void set_parallel_l0();
     void write_l0_master();
+    void write_snplist(std::string,int,int);
     void prep_parallel_l0();
     void prep_parallel_l1();
     void set_blocks();

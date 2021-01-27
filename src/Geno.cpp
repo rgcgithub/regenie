@@ -364,7 +364,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
   //if(params->set_range) cerr << params->range_chr << "\t" << params->range_min << "\t" << params->range_max<< endl;
 
   while (getline(myfile, line)) {
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted bim file at line " << snpinfo.size()+1 << endl;
@@ -444,7 +444,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
   }
 
   while (getline(myfile, line)) {
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 ){
       sout << "ERROR: Incorrectly formatted fam file at line " << lineread + 1 << endl;
@@ -545,7 +545,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   }
 
   while (getline(myfile, line)) { // skip to main header line
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 ){
       sout << "ERROR: No blank lines should be before the header line in pvar file.\n";
@@ -562,7 +562,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   }
 
   while (getline(myfile, line)) {
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 5 ){
       sout << "ERROR: Incorrectly formatted pvar file at line " << snpinfo.size()+1 << endl;
@@ -638,7 +638,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   }
 
   while (getline(myfile, line)) { // skip to main header line
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 ){
       cerr << "ERROR: No blank lines should be before the header line in psam file.\n";
@@ -659,7 +659,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   if(col_found) sex_col = std::distance(tmp_str_vec.begin(), scol);
 
   while (getline(myfile, line)) {
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 3 ){
       sout << "ERROR: Incorrectly formatted psam file at line " << lineread + 1 << endl;
@@ -816,7 +816,7 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
   std::fill(files->chr_counts.begin(), files->chr_counts.end(), 0);
 
   while( myfile.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 ){
       sout << "ERROR: Incorrectly formatted file specified by --extract." << endl;
@@ -849,7 +849,7 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
   myfile.openForRead (files->file_snps_exclude, sout);
 
   while( myfile.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 ){
       sout << "ERROR: Incorrectly formatted file specified by --exclude." << endl;
@@ -937,7 +937,7 @@ void set_IDs_to_keep(struct in_files* files, struct filter* filters, struct para
   myfile.openForRead (files->file_ind_include, sout);
 
   while( myfile.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 2 ){
       sout << "ERROR: Incorrectly formatted file specified by --keep." << endl;
@@ -975,7 +975,7 @@ void set_IDs_to_rm(struct in_files* files, struct filter* filters, struct param*
   myfile.openForRead (files->file_ind_exclude, sout);
 
   while( myfile.readLine(line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 2 ){
       sout << "ERROR: Incorrectly formatted file specified by --remove." << endl;

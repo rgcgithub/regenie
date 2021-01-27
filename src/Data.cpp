@@ -106,6 +106,9 @@ void Data::file_read_initialization() {
   // prepare genotype data
   files.chr_counts.assign(params.nChrom, 0.0);
 
+  // for l0 in parallel
+  if(params.run_l0_only) prep_parallel_l0();
+
   try {
     if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
     else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
@@ -120,6 +123,7 @@ void Data::file_read_initialization() {
     sout << "WARNING: Dosages are not present in the genotype file. Option --minINFO is skipped.\n";
 
   params.nvs_stored = snpinfo.size();
+
 }
 
 
@@ -205,7 +209,9 @@ void Data::set_parallel_l0(){
 
 void Data::write_l0_master(){
 
-  sout << " * running level 0 in parallel\n";
+  string fout = files.split_file + ".master";
+
+  sout << " * running level 0 in parallel across " << params.total_n_block << " genotype blocks\n";
   if(params.njobs <= 1){
     sout << "ERROR: Number of jobs must be >1.\n";
     exit(EXIT_FAILURE);
@@ -214,36 +220,80 @@ void Data::write_l0_master(){
     params.njobs = params.total_n_block;
   }
   sout << "   -using " << params.njobs << " jobs\n";
-
-  int nall = params.total_n_block / params.njobs;
-  int remainder = params.total_n_block - nall * params.njobs;
-  int bcount = 0, nb;
-  string fout = files.split_file + ".master";
-  ofstream ofile;
-
-  sout << left << std::setw(20) << "   -master file written to [" << fout << "]\n";
+  sout << "   -master file written to [" << fout << "]\n";
+  sout << "   -variant list files written to [" << files.split_file << "_job*.snplist]\n";
 
   // open master
+  ofstream ofile;
   ofile.open(fout.c_str(), ios::out );
-
   if (!ofile.is_open()) {
     sout << "ERROR : Cannot write to file " << fout  << endl ;
     exit(EXIT_FAILURE);
   }
 
   // header
-  ofile << "START NBLOCKS PREFIX\n";
+  ofile << params.nvs_stored << " " << params.block_size << endl;
 
   // split blocks in chunks of ~B/njobs
-  for(int i = 0; i < params.njobs; i++ ){
-    nb = nall + (i < remainder ? 1 : 0);
-    ofile << bcount << " " << nb <<
-      " " << files.split_file << "_chunk" << i << endl;
-    bcount += nb;
+  int nall = params.total_n_block / params.njobs;
+  int remainder = params.total_n_block - nall * params.njobs;
+  int nb = 0, ns = 0, bcount = 0, scount = 0, jcount = 0;
+  map<int, vector<int> >::iterator itr;
+
+  int btarget = nall + (bcount < remainder ? 1 : 0);
+  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
+    int chrom_nsnps = itr->second[0];
+    int chrom_nb = ceil(chrom_nsnps * 1.0 / params.block_size);
+    if(chrom_nb == 0) continue;
+
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+
+      int bs = params.block_size;
+      if((bb + 1) * params.block_size > chrom_nsnps) 
+        bs = chrom_nsnps - (bb * params.block_size) ;
+
+      ns+=bs;
+      nb++, bcount++;
+
+      if( nb == btarget ){
+        string fname = files.split_file + "_job" + to_string( jcount+1 );
+        // write in master
+        ofile << fname << " " << btarget << " " << ns << endl;
+        // write snplist
+        write_snplist(fname, scount, ns);
+
+        jcount++;
+        scount += ns;
+        ns = nb = 0;
+        btarget = nall + (jcount < remainder ? 1 : 0);
+      }
+    }
+  }
+
+  if((bcount != params.total_n_block) || (jcount !=params.njobs)){
+    sout << "ERROR: could not create master file.\n";
+    exit(EXIT_FAILURE);
   }
 
   ofile.close();
 
+}
+
+void Data::write_snplist(string fname, int start, int ns){
+
+  string fout = fname + ".snplist";
+  ofstream ofile;
+
+  ofile.open(fout.c_str(), ios::out );
+  if (!ofile.is_open()) {
+    sout << "ERROR : Cannot write to file " << fout  << endl ;
+    exit(EXIT_FAILURE);
+  }
+
+  for(int i = 0; i < ns; i++) 
+    ofile << snpinfo[start+i].ID << endl;
+
+  ofile.close();
 }
 
 void Data::set_blocks() {
@@ -284,11 +334,15 @@ void Data::set_blocks() {
   }
 
   if(params.split_l0) return;
-  else if(params.run_l0_only) prep_parallel_l0();
-  else if(params.run_l1_only) prep_parallel_l1();
+  else if(params.run_l0_only) {
+    if((params.parallel_nBlocks != params.total_n_block) || (params.parallel_nSnps!= (int)params.n_variants)){
+    sout << "ERROR: Number of variants/blocks in file don't match with that in master file.\n";
+      exit( EXIT_FAILURE );
+    }
+  } else if(params.run_l1_only) prep_parallel_l1();
 
   // set ridge params
-  for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] =  params.n_variants * (1 - params.lambda[i]) / params.lambda[i];
+  for(int i = 0; i < params.n_ridge_l0; i++) params.lambda[i] = (params.run_l0_only ? params.parallel_nGeno : params.n_variants) * (1 - params.lambda[i]) / params.lambda[i];
   for(int i = 0; i < params.n_ridge_l1; i++) {
     params.tau[i] =  (params.total_n_block *  params.n_ridge_l0) * (1 - params.tau[i]) / params.tau[i];
     // Assuming input tau[i] is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
@@ -317,19 +371,24 @@ void Data::set_blocks() {
   // summarize block sizes and ridge params
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
   sout << left << std::setw(20) << " * block size" << ": [" << params.block_size << "]\n";
-  sout << left << std::setw(20) << " * # blocks" << ": [" << (params.run_l0_only ? (params.maxBlock - params.minBlock) : params.total_n_block )<< "]\n";
+  sout << left << std::setw(20) << " * # blocks" << ": [" << params.total_n_block << "]\n";
   sout << left << std::setw(20) << " * # CV folds" << ": [" << neff_folds << "]\n";
-  sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
-  for(int i = 0; i < params.n_ridge_l0; i++) sout << params.n_variants / (params.n_variants + params.lambda[i]) << " ";
-  sout << "]\n";
-  sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
-  for(int i = 0; i < params.n_ridge_l1; i++) {
-    if(!params.binary_mode)
-      sout << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block *  params.n_ridge_l0 + params.tau[i] ) << " ";
-    else
-      sout << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[i] / 3 ) << " ";
+  if(!params.run_l1_only){
+    int nv_tot = (params.run_l0_only ? params.parallel_nGeno : params.n_variants);
+    sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
+    for(int i = 0; i < params.n_ridge_l0; i++) sout << nv_tot / ( nv_tot + params.lambda[i]) << " ";
+    sout << "]\n";
   }
-  sout << "]\n";
+  if(!params.run_l0_only){
+    sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
+    for(int i = 0; i < params.n_ridge_l1; i++) {
+      if(!params.binary_mode)
+        sout << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block *  params.n_ridge_l0 + params.tau[i] ) << " ";
+      else
+        sout << (params.total_n_block *  params.n_ridge_l0) / ( (params.total_n_block *  params.n_ridge_l0) + (M_PI * M_PI) * params.tau[i] / 3 ) << " ";
+    }
+    sout << "]\n";
+  }
 
   // if using maf dependent prior
   if(!params.test_mode && (params.alpha_prior != -1) ) sout << " * applying a MAF dependent prior to the SNP effect sizes in level 0 models (alpha=" << params.alpha_prior << ")\n";
@@ -532,7 +591,6 @@ void Data::level_0_calculations() {
     return;
   }
 
-  bool early_stop = false;
   int block = 0;
   if(params.print_block_betas) params.print_snpcount = 0;
   ridgel0 l0;
@@ -551,14 +609,7 @@ void Data::level_0_calculations() {
     int chrom_nb = chr_map[chrom][1];
     if(chrom_nb == 0) continue;
 
-    if( !params.run_l0_only || 
-        ((block+chrom_nb)>params.minBlock)
-      ) {
-      sout << "Chromosome " << chrom << endl;
-    } else { // skip whole chromosome
-      block+=chrom_nb; in_filters.step1_snp_count += chrom_nsnps;
-      continue;
-    }
+    sout << "Chromosome " << chrom << endl;
     //sout << "Ns="<< chrom_nsnps << endl;
 
     for(int bb = 0; bb < chrom_nb ; bb++) {
@@ -566,16 +617,6 @@ void Data::level_0_calculations() {
       int bs = params.block_size;
       if((bb + 1) * params.block_size > chrom_nsnps) 
         bs = chrom_nsnps - (bb * params.block_size) ;
-
-      // skip blocks not analyzed at beginning of chr
-      if(params.run_l0_only){
-        if(block < params.minBlock){
-          block++; in_filters.step1_snp_count += bs;
-          continue;
-        } else if(block >= params.maxBlock) {
-          early_stop = true; break;
-        }
-      }
 
       Gblock.Gmat = MatrixXd::Zero(bs, params.n_samples);
       if(params.alpha_prior != -1) Gblock.snp_afs = MatrixXd::Zero(bs, 1);
@@ -597,7 +638,6 @@ void Data::level_0_calculations() {
       block++; in_filters.step1_snp_count += bs;
     }
 
-    if(early_stop) break;
   }
 
   if(params.early_exit) {
@@ -659,20 +699,28 @@ void Data::calc_cv_matrices(const int bs, struct ridgel0* l0) {
 // identify which block to analyze
 void Data::prep_parallel_l0(){
 
+  int tmpi;
   string line;
   string fin = files.split_file; // master file
   std::vector< string > tmp_str_vec ;
   ifstream infile;
-  infile.open(fin.c_str(), ios::in);
 
+  // print info
+  sout << " * running jobs in parallel (Job #" << params.job_num << ")\n";
+
+  infile.open(fin.c_str(), ios::in);
   if (!infile.is_open()) {
     sout << "ERROR : Cannot read file " << fin  << endl ;
     exit(EXIT_FAILURE);
   }
 
   // check header
-  if(!getline(infile, line) || (line != "START NBLOCKS PREFIX") ){
-    sout << "ERROR: Unrecognized master file.\n"; 
+  if(!getline(infile, line)){
+    sout << "ERROR: Cannot read header line in master file.\n"; 
+    exit(EXIT_FAILURE);
+  }
+  if( (sscanf( line.c_str(), "%d %d", &params.parallel_nGeno, &tmpi ) != 2) || (tmpi != params.block_size) ){
+    sout << "ERROR: Invalid header line.\n"; 
     exit(EXIT_FAILURE);
   }
 
@@ -688,64 +736,57 @@ void Data::prep_parallel_l0(){
   
   // read in line
   getline(infile, line);
-  boost::algorithm::split(tmp_str_vec, line, is_any_of(" "));
-
-  if( tmp_str_vec.size() != 3 ){
-    sout << "ERROR: Could not read line " << params.job_num + 1 << " (check number of lines in file).\n"; 
+  char tmp_chr[MAXFILELEN];
+  if( sscanf( line.c_str(), "%s %d %d", tmp_chr, &params.parallel_nBlocks, &params.parallel_nSnps ) != 3 ){
+    sout << "ERROR: Could not read line " << params.job_num + 1 << " (check number of lines and format in file).\n"; 
     exit(EXIT_FAILURE);
   }
-
-  params.minBlock = atoi(tmp_str_vec[0].c_str());
-  params.maxBlock = params.minBlock + atoi(tmp_str_vec[1].c_str());
-  files.loco_tmp_prefix = tmp_str_vec[2];
-
-  // check params
-  if( (params.minBlock < 0) || 
-      (params.maxBlock > params.total_n_block)
-    ) {
-    sout << "ERROR: Invalid block information in master file at line " << params.job_num + 1 << ".\n";
-    exit(EXIT_FAILURE);
-  }
-
-  // print info
-  sout << " * running jobs in parallel (Job #" << params.job_num << ")\n";
+  files.loco_tmp_prefix = tmp_chr;
+  files.file_snps_include = files.loco_tmp_prefix + ".snplist";
 
   infile.close();
+  //cerr << files.loco_tmp_prefix << " " << params.parallel_nBlocks << " " << params.parallel_nSnps << endl;
 
 }
 
 
 void Data::prep_parallel_l1(){
 
-  int nblocks = 0, lineread=0; // make sure all blocks are read
+  int nblocks, lineread, nb ,ns; // make sure all blocks are read
+  uint32_t nsnps;
   string line;
   string fin = files.split_file; // master file
   std::vector< string > tmp_str_vec ;
   ifstream infile;
-  infile.open(fin.c_str(), ios::in);
 
+  infile.open(fin.c_str(), ios::in);
   if (!infile.is_open()) {
     sout << "ERROR : Cannot read file " << fin  << endl ;
     exit(EXIT_FAILURE);
   }
 
   // check header
-  if(!getline(infile, line) || (line != "START NBLOCKS PREFIX") ){
-    sout << "ERROR: Unrecognized master file.\n"; 
+  if(!getline(infile, line)){
+    sout << "ERROR: Cannot read header line in master file.\n"; 
+    exit(EXIT_FAILURE);
+  }
+  if( (sscanf( line.c_str(), "%d %d", &params.parallel_nGeno, &nb ) != 2) || (nb != params.block_size) ){
+    sout << "ERROR: Invalid header line.\n"; 
     exit(EXIT_FAILURE);
   }
 
+  nblocks = 0, nsnps = 0, lineread=0;
   while( getline(infile, line) ){
-    boost::algorithm::split(tmp_str_vec, line, is_any_of(" "));
 
-    if( tmp_str_vec.size() != 3 ){
-      sout << "ERROR: Could not read line " << lineread + 2 << " (check number of lines in file).\n"; 
+    char tmp_chr[MAXFILELEN];
+    if( sscanf( line.c_str(), "%s %d %d", tmp_chr, &nb, &ns ) != 3 ){
+      sout << "ERROR: Could not read line " << params.job_num + 1 << " (check number of lines and format in file).\n"; 
       exit(EXIT_FAILURE);
     }
 
-    files.bstart.push_back( atoi(tmp_str_vec[0].c_str()) );
-    files.btot.push_back( atoi(tmp_str_vec[1].c_str()) );
-    files.mprefix.push_back( tmp_str_vec[2] );
+    files.bstart.push_back( nblocks );
+    files.btot.push_back( nb );
+    files.mprefix.push_back( string(tmp_chr) );
 
     // check params
     if( (files.bstart[lineread] < 0) || (files.bstart[lineread]>params.total_n_block) || (files.btot[lineread] < 0) ){
@@ -753,12 +794,13 @@ void Data::prep_parallel_l1(){
       exit(EXIT_FAILURE);
     }
 
-    nblocks += files.btot[lineread]; // update # blocks
+    nblocks += nb; // update # blocks
+    nsnps += ns;
     lineread++;
   }
 
-  if(nblocks != params.total_n_block){
-    sout << "ERROR: Number of blocks in master file '" << fin << "' doesn't match that in the analysis.\n";
+  if((nblocks != params.total_n_block) || (nsnps != params.n_variants)){
+    sout << "ERROR: Number of blocks/variants in master file '" << fin << "' doesn't match that in the analysis.\n";
     exit(EXIT_FAILURE);
   }
 
@@ -906,6 +948,10 @@ void Data::rm_l0_files(int ph){
     for(size_t i = 0; i < files.bstart.size(); i++){
       pfile = files.mprefix[i] + "_l0_Y" + to_string(ph+1);
       remove(pfile.c_str());
+      if(ph==0){
+        pfile = files.mprefix[i] + ".snplist";
+        remove(pfile.c_str());
+      }
     }
   }
 
@@ -1938,7 +1984,7 @@ void Data::blup_read_chr(const int chrom) {
 
     // check header
     blupf.readLine(line);
-    boost::algorithm::split(id_strings, line, is_any_of("\t "));
+    id_strings = string_split(line,"\t ");
     if( id_strings[0] != "FID_IID") {
       sout << "ERROR: Header of blup file must start with FID_IID.\n";
       exit(EXIT_FAILURE);
@@ -1948,11 +1994,11 @@ void Data::blup_read_chr(const int chrom) {
     blupf.ignoreLines(chrom-1);
 
     blupf.readLine(line);
-    boost::algorithm::split(tmp_str_vec, line, is_any_of("\t "));
+    tmp_str_vec = string_split(line,"\t ");
 
     // check number of entries is same as in header
     if(tmp_str_vec.size() != id_strings.size()) {
-      sout << "ERROR: blup file for phenotype [" << files.pheno_names[i_pheno] << "] has different number of entries on line " << chrom + 1 << " compared to the header.\n";
+      sout << "ERROR: blup file for phenotype [" << files.pheno_names[i_pheno] << "] has different number of entries on line " << chrom + 1 << " compared to the header (=" << tmp_str_vec.size() << " vs " << id_strings.size() << ").\n";
       exit(EXIT_FAILURE);
     }
 
