@@ -477,6 +477,30 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>prefix where to temporarily write the level 0 predictions</td>
 </tr>
 <tr>
+<td><code>--split-l0</code></td>
+<td>PREFIX,N</td>
+<td>Optional</td>
+<td>split level 0 across N jobs and set prefix of output files of level 0 predictions</td>
+</tr>
+<tr>
+<td><code>--run-l0</code></td>
+<td>FILE,K</td>
+<td>Optional</td>
+<td 1..N="1..N">run level 0 for job K in </td>
+</tr>
+<tr>
+<td><code>--run-l1</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>run level 1 specifying the master file from '--split-l0'</td>
+</tr>
+<tr>
+<td><code>--keep-l0</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>avoid deleting the level 0 predictions written on disk after fitting the level 1 models</td>
+</tr>
+<tr>
 <td><code>--print-prs</code></td>
 <td>FLAG</td>
 <td>Optional</td>
@@ -659,6 +683,8 @@ for P phenotypes]). If the prefix is not specified, the default is to use the
 prefix specified by <code>--out</code> (see below).
 These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)</p>
+<p>See the <a href="https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1">Wiki page</a> for more details on how to run the level 0 models for Step 1 
+of <strong>regenie</strong> in parallel.</p>
 <h2 id="output">Output</h2>
 <table>
 <thead>

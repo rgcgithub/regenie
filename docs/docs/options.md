@@ -272,6 +272,10 @@ prefix specified by `--out` (see below).
 These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)
 
+See the [Wiki page](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for more details on how to run the level 0 models for Step 1 
+of **regenie** in parallel.
+
+
 ## Output
 
 | Option | Argument | Type | Description|
