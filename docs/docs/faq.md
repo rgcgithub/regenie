@@ -43,6 +43,7 @@ You would then use the output file in **regenie** as `--extract snps_pass.snplis
     - For binary traits, we have obtained successful runs of **regenie** (step 1 and 2) on data sets with as little as 300 samples. A few factors to consider:
         - Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) \(-\) see below
         - Similarly, convergence issues may occur in step 2 when using Firth approximation \(-\) see below 
+    - Note: we have found that **regenie** can get conservative in more extreme relatedness scenarios so we recommend not to use it for smaller cohorts with high amounts of relatedness like founder populations where exact mixed-model methods can be used
 
  <br/>
 
