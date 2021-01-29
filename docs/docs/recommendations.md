@@ -105,7 +105,8 @@ Running step 1 of **regenie** (by default, all available threads are used)
   --covarFile ukb_covariates.txt \
   --bt \
   --bsize 1000 \
-  --lowmem tmpdir/regenie_tmp_preds \
+  --lowmem \
+  --lowmem-prefix tmpdir/regenie_tmp_preds \
   --out ukb_step1_BT
 ```
 
