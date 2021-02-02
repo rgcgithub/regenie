@@ -236,6 +236,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--run-l1`| FILE | Optional | run level 1 specifying the master file from '--split-l0'|
 |`--keep-l0`| FLAG | Optional | avoid deleting the level 0 predictions written on disk after fitting the level 1 models|
 |`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
+|`--force-step1`|FLAG| Optional| flag to run step 1 when >1M variants are used (not recommened)|
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
