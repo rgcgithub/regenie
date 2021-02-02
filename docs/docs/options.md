@@ -1,4 +1,3 @@
-## Documentation
 ## Getting started
 
 To run **regenie**, use the command `./regenie` on the command line,
@@ -14,7 +13,7 @@ The directory `examples/` contains some small example files that are
 useful when getting started. A test run on a set of binary traits can be achieved by the
 following 2 commands.
 
-In **Step 1** the whole genome regression model is fit to the traits, and
+In **Step 1**, the whole genome regression model is fit to the traits, and
 a set of genomic predictions are produced as output
 
 ```
@@ -31,7 +30,7 @@ a set of genomic predictions are produced as output
   --out fit_bin_out
 ```
 
-In **Step 2** a set of imputed SNPs are tested for association using a
+In **Step 2**, a set of imputed SNPs are tested for association using a
 Firth logistic regression model
 
 ```
@@ -58,8 +57,9 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
   && echo "Files are identical"
 ```
 
+## Basic options
 
-## Input 
+### Input 
 
 
 | Option | Argument | Type | Description|
@@ -107,7 +107,7 @@ Chromosome values of 23 (for human analyses), X, XY, PAR1 and PAR2 are all accep
 will be collapsed into a single chromosome.
 
 
-#### Sample inclusion/exclusion file format
+##### Sample inclusion/exclusion file format
 
 ```
 2 2 
@@ -119,7 +119,7 @@ No header. Each line starts with individual FID IID. Space/tab separated.
 
 Samples listed in the file that are not in bgen/bed/pgen file are ignored.
 
-#### Variant inclusion/exclusion file format
+##### Variant inclusion/exclusion file format
 
 ```
 20
@@ -156,6 +156,7 @@ No missing values are allowed.
 
 If `--step 2` is specified, then the covariate file should be the same
 as that used in Step 1.
+
 #### Phenotype file format
 
 ```
@@ -217,7 +218,7 @@ present in this file will be ignored in the analysis of the corresponding trait.
 Samples with missing LOCO predictions must have their corresponding phenotype value set to missing.
 
 
-## Options
+### Options
 
 
 | Option | Argument | Type | Description|
@@ -276,7 +277,7 @@ See the [Wiki page](https://github.com/rgcgithub/regenie/wiki/Further-paralleliz
 of **regenie** in parallel.
 
 
-## Output
+### Output
 
 | Option | Argument | Type | Description|
 |---|-------|------|----|
@@ -328,3 +329,214 @@ with the same format.
 If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
+
+
+
+## Burden testing
+
+Starting from version 1.0.8, Step 2 of **regenie** now provides a burden testing functionality.
+More specifically, a user can build variant masks in a region using functional annotations 
+and perform association tests on the resulting masks. 
+<!--A typical application of this tool would be in rare variant analyses where single variant tests 
+have lower power so combining variants into masks can help boost association power. --->
+
+### Input
+
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--anno-file`  | FILE | Required | File with variant annotations for each set|
+|`--set-list`  | FILE | Required | File listing variant sets|
+|`--extract-sets`  | FILE | Optional | Inclusion file that lists IDs of variant sets to keep|
+|`--exclude-sets`  | FILE | Optional | Exclusion file that lists IDs of variant sets to remove|
+|`--extract-setlist`  | STRING | Optional | Comma-separated list of variant sets to keep|
+|`--exclude-setlist`  | STRING | Optional | Comma-separated list of variant sets to remove|
+|`--aaf-file`  | FILE | Optional | File with variant AAF to use when building masks (instead of AAF estimated from sample)|
+|`--mask-def`  | FILE | Required | File with mask definitions using the annotations defined in `--anno-labels`|
+
+#### Annotation input files
+
+The following files are used to define variant sets and 
+functional annotations which will be used to generate masks.
+
+##### Annotation file
+
+```bash
+1:55039839:T:C PCSK9 LoF
+1:55039842:G:A PCSK9 missense
+.
+```
+This file defines functional annotations for variants.
+It is designed to accommodate for variants with 
+separate annotations for different sets/genes.
+
+Each line contains the variant name, the set/gene name and a single annotation category 
+(space/tab separated). 
+
+Variants not in this file will be assigned to a default "NULL" category. A maximum of 63 annotation 
+categories (+NULL category) is allowed.
+
+For gene sets, tools you can use to obtain variant annotations per transcripts are 
+[snpEFF](https://pcingola.github.io/SnpEff/se_introduction/) or 
+[VEP](https://www.ensembl.org/info/docs/tools/vep/index.html).
+To obtain a single annotation per gene, you could choose the most deleterious
+functional annotation across the gene transcripts or alternatively
+use the canonical transcript (note that its definition can vary across software).
+
+We have implemented an extended 4-column format of the annotation file which
+also categorizes sets into domains (e.g. for gene sets, these would correspond to gene domains).
+
+```bash
+1:55039839:T:C PCSK9 Prodomain LoF
+1:55039842:G:A PCSK9 Prodomain missense
+.
+```
+Masks will be generated for each domain 
+(maximum of 8) in addition 
+to a mask combining across all domains.
+
+
+##### Set list file
+
+This file lists variants within each set/gene to use when 
+building masks. 
+Each line contains the set/gene name followed by a chromosome and physical position for the set/gene,
+then by a comma-separated list of variants included in the set/gene.
+
+```bash
+A1BG 19  58346922  19:58346922:C:A,19:58346924:G:A,...
+A1CF 10  50806630  10:50806630:A:G,10:50806630:A:AT,...
+.
+```
+
+Variants in the same set must belong to the chromosome specified in the 2nd column.
+
+##### Set inclusion/exclusion file format
+The file must have a single column of set/gene names corresponding to those in the 
+set list file.
+
+```bash
+PIGP
+ZBTB38
+.
+```
+
+
+##### AAF file (optional)
+
+Both functional annotations and alternative allele frequency (AAF) cutoffs 
+are used when building masks (e.g. only considering LoF
+sites where AAF is below 1%). 
+By default, the AAF for each variant is computed from the sample but
+alternatively, the user can specify variant AAFs using this file.
+
+Each line contains the variant name followed by its AAF 
+(it should correspond to ALT allele used in the genetic data input). 
+
+```bash
+7:6187101:C:T 1.53918207864341e-05
+7:6190395:C:A 2.19920388819247e-06
+.
+```
+
+
+#### Mask definitions
+
+##### Mask file
+This file specifies which annotation categories should be combined into masks. 
+Each line contains a mask name followed by a comma-seperated list 
+of categories included in the mask (i.e. union is taken over categories).
+
+For example below, Mask1 uses only LoF variants and 
+Mask2 uses LoF and missense annotated variants.
+
+
+```bash
+Mask1 LoF
+Mask2 LoF,missense
+.
+```
+
+##### AAF cutoffs
+Option `--aaf-bins` specifies the AAF upper bounds used to generate masks.
+By default, a mask based on singleton sites are always included.
+
+For example, `--aaf-bins 0.01,0.05` will generate 3 masks for AAFs in 
+[0,0.01], [0,0.05] and singletons.
+
+#### LOVO scheme
+
+The leave-one-variant-out (LOVO) scheme takes all sites goint into a mask,
+and builds LOVO masks 
+by leaving out one variant at a time from the full set of sites. 
+
+The argument for `--mask-lovo` is a comma-separated list which 
+consists of 
+the set/gene name, 
+the mask name, 
+and the AAF cutoff (either 'singleton' or a double in (0,1)).
+
+If using a 4-column annotation file, then `--mask-lovo` should have 
+the set name, 
+the domain name,
+the mask name, 
+and the AAF cutoff.
+
+
+#### Writing mask files 
+Masks built in **regenie** can be written to PLINK bed format. 
+If the input genetic data contains dosages, 
+the masks dosages will be converted to hard-calls prior to being written to file 
+and these hard-calls will be used for the association testing.
+
+The PLINK bed file is written using 'ref-last' encoding (i.e. REF allele is 
+listed last in the bim file).
+
+Note that this cannot be used with the LOVO scheme.
+
+### Options
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--aaf-bins`| FLOAT,...,FLOAT| Optional| comma-separated list of AAF upper bounds to use when building masks [default is a single cutoff of 1%]|
+|`--build-mask`| STRING| Optional| build masks using the maximum number of ALT alleles across sites (`'max'`; the default), or the sum of ALT alleles (`'sum'`), or thresholding the sum to 2 (`'comphet'`)|
+|`--singleton-carrier`| FLAG| Optional| to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)|
+|`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
+|`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
+|`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
+|`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
+
+
+### Output
+**Using `--out file`**
+
+Results are written in separate files for each phenotype
+`file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
+with the same output format mentioned [above](http://127.0.0.1:8000/options/#output).
+Additionally, a header line is included (starting with `##`)
+which contains mask definition information.
+
+Masks will have name `<set_name>.<mask_name>.<AAF_cutoff>` with the 
+chromosome and physical position having been defined in the set list file, 
+and the reference allele being `ref`, and the alternate allele corresponding to 
+`<mask_name>.<AAF_cutoff>`.
+When using `--mask-lovo`, the mask name will be the same as above but have suffix
+`_<variant_name>` to specify the variant which was excluded when building the mask.
+
+With `--build-mask sum`, the reported mask AAF corresponds to the average 
+AAF across sites included in the mask.
+
+If using `--write-mask`, the masks will be saved to 
+`file_masks.{bed,bim,fam}`. 
+With `--write-setlist`, new set list files will be written which contain list of sets
+based on the written masks. 
+The option takes in a file with 2 columns containing 
+a file suffix for the new set list file, as well as a list of the masks
+which will constitute the sets (set names/chr/pos are obtained from the input set list file).
+
+```bash
+onlyLoFs Mask1
+LoFs+Splice Mask1,Mask3
+```
+This creates two set list files, one called `file_onlyLoFs.setlist` with sets consisting of  
+Mask1 masks (across all AAF cutoffs) 
+and another one called `file_LoFs+Splice.setlist` 
+with sets consisting of Mask1 and Mask3 masks.
