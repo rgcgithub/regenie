@@ -254,7 +254,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--chr`| INT| Optional| specify which chromosomes to test in step 2 (use for each chromosome to include)|
 |`--chrList` | STRING | Optional | Comma separated list of chromosomes to test in step 2|
 |`--range` | STRING | Optional | specify chromosome region for variants to test in step 2 [format=CHR:MINPOS-MAXPOS] |
-|`--minMAC`| INT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
+|`--minMAC`| FLOAT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
@@ -335,10 +335,9 @@ If option `--write-samples` was used, IDs of samples used for each trait will be
 ## Burden testing
 
 Starting from version 1.0.8, Step 2 of **regenie** now provides a burden testing functionality.
-More specifically, a user can build variant masks in a region using functional annotations 
-and perform association tests on the resulting masks. 
-<!--A typical application of this tool would be in rare variant analyses where single variant tests 
-have lower power so combining variants into masks can help boost association power. --->
+More specifically, a user can build variant masks in a set/gene using functional annotations 
+and perform association tests on the resulting masks 
+([same testing options](http://127.0.0.1:8000/options/#options) as with single variants). 
 
 ### Input
 
@@ -500,13 +499,12 @@ Note that this cannot be used with the LOVO scheme.
 |`--build-mask`| STRING| Optional| build masks using the maximum number of ALT alleles across sites (`'max'`; the default), or the sum of ALT alleles (`'sum'`), or thresholding the sum to 2 (`'comphet'`)|
 |`--singleton-carrier`| FLAG| Optional| to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)|
 |`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
-|`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
 
 
 ### Output
-**Using `--out file`**
+**With `--out file`**
 
 Results are written in separate files for each phenotype
 `file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
@@ -526,6 +524,9 @@ AAF across sites included in the mask.
 
 If using `--write-mask`, the masks will be saved to 
 `file_masks.{bed,bim,fam}`. 
+
+<!---
+|`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
 With `--write-setlist`, new set list files will be written which contain list of sets
 based on the written masks. 
 The option takes in a file with 2 columns containing 
@@ -540,3 +541,5 @@ This creates two set list files, one called `file_onlyLoFs.setlist` with sets co
 Mask1 masks (across all AAF cutoffs) 
 and another one called `file_LoFs+Splice.setlist` 
 with sets consisting of Mask1 and Mask3 masks.
+-->
+
