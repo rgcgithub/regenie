@@ -336,7 +336,7 @@ If option `--write-samples` was used, IDs of samples used for each trait will be
 ## Burden testing
 
 Starting from version 1.0.8, Step 2 of **regenie** now provides burden testing functionality.
-More specifically, a user can combine genetic variants within a gene (or region), using functional annotations, into a single combined 'mask' genotype, that can tested for association using the [same testing options](https://rgcgithub.github.io/regenie/options/#options) as with single variants. 
+More specifically, a user can combine genetic variants within a gene (or region), using functional annotations, into a single combined 'mask' genotype, that can be tested for association using the [same testing options](https://rgcgithub.github.io/regenie/options/#options) as with single variants. 
 
 ### Input
 
