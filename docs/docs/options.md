@@ -557,7 +557,7 @@ Using Step 1 results from the [Step 1 command above](https://rgcgithub.github.io
   --firth --approx \
   --pred fit_bin_out_pred.list \
   --anno-file example/example_3chr.annotations \
-  --set-list example/example_3chr.masks_setlist \
+  --set-list example/example_3chr.setlist \
   --mask-def example/example_3chr.masks \
   --aaf-bins 0.1,0.05 \
   --write-mask \
@@ -565,4 +565,8 @@ Using Step 1 results from the [Step 1 command above](https://rgcgithub.github.io
   --out test_bin_out_firth
 ```
 
-For each set, this will produce masks using 3 AAF cutoffs (singletons, 5% and 10% AAF). The masks are written to PLINK bed file (in `test_bin_out_firth_masks.{bed,bim,fam}`) and tested for association with each binary trait using Firth approximate test (summary stats in `test_bin_out_firth_<phenotype_name>.regenie`. Note that the test use the whole genome regression LOCO PRS from Step 1 of **regenie** (specified by `--pred`).
+For each set, this will produce masks using 3 AAF cutoffs (singletons, 5% and 10% AAF). 
+The masks are written to PLINK bed file (in `test_bin_out_firth_masks.{bed,bim,fam}`) 
+and tested for association with each binary trait using Firth approximate test 
+(summary stats in `test_bin_out_firth_<phenotype_name>.regenie`). 
+Note that the test uses the whole genome regression LOCO PRS from Step 1 of **regenie** (specified by `--pred`).
