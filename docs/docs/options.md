@@ -338,7 +338,7 @@ If option `--write-samples` was used, IDs of samples used for each trait will be
 Starting from version 1.0.8, Step 2 of **regenie** now provides a burden testing functionality.
 More specifically, a user can build variant masks in a set/gene using functional annotations 
 and perform association tests on the resulting masks 
-([same testing options](http://127.0.0.1:8000/options/#options) as with single variants). 
+([same testing options](https://rgcgithub.github.io/regenie/options/#options) as with single variants). 
 
 ### Input
 
@@ -509,7 +509,7 @@ Note that this cannot be used with the LOVO scheme.
 
 Results are written in separate files for each phenotype
 `file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
-with the same output format mentioned [above](http://127.0.0.1:8000/options/#output).
+with the same output format mentioned [above](https://rgcgithub.github.io/regenie/options/#output).
 Additionally, a header line is included (starting with `##`)
 which contains mask definition information.
 
@@ -544,3 +544,25 @@ and another one called `file_LoFs+Splice.setlist`
 with sets consisting of Mask1 and Mask3 masks.
 -->
 
+### Example run
+Using Step 1 results from the [Step 1 command above](https://rgcgithub.github.io/regenie/options/#getting-started), we use the following command to build and test masks in Step 2
+```
+./regenie \
+  --step 2 \
+  --bed example/example_3chr \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
+  --bt \
+  --remove example/fid_iid_to_remove.txt \
+  --firth --approx \
+  --pred fit_bin_out_pred.list \
+  --anno-file example/example_3chr.annotations \
+  --set-list example/example_3chr.masks_setlist \
+  --mask-def example/example_3chr.masks \
+  --aaf-bins 0.1,0.05 \
+  --write-mask \
+  --bsize 200 \
+  --out test_bin_out_firth
+```
+
+For each set, this will produce masks using 3 AAF cutoffs (singletons, 5% and 10% AAF). The masks are written to PLINK bed file (in `test_bin_out_firth_masks.{bed,bim,fam}`) and tested for association with each binary trait using Firth approximate test (summary stats in `test_bin_out_firth_<phenotype_name>.regenie`. Note that the test use the whole genome regression LOCO PRS from Step 1 of **regenie** (specified by `--pred`).
