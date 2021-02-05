@@ -385,6 +385,7 @@ also categorizes sets into domains (e.g. for gene sets, these would correspond t
 Masks will be generated for each domain 
 (maximum of 8) in addition 
 to a mask combining across all domains.
+Variants can only be assigned to a single domain for each set/gene.
 
 
 ##### Set list file
@@ -460,6 +461,7 @@ For example, `--aaf-bins 0.01,0.05` will generate 3 masks for AAFs in
 The leave-one-variant-out (LOVO) scheme takes all sites goint into a mask,
 and builds LOVO masks 
 by leaving out one variant at a time from the full set of sites. 
+The mask including all sites will also be computed.
 
 The argument for `--mask-lovo` is a comma-separated list which 
 consists of 
@@ -494,6 +496,8 @@ Note that this cannot be used with the LOVO scheme.
 |`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
+|`--check-burden-files`| FLAG| Optional| to check the concordance between annotation, set list and mask files [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
+|`--strict-check-burden`| FLAG| Optional|to exit early if the annotation, set list and mask definition files dont agree [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 
 
 ### Output
@@ -562,3 +566,19 @@ The masks are written to PLINK bed file (in `test_bin_out_firth_masks.{bed,bim,f
 and tested for association with each binary trait using Firth approximate test 
 (summary stats in `test_bin_out_firth_<phenotype_name>.regenie`). 
 Note that the test uses the whole genome regression LOCO PRS from Step 1 of **regenie** (specified by `--pred`).
+
+### Checking input files
+To assess the concordance between the input files for building masks, you can use  `--check-burden-files` which will generate a report in `file_masks_report.txt` containing:
+ 
+1. for each set, the list the variants in the set-list file which are unrecognized (not genotyped 
+or not present in annotation file for the set)
+
+2. for each mask, the list of annotations in the mask definition file which are not in the annotation file
+
+Additionally, you can use `--strict-check-burden` to
+enforce full agreement between the three files 
+(if not, program will terminate) :
+
+1. all genotyped variants in the set list file must be in the annotation file (for the corresponding set)
+
+2. all annotations in the mask definition file must be present in the annotation file
