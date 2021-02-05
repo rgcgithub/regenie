@@ -32,6 +32,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 2.0 (Added burden testing functionality for region or gene-based tests [see [website](https://rgcgithub.github.io/regenie/options/#burden-testing) for details]; added sample size column in summary stats output).
+
 Version 1.0.7 (Enabled for level 0 models in step 1 to be run in parallel [see [Wiki](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for details]).
 
 Version 1.0.6.9 (Improved step 2 for BGEN format files not in v1.2 or 8-bit encoding).

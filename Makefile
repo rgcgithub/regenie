@@ -27,7 +27,8 @@ STATIC       := 0
 ############
 
 CXX           = g++
-CXXFLAGS      = -O3 -Wall -ffast-math -std=c++11 -Wno-deprecated-declarations
+CXXFLAGS      = -O3 -Wall -pedantic -ffast-math -std=c++11 -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -fPIC
+
 EFILE         = regenie
 CFLAGS        =
 

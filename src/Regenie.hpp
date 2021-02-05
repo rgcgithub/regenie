@@ -86,7 +86,7 @@ class mstream
         coss << val;
         std::cout << val;
         return *this;
-      };
+      }
 
     mstream& operator<< (std::ostream& (*pfun)(std::ostream&))
     {

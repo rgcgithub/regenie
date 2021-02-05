@@ -71,7 +71,7 @@ class Files {
 #endif
         outfile << val;
         return *this;
-      };
+      }
 
     // for std::endl
     Files& operator<< (std::ostream& (*pfun)(std::ostream&))
