@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       make \
       gnupg \
       python3 \
+      gfortran \
       zlib1g-dev \
       apt-transport-https ca-certificates \
       $LIB_INSTALL \
@@ -55,5 +56,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin
-
 

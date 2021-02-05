@@ -21,6 +21,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       g++ \
       make \
       python3 \
+      gfortran \
       zlib1g-dev \
       $LIB_INSTALL \
       && tar -xzf v1.1.7.tgz \
@@ -43,7 +44,4 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin
-
-# Avoid this to keep image more for general usage
-# ENTRYPOINT ["/usr/local/bin/regenie"]
 
