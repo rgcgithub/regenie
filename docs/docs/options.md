@@ -45,7 +45,6 @@ Firth logistic regression model
   --firth --approx \
   --pThresh 0.01 \
   --pred fit_bin_out_pred.list \
-  --split \
   --out test_bin_out_firth
 ```
 
@@ -185,7 +184,7 @@ level 0 linear ridge regression and
 they are dropped when fitting the level 1 logistic ridge regression for each trait . 
 In Step 2, missing values are dropped when testing each trait.
 
-To remove all samples that have missing values at **any** of the \(P\) phenotypes, use option `--strict` in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although `--remove` can also be used in that situation.
+To remove all samples that have missing values at **any** of the \(P\) phenotypes, use option `--strict` in Step 1 and 2.
 
 #### Predictions file format
 
@@ -241,7 +240,6 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
 |`--use-prs`|FLAG| Optional| flag to use whole genome PRS in `--pred` (this is output in step 1 when using `--print-prs`)|
-|`--split`|FLAG| Optional| flag to split asssociation results into separate files for each trait. 
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
 |`--write-samples`|FLAG| Optional| flag to write sample IDs for those kept in the analysis for each trait in step 2|
@@ -293,9 +291,6 @@ per-chromosome LOCO predictions as rows of the files.
 If option `--gz` was used, the files will be compressed in gzip format and have extension `.loco.gz`.
 
 Genotyped individuals specified using option `--remove` are excluded from this file. 
- Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
- (so only keeping samples present in both files).
-
 Individuals with missing phenotype values kept in the analysis 
 are included in the file and have their predictions set to missing.
 
@@ -309,25 +304,24 @@ association tests could suffer from proximal contamination.
 
 **Using`--step 2 --out file`** 
 
-By default, results are written to a single file `file.regenie`, which has one line per
+By default, results are written in separate files for
+each phenotype
+`file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie`.
+Each file has one line per
 SNP along with a header line.
-If option `--gz` was used, the file will be compressed in gzip format and have extension `.regenie.gz`.
+If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
 
-The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
-alternative allele (allele 1), frequency of the alternative allele, and the test performed 
+The entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
+alternative allele (allele 1), frequency of the alternative allele, sample size and the test performed 
 (additive/dominant/recessive).
-With BGEN/PGEN files, the imputation INFO score is also provided (IMPUTE info score for BGEN and Mach Rsq for PGEN).
-Allele frequency and INFO score, if applicable, are computed using all 
-individuals included in the analysis (so they are the same for all phenotypes).
+With BGEN/PGEN files with dosages, the imputation INFO score is provided 
+(IMPUTE info score for BGEN and Mach Rsq for PGEN).
+Allele frequency, sample size and INFO score, if applicable, are computed using only
+non-missing samples for each phenotype.
 
 These are followed by the estimated effect sizes, standard errors, chi-square test statistics 
-and \(-\log_{10}\) p-values for each phenotype.
+and \(-\log_{10}\) p-value.
 
-When using option `--split`, the results are written in separate files for
-each phenotype
-`file_<phenotype1_name>.regenie,...,file_<phenotypeP_name>.regenie` 
-with the same format.
-If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
 
