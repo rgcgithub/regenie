@@ -1,10 +1,18 @@
 #!/usr/bin/env bash
 
-### REGENIE TEST SCRIPT for version >= 1.0.6.2
-## For version<1.0.6.2, will get error since option '--ref-first' did not exist
-## For version<1.0.6.1, will get error since option '--print-pheno' did not exist
-## For version<1.0.5.6, will get error if WITH_GZ is set since option '--gz' did not exist
+### REGENIE TEST SCRIPT 
+# Functions used
+help_msg="Update to most recent REGENIE version (using 'git pull') and re-compile the software (using 'make clean && make')."
+err_msg="Uh oh, REGENIE did not build successfully. $help_msg"
+print_err () { 
+  echo "$err_msg"; exit 1 
+}
+print_custom_err () {
+  echo "${1} $help_msg"; exit 1 
+}
 
+
+### READ OPTIONS
 info_msg="Usage: ./test_bash.sh OPTIONS\n"
 info_msg+="  --path  path to Regenie repository\n"
 info_msg+="  --gz    Flag to specify compilation was done with Boost Iostream library\n"
@@ -38,15 +46,15 @@ fi
 REGENIE_PATH=$(pwd)/  # use absolute path
 mntpt=
 regenie_bin=`ls regenie* | head -n 1`
-help_msg="Update to most recent REGENIE version (using 'git pull') and re-compile the software (using 'make clean && make')."
 
 if [ ! -f "$regenie_bin" ]; then
   echo "ERROR: Regenie binary cannot be found. Compile the software first using 'make clean && make'"; exit 1
 fi
 
 
+echo -e "==>Running step 1 of REGENIE"
 # Prepare regenie command to run for Step 1
-echo -e "Running step 1 of REGENIE\n=================================="
+fail_msg="Step 1 of REGENIE did not finish successfully."
 basecmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
@@ -55,6 +63,7 @@ basecmd="--step 1 \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 100 \
   --bt $arg_gz"
+
 rgcmd="$basecmd \
   --lowmem \
   --lowmem-prefix tmp_rg \
@@ -68,14 +77,14 @@ if [ ! -f "${REGENIE_PATH}test/fit_bin_out.log" ] || \
   [ ! -f "${REGENIE_PATH}test/fit_bin_out_pred.list" ] || \
   [ ! -f "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" ] || \
   [ ! -f "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" ]; then
-  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 elif [ "`grep \"0.4504\" ${REGENIE_PATH}test/fit_bin_out.log | grep \"min value\"`" = "" ]; then
-  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 fi
 
 #### Run step 1 splitting across jobs for level 0
 njobs=4
-echo -e "Re-running step 1 splitting in $njobs jobs"
+echo -e "==>Re-running step 1 splitting in $njobs jobs"
 # pt1 - run regenie before l0
 rgcmd="$basecmd \
   --split-l0 ${mntpt}test/fit_bin_parallel,$njobs \
@@ -83,7 +92,7 @@ rgcmd="$basecmd \
 
 ./$regenie_bin $rgcmd
 if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel.master" ]; then
-  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 fi
 
 # pt2 - run regenie for l0
@@ -95,7 +104,7 @@ for job in $nj; do
 
   ./$regenie_bin $rgcmd
   if [ ! -f "${REGENIE_PATH}test/fit_bin_parallel_job${job}_l0_Y1" ]; then
-    echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+    print_custom_err "$fail_msg"
   fi
 done
 
@@ -108,22 +117,26 @@ rgcmd="$basecmd \
 ./$regenie_bin $rgcmd
 
 if [ ! -f "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" ]; then
-  echo "Step 1 of REGENIE did not finish successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 elif ! cmp --silent \
   "${REGENIE_PATH}test/fit_bin_out_1.loco$fsuf" \
   "${REGENIE_PATH}test/fit_bin_l1_1.loco$fsuf" 
 then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 elif ! cmp --silent \
   "${REGENIE_PATH}test/fit_bin_out_2.loco$fsuf" \
   "${REGENIE_PATH}test/fit_bin_l1_2.loco$fsuf" 
 then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_custom_err "$fail_msg"
 fi
 
 
-# First step 2 command
-echo -e "Running step 2 of REGENIE\n=================================="
+
+##########
+##########
+#### Step 2
+i=1
+echo -e "==>Running step 2 of REGENIE; test #$i"
 rgcmd="--step 2 \
   --bgen ${mntpt}example/example.bgen \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
@@ -134,7 +147,7 @@ rgcmd="--step 2 \
   --firth --approx \
   --pThresh 0.01 \
   --pred ${mntpt}test/fit_bin_out_pred.list \
-  --split $arg_gz \
+  $arg_gz \
   --out ${mntpt}test/test_bin_out_firth"
 
 # run regenie
@@ -145,28 +158,27 @@ if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
   ( zcat < ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ) > ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie
 fi
 
-echo "------------------------------------------"
-if cmp --silent \
+if ! cmp --silent \
   ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
   ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
 then
-  echo -e "Files are identical.\n\nRunning second test...\n"
-else
-  echo -e "ERROR: Uh oh... Files are different! $help_msg"; exit 1
+  print_custom_err "ERROR: Uh oh... Files are different!"
 fi
 
-
-# Second command
-rgcmd="--step 2 \
+(( i++ ))
+echo -e "Files are identical.\n\n==>Running test #$i\n"
+# Next test
+basecmd="--step 2 \
   --bed ${mntpt}example/example_3chr \
   --ref-first \
   --covarFile ${mntpt}example/covariates.txt${fsuf} \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --phenoColList Y2 \
   --bsize 100 \
-  --chrList 2,3 \
   --test dominant \
-  --ignore-pred \
+  --ignore-pred"
+rgcmd="$basecmd \
+  --chrList 2,3 \
   --write-samples \
   --print-pheno \
   --out ${mntpt}test/test_out"
@@ -175,52 +187,157 @@ rgcmd="--step 2 \
 ./$regenie_bin $rgcmd
 
 # check files
-echo "------------------------------------------"
 if [ ! -f "${REGENIE_PATH}test/test_out_Y2.regenie.ids" -o -f "${REGENIE_PATH}test/test_out_Y1.regenie.ids" ]
 then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_err
 elif (( $(head -n 1 ${REGENIE_PATH}test/test_out_Y2.regenie.ids | cut -f1) != "Y2" )); then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_err
 elif (( $(head -n 1 "${REGENIE_PATH}test/test_out_Y2.regenie.ids" | tr '\t' '\n' | wc -l) != 2 )); then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
-elif (( `grep "mog_" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
-elif (( `grep "ADD" "${REGENIE_PATH}test/test_out.regenie" | wc -l` > 0 )); then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
-elif [ "`cut -d ' ' -f1-5 ${REGENIE_PATH}test/test_out.regenie | sed '2q;d'`" != "`grep \"^2\" ${REGENIE_PATH}example/example_3chr.bim | head -n 1 | awk '{print $1,$4,$2,$5,$6}'`" ]; then
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_err
+elif (( `grep "mog_" "${REGENIE_PATH}test/test_out_Y2.regenie" | wc -l` > 0 )); then
+  print_err
+elif (( `grep "ADD" "${REGENIE_PATH}test/test_out_Y2.regenie" | wc -l` > 0 )); then
+  print_err
+elif [ "`cut -d ' ' -f1-5 ${REGENIE_PATH}test/test_out_Y2.regenie | sed '2q;d'`" != "`grep \"^2\" ${REGENIE_PATH}example/example_3chr.bim | head -n 1 | awk '{print $1,$4,$2,$5,$6}'`" ]; then
+  print_err
 fi
 
 
-echo -e "Passed.\n\nRunning third test...\n"
-# Third command
-rgcmd="--step 2 \
-  --bed ${mntpt}example/example_3chr \
-  --ref-first \
+(( i++ ))
+echo -e "==>Running test #$i"
+# Next test
+rgcmd="$basecmd \
   --extract ${mntpt}test/test_out.snplist \
-  --covarFile ${mntpt}example/covariates.txt${fsuf} \
-  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
-  --phenoColList Y2 \
-  --bsize 100 \
-  --test dominant \
-  --ignore-pred \
   --out ${mntpt}test/test_out_extract"
 
-grep -v "^1" ${REGENIE_PATH}example/example_3chr.bim | awk '{ print $2 }' > ${REGENIE_PATH}test/test_out.snplist
+awk '{if($1!=1) {print $2}}'  ${REGENIE_PATH}example/example_3chr.bim > ${REGENIE_PATH}test/test_out.snplist
 
 # run regenie
 ./$regenie_bin $rgcmd
 
-if cmp --silent \
-  ${REGENIE_PATH}test/test_out.regenie \
-  ${REGENIE_PATH}test/test_out_extract.regenie 
+if ! cmp --silent \
+  ${REGENIE_PATH}test/test_out_Y2.regenie \
+  ${REGENIE_PATH}test/test_out_extract_Y2.regenie 
 then
-  echo "SUCCESS: REGENIE build passed the tests!"
-else
-  echo "Uh oh, REGENIE did not build successfully. $help_msg"; exit 1
+  print_err
+fi
+
+(( i++ ))
+echo -e "==>Running test #$i"
+# First command (V1)
+rgcmd="--step 2 \
+  --bed ${mntpt}example/example_3chr_masks \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --remove ${mntpt}example/fid_iid_to_remove.txt \
+  --bsize 10 \
+  --ignore-pred \
+  --htp TEST \
+  --out ${mntpt}test/test_out_masks_V1"
+# run regenie
+./$regenie_bin $rgcmd
+
+# Second command (V2)
+# build masks
+awk '{print $4}' ${mntpt}example/example_3chr.setlist | tr ',' '\n' > ${REGENIE_PATH}test/tmp1.txt 
+rgcmd="--step 2 \
+  --ignore-pred \
+  --bed ${mntpt}example/example_3chr \
+  --extract ${mntpt}test/tmp1.txt \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --remove ${mntpt}example/fid_iid_to_remove.txt \
+  --set-list ${mntpt}example/example_3chr.setlist \
+  --anno-file ${mntpt}example/example_3chr.annotations \
+  --mask-def ${mntpt}example/example_3chr.masks \
+  --write-mask \
+  --write-setlist ${mntpt}example/example_3chr.write_sets \
+  --bsize 15 \
+  --aaf-bins 0.2 \
+  --chrList 1,3 \
+  --htp TEST \
+  --out ${mntpt}test/test_out_masks_V2"
+
+# run regenie
+./$regenie_bin $rgcmd 
+
+head ${REGENIE_PATH}test/test_out_masks_V2_Y1.regenie -n 3 | tail -n 2 | cut --complement -f4,5 > ${REGENIE_PATH}test/tmp1.txt
+tail -n 1 ${REGENIE_PATH}test/test_out_masks_V2_Y1.regenie | cut --complement -f4,5 >> ${REGENIE_PATH}test/tmp1.txt
+cat ${REGENIE_PATH}test/test_out_masks_V1_Y1.regenie | cut --complement -f4,5 > ${REGENIE_PATH}test/tmp2.txt
+
+if ! cmp --silent \
+  ${REGENIE_PATH}test/tmp1.txt \
+  ${REGENIE_PATH}test/tmp2.txt ; then
+  print_err
+elif [ ! -f ${REGENIE_PATH}test/test_out_masks_V2_masks.bed ]; then
+  print_err
+elif [ "$(hexdump -e \"%07_ax\ \"\ 16/1\ \"\ %02x\"\ \"\\n\"  -n 3 ${REGENIE_PATH}test/test_out_masks_V2_masks.bed | head -n 1 | awk '{print $2,$3,$4}' | tr ' ' ',')" != "6c,1b,01" ]; then
+  print_err
+elif [ "`wc -l ${REGENIE_PATH}test/test_out_masks_V2_masks.{bim,fam} | awk '{print $1}' | head -n 2| paste -sd','`" != "4,494" ]; then
+  print_err
+elif [ "`cat ${REGENIE_PATH}test/test_out_masks_V2_tmp2.setlist | head -n 1 | tr ',' '\n' | wc -l`" != "2" ]; then
+  print_err
 fi
 
 
+(( i++ ))
+echo -e "==>Running test #$i"
+# build masks
+awk '{print $4}' ${mntpt}example/example_3chr.setlist | tr ',' '\n' > ${REGENIE_PATH}test/tmp1.txt 
+rgcmd="--step 2 \
+  --ignore-pred \
+  --bed ${mntpt}example/example_3chr \
+  --extract ${mntpt}test/tmp1.txt \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --set-list ${mntpt}example/example_3chr.setlist \
+  --anno-file ${mntpt}example/example_3chr.annotations \
+  --mask-def ${mntpt}example/example_3chr.masks \
+  --mask-lovo SET1,M1,0.2 \
+  --htp TEST \
+  --out ${mntpt}test/test_out_masks_loo"
+
+# run regenie
+./$regenie_bin $rgcmd 
+
+if [ ! -f ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie ]; then
+  print_err
+elif [ `cat ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie | wc -l` != 20 ]; then
+  print_err
+elif [ `grep "_mog" ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie | wc -l` != 18 ]; then
+  print_err
+fi
+
+
+(( i++ ))
+echo -e "==>Running test #$i"
+# build masks using set domains
+rgcmd="--step 2 \
+  --ignore-pred \
+  --bed ${mntpt}example/example_3chr \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --remove ${mntpt}example/fid_iid_to_remove.txt \
+  --set-list ${mntpt}example/example_3chr.setlist \
+  --anno-file ${mntpt}example/example_3chr.annotationsV2 \
+  --mask-def ${mntpt}example/example_3chr.masks \
+  --bsize 20 \
+  --aaf-bins 0.2 \
+  --out ${mntpt}test/test_out_masks_V3"
+
+# run regenie
+./$regenie_bin $rgcmd 
+
+if ! [[ "`head -n 1 ${REGENIE_PATH}test/test_out_masks_V3_Y1.regenie`" =~ ^\#\#MASKS.* ]]
+then
+  print_err
+elif [ `grep "SET2.*.M1" ${REGENIE_PATH}test/test_out_masks_V3_Y1.regenie | wc -l` != "4" ]
+then
+  print_err
+fi
+
+
+echo "SUCCESS: REGENIE build passed the tests!"
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out*
+rm ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
 
