@@ -30,7 +30,6 @@
 
 #include <vector>
 #include <string>
-#include <regex>
 #include <iostream>
 #include <algorithm>
 #include <iomanip>
@@ -40,7 +39,6 @@
 #include <math.h>       /* exp */
 #include <stdio.h>
 #include <stdlib.h>
-#include <chrono>
 #include <thread>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -54,7 +52,6 @@
 
 #include <boost/math/distributions.hpp>
 
-#include "bgen_to_vcf.hpp"
 #include "Eigen/Dense"
 #include "Eigen/StdVector"
 
@@ -70,6 +67,7 @@ typedef unsigned long long uint64;
 typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
+typedef Eigen::Map<ArrayXb> MapArXb;
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
@@ -129,6 +127,7 @@ class MeasureTime {
 struct param {
 
   std::string err_help = "For list of arguments, run with option --help\n"; // for checks
+  std::string webinfo = "For more information, use option '--help' or visit the website: https://rgcgithub.github.io/regenie/"; 
 
   //////
   // global options
@@ -178,7 +177,7 @@ struct param {
 
 
   // step 1 
-  int block_size; // number of SNPs per block
+  int block_size = -1; // number of SNPs per block
   int cv_folds = 5; // number of CV folds
   int n_block = -1; // number of blocks to run
   int total_n_block = 0; // number of blocks to run across all chrs
@@ -195,6 +194,8 @@ struct param {
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool rm_l0_pred = true; // specify whether to delete written level 0 predictions after level 1
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
+  bool force_run = false; // if using more than max nvariants in step 1
+  int max_step1_variants = 1e6; // prevent users using too many step 1 variants
   int niter_max_ridge = 500; // max number of iterations for ridge logistic reg.
   int niter_max_line_search_ridge = 100; // max number of iterations for line search in ridge logistic reg.
   double l1_ridge_tol = 1e-4; // tolerance level for convergence criteria
@@ -214,10 +215,10 @@ struct param {
   bool streamBGEN = true; //  for BGEN v1.2 with 8-bit encoding
   bool fastMode = true; // use fast version of step 2 
   bool dosage_mode = false; // track if dosages are present for step 2
-  bool split_by_pheno = false; // specify whether to write testing result in separate phenotype files
+  bool split_by_pheno = true; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
   bool use_prs = false; // adjust for whole genome PRS (no LOCO)
-  int min_MAC = 5; // minimum MAC of SNPs in testing mode
+  double min_MAC = 5, min_MAC_mask; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
   double min_INFO = 0; // minimum INFO score of SNPs (dosages) in testing mode
   bool setMinINFO = false;
@@ -248,6 +249,33 @@ struct param {
   int range_chr; 
   double range_min, range_max; // use genomic region to filter variants
 
+  // snp sets (masks/joint tests)
+  bool snp_set = false; 
+  bool build_mask = false; 
+  bool w_anno_lab = false;
+  bool skip_test = false; // skip computing tests
+  bool joint_test = false; // for step 2 joint testing
+  std::string burden = ""; // type of burden test;
+  uint max_set_size = 1000; // maximum number of predictors in joint test
+  bool set_select_list = false; // comma separated list of sets given
+  bool keep_sets = false; // user specify to keep select sets in analysis
+  bool rm_sets = false; // user specify to remove sets from analysis
+  bool w_regions = false; // categorize by set regions 
+  int max_cat = 64; // maximum number of annotations (to fit in uint64)
+  std::vector<std::string> mbins; // temporary object to store aaf bins
+  bool mask_rule_max = true, mask_rule_comphet = false; // default use max to combine mask
+  std::string mask_rule = "max";
+  bool set_aaf = false;// for user-given AAFs for building masks
+  bool singleton_carriers = false; // carrier count used to define singletons
+  bool write_masks = false, write_setlist = false; //write masks to bed file
+  bool mask_loo = false;
+  bool p_joint_only = false;
+  std::string mask_loo_name, mask_loo_set, mask_loo_region; // for LOO with masks
+  double mask_loo_aaf;
+  bool nnls_out_all = false;
+  int nnls_napprox = 10;
+  double acat_a1 = 1, acat_a2 = 1; // for ACAT test
+
 };
 
 // for input files
@@ -258,6 +286,7 @@ struct in_files {
   std::string bgen_file, sample_file;
   std::string file_ind_include, file_ind_exclude;
   std::string file_snps_include, file_snps_exclude;
+  std::string file_sets_include, file_sets_exclude;
   std::string cov_file, pheno_file;
   std::string loco_tmp_prefix = "";
   std::string split_file;
@@ -270,6 +299,8 @@ struct in_files {
   uint64 bed_block_size; // prevent overflow
   std::ifstream bed_ifstream;
   std::vector<uchar> inbed;
+  std::string set_file, new_sets;
+  std::string anno_file, anno_labs_file, mask_file, aaf_file;
   std::vector<int> bstart, btot; // for parallel l0
   std::vector<std::string> mprefix; // for parallel l0
 
@@ -286,6 +317,7 @@ struct filter {
   ArrayXb ind_in_analysis;
   uint32_t step1_snp_count = 0;
   std::vector<bool> geno_mask;
+  std::map <std::string, std::vector<int>> setID_to_ind;//chr,index
 
 };
 
@@ -298,6 +330,7 @@ void print_header(std::ostream&);
 void set_ridge_params(int,std::vector<double>&,const std::string,mstream&);
 void print_usage_info(struct param*,struct in_files*,mstream&);
 int chrStrToInt(const std::string, const int);
+double convertDouble(const std::string&,struct param*,mstream&);
 
 
 #endif

@@ -549,7 +549,7 @@ void write_ids(struct in_files* files, struct param* params, struct phenodt* phe
     fout.closeFile();
   } 
 
-  params->FIDvec.clear();
+  if(!params->write_masks) params->FIDvec.clear();
 }
 
 
@@ -603,19 +603,4 @@ void check_str(string& mystring ){
     mystring.erase(mystring.size() - 1);
 
 }
-
-double convertDouble(const string& phenoValue, struct param* params, mstream& sout){
-
-  if(phenoValue == params->missing_pheno_str)
-    return params->missing_value_double;
-
-  double pheno_d;
-  if(sscanf(phenoValue.c_str(), "%lf", &pheno_d) != 1){
-    sout << "ERROR: Could not convert value to double: " << phenoValue << endl;
-    exit(EXIT_FAILURE);
-  }
-  return pheno_d;
-}
-
-
 

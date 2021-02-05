@@ -25,13 +25,16 @@
 */
 
 #include <limits.h> /* for PATH_MAX */
+#include <chrono>
 #include <boost/filesystem.hpp>
 #include "Regenie.hpp"
 #include "Geno.hpp"
+#include "Joint_Tests.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Files.hpp"
 #include "Pheno.hpp"
+#include "Masks.hpp"
 #include "Data.hpp"
 
 using namespace std;
@@ -60,8 +63,11 @@ void Data::run() {
 
   if(params.test_mode) {
     if(params.streamBGEN) check_bgen(files.bgen_file, &params);
-    if(params.fastMode) test_snps_fast();
-    else test_snps();
+
+    if( params.snp_set ) test_joint();
+    else test_snps_fast();
+    //else test_snps(); // disabled after v1.0.7
+
 
   } else {
     sout << "Fitting null model\n";
@@ -123,6 +129,11 @@ void Data::file_read_initialization() {
     sout << "WARNING: Dosages are not present in the genotype file. Option --minINFO is skipped.\n";
 
   params.nvs_stored = snpinfo.size();
+
+  if(!params.test_mode && !params.force_run && ((int)params.nvs_stored > params.max_step1_variants)){
+    sout << "ERROR: It is not recommened to use more than " << params.max_step1_variants << " variants in step 1 (otherwise use '--force-step1'). " << params.webinfo << endl;
+    exit(EXIT_FAILURE);
+  }
 
 }
 
@@ -330,7 +341,7 @@ void Data::set_blocks() {
 
   if(params.total_n_block == 0){
     sout << "ERROR: Total number of blocks must be > 0.\n";
-      exit( EXIT_FAILURE );
+    exit( EXIT_FAILURE );
   }
 
   if(params.split_l0) return;
@@ -360,8 +371,8 @@ void Data::set_blocks() {
   /*
   // check block size vs sample size
   if(params.use_loocv && params.block_size > n_analyzed){
-  sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!\n";
-  exit( EXIT_FAILURE );
+    sout << "ERROR: Block size must be smaller than the number of samples to perform LOOCV!\n";
+    exit( EXIT_FAILURE );
   }
   */
   if(params.use_loocv) params.cv_folds = params.n_samples;
@@ -1466,6 +1477,7 @@ std::string Data::write_chr_row(const int chr, const int ph, const Eigen::Matrix
 }
 
 
+/*
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -1738,6 +1750,7 @@ void Data::test_snps() {
   sout << ": " << n_ignored_snps << endl;
 
 }
+*/
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -1747,13 +1760,14 @@ void Data::test_snps() {
 
 void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_split, std::vector< string >& out_split){
 
-  string tmpstr;
+  string tmpstr, mask_header;
+  if(params.build_mask) mask_header = build_mask_header();
 
   if(!params.split_by_pheno){ // single file
 
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
     ofile->openForWrite(out, sout);
-    (*ofile) << print_header_output();
+    (*ofile) << (params.build_mask ? mask_header : "" ) << print_header_output();
 
   } else { // split results in separate files for each phenotype
 
@@ -1768,7 +1782,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
       out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + (params.gzOut ? ".gz" : "");
       ofile_split[i] = new Files;
       ofile_split[i]->openForWrite( out_split[i], sout );
-      (*ofile_split[i]) << tmpstr;
+      (*ofile_split[i]) << (params.build_mask ? mask_header : "" ) << tmpstr;
     }
 
   }
@@ -1777,7 +1791,15 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
 
 void Data::print_test_info(){
 
-  sout << " * using minimum MAC of " << params.min_MAC << " (variants with lower MAC are ignored)\n";
+  if(params.write_masks) {
+    bm.write_info(&params, &in_filters, sout);
+    sout << " * user specified to write masks (in PLINK bed format)\n";
+    if(params.dosage_mode) sout << "   +dosages will be converted to hardcalls\n";
+    if(params.write_setlist) bm.prep_setlists(files.new_sets, files.out_file, sout);
+  }
+
+  sout << " * using minimum MAC of " << (params.build_mask ? params.min_MAC_mask : params.min_MAC) << 
+    " (" << (params.build_mask ? "masks" : "variants") << " with lower MAC are ignored)\n";
   if(params.setMinINFO) sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
   if(params.firth || params.use_SPA) {
     sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
@@ -1805,6 +1827,11 @@ void Data::print_test_info(){
     else model_type = test_string + "-WGR" + correction_type;
   }
 
+  if( params.joint_test ) {
+    jt.get_test_info(&params, test_string, sout);
+    jt.out_file_prefix = files.out_file;
+  }
+
 }
 
 std::string Data::print_header_output(){
@@ -1813,7 +1840,7 @@ std::string Data::print_header_output(){
   std::ostringstream buffer;
 
   buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ( params.dosage_mode ? "INFO ":"") << "TEST ";
-  for(i = 1; i < params.n_pheno; i++) buffer << "BETA.Y" << i << " SE.Y" << i <<  " CHISQ.Y" << i << " LOG10P.Y" << i << " ";
+  for(i = 1; i < params.n_pheno; i++) buffer << "BETA.Y" << i << " SE.Y" << i << " CHISQ.Y" << i << " LOG10P.Y" << i << " ";
   // last phenotype
   buffer << "BETA.Y" << i << " SE.Y" << i <<  " CHISQ.Y" << i << " LOG10P.Y" << i <<  endl;
 
@@ -1825,7 +1852,11 @@ std::string Data::print_header_output_single(){
 
   std::ostringstream buffer;
 
-  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << ( params.dosage_mode ? "INFO ":"") << "TEST BETA SE CHISQ LOG10P\n";
+  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+    ( !params.build_mask && params.dosage_mode ? "INFO ":"") << 
+    "N TEST BETA SE CHISQ LOG10P";
+  if(params.joint_test) buffer << " DF";
+  buffer << endl;
 
   return buffer.str();
 }
@@ -1839,13 +1870,11 @@ std::string Data::print_header_output_htp(){
   return buffer.str();
 }
 
-std::string Data::print_sum_stats_head(const int snp_count, const double af, const double info, const string model){
+std::string Data::print_sum_stats_head(const int snp_count){
 
   std::ostringstream buffer;
 
-  buffer << snpinfo[snp_count].chrom << " " << snpinfo[snp_count].physpos << " "<< snpinfo[snp_count].ID << " "<< snpinfo[snp_count].allele1 << " "<< snpinfo[snp_count].allele2 << " " << af << " " ;
-  if(params.dosage_mode) buffer << info << " ";
-  buffer << model << " ";
+  buffer << snpinfo[snp_count].chrom << " " << snpinfo[snp_count].physpos << " "<< snpinfo[snp_count].ID << " "<< snpinfo[snp_count].allele1 << " "<< snpinfo[snp_count].allele2 << " " ;
 
   return buffer.str();
 }
@@ -1859,7 +1888,7 @@ std::string Data::print_sum_stats_head_htp(const int snp_count, const int ph, co
   return buffer.str();
 }
 
-
+// native format - all phenos
 std::string Data::print_sum_stats(const double beta, const double se, const double chisq, const double pv, const int ph, const bool test_pass){
 
   std::ostringstream buffer;
@@ -1869,6 +1898,20 @@ std::string Data::print_sum_stats(const double beta, const double se, const doub
   if(test_pass) buffer << pv;
   else buffer << "NA";
   buffer << (last ? "" : " ");
+
+  return buffer.str();
+}
+
+// native format - single pheno
+std::string Data::print_sum_stats(const double af, const double info, const int n, const string model, const double beta, const double se, const double chisq, const double pv, const bool test_pass){
+
+  std::ostringstream buffer;
+
+  buffer << af << " " ;
+  if(!params.build_mask && params.dosage_mode) buffer << info << " ";
+  buffer << n << " " << model << " " << beta << ' ' << se << ' ' << chisq << ' ';
+  if(test_pass) buffer << pv;
+  else buffer << "NA";
 
   return buffer.str();
 }
@@ -1945,7 +1988,7 @@ std::string Data::print_sum_stats_htp(const double beta, const double se, const 
   } else buffer << "\t" << "REGENIE_SE=" << se; // fot QTs
 
   // info score
-  if(params.dosage_mode) buffer << ";INFO=" << info;
+  if(!params.build_mask && params.dosage_mode) buffer << ";INFO=" << info;
 
   // mac
   buffer << ";MAC=" << mac;
@@ -2256,7 +2299,6 @@ void Data::test_snps_fast() {
   std::chrono::high_resolution_clock::time_point t1, t2;
   normal nd(0,1);
   double zcrit = quantile(complement(nd, .025));
-  double info = 0;
   string out, tmpstr;
   vector < string > out_split;
   // output files
@@ -2319,16 +2361,11 @@ void Data::test_snps_fast() {
       sout << " block [" << block + 1 << "] : " << flush;
 
       bs = params.block_size;
-      if(bb == 0) {
-        Gblock.Gmat.resize(params.n_samples, bs);
-        block_info.resize(bs);
-      }
-      if((bb + 1) * params.block_size > chrom_nsnps) {
+      if( ((bb + 1) * params.block_size) > chrom_nsnps)
         bs = chrom_nsnps - (bb * params.block_size);
-        Gblock.Gmat.resize(params.n_samples, bs);
-        block_info.resize(bs);
-      }
 
+      Gblock.Gmat.resize(params.n_samples, bs);
+      block_info.resize(bs);
 
       // read SNP, impute missing & compute association test statistic
       analyze_block(chrom, bs, &snp_tally, block_info);
@@ -2341,13 +2378,21 @@ void Data::test_snps_fast() {
           snp_tally.n_ignored_snps++;
           continue;
         }
-        if( params.dosage_mode ) info = block_info[isnp].info;
 
-        if(!params.htp_out) tmpstr = print_sum_stats_head(snpindex, block_info[isnp].af, info, test_string);
+        if(!params.htp_out) tmpstr = print_sum_stats_head(snpindex);
 
-        if(!params.split_by_pheno) ofile << tmpstr;
+        if(!params.split_by_pheno) {
+          ofile << tmpstr << block_info[isnp].af1 << " "; 
+          if(!params.build_mask && params.dosage_mode) ofile << block_info[isnp].info1 << " ";
+          ofile << "NA " << test_string;
+        }
 
         for(int j = 0; j < params.n_pheno; ++j) {
+
+          if( block_info[isnp].ignored_trait(j) ) {
+            snp_tally.n_ignored_tests++;
+            continue;
+          }
 
           if( (params.firth || params.use_SPA) && block_info[isnp].is_corrected[j] ) n_corrected++;
           if( block_info[isnp].test_fail[j] ) snp_tally.n_failed_tests++;
@@ -2359,8 +2404,8 @@ void Data::test_snps_fast() {
 
 
           if(!params.split_by_pheno) ofile << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), j, !block_info[isnp].test_fail[j]);
-          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]);
-          else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af, info, block_info[isnp].mac, block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]);
+          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].ns(j),test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]);
+          else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].mac(j), block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]);
 
           if(params.split_by_pheno) (*ofile_split[j]) << endl;
         }
@@ -2396,9 +2441,9 @@ void Data::test_snps_fast() {
     sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")\n";
   }
 
-  sout << "Number of ignored SNPs due to low MAC ";
+  sout << "Number of ignored tests due to low MAC ";
   if( params.setMinINFO ) sout << "or info score ";
-  sout << ": " << snp_tally.n_ignored_snps << endl;
+  sout << ": " << snp_tally.n_ignored_snps * params.n_pheno + snp_tally.n_ignored_tests << endl;
 
 }
 
@@ -2487,6 +2532,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
 
       for( int i = 0; i < params.n_pheno; ++i ) {
 
+        if( block_info->ignored_trait(i) ) 
+          continue;
+
         // project out covariates from G
         WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
         // apply mask
@@ -2518,6 +2566,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     block_info->chisq_val = block_info->stats.square();
 
     for( int i = 0; i < params.n_pheno; ++i ) {
+
+      if( block_info->ignored_trait(i) ) 
+        continue;
 
       // test statistic & pvalue
       if(!params.use_SPA) check_pval_snp(block_info, chrom, i, isnp);
@@ -2730,3 +2781,548 @@ void Data::run_SPA_test_snp(variant_block* block_info, int ph, const VectorXd& G
 }
 
 
+
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////    Testing mode (joint tests)
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+void Data::test_joint() {
+
+  
+  sout << "Association testing mode (joint tests)";
+
+  std::chrono::high_resolution_clock::time_point t1, t2;
+  normal nd(0,1);
+  double zcrit = quantile(complement(nd, .025));
+  string out, tmpstr;
+  vector < string > out_split;
+  // output files
+  Files ofile;
+  // use pointer to class since it contains non-copyable elements
+  vector < Files* > ofile_split;
+
+  // set some parameters
+  params.split_by_pheno = true; // always split files
+  if( params.build_mask ){
+    params.min_MAC_mask = params.min_MAC; // for association tests
+    params.min_MAC = 0.5; // set this so can retain singletons (0.5 for dosages)
+    bm.take_max = params.mask_rule_max;
+    bm.take_comphet = params.mask_rule_comphet;
+    if(!bm.take_max && !bm.take_comphet) params.htp_out = false; // due to genocounts with sum rule
+    if(params.write_masks) bm.gfile_prefix = files.out_file + "_masks";
+  }
+
+#if defined(_OPENMP)
+  omp_set_num_threads(params.threads); // set threads in OpenMP
+  sout << " with multithreading using OpenMP";
+#endif
+  sout << endl;
+
+  setNbThreads(params.threads);
+  file_read_initialization(); // set up files for reading
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
+  prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
+  set_groups_for_testing();   // set groups of snps to test jointly
+  print_usage_info(&params, &files, sout);
+  print_test_info();
+  if(!params.skip_test) setup_output(&ofile, out, ofile_split, out_split); // result file
+
+
+  // start analyzing each chromosome
+  int block = 0, chrom, chrom_nb, bs;
+  tally snp_tally;
+
+  m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
+  m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
+  m_ests.Xt_Gamma_X_inv.resize(params.n_pheno);
+  if(params.firth_approx){ // set covariates for firth
+    firth_est.covs_firth = MatrixXd::Zero(params.n_samples, pheno_data.new_cov.cols() + 1);
+    firth_est.covs_firth.leftCols(pheno_data.new_cov.cols()) << pheno_data.new_cov;
+  }
+  if(params.joint_test) jt.scale_denum = (params.strict_mode ? pheno_data.Neff(0) : in_filters.ind_in_analysis.cast<float>().sum()) - jt.ncovars; // for gates
+
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+
+    chrom = files.chr_read[itr];
+    if( chr_map.find(chrom) == chr_map.end() ) continue;
+
+    chrom_nb = chr_map[chrom][1];
+
+    // if no sets in chromosome, skip
+    if(chrom_nb == 0)  continue;
+
+    sout << "Chromosome " << chrom << " [" << chrom_nb << " sets in total]\n";
+
+    // read polygenic effect predictions from step 1
+    blup_read_chr(chrom);
+
+    // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
+    if(params.binary_mode) compute_res_bin(chrom);
+    else compute_res();
+
+
+    // analyze by blocks of SNPs
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+
+      sout << " set [" << block + 1 << "] : " << flush;
+
+      bs = jt.setinfo[chrom - 1][bb].snp_indices.size();
+      sout << bs << " variants..." << flush;
+
+      vector< variant_block > block_info;
+      block_info.resize(bs);
+      if(params.joint_test && !params.build_mask) Gblock.Gmat.resize(params.n_samples, bs);
+
+      // compute single snp association test statistic
+      get_sum_stats(chrom, bb, block_info);
+
+      // update number of variants (if masks were built)
+      bs = jt.setinfo[chrom - 1][bb].snp_indices.size();
+      jt.nvars = bs;
+
+      if(params.skip_test){ // not performing the assoc tests
+        snp_tally.snp_count += bs;
+        block++;
+        continue;
+      }
+
+      // print the results
+      for(int isnp = 0; isnp < bs; isnp++) {
+        uint32_t snpindex = jt.setinfo[chrom - 1][bb].snp_indices[ isnp ];
+
+        if( block_info[isnp].ignored ) {
+          snp_tally.n_ignored_snps++;
+          jt.nvars--;
+          continue;
+        }
+
+        if(!params.p_joint_only ){
+          if(!params.htp_out) tmpstr = print_sum_stats_head(snpindex);
+          if(!params.split_by_pheno) {
+            ofile << tmpstr << block_info[isnp].af1 << " "; 
+            if(!params.build_mask && params.dosage_mode) ofile << block_info[isnp].info1 << " ";
+            ofile << "NA " << test_string;
+          }
+        }
+
+        for(int j = 0; j < params.n_pheno; ++j) {
+
+          if( block_info[isnp].ignored_trait(j) ) {
+            snp_tally.n_ignored_tests++;
+            continue;
+          }
+
+          if( (params.firth || params.use_SPA) && block_info[isnp].is_corrected[j] ) n_corrected++;
+          if( block_info[isnp].test_fail[j] ) snp_tally.n_failed_tests++;
+
+          if(!params.p_joint_only){
+
+            if(params.split_by_pheno) {
+              if(!params.htp_out) (*ofile_split[j]) << tmpstr;
+              else  (*ofile_split[j]) <<  print_sum_stats_head_htp(snpindex, j, model_type);
+            }
+
+            if(!params.split_by_pheno) ofile << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), j, !block_info[isnp].test_fail[j]) << (params.joint_test? " 1" : ""); // DF
+            else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].ns(j), test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]) << (params.joint_test? " 1" : ""); // DF
+            else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].mac(j), block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]) << (params.joint_test? ";DF=1" : "");
+
+            if(params.split_by_pheno) (*ofile_split[j]) << endl;
+          }
+        }
+
+        if(!params.split_by_pheno && !params.p_joint_only) ofile << endl;
+
+      }
+
+      if( params.joint_test ){
+
+        // compute and print set-based test result
+        t1 = std::chrono::high_resolution_clock::now();
+        sout << "     -computing joint association tests..." << flush;
+
+        jt.get_variant_names(chrom, bb, snpinfo);
+        for(int j = 0; j < params.n_pheno; ++j) 
+          (*ofile_split[j]) << jt.apply_joint_test(chrom, bb, j, &pheno_data, res.col(j), &Gblock, block_info, files.pheno_names[j], &params);
+
+        auto t2 = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+        sout << "done (" << duration.count() << "ms) "<< endl;
+      }
+
+      snp_tally.snp_count += bs;
+      block++;
+    }
+
+
+  }
+
+  sout << endl;
+
+  if(!params.skip_test) {
+    if(!params.split_by_pheno){
+      sout << "Association results stored in file : " << out << endl;
+      ofile.closeFile();
+    } else {
+      sout << "Association results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : \n";
+      for( int j = 0; j < params.n_pheno; ++j ) {
+        ofile_split[j]->closeFile();
+        delete ofile_split[j];
+        sout << "* [" << out_split[j] << "]\n";
+      }
+      sout << endl;
+    }
+
+    if(params.firth || params.use_SPA) {
+      sout << "Number of tests with " << (params.firth ? "Firth " : "SPA ");
+      sout << "correction : " << n_corrected << endl;
+      sout << "Number of failed tests : (" << snp_tally.n_failed_tests << "/" << n_corrected << ")\n";
+    }
+  }
+
+  sout << "Number of ignored tests due to low MAC ";
+  if( params.setMinINFO ) sout << "or info score ";
+  sout << ": " << snp_tally.n_ignored_snps * params.n_pheno + snp_tally.n_ignored_tests << endl;
+
+  if(params.write_masks){
+    bm.closeFiles();
+    sout << "\nMasks written to : [" << files.out_file << "_masks.{bed,bim,fam}]\n";
+  }
+
+}
+
+
+
+void Data::set_groups_for_testing() {
+
+  int blocks_left = params.n_block;
+  params.total_n_block = 0;
+
+  // annotate variants by categories
+  if(params.build_mask) {
+    get_masks_info(&files, &params, &in_filters, bm.annotations, bm.masks, bm.mask_out, bm.all_masks, snpinfo, sout);
+    bm.setBins(&params, sout);
+  }
+
+  // read list of variant sets to use for joint test
+  read_setlist(&files, &params, &in_filters, jt.setinfo, snpinfo, bm.all_masks, bm.max_aaf, sout);
+
+  // delete snpID map
+  in_filters.snpID_to_ind.clear();
+
+  // for each chromosome, count number of variant sets
+  map<int, vector<int> >::iterator itr;
+  map<int, vector<int> > m1;
+  for (itr = chr_map.begin(); itr != chr_map.end(); ++itr) {
+    int chrom = itr->first;
+    int nb = jt.setinfo[ chrom - 1].size();
+
+    if(params.n_block > 0) {
+      if(blocks_left > 0) {
+        int minb = min(nb, blocks_left);
+        //sout << << endl;
+        itr->second[1] = minb;
+        params.total_n_block += minb;
+        blocks_left -= minb;
+      }
+    } else {
+      itr->second[1] = nb;
+      params.total_n_block += nb;
+    }
+    m1.insert(pair<int, vector<int> >(itr->first, itr->second));
+  }
+  chr_map = m1;
+
+
+  // summarize block sizes
+  sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
+  sout << left << std::setw(20) << " * # tested sets" << ": [" << params.total_n_block << "]\n";
+  sout << left << std::setw(20) << " * max block size" << ": [" << params.block_size << "]\n";
+
+  if(params.build_mask) sout << " * rule used to build masks : " << params.mask_rule << endl;
+
+}
+
+std::string Data::build_mask_header(){
+
+  std::ostringstream buffer;
+
+  // header = ##MASKS=<Mask1="X,X";Mask2="X,X";...;MaskK="X,X">
+  buffer << "##MASKS=<";
+  for(size_t i = 0; i < bm.mask_out.size(); i++)
+    buffer << bm.mask_out[i][0] << "=\"" << bm.mask_out[i][1] << "\"" << ((i+1) < bm.mask_out.size() ? ";" : "");
+
+  buffer << ">\n";
+
+  return buffer.str();
+}
+
+
+// test SNPs in block
+void Data::get_sum_stats(const int chrom, const int varset, vector<variant_block>& all_snps_info){
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
+  vector< vector < uchar > > snp_data_blocks;
+  vector< uint32_t > insize, outsize;
+
+
+  // read in markers and if applicable build masks
+  if(!params.build_mask) readChunk(chrom, varset, 0, n_snps, snp_data_blocks, insize, outsize, all_snps_info);
+  else {
+    getMask(chrom, varset, snp_data_blocks, insize, outsize, all_snps_info);
+    n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
+    //cerr << "M=" << n_snps << endl;
+    if(params.skip_test) return;
+
+    // starting association testing with built masks
+    t1 = std::chrono::high_resolution_clock::now();
+    sout << "     -computing association tests..." << flush;
+  }
+
+
+  setNbThreads(1);
+  // start openmp for loop
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for(int isnp = 0; isnp < n_snps; isnp++) {
+    uint32_t snp_index = jt.setinfo[chrom - 1][varset].snp_indices[isnp];
+    chi_squared chisq(1);
+    double pval_raw;
+
+    // to store variant information
+    variant_block* block_info = &(all_snps_info[isnp]);
+
+    if( !params.build_mask ){
+      if((params.file_type == "bgen") && params.streamBGEN){ // uncompress and extract the dosages
+        parseSnpfromBGEN(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+      } else if(params.file_type == "bed"){ // extract hardcalls
+        parseSnpfromBed(isnp, chrom, snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, block_info);
+      }
+    }
+
+    // for QTs (or BTs with firth approx): project out covariates & scale
+    residualize_geno(isnp, block_info);
+
+    // skip SNP if fails filters
+    if( block_info->ignored ) continue;
+
+    block_info->pval_log = ArrayXd::Zero(params.n_pheno);
+    block_info->bhat = ArrayXd::Zero(params.n_pheno);
+    block_info->se_b = ArrayXd::Zero(params.n_pheno);
+    block_info->test_fail.assign(params.n_pheno, false);
+    block_info->is_corrected.assign(params.n_pheno, true);
+    MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+
+
+    if(params.binary_mode) {
+      MatrixXd tmpG, WX, GW;
+      block_info->stats = ArrayXd::Zero(params.n_pheno);
+      block_info->denum = ArrayXd::Zero(params.n_pheno);
+
+      for( int i = 0; i < params.n_pheno; ++i ) {
+
+        // project out covariates from G
+        WX = m_ests.Gamma_sqrt.col(i).asDiagonal() * pheno_data.new_cov;
+        // apply mask
+        GW = (Geno * m_ests.Gamma_sqrt.col(i).array() * pheno_data.masked_indivs.col(i).array().cast<double>()).matrix();
+        tmpG = GW - WX * (m_ests.Xt_Gamma_X_inv[i] * (WX.transpose() * GW));
+        block_info->denum(i) = tmpG.squaredNorm();
+
+        // score test stat for BT
+        block_info->stats(i) = (tmpG.array() * res.col(i).array()).sum() / sqrt( block_info->denum(i) );
+
+        // check this
+        if(params.use_SPA) run_SPA_test_snp(block_info, i, tmpG);
+      }
+
+    } else {
+
+      // score test stat for QT
+      if( params.strict_mode ) {
+        Geno *= in_filters.ind_in_analysis.cast<double>();
+        block_info->stats = (res.array().colwise() * Geno).matrix().transpose().rowwise().sum() / sqrt( in_filters.ind_in_analysis.cast<float>().sum() );
+      } else {
+        // compute GtG for each phenotype (different missing patterns)
+        block_info->scale_fac_pheno = (pheno_data.masked_indivs.cast<double>().array().colwise() * Geno).matrix().colwise().squaredNorm();
+        block_info->stats = (Geno.matrix().transpose() * res).transpose().array() / block_info->scale_fac_pheno.sqrt();
+      }
+
+    }
+
+    block_info->chisq_val = block_info->stats.square();
+
+    for( int i = 0; i < params.n_pheno; ++i ) {
+
+      // test statistic & pvalue
+      if(!params.use_SPA) check_pval_snp(block_info, chrom, i, isnp);
+
+      // summary stats
+      if( !params.binary_mode ){
+        // estimate & SE for QT
+        if( params.strict_mode )
+          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i)) / ( sqrt(pheno_data.Neff(i)) * block_info->scale_fac );
+        else
+          block_info->bhat(i) = block_info->stats(i) * ( pheno_data.scale_Y(i) * p_sd_yres(i) ) / ( sqrt(block_info->scale_fac_pheno(i)) * block_info->scale_fac );
+        block_info->se_b(i) = block_info->bhat(i) / block_info->stats(i);
+      } else {
+        // with Firth, get sum. stats from Firth logistic regression
+        if( params.firth && block_info->is_corrected[i] && !block_info->test_fail[i] ){
+          pval_raw = max(params.nl_dbl_dmin, pow(10, - block_info->pval_log(i))); // to prevent overflow
+          block_info->chisq_val(i) = quantile(complement(chisq, pval_raw));
+
+          // compute SE from beta & pvalue
+          if( params.back_correct_se && (block_info->chisq_val(i) > 0) )
+            block_info->se_b(i) = fabs(block_info->bhat(i)) / sqrt(block_info->chisq_val(i));
+
+        } else {
+          block_info->se_b(i) = 1 / sqrt(block_info->denum(i));
+          // with SPA, calculate test stat based on SPA p-value
+          if( params.use_SPA && block_info->is_corrected[i] && !block_info->test_fail[i] ){
+            pval_raw = max(params.nl_dbl_dmin, pow(10, - block_info->pval_log(i))); // to prevent overflow
+            block_info->chisq_val(i) = quantile(complement(chisq, pval_raw));
+            block_info->bhat(i) = sgn(block_info->stats(i)) * sqrt(block_info->chisq_val(i));
+          } else block_info->bhat(i) = block_info->stats(i);
+          block_info->bhat(i) *= block_info->se_b(i);
+          if( params.use_SPA && block_info->flipped ) block_info->bhat(i) *= -1;
+        }
+        block_info->bhat(i) /= block_info->scale_fac;
+        block_info->se_b(i) /= block_info->scale_fac;
+      }
+
+    }
+
+    //if( (isnp==0) || (isnp == (n_snps-1)) ) cout << "G"<<isnp+1<<" MAF = " <<  block_info.MAF << endl;
+  }
+
+  setNbThreads(params.threads);
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << "done (" << duration.count() << "ms) "<< endl;
+
+}
+
+
+void Data::readChunk(const int chrom, const int varset, const int start, const int n_snps, vector< vector < uchar > >& snp_data_blocks, vector<uint32_t>& insize, vector<uint32_t>& outsize, vector<variant_block>& all_snps_info){
+
+  if((params.file_type == "bgen") && params.streamBGEN){
+    uint64 pos_skip, index;
+    ifstream bfile;
+    snp_data_blocks.resize( n_snps );
+    insize.resize(n_snps); outsize.resize(n_snps);
+    bfile.open( files.bgen_file, ios::in | ios::binary );
+
+    for(int isnp = 0; isnp < n_snps; isnp++) {
+
+      // extract genotype data blocks single-threaded
+      index = jt.setinfo[chrom - 1][varset].snp_indices[start + isnp];
+      pos_skip = snpinfo[index].offset;
+      bfile.seekg( pos_skip );
+
+      readChunkFromBGEN(&bfile, &size1, &size2, &(snp_data_blocks[isnp]));
+      insize[isnp] = size1;
+      outsize[isnp] = size2;
+
+    }
+    bfile.close();
+
+  } else if((params.file_type == "bgen") && !params.streamBGEN) readChunkFromBGENFileToG(n_snps, chrom, start, jt.setinfo[chrom - 1][varset].snp_indices, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info);
+  else if(params.file_type == "pgen") readChunkFromPGENFileToG(start, n_snps, jt.setinfo[chrom - 1][varset].snp_indices, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
+  else {
+    // read in N/4 bytes from bed file for each snp
+    uint64 index;
+    snp_data_blocks.resize( n_snps );
+
+    for(int isnp = 0; isnp < n_snps; isnp++) {
+
+      index = snpinfo[ jt.setinfo[chrom - 1][varset].snp_indices[start + isnp] ].offset;
+      files.bed_ifstream.seekg(3 + index * files.bed_block_size, ios_base::beg);
+
+      snp_data_blocks[isnp].resize(files.bed_block_size);
+      files.bed_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
+
+    }
+  }
+
+}
+
+void Data::getMask(const int chrom, const int varset, vector< vector < uchar > >& snp_data_blocks, vector<uint32_t>& insize, vector<uint32_t>& outsize, vector<variant_block>& all_snps_info){
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  // do it in chunks to reduce memory usage
+  int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
+  int nchunks = ceil( n_snps * 1.0 / params.block_size );
+  int bsize = params.block_size; // default number of SNPs to read at a time
+  int nvar_read = 0;
+  if(params.mask_loo) {
+    bm.nmasks_total = n_snps;
+    nchunks = 1;
+    bsize = n_snps; 
+  }
+
+  if(params.verbose) sout << nchunks << " chunks";
+  sout << "\n     -reading in genotypes and building masks..." << flush;
+
+  bm.prepMasks(params.n_samples);  
+  Gblock.Gmat.resize(params.n_samples, bsize);
+
+
+  for(int i = 0; i < nchunks; i++){
+
+    if( i == (nchunks-1) ) {
+      bsize = n_snps - i * bsize;// use remainder number of variants
+      Gblock.Gmat.resize(params.n_samples, bsize);
+    }
+
+    readChunk(chrom, varset, nvar_read, bsize, snp_data_blocks, insize, outsize, all_snps_info);
+
+    setNbThreads(1);
+
+    // build genotype matrix
+#if defined(_OPENMP)
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(int isnp = 0; isnp < bsize; isnp++) {
+
+      uint32_t snp_index = jt.setinfo[chrom - 1][varset].snp_indices[nvar_read + isnp];
+
+      variant_block* block_info = &(all_snps_info[isnp]);
+
+      if(params.file_type == "bgen"){ // uncompress and extract the dosages
+        parseSnpfromBGEN(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+      } else if(params.file_type == "bed"){ // extract hardcalls
+        parseSnpfromBed(isnp, chrom, snp_data_blocks[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, block_info);
+      }
+
+    }
+    setNbThreads(params.threads);
+
+    // update mask (taking max/sum)
+    if(params.mask_loo)
+      bm.updateMasks_loo(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+    else
+      bm.updateMasks(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+
+    nvar_read += bsize;
+  }
+
+  // check mask and store in setinfo & snpinfo
+  if(params.mask_loo)
+    bm.computeMasks_loo(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+  else
+    bm.computeMasks(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl;
+
+}

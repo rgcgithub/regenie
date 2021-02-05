@@ -26,10 +26,12 @@
 
 #include "Regenie.hpp"
 #include "Geno.hpp"
+#include "Joint_Tests.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Files.hpp"
 #include "Pheno.hpp"
+#include "Masks.hpp"
 #include "Data.hpp"
 
 using namespace std;

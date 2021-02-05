@@ -101,9 +101,10 @@ class Data {
     std::string print_header_output();
     std::string print_header_output_single();
     std::string print_header_output_htp();
-    std::string print_sum_stats_head(const int,const double,const double,const std::string);
+    std::string print_sum_stats_head(const int);
     std::string print_sum_stats_head_htp(const int,const int,const std::string);
     std::string print_sum_stats(const double,const double,const double,const double,const int,const bool);
+    std::string print_sum_stats(const double,const double,const int,const std::string,const double,const double,const double,const double,const bool);
     std::string print_sum_stats(const double,const double,const double,const double,const bool);
     std::string print_sum_stats_htp(const double,const double,const double,const double,const double,const double,const double,const Eigen::MatrixXd&,const double,const int,const bool);
 
@@ -119,6 +120,16 @@ class Data {
     void check_pval_snp(variant_block*,int,int,int);
     void run_firth_correction_snp(int,int,int,variant_block*);
     void run_SPA_test_snp(variant_block*,int,const Eigen::VectorXd&);
+
+    // step 2 with joint tests
+    JTests jt;
+    GenoMask bm;
+    void test_joint();
+    void set_groups_for_testing();
+    std::string build_mask_header();
+    void get_sum_stats(const int,const int,std::vector<variant_block>&);
+    void readChunk(const int,const int,const int,const int,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
+    void getMask(const int,const int,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
 
 
     Data();

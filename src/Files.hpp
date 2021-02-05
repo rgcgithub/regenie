@@ -26,8 +26,6 @@
 #ifndef RFILES_H
 #define RFILES_H
 
-#include <fstream>
-#include <iostream>
 #include <boost/filesystem.hpp>
 
 # if defined(HAS_BOOST_IOSTREAM)

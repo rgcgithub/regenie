@@ -27,7 +27,7 @@ STATIC       := 0
 ############
 
 CXX           = g++
-CXXFLAGS      = -O3 -Wall -ffast-math -std=c++11
+CXXFLAGS      = -O3 -Wall -ffast-math -std=c++11 -Wno-deprecated-declarations
 EFILE         = regenie
 CFLAGS        =
 
@@ -126,8 +126,8 @@ LIBS         += -lz ${DLIBS} -lm -ldl
 
 all: ${EFILE}
 
-${EFILE}: ${OBJECTS}
-	${CXX} ${CXXFLAGS} ${RGFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ${LPATHS} ${LIBS}
+${EFILE}: libMvtnorm ${OBJECTS}
+	${CXX} ${CXXFLAGS} ${RGFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ./external_libs/mvtnorm/libMvtnorm.a ${LPATHS} ${LIBS}
 
 %.o: %.cpp
 	${CXX} ${CXXFLAGS} ${RGFLAGS} -o $@ -c $< ${INC} ${CFLAGS}
@@ -135,6 +135,8 @@ ${EFILE}: ${OBJECTS}
 %.o: %.cc
 	${CXX} ${CXXFLAGS} -o $@ -c $< ${INC} ${CFLAGS}
 
+libMvtnorm: 
+		(cd ./external_libs/mvtnorm/;$(MAKE))
 
 #####
 ## For use with Docker
@@ -171,3 +173,4 @@ debug: ${EFILE}
 
 clean:
 	rm -f ${EFILE} ./src/*.o ${PGEN_PATH}/*.o ${PGEN_PATH}/include/*.o
+	(cd ./external_libs/mvtnorm/;$(MAKE) clean)
