@@ -149,28 +149,35 @@
         
         <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
     <ul class="nav bs-sidenav">
-        <li class="first-level active"><a href="#documentation">Documentation</a></li>
-        <li class="first-level "><a href="#getting-started">Getting started</a></li>
-        <li class="first-level "><a href="#input">Input</a></li>
-            <li class="second-level"><a href="#genetic-data-file-format">Genetic data file format</a></li>
+        <li class="first-level active"><a href="#getting-started">Getting started</a></li>
+        <li class="first-level "><a href="#basic-options">Basic options</a></li>
+            <li class="second-level"><a href="#input">Input</a></li>
                 
-            <li class="second-level"><a href="#sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</a></li>
+                <li class="third-level"><a href="#genetic-data-file-format">Genetic data file format</a></li>
+                <li class="third-level"><a href="#covariate-file-format">Covariate file format</a></li>
+                <li class="third-level"><a href="#phenotype-file-format">Phenotype file format</a></li>
+                <li class="third-level"><a href="#predictions-file-format">Predictions file format</a></li>
+            <li class="second-level"><a href="#options">Options</a></li>
                 
-            <li class="second-level"><a href="#variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</a></li>
+            <li class="second-level"><a href="#output">Output</a></li>
                 
-            <li class="second-level"><a href="#covariate-file-format">Covariate file format</a></li>
+        <li class="first-level "><a href="#burden-testing">Burden testing</a></li>
+            <li class="second-level"><a href="#input_1">Input</a></li>
                 
-            <li class="second-level"><a href="#phenotype-file-format">Phenotype file format</a></li>
+                <li class="third-level"><a href="#annotation-input-files">Annotation input files</a></li>
+                <li class="third-level"><a href="#mask-definitions">Mask definitions</a></li>
+                <li class="third-level"><a href="#lovo-scheme">LOVO scheme</a></li>
+                <li class="third-level"><a href="#writing-mask-files">Writing mask files</a></li>
+            <li class="second-level"><a href="#options_1">Options</a></li>
                 
-            <li class="second-level"><a href="#predictions-file-format">Predictions file format</a></li>
+            <li class="second-level"><a href="#output_1">Output</a></li>
                 
-        <li class="first-level "><a href="#options">Options</a></li>
-        <li class="first-level "><a href="#output">Output</a></li>
+            <li class="second-level"><a href="#example-run">Example run</a></li>
+                
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
 
-<h2 id="documentation">Documentation</h2>
 <h2 id="getting-started">Getting started</h2>
 <p>To run <strong>regenie</strong>, use the command <code>./regenie</code> on the command line,
 followed by options and flags as needed.</p>
@@ -181,7 +188,7 @@ followed by options and flags as needed.</p>
 <p>The directory <code>examples/</code> contains some small example files that are
 useful when getting started. A test run on a set of binary traits can be achieved by the
 following 2 commands.</p>
-<p>In <strong>Step 1</strong> the whole genome regression model is fit to the traits, and
+<p>In <strong>Step 1</strong>, the whole genome regression model is fit to the traits, and
 a set of genomic predictions are produced as output</p>
 <pre><code>./regenie \
   --step 1 \
@@ -196,7 +203,7 @@ a set of genomic predictions are produced as output</p>
   --out fit_bin_out
 </code></pre>
 
-<p>In <strong>Step 2</strong> a set of imputed SNPs are tested for association using a
+<p>In <strong>Step 2</strong>, a set of imputed SNPs are tested for association using a
 Firth logistic regression model</p>
 <pre><code>./regenie \
   --step 2 \
@@ -209,7 +216,6 @@ Firth logistic regression model</p>
   --firth --approx \
   --pThresh 0.01 \
   --pred fit_bin_out_pred.list \
-  --split \
   --out test_bin_out_firth
 </code></pre>
 
@@ -219,7 +225,8 @@ you can check they are the same using  the following command (the message should
   &amp;&amp; echo &quot;Files are identical&quot;
 </code></pre>
 
-<h2 id="input">Input</h2>
+<h2 id="basic-options">Basic options</h2>
+<h3 id="input">Input</h3>
 <table>
 <thead>
 <tr>
@@ -339,7 +346,7 @@ so that their genotypes are 0/2. This can be done in PLINK by setting the sex of
 individuals to female before generating the genotype file.
 Chromosome values of 23 (for human analyses), X, XY, PAR1 and PAR2 are all acceptable and 
 will be collapsed into a single chromosome.</p>
-<h4 id="sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</h4>
+<h5 id="sample-inclusionexclusion-file-format">Sample inclusion/exclusion file format</h5>
 <pre><code>2 2 
 7 7 
 .
@@ -347,7 +354,7 @@ will be collapsed into a single chromosome.</p>
 
 <p>No header. Each line starts with individual FID IID. Space/tab separated.</p>
 <p>Samples listed in the file that are not in bgen/bed/pgen file are ignored.</p>
-<h4 id="variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</h4>
+<h5 id="variant-inclusionexclusion-file-format">Variant inclusion/exclusion file format</h5>
 <pre><code>20
 31
 .
@@ -393,7 +400,7 @@ Genotyped samples that are not in this file are removed from the analysis.</p>
 level 0 linear ridge regression and 
 they are dropped when fitting the level 1 logistic ridge regression for each trait . 
 In Step 2, missing values are dropped when testing each trait.</p>
-<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2. This is also useful when analyzing a single trait to avoid making a new bed/pgen/bgen file just for the complete data set of individuals (so setting the phenotype values of individuals to remove to NA), although <code>--remove</code> can also be used in that situation.</p>
+<p>To remove all samples that have missing values at <strong>any</strong> of the <script type="math/tex">P</script> phenotypes, use option <code>--strict</code> in Step 1 and 2.</p>
 <h4 id="predictions-file-format">Predictions file format</h4>
 <p>Running <code>--step 1 --out foo</code> will produce</p>
 <ol>
@@ -417,7 +424,7 @@ leave-one chromosome out (LOCO) predictions for each individual.</p>
 <p>Samples in this file not in the bed/pgen/bgen input file are ignored. Genotyped samples not 
 present in this file will be ignored in the analysis of the corresponding trait. </p>
 <p>Samples with missing LOCO predictions must have their corresponding phenotype value set to missing.</p>
-<h2 id="options">Options</h2>
+<h3 id="options">Options</h3>
 <table>
 <thead>
 <tr>
@@ -507,6 +514,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>flag to print whole genome predictions (i.e. PRS) without using LOCO scheme</td>
 </tr>
 <tr>
+<td><code>--force-step1</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>flag to run step 1 when &gt;1M variants are used (not recommened)</td>
+</tr>
+<tr>
 <td><code>--nb</code></td>
 <td>INT</td>
 <td>Optional</td>
@@ -529,12 +542,6 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FLAG</td>
 <td>Optional</td>
 <td>flag to use whole genome PRS in <code>--pred</code> (this is output in step 1 when using <code>--print-prs</code>)</td>
-</tr>
-<tr>
-<td><code>--split</code></td>
-<td>FLAG</td>
-<td>Optional</td>
-<td>flag to split asssociation results into separate files for each trait.</td>
 </tr>
 <tr>
 <td><code>--gz</code></td>
@@ -616,7 +623,7 @@ present in this file will be ignored in the analysis of the corresponding trait.
 </tr>
 <tr>
 <td><code>--minMAC</code></td>
-<td>INT</td>
+<td>FLOAT</td>
 <td>Optional</td>
 <td>flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.</td>
 </tr>
@@ -685,7 +692,7 @@ These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)</p>
 <p>See the <a href="https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1">Wiki page</a> for more details on how to run the level 0 models for Step 1 
 of <strong>regenie</strong> in parallel.</p>
-<h2 id="output">Output</h2>
+<h3 id="output">Output</h3>
 <table>
 <thead>
 <tr>
@@ -710,9 +717,7 @@ of <strong>regenie</strong> in parallel.</p>
 per-chromosome LOCO predictions as rows of the files. 
 If option <code>--gz</code> was used, the files will be compressed in gzip format and have extension <code>.loco.gz</code>.</p>
 <p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
- Hence, this can be used if genotype files in step 1 and 2 have different number of samples 
- (so only keeping samples present in both files).</p>
-<p>Individuals with missing phenotype values kept in the analysis 
+Individuals with missing phenotype values kept in the analysis 
 are included in the file and have their predictions set to missing.</p>
 <p>The list of blup files needed for step 2 (association testing) is written to  <code>file_pred.list</code>.</p>
 <p>If using <code>--print-prs</code>, files <code>files_1.prs</code>,...,<code>files_P.prs</code> will be written with the 
@@ -721,24 +726,299 @@ The list of these files is written to <code>file_prs.list</code> and can be used
 specifying flag <code>--use-prs</code>. Note that as these are not obtained using a LOCO scheme, 
 association tests could suffer from proximal contamination.</p>
 <p><strong>Using<code>--step 2 --out file</code></strong> </p>
-<p>By default, results are written to a single file <code>file.regenie</code>, which has one line per
-SNP along with a header line.
-If option <code>--gz</code> was used, the file will be compressed in gzip format and have extension <code>.regenie.gz</code>.</p>
-<p>The first 7 entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
-alternative allele (allele 1), frequency of the alternative allele, and the test performed 
-(additive/dominant/recessive).
-With BGEN/PGEN files, the imputation INFO score is also provided (IMPUTE info score for BGEN and Mach Rsq for PGEN).
-Allele frequency and INFO score, if applicable, are computed using all 
-individuals included in the analysis (so they are the same for all phenotypes).</p>
-<p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics 
-and <script type="math/tex">-\log_{10}</script> p-values for each phenotype.</p>
-<p>When using option <code>--split</code>, the results are written in separate files for
+<p>By default, results are written in separate files for
 each phenotype
+<code>file_&lt;phenotype1_name&gt;.regenie,...,file_&lt;phenotypeP_name&gt;.regenie</code>.
+Each file has one line per
+SNP along with a header line.
+If option <code>--gz</code> was used, the files will be compressed in gzip format and have extension <code>.regenie.gz</code>.</p>
+<p>The entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
+alternative allele (allele 1), frequency of the alternative allele, sample size and the test performed 
+(additive/dominant/recessive).
+With BGEN/PGEN files with dosages, the imputation INFO score is provided 
+(IMPUTE info score for BGEN and Mach Rsq for PGEN).
+Allele frequency, sample size and INFO score, if applicable, are computed using only
+non-missing samples for each phenotype.</p>
+<p>These are followed by the estimated effect sizes, standard errors, chi-square test statistics 
+and <script type="math/tex">-\log_{10}</script> p-value.</p>
+<p>If option <code>--write-samples</code> was used, IDs of samples used for each trait will be written in files
+<code>file_&lt;phenotype1_name&gt;.regenie.ids,...,file_&lt;phenotypeP_name&gt;.regenie.ids</code> (tab separated, no header).</p>
+<h2 id="burden-testing">Burden testing</h2>
+<p>Starting from version 1.0.8, Step 2 of <strong>regenie</strong> now provides burden testing functionality.
+More specifically, a user can combine genetic variants within a gene (or region), using functional annotations, into a single combined 'mask' genotype, that can be tested for association using the <a href="https://rgcgithub.github.io/regenie/options/#options">same testing options</a> as with single variants. </p>
+<h3 id="input_1">Input</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--anno-file</code></td>
+<td>FILE</td>
+<td>Required</td>
+<td>File with variant annotations for each set</td>
+</tr>
+<tr>
+<td><code>--set-list</code></td>
+<td>FILE</td>
+<td>Required</td>
+<td>File listing variant sets</td>
+</tr>
+<tr>
+<td><code>--extract-sets</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Inclusion file that lists IDs of variant sets to keep</td>
+</tr>
+<tr>
+<td><code>--exclude-sets</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>Exclusion file that lists IDs of variant sets to remove</td>
+</tr>
+<tr>
+<td><code>--extract-setlist</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Comma-separated list of variant sets to keep</td>
+</tr>
+<tr>
+<td><code>--exclude-setlist</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Comma-separated list of variant sets to remove</td>
+</tr>
+<tr>
+<td><code>--aaf-file</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>File with variant AAF to use when building masks (instead of AAF estimated from sample)</td>
+</tr>
+<tr>
+<td><code>--mask-def</code></td>
+<td>FILE</td>
+<td>Required</td>
+<td>File with mask definitions using the annotations defined in <code>--anno-labels</code></td>
+</tr>
+</tbody>
+</table>
+<h4 id="annotation-input-files">Annotation input files</h4>
+<p>The following files are used to define variant sets and 
+functional annotations which will be used to generate masks.</p>
+<h5 id="annotation-file">Annotation file</h5>
+<pre><code class="bash">1:55039839:T:C PCSK9 LoF
+1:55039842:G:A PCSK9 missense
+.
+</code></pre>
+
+<p>This file defines functional annotations for variants.
+It is designed to accommodate for variants with 
+separate annotations for different sets/genes.</p>
+<p>Each line contains the variant name, the set/gene name and a single annotation category 
+(space/tab separated). </p>
+<p>Variants not in this file will be assigned to a default "NULL" category. A maximum of 63 annotation 
+categories (+NULL category) is allowed.</p>
+<p>For gene sets, tools you can use to obtain variant annotations per transcripts are 
+<a href="https://pcingola.github.io/SnpEff/se_introduction/">snpEFF</a> or 
+<a href="https://www.ensembl.org/info/docs/tools/vep/index.html">VEP</a>.
+To obtain a single annotation per gene, you could choose the most deleterious
+functional annotation across the gene transcripts or alternatively
+use the canonical transcript (note that its definition can vary across software).</p>
+<p>We have implemented an extended 4-column format of the annotation file which
+also categorizes sets into domains (e.g. for gene sets, these would correspond to gene domains).</p>
+<pre><code class="bash">1:55039839:T:C PCSK9 Prodomain LoF
+1:55039842:G:A PCSK9 Prodomain missense
+.
+</code></pre>
+
+<p>Masks will be generated for each domain 
+(maximum of 8) in addition 
+to a mask combining across all domains.</p>
+<h5 id="set-list-file">Set list file</h5>
+<p>This file lists variants within each set/gene to use when 
+building masks. 
+Each line contains the set/gene name followed by a chromosome and physical position for the set/gene,
+then by a comma-separated list of variants included in the set/gene.</p>
+<pre><code class="bash">A1BG 19  58346922  19:58346922:C:A,19:58346924:G:A,...
+A1CF 10  50806630  10:50806630:A:G,10:50806630:A:AT,...
+.
+</code></pre>
+
+<p>Variants in the same set must belong to the chromosome specified in the 2nd column.</p>
+<h5 id="set-inclusionexclusion-file-format">Set inclusion/exclusion file format</h5>
+<p>The file must have a single column of set/gene names corresponding to those in the 
+set list file.</p>
+<pre><code class="bash">PIGP
+ZBTB38
+.
+</code></pre>
+
+<h5 id="aaf-file-optional">AAF file (optional)</h5>
+<p>Both functional annotations and alternative allele frequency (AAF) cutoffs 
+are used when building masks (e.g. only considering LoF
+sites where AAF is below 1%). 
+By default, the AAF for each variant is computed from the sample but
+alternatively, the user can specify variant AAFs using this file.</p>
+<p>Each line contains the variant name followed by its AAF 
+(it should correspond to ALT allele used in the genetic data input). </p>
+<pre><code class="bash">7:6187101:C:T 1.53918207864341e-05
+7:6190395:C:A 2.19920388819247e-06
+.
+</code></pre>
+
+<h4 id="mask-definitions">Mask definitions</h4>
+<h5 id="mask-file">Mask file</h5>
+<p>This file specifies which annotation categories should be combined into masks. 
+Each line contains a mask name followed by a comma-seperated list 
+of categories included in the mask (i.e. union is taken over categories).</p>
+<p>For example below, Mask1 uses only LoF variants and 
+Mask2 uses LoF and missense annotated variants.</p>
+<pre><code class="bash">Mask1 LoF
+Mask2 LoF,missense
+.
+</code></pre>
+
+<h5 id="aaf-cutoffs">AAF cutoffs</h5>
+<p>Option <code>--aaf-bins</code> specifies the AAF upper bounds used to generate masks.
+By default, a mask based on singleton sites are always included.</p>
+<p>For example, <code>--aaf-bins 0.01,0.05</code> will generate 3 masks for AAFs in 
+[0,0.01], [0,0.05] and singletons.</p>
+<h4 id="lovo-scheme">LOVO scheme</h4>
+<p>The leave-one-variant-out (LOVO) scheme takes all sites goint into a mask,
+and builds LOVO masks 
+by leaving out one variant at a time from the full set of sites. </p>
+<p>The argument for <code>--mask-lovo</code> is a comma-separated list which 
+consists of 
+the set/gene name, 
+the mask name, 
+and the AAF cutoff (either 'singleton' or a double in (0,1)).</p>
+<p>If using a 4-column annotation file, then <code>--mask-lovo</code> should have 
+the set name, 
+the domain name,
+the mask name, 
+and the AAF cutoff.</p>
+<h4 id="writing-mask-files">Writing mask files</h4>
+<p>Masks built in <strong>regenie</strong> can be written to PLINK bed format. 
+If the input genetic data contains dosages, 
+the masks dosages will be converted to hard-calls prior to being written to file 
+and these hard-calls will be used for the association testing.</p>
+<p>The PLINK bed file is written using 'ref-last' encoding (i.e. REF allele is 
+listed last in the bim file).</p>
+<p>Note that this cannot be used with the LOVO scheme.</p>
+<h3 id="options_1">Options</h3>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--aaf-bins</code></td>
+<td>FLOAT,...,FLOAT</td>
+<td>Optional</td>
+<td>comma-separated list of AAF upper bounds to use when building masks [default is a single cutoff of 1%]</td>
+</tr>
+<tr>
+<td><code>--build-mask</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>build masks using the maximum number of ALT alleles across sites (<code>'max'</code>; the default), or the sum of ALT alleles (<code>'sum'</code>), or thresholding the sum to 2 (<code>'comphet'</code>)</td>
+</tr>
+<tr>
+<td><code>--singleton-carrier</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)</td>
+</tr>
+<tr>
+<td><code>--write-mask</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>write mask to PLINK bed format <strong>(does not work when building masks with 'sum')</strong></td>
+</tr>
+<tr>
+<td><code>--skip-test</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to skip computing association tests after building masks and writing them to file</td>
+</tr>
+<tr>
+<td><code>--mask-lovo</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>to perform LOVO scheme</td>
+</tr>
+</tbody>
+</table>
+<h3 id="output_1">Output</h3>
+<p><strong>With <code>--out file</code></strong></p>
+<p>Results are written in separate files for each phenotype
 <code>file_&lt;phenotype1_name&gt;.regenie,...,file_&lt;phenotypeP_name&gt;.regenie</code> 
-with the same format.
-If option <code>--gz</code> was used, the files will be compressed in gzip format and have extension <code>.regenie.gz</code>.
-If option <code>--write-samples</code> was used, IDs of samples used for each trait will be written in files
-<code>file_&lt;phenotype1_name&gt;.regenie.ids,...,file_&lt;phenotypeP_name&gt;.regenie.ids</code> (tab separated, no header).</p></div>
+with the same output format mentioned <a href="https://rgcgithub.github.io/regenie/options/#output">above</a>.
+Additionally, a header line is included (starting with <code>##</code>)
+which contains mask definition information.</p>
+<p>Masks will have name <code>&lt;set_name&gt;.&lt;mask_name&gt;.&lt;AAF_cutoff&gt;</code> with the 
+chromosome and physical position having been defined in the set list file, 
+and the reference allele being <code>ref</code>, and the alternate allele corresponding to 
+<code>&lt;mask_name&gt;.&lt;AAF_cutoff&gt;</code>.
+When using <code>--mask-lovo</code>, the mask name will be the same as above but have suffix
+<code>_&lt;variant_name&gt;</code> to specify the variant which was excluded when building the mask.</p>
+<p>With <code>--build-mask sum</code>, the reported mask AAF corresponds to the average 
+AAF across sites included in the mask.</p>
+<p>If using <code>--write-mask</code>, the masks will be saved to 
+<code>file_masks.{bed,bim,fam}</code>. </p>
+<!---
+|`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
+With `--write-setlist`, new set list files will be written which contain list of sets
+based on the written masks. 
+The option takes in a file with 2 columns containing 
+a file suffix for the new set list file, as well as a list of the masks
+which will constitute the sets (set names/chr/pos are obtained from the input set list file).
+
+<pre><code class="bash">onlyLoFs Mask1
+LoFs+Splice Mask1,Mask3
+</code></pre>
+
+This creates two set list files, one called `file_onlyLoFs.setlist` with sets consisting of  
+Mask1 masks (across all AAF cutoffs) 
+and another one called `file_LoFs+Splice.setlist` 
+with sets consisting of Mask1 and Mask3 masks.
+-->
+
+<h3 id="example-run">Example run</h3>
+<p>Using Step 1 results from the <a href="https://rgcgithub.github.io/regenie/options/#getting-started">Step 1 command above</a>, we use the following command to build and test masks in Step 2</p>
+<pre><code>./regenie \
+  --step 2 \
+  --bed example/example_3chr \
+  --covarFile example/covariates.txt \
+  --phenoFile example/phenotype_bin.txt \
+  --bt \
+  --remove example/fid_iid_to_remove.txt \
+  --firth --approx \
+  --pred fit_bin_out_pred.list \
+  --anno-file example/example_3chr.annotations \
+  --set-list example/example_3chr.setlist \
+  --mask-def example/example_3chr.masks \
+  --aaf-bins 0.1,0.05 \
+  --write-mask \
+  --bsize 200 \
+  --out test_bin_out_firth
+</code></pre>
+
+<p>For each set, this will produce masks using 3 AAF cutoffs (singletons, 5% and 10% AAF). 
+The masks are written to PLINK bed file (in <code>test_bin_out_firth_masks.{bed,bim,fam}</code>) 
+and tested for association with each binary trait using Firth approximate test 
+(summary stats in <code>test_bin_out_firth_&lt;phenotype_name&gt;.regenie</code>). 
+Note that the test uses the whole genome regression LOCO PRS from Step 1 of <strong>regenie</strong> (specified by <code>--pred</code>).</p></div>
         
         
     </div>
