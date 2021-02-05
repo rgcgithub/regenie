@@ -295,7 +295,7 @@ docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 
 if [ ! -f ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie ]; then
   print_err
-elif [ `cat ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie | wc -l` != 20 ]; then
+elif [ `cat ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie | wc -l` != 21 ]; then
   print_err
 elif [ `grep "_mog" ${REGENIE_PATH}test/test_out_masks_loo_Y1.regenie | wc -l` != 18 ]; then
   print_err
