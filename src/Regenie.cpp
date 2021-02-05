@@ -172,6 +172,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("write-mask", "write masks in PLINK bed/bim/fam format")
     ("mask-lovo", "apply Leave-One-Variant-Out (LOVO) scheme when building masks (<set_name>,<mask_name>,<aaf_cutoff>)", cxxopts::value<std::string>(),"STRING")
     ("skip-test", "skip computing association tests after building masks")
+    ("check-burden-files", "check annotation file, set list file and mask file for consistency")
+    ("strict-check-burden", "to exit early if the annotation, set list and mask definition files dont agree")
     ;
 
 
@@ -297,6 +299,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("write-mask") ) params->write_masks = true;
     if( vm.count("write-setlist") ) params->write_setlist = true;
     if( vm.count("skip-test") ) params->skip_test = true;
+    if( vm.count("check-burden-files") ) params->check_mask_files = true;
+    if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
@@ -548,6 +552,8 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
 
     if(!params->build_mask && params->write_masks) params->write_masks = false;
+    if(!params->build_mask && params->check_mask_files) params->check_mask_files = false;
+    if(!params->build_mask && params->strict_check_burden) params->strict_check_burden = false;
     if(!params->write_masks && params->skip_test) params->skip_test = false;
     if(!params->write_masks && params->write_setlist) {
       sout << "WARNING : Must use --write-setlist with --write-mask.\n";
@@ -869,4 +875,13 @@ double convertDouble(const string& val, struct param* params, mstream& sout){
 }
 
 
+std::string print_csv(const vector<string>& vlist){
 
+  std::ostringstream buffer;
+
+  for(size_t i = 0; i < vlist.size(); i++)
+    buffer << vlist[i] << ((i+1) == vlist.size() ? "" : ",");
+
+  return buffer.str();
+
+}

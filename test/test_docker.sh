@@ -314,6 +314,7 @@ rgcmd="--step 2 \
   --set-list ${mntpt}example/example_3chr.setlist \
   --anno-file ${mntpt}example/example_3chr.annotationsV2 \
   --mask-def ${mntpt}example/example_3chr.masks \
+  --check-burden-files \
   --bsize 20 \
   --aaf-bins 0.2 \
   --out ${mntpt}test/test_out_masks_V3"
@@ -325,6 +326,9 @@ if ! [[ "`head -n 1 ${REGENIE_PATH}test/test_out_masks_V3_Y1.regenie`" =~ ^\#\#M
 then
   print_err
 elif [ `grep "SET2.*.M1" ${REGENIE_PATH}test/test_out_masks_V3_Y1.regenie | wc -l` != "4" ]
+then
+  print_err
+elif [ `grep -e "->Detected 1" ${REGENIE_PATH}test/test_out_masks_V3_masks_report.txt | wc -l` != "4" ]
 then
   print_err
 fi

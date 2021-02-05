@@ -2267,13 +2267,14 @@ findID getIndivIndex(const string &FID, const string &IID, struct param* params,
 // joint testing
 void read_setlist(const struct in_files* files, struct param* params, struct filter* filters, vector< vector<vset> >& setinfo, vector<snp>& snpinfo, const uint64 all_masks, const double mask_max_aaf, mstream& sout) {
 
-  bool bsize_set, all_in_geno, loo_found = false;
+  bool bsize_set, all_in_geno, loo_found = false, all_w_anno;
   int snp_chrom = 0, n_sets_incomplete = 0, n_sets_ignored = 0, n_sets_analyzed = 0;
   uint64 lineread = 0, snp_index;
-  std::vector< string > tmp_str_vec, tmp_snp_id ;
+  std::vector< string > tmp_str_vec, tmp_snp_id, set_problem ;
   std::vector<int> tmpvec(3);
-  string line, fname, snpname;
+  string line, fname;
   Files myfile;
+  ofstream report_file;
 
   // for snps with no anno for the set
   annoinfo ainfo_null;
@@ -2282,6 +2283,11 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
   sout << left << std::setw(20) << " * set file" << ": [" << files->set_file << "] " << flush;
   myfile.openForRead (files->set_file, sout);
+  if(params->check_mask_files) {
+    line = files->out_file + "_masks_report.txt";
+    openStream_write(report_file, line, ios::out | ios::app, sout);
+    report_file << "\n## set file: [" << files->set_file << "]\n## list of variants not in annotation or genetic data input files\n";
+  }
 
   setinfo.resize( params->nChrom );
 
@@ -2297,8 +2303,10 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
   while (myfile.readLine(line)) {
 
-    all_in_geno = true;
+    all_in_geno = all_w_anno = true;
     vset tmp_set;
+    if(params->check_mask_files) set_problem.resize(0);
+
     tmp_str_vec = string_split(line,"\t ,");
 
     // at least 4 columns: set name | set chr | set position | variant list 
@@ -2335,6 +2343,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
       // check variant is in genotype file
       if ( filters->snpID_to_ind.find(tmp_str_vec[i]) == filters->snpID_to_ind.end()) {
+        if(params->check_mask_files) set_problem.push_back(tmp_str_vec[i]);
         all_in_geno = false; continue;// mark as incomplete
       }
 
@@ -2351,8 +2360,11 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
       if( params->build_mask ){
         // check annotation for set has been given for variant
         // else, assign to default annotation category 0
-        if( snpinfo[ snp_index ].anno.find(tmp_set.ID) == snpinfo[ snp_index ].anno.end() ) 
+        if( snpinfo[ snp_index ].anno.find(tmp_set.ID) == snpinfo[ snp_index ].anno.end() ) {
+          all_w_anno = false;
+          if(params->check_mask_files) set_problem.push_back(tmp_str_vec[i]);
           snpinfo[ snp_index ].anno.insert( std::make_pair( tmp_set.ID, ainfo_null ) );
+        }
 
         // check that variant has category in at least one of the masks
         if( (snpinfo[snp_index].anno[tmp_set.ID].id & all_masks) == 0 )  
@@ -2374,8 +2386,11 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
       tmp_set.snp_indices.push_back(snp_index);
     }
 
-    if(!all_in_geno) {
-      if(tmp_set.snp_indices.size() > 0 ) n_sets_incomplete++;
+    if(!all_in_geno || !all_w_anno ) {
+      if(!all_w_anno && params->strict_check_burden) params->fail_check = true;
+      if(params->check_mask_files)
+        report_file << tmp_set.ID << " " << print_csv(set_problem) << endl; 
+      if( tmp_set.snp_indices.size() > 0 ) n_sets_incomplete++;
       else { n_sets_ignored++; continue; } //ignore set
     }
 
@@ -2415,8 +2430,21 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
   sout << "n_sets = " << n_sets_analyzed << endl;
 
-  if(n_sets_incomplete > 0) sout << "WARNING: Detected " << n_sets_incomplete << " sets with some unknown variants.\n";
+  // report
+  if(n_sets_incomplete > 0) sout << "WARNING: Detected " << n_sets_incomplete << " sets with variants not in genetic data or annotation files.\n";
   if(n_sets_ignored > 0) sout << "WARNING: Detected " << n_sets_ignored << " sets with only unknown variants (these are ignored).\n";
+  if(params->check_mask_files) {
+    report_file << "->Detected " << n_sets_incomplete << " sets with variants not in genetic data or annotation files.\n";
+    report_file << "->Detected " << n_sets_ignored << " sets with only unknown variants.\n";
+    report_file.close();
+    sout << "     +report on burden input files written to [" << files->out_file + "_masks_report.txt]\n";
+  }
+  if(params->strict_check_burden && params->fail_check){
+    sout << "ERROR: Annotation/Set list/Mask definition files don't agree.";
+    if(params->check_mask_files) sout << " Check report for details.\n";
+    else sout << " For more details, re-run with '--check-burden-files'.\n";
+    exit(EXIT_FAILURE);
+  }
 
   if( !params->mask_loo && (params->keep_sets || params->rm_sets) ) 
     check_sets_include_exclude(bsize_set, files, params, filters, setinfo, sout);
@@ -2785,21 +2813,30 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
 
 void read_masks(const struct in_files* files, struct param* params, map<string, anno_name>& anno_map, std::map <std::string, int> regions, vector<maskinfo>& minfo, std::vector <std::vector<string>>& mask_out, uint64& all_masks, mstream& sout) {
 
-  int lineread = 0, ncat = 0;
+  bool valid_mask;
+  int lineread = 0, ncat = 0, n_with_missing = 0, n_non_valid = 0;
   uint64 id;
-  std::vector< string > tmp_str_vec, mask_str;
+  std::vector< string > tmp_str_vec, mask_str, anno_problem;
   mask_str.resize(2);
   std::map <std::string, int>::iterator itr;
   string line;
   maskinfo tmp_mask;
   Files myfile;
+  ofstream report_file;
 
   sout << left << std::setw(20) << " * masks " << ": [" << files->mask_file << "] " << flush;
   myfile.openForRead (files->mask_file, sout);
+  if(params->check_mask_files) {
+    line = files->out_file + "_masks_report.txt";
+    openStream_write(report_file, line, ios::out, sout);
+    report_file << "## mask file: [" << files->mask_file << "]\n## list of unknown annnotations in mask file\n";
+  }
 
   while (myfile.readLine(line)) {
 
+    valid_mask = true;
     id = 0ULL;
+    if(params->check_mask_files) anno_problem.resize(0);
 
     tmp_str_vec = string_split(line,"\t ,");
     ncat = tmp_str_vec.size() - 1;
@@ -2825,14 +2862,26 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
 
       // check it is in map
       if (anno_map.find(tmp_str_vec[i+1]) == anno_map.end()) {
-        sout << "ERROR: Unknown category at line " << lineread+1 << " (=" << tmp_str_vec[i+1] << ".\n";
-        exit(EXIT_FAILURE);
+        if( tmp_str_vec[i+1].size() > 0 ){
+          valid_mask = false;
+          if(params->strict_check_burden) params->fail_check = true;
+          if(params->check_mask_files) anno_problem.push_back(tmp_str_vec[i+1]);
+        }
+        continue;
       }
       buffer << anno_map[ tmp_str_vec[i+1] ].name << ((i+1) < ncat ? "," : "");
 
       // set bit for category
       id |= anno_map[ tmp_str_vec[i+1] ].id;
     }
+
+    if(!valid_mask) { // one of the categories is unrecognized
+      if(params->check_mask_files)
+        report_file << tmp_mask.name << " " << print_csv(anno_problem) << endl;
+      if(id == 0) { n_non_valid++; continue; }
+      else n_with_missing++;
+    }
+
     tmp_mask.id = id;
     mask_str[1] = buffer.str();
     //if(lineread<5)cerr << tmp_mask.name << "--" << tmp_mask.id << endl; 
@@ -2864,6 +2913,15 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
   myfile.closeFile();
 
   sout << "n_masks = " << minfo.size() << endl;
+
+  // report
+  if(n_with_missing > 0) sout << "WARNING: Detected " << n_with_missing << " masks with unknown annotations.\n";
+  if(n_non_valid > 0) sout << "WARNING: Detected " << n_non_valid << " masks with only unknown annotations (these are ignored).\n";
+  if(params->check_mask_files) {
+    report_file << "->Detected " << n_with_missing << " masks with unknown annotations.\n";
+    report_file << "->Detected " << n_non_valid << " masks with only unknown annotations.\n";
+    report_file.close();
+  }
 }
 
 // step 2 with snp-sets

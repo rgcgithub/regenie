@@ -163,3 +163,14 @@ std::vector<std::string> string_split(std::string const& s, const char* delims) 
 
 }
 
+
+void openStream_write(std::ofstream& ofs, std::string const& fname, std::ios_base::openmode mode, mstream& sout){
+
+  ofs.open(fname, mode);
+  if (!ofs) {    
+    sout << "ERROR: Cannot write to file : " << fname << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  return;
+}

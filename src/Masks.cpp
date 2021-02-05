@@ -202,11 +202,11 @@ void GenoMask::updateMasks_loo(const int start, const int bs, struct param* para
   colset = keepmask.col(0).array() && keepaaf.col(n_aaf_bins - 1).array(); // take last aaf
 
   int nkept = colset.count();
-  nmasks_total = nkept;
   if(nkept == 0) return;
+  nmasks_total = nkept;
 
-  Gtmp = MatrixXd::Constant(params->n_samples, nkept, -3);
-  if(!take_max && !take_comphet) nsites = nkept - 1;
+  Gtmp = MatrixXd::Constant(params->n_samples, nkept + 1, -3); // add full mask
+  if(!take_max && !take_comphet) nsites = nkept - 1; // to compute AAF with sum
 
   // update mask using LOO
 #if defined(_OPENMP)
@@ -253,6 +253,37 @@ void GenoMask::updateMasks_loo(const int start, const int bs, struct param* para
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
+
+  // compute full mask
+  for(int i = 0; i < colset.size(); i++){
+    if(!colset(i)) continue;
+
+    int ix = colset.head(i+1).count();
+    bool has_non_missing;
+    double ds;
+    MapArXd maskvec (Gtmp.rightCols(1).data(), params->n_samples, 1); // in last column
+    maskvec = Gtmp.col(ix); // start from LOO mask for 1st site
+
+    for(size_t k = 0; k < params->n_samples; k++){
+      if( !filters->ind_in_analysis(k) ) continue;
+
+      if( !params->strict_mode || (params->strict_mode && masked_indivs(k,0)) ){
+
+        if(take_max) ds = max( maskvec(k), gblock->Gmat(k, i));
+        else {
+
+          // sum rule (ignore missing)
+          ds = 0;
+          if(gblock->Gmat(k,i) != -3) has_non_missing = true, ds += gblock->Gmat(k,i);
+          if(maskvec(k) != -3) ds += maskvec(k);
+          else if( ds == 0 && !has_non_missing ) ds = -3;
+        }
+        maskvec(k) = ds;
+      }
+    }
+   // cerr << endl << Gtmp.col(ix).head(3) << "\n\n" << gblock->Gmat.col(i).head(3) << "\n\n" << maskvec.head(3) << endl;
+    break;
+  }
 
 }
 
@@ -425,7 +456,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
 void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, struct geno_block* gblock, vector<variant_block> &all_snps_info, vset& setinfo, vector<snp>& snpinfo, mstream& sout){
 
   // check size of vblock vector
-  if(((int) all_snps_info.size()) < nmasks_total) all_snps_info.resize( nmasks_total );
+  all_snps_info.resize( nmasks_total + 1 ); // add full mask
 
   ArrayXb in_bed = colset;
   vector<uint64> old_indices = setinfo.snp_indices;
@@ -436,15 +467,19 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
   // use MT 
 #pragma omp parallel for schedule(dynamic)
 #endif
-  for(int i = 0; i < colset.size(); i++){
-    if(!colset(i)) continue;
+  for(int i = 0; i <= colset.size(); i++){
 
-    int index_start = colset.head(i+1).count() - 1;
+    int index_start;
+
+    if(i < colset.size()){
+      if(!colset(i)) continue;
+      index_start = colset.head(i+1).count() - 1;
+    } else index_start = colset.count(); // full mask
 
     // compute mask
     buildMask(index_start, setinfo.chrom, params, filters, masked_indivs, ymat, &all_snps_info[index_start]);
 
-    colset(i) = !all_snps_info[index_start].ignored;
+    if(i < colset.size()) colset(i) = !all_snps_info[index_start].ignored;
 
   }
 #if defined(_OPENMP)
@@ -455,19 +490,19 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
   //cerr << "Npass="<< n_mask_pass << "/" << nmasks_total <<endl;
 
   // reset indices
-  setinfo.snp_indices.resize(n_mask_pass); 
-  snpinfo.resize(params->n_variants + n_mask_pass); 
+  setinfo.snp_indices.resize(n_mask_pass+1); 
+  snpinfo.resize(params->n_variants + n_mask_pass+1); 
   // update Gmat
-  gblock->Gmat.resize(gblock->Gmat.rows(), n_mask_pass);
+  gblock->Gmat.resize(gblock->Gmat.rows(), n_mask_pass+1);
   vector<variant_block> tmp_snp_info; 
   snp tmpsnp;
 
   // store masks for testing (ignore those that failed filters)
   int k = 0;
-  for(int i = 0; i < colset.size(); i++){
-    if(!colset(i)) continue;
+  for(int i = 0; i <= colset.size(); i++){
+    if(i < colset.size() && !colset(i)) continue;
 
-    int index_start = in_bed.head(i+1).count() - 1;
+    int index_start = (i < colset.size() ? in_bed.head(i+1).count() - 1 :  in_bed.count());
 
     std::ostringstream buffer;
     buffer <<  masks[0].name << "." ;
@@ -476,8 +511,13 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
 
     // update snpinfo
     tmpsnp.chrom = setinfo.chrom;
-    tmpsnp.ID = setinfo.ID + "." + masks[0].region_name + buffer.str() + "_" + snpinfo[ old_indices[i] ].ID;
-    tmpsnp.physpos = setinfo.physpos;
+    if(i < colset.size()) { // lovo mask
+      tmpsnp.ID = setinfo.ID + "." + masks[0].region_name + buffer.str() + "_" + snpinfo[ old_indices[i] ].ID;
+      tmpsnp.physpos = snpinfo[ old_indices[i] ].physpos;
+    } else { // full mask
+      tmpsnp.ID = setinfo.ID + "." + masks[0].region_name + buffer.str();
+      tmpsnp.physpos = setinfo.physpos;
+    }
     tmpsnp.allele1 = "ref";
     tmpsnp.allele2 = buffer.str();
     tmpsnp.offset = params->n_variants + k; // new index in snpinfo vec.

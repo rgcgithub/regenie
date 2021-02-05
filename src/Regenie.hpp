@@ -253,6 +253,7 @@ struct param {
   bool snp_set = false; 
   bool build_mask = false; 
   bool w_anno_lab = false;
+  bool check_mask_files = false, strict_check_burden = false, fail_check = false;
   bool skip_test = false; // skip computing tests
   bool joint_test = false; // for step 2 joint testing
   std::string burden = ""; // type of burden test;
@@ -331,6 +332,7 @@ void set_ridge_params(int,std::vector<double>&,const std::string,mstream&);
 void print_usage_info(struct param*,struct in_files*,mstream&);
 int chrStrToInt(const std::string, const int);
 double convertDouble(const std::string&,struct param*,mstream&);
+std::string print_csv(const std::vector<std::string>&);
 
 
 #endif

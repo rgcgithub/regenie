@@ -91,5 +91,6 @@ class Files {
 };
 
 std::vector<std::string> string_split(std::string const&,const char*);
+void openStream_write(std::ofstream&,std::string const&,std::ios_base::openmode,mstream&);
 
 #endif
