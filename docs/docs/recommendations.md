@@ -40,19 +40,20 @@ which follow the format requirement for **regenie** (see Documentation).
 
 #### Preparing genotype file
 
-Step 1 of a **regenie** run requires a single genotype file as input. 
+Step 1 of a **regenie** run requires a single genotype file as input; 
+we recommend using array genotypes for this step.
 The UKBB genotype files are split by chromosome, so we recommend using
 [PLINK](http://www.cog-genomics.org/plink/) to merge the files using the following code.
 
 *NOTE*: please change **XXX** to you own UKBB application ID number
 ```
 rm -f list_beds.txt
-for chr in {2..22}; do echo "ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukbXXX_int_chr1_v2_s488373.fam\n" >> list_beds.txt; done
+for chr in {2..22}; do echo "ukb_cal_chr${chr}_v2.bed ukb_snp_chr${chr}_v2.bim ukbXXX_int_chr1_v2_s488373.fam" >> list_beds.txt; done
 
 plink \
   --bed ukb_cal_chr1_v2.bed \
   --bim ukb_snp_chr1_v2.bim \
-  --fam ukbXXX_int_chr1_v2_s488373.fam\
+  --fam ukbXXX_int_chr1_v2_s488373.fam \
   --merge-list list_beds.txt \
   --make-bed --out ukb_cal_allChrs
 ```
@@ -120,10 +121,11 @@ the names of these predictions files and can be used as input for step 2.
 
 As step 1 and 2 are completely decoupled in **regenie**, you could either use all 
 the traits for testing in step 2 or select a subset of the traits to perform association testing.
+Furthermore, you can use the same Step 1 output to test on array, exome or 
+imputed variants; below, we will illustrate testing on imputed variants.
 
 
-Step 2 of **regenie** has been optimized to run multi-threaded for BGEN files that are in v1.2+ format with 8-bit encoding (which is the format of the UKBB imputed data), PLINK bed/bim/fam files, and PLINK2 pgen/pvar/psam files. We recommend that you use files in one of these formats. Also, step 2 can be run in parallel across chromosomes so if you have access to multiple
-machines, we recommend to split the runs over chromosomes (using 8+ threads).
+Step 2  of **regenie** can be run in parallel across chromosomes so if you have access to multiple machines, we recommend to split the runs over chromosomes (using 8+ threads).
 
 <!---
 #### Sample mismatch 
@@ -144,7 +146,9 @@ Running **regenie** tesing on a single chromosome (here chromosome 1) and using 
 ```
 ./regenie \
   --step 2 \
-  --bgen ukb_imp_chr1_v2.bgen \
+  --bgen ukb_imp_chr1_v3.bgen \
+  --ref-first \
+  --sample ukbXXX_imp_chr1_v3_s487395.sample \
   --phenoFile ukb_phenotypes_BT.txt \
   --covarFile ukb_covariates.txt \
   --bt \
