@@ -324,6 +324,12 @@ you can check they are the same using  the following command (the message should
 <td>Comma separated list of covariates to include in the analysis</td>
 </tr>
 <tr>
+<td><code>--catCovarList</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Comma separated list of categorical covariates to include in the analysis</td>
+</tr>
+<tr>
 <td><code>--pred</code></td>
 <td>FILE</td>
 <td>Optional</td>
@@ -331,6 +337,7 @@ you can check they are the same using  the following command (the message should
 </tr>
 </tbody>
 </table>
+<p>Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. <code>--covarCol PC{1:10}</code>).</p>
 <h4 id="genetic-data-file-format">Genetic data file format</h4>
 <p><strong>regenie</strong> can read BGEN files, bed/bim/fam files or pgen/psam/pvar 
 files in Step 1 and Step 2.</p>
@@ -640,6 +647,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>INT</td>
 <td>Optional</td>
 <td>number of autosomal chromosomes (for non-human studies) [default is 22]</td>
+</tr>
+<tr>
+<td><code>--maxCatLevels</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>maximum number of levels for categorical covariates (for non-human studies) [default is 10]</td>
 </tr>
 <tr>
 <td><code>--niter</code></td>
