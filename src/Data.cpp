@@ -606,7 +606,7 @@ void Data::level_0_calculations() {
   if(params.write_l0_pred){
     string fout_p;
     files.write_preds_files.resize(params.n_pheno);
-    for(size_t ph = 0; ph < params.n_pheno; ph++){
+    for(int ph = 0; ph < params.n_pheno; ph++){
       files.write_preds_files[ph] = std::make_shared<ofstream>();
       fout_p = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
       openStream_write(files.write_preds_files[ph].get(), fout_p, ios::out | ios::binary, sout);
@@ -656,7 +656,7 @@ void Data::level_0_calculations() {
 
   // close streams
   if(params.write_l0_pred){
-    for(size_t ph = 0; ph < params.n_pheno; ph++)
+    for(int ph = 0; ph < params.n_pheno; ph++)
       files.write_preds_files[ph]->close();
   }
 

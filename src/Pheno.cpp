@@ -55,7 +55,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno && ind_in_cov_and_geno;
   pheno_data->masked_indivs.array().colwise() *= filters->ind_in_analysis;
-  if( params->strict_mode ) filters->ind_in_analysis *= pheno_data->masked_indivs.col(0).array();
+  if( params->strict_mode ) 
+    filters->ind_in_analysis = filters->ind_in_analysis && pheno_data->masked_indivs.col(0).array();
   pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
   if(params->binary_mode) pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
   pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
@@ -94,7 +95,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // get phenotype names 
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
-  for( size_t i = 0; i < keep_cols.size(); i++ ) {
+  for(int i = 0; i < keep_cols.size(); i++ ) {
     if(params->select_phenos) // check if keeping pheno
       keep_cols(i) = in_map(tmp_str_vec[i+2], filters->pheno_colKeep_names);
 
@@ -129,7 +130,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec.size() != (2+keep_cols.size()) ){
+    if( (int)tmp_str_vec.size() != (2+keep_cols.size()) ){
       sout << "ERROR: Incorrectly formatted phenotype file." << endl;
       exit(EXIT_FAILURE);
     }
@@ -149,8 +150,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
     // read phenotypes 
     all_miss = true;
-    int i_pheno = 0;
-    for(size_t j = 0; j < keep_cols.size(); j++) {
+    for(int j = 0, i_pheno = 0; j < keep_cols.size(); j++) {
 
       if( !keep_cols(j) ) continue;
 
@@ -278,7 +278,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   // get covariate names 
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
-  for( size_t i = 0; i < keep_cols.size(); i++) {
+  for(int i = 0; i < keep_cols.size(); i++) {
 
     if(!params->select_covs && !in_map(tmp_str_vec[i+2], filters->cov_colKeep_names)) // in case specified as categorical
       filters->cov_colKeep_names[tmp_str_vec[i+2]] = true;
@@ -293,7 +293,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   // check all covariates specified are in the file
   params->n_cov = keep_cols.count(); 
-  if( filters->cov_colKeep_names.size() != params->n_cov ) {
+  if( (int)filters->cov_colKeep_names.size() != params->n_cov ) {
     sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
     exit(EXIT_FAILURE);
   }
@@ -313,7 +313,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec.size() != (keep_cols.size()+2) ){
+    if( (int)tmp_str_vec.size() != (keep_cols.size()+2) ){
       sout << "ERROR: Incorrectly formatted covariate file." << endl;
       exit(EXIT_FAILURE);
     }
@@ -332,7 +332,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     }
 
     // read covariate data and check for missing values
-    for(size_t i_cov = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
+    for(int i_cov = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
 
       if( !keep_cols(j) ) continue;
 
@@ -404,7 +404,7 @@ int check_categories(vector<std::string>& covar, vector<std::map<std::string,int
     // skip qCovar
     if( filters->cov_colKeep_names[ covar[i] ] ) continue;
 
-    if(categories[j].size() > params->max_cat_levels){
+    if((int)categories[j].size() > params->max_cat_levels){
       sout << "ERROR: Too many categories for covariate: " << covar[i] << ". Either use '--maxCatLevels' or combine categories.\n";
       exit(EXIT_FAILURE);
     }
@@ -557,7 +557,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     }
 
     // mask samples not in file
-    pheno_data->masked_indivs.col(ph).array() *= blupf_mask.col(0).array();
+    pheno_data->masked_indivs.col(ph).array() = pheno_data->masked_indivs.col(ph).array() && blupf_mask.col(0).array();
     n_masked_post = pheno_data->masked_indivs.col(ph).cast<int>().sum();
 
     if( n_masked_post < n_masked_prior ){
