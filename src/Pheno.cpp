@@ -73,11 +73,10 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   uint32_t indiv_index;
   bool all_miss;
-  bool keep_pheno;
   double mean;
   string line;
   std::vector< string > tmp_str_vec;
-  vector<bool> pheno_colKeep;
+  ArrayXb keep_cols;
   findID person;
   Files fClass;
 
@@ -94,33 +93,22 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   }
 
   // get phenotype names 
-  params->n_pheno = 0;
-  for( size_t filecol = 2; filecol < tmp_str_vec.size(); filecol++ ) {
-    // default is to use all columns  
-    if(!params->select_phenos){
-      pheno_colKeep.push_back( true );
-      params->n_pheno++;
-      files->pheno_names.push_back( tmp_str_vec[filecol] );
-    } else {
-      // otherwise, check if phenotype is in list of phenotypes to keep
-      keep_pheno = std::find(filters->pheno_colKeep_names.begin(), filters->pheno_colKeep_names.end(), tmp_str_vec[filecol]) != filters->pheno_colKeep_names.end();
-      pheno_colKeep.push_back( keep_pheno );
-      if(keep_pheno){
-        params->n_pheno++;
-        files->pheno_names.push_back( tmp_str_vec[filecol] );
-      }
-    }
-  }
+  keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
+  for( size_t i = 0; i < keep_cols.size(); i++ ) {
+    if(params->select_phenos) // check if keeping pheno
+      keep_cols(i) = in_map(tmp_str_vec[i+2], filters->pheno_colKeep_names);
 
-  // check #pheno is > 0
+    if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
+  }
+  params->n_pheno = keep_cols.count();
+
+  // check #pheno
   if(params->n_pheno < 1){
     sout << "ERROR: Need at least one phenotype." << endl;
     exit(EXIT_FAILURE);
-  }
+  } 
   sout << "n_pheno = " << params->n_pheno << endl;
-
-  // if n_pheno = 1, drop all missing observations
-  if(params->n_pheno == 1) params->strict_mode = true; 
+  params->strict_mode = params->n_pheno == 1; // drop all missing observations
 
   // how missingness is handles
   if( params->strict_mode ) sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
@@ -141,7 +129,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec.size() != (2+pheno_colKeep.size()) ){
+    if( tmp_str_vec.size() != (2+keep_cols.size()) ){
       sout << "ERROR: Incorrectly formatted phenotype file." << endl;
       exit(EXIT_FAILURE);
     }
@@ -162,9 +150,9 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     // read phenotypes 
     all_miss = true;
     int i_pheno = 0;
-    for(size_t j = 0; j < pheno_colKeep.size(); j++) {
+    for(size_t j = 0; j < keep_cols.size(); j++) {
 
-      if( !pheno_colKeep[j] ) continue;
+      if( !keep_cols(j) ) continue;
 
       pheno_data->phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j], params, sout);
 
@@ -265,13 +253,14 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
 }
 
-void covariate_read(struct param* params, struct in_files* files,struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
+void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
 
+  int nc_cat = 0;
   uint32_t indiv_index;
-  bool keep_cov;
-  vector<bool> cov_colKeep;
+  ArrayXb keep_cols;
   string line;
-  std::vector< string > tmp_str_vec ;
+  std::vector< string > tmp_str_vec, covar_names;
+  std::vector< std::map<std::string,int> > categories;
   findID person;
   Files fClass;
 
@@ -280,7 +269,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   fClass.readLine(line);
   check_str(line); // remove carriage returns at the end of line if any
 
-  // check that FID and IID are first two entries in header
+  // check header
   tmp_str_vec = string_split(line,"\t ");
   if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
     sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
@@ -288,28 +277,25 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   }
 
   // get covariate names 
-  params->n_cov = 0;
-  for( size_t filecol = 2; filecol < tmp_str_vec.size(); filecol++ ) {
-    // default is to use all columns  
-    if(!params->select_covs){
-      cov_colKeep.push_back( true );
-      params->n_cov++;
-    } else {
-      // otherwise, check if covariate is in list of covariates to keep
-      keep_cov = std::find(filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end(), tmp_str_vec[filecol]) != filters->cov_colKeep_names.end();
-      cov_colKeep.push_back( keep_cov );
-      if(keep_cov) params->n_cov++;
+  keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
+  for( size_t i = 0; i < keep_cols.size(); i++) {
+
+    if(!params->select_covs && !in_map(tmp_str_vec[i+2], filters->cov_colKeep_names)) // in case specified as categorical
+      filters->cov_colKeep_names[tmp_str_vec[i+2]] = true;
+    else keep_cols(i) = in_map(tmp_str_vec[i+2], filters->cov_colKeep_names);
+
+    if(keep_cols(i)){
+      covar_names.push_back( tmp_str_vec[i+2] );
+      nc_cat += !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
     }
   }
+  categories.resize(nc_cat);
 
   // check all covariates specified are in the file
-  if( params->select_covs ){
-    sort( filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end() );
-    int ncov_selected = std::unique(filters->cov_colKeep_names.begin(), filters->cov_colKeep_names.end()) - filters->cov_colKeep_names.begin();
-    if( ncov_selected != params->n_cov ) {
-      sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
-      exit(EXIT_FAILURE);
-    }
+  params->n_cov = keep_cols.count(); 
+  if( filters->cov_colKeep_names.size() != params->n_cov ) {
+    sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
+    exit(EXIT_FAILURE);
   }
 
   // check #covariates is > 0
@@ -318,7 +304,6 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
     ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, true );
     return ;
   }
-  sout << "n_cov = " << params->n_cov << flush;
 
   // allocate memory 
   pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov);
@@ -328,7 +313,7 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec.size() < cov_colKeep.size() ){
+    if( tmp_str_vec.size() != (keep_cols.size()+2) ){
       sout << "ERROR: Incorrectly formatted covariate file." << endl;
       exit(EXIT_FAILURE);
     }
@@ -347,19 +332,54 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
     }
 
     // read covariate data and check for missing values
-    for(size_t i_cov = 0, j = 0; j < cov_colKeep.size(); j++) {
+    for(size_t i_cov = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
 
-      if( !cov_colKeep[j] ) continue;
+      if( !keep_cols(j) ) continue;
 
-      pheno_data->new_cov(indiv_index, 1 + i_cov) = convertDouble(tmp_str_vec[2+j], params, sout);
+      // if quantitative
+      if( filters->cov_colKeep_names[ covar_names[i_cov] ] )
+        pheno_data->new_cov(indiv_index, 1 + i_cov) = convertDouble(tmp_str_vec[2+j], params, sout);
+      else // if categorical, convert to numeric category
+        pheno_data->new_cov(indiv_index, 1 + i_cov) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
+
       if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) {
         sout << "ERROR: Individual has missing value in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
         exit(EXIT_FAILURE);
       }
+
       i_cov++;
     }
 
   }
+  //cerr << endl<<pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols())<< endl;
+
+  // add dummy variables if needed
+  if(nc_cat > 0){
+    int n_dummies;
+    int n_add = check_categories(covar_names, categories, params, filters, sout) - nc_cat; // new columns to add (or remove if single category)
+    MatrixXd full_covarMat (pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + n_add);
+
+    // copy intercept column
+    full_covarMat.col(0) = pheno_data->new_cov.col(0);
+
+    for(int i = 1, j = 1; i < pheno_data->new_cov.cols(); i++){
+      //cerr << i << "/" << pheno_data->new_cov.cols()-1 << " - " << covar_names[i-1] << " is q: " << std::boolalpha << filters->cov_colKeep_names[ covar_names[i-1] ] << endl;
+
+      if( filters->cov_colKeep_names[ covar_names[i-1] ] ) // copy col
+        full_covarMat.col(j++) = pheno_data->new_cov.col(i);
+      else { 
+        n_dummies = pheno_data->new_cov.col(i).maxCoeff();
+        if( n_dummies > 0 ){
+          full_covarMat.block(0, j, full_covarMat.rows(), n_dummies) = get_dummies(pheno_data->new_cov.col(i));
+          j+= n_dummies;
+        }
+      }
+    }
+
+    pheno_data->new_cov = full_covarMat;
+    params->n_cov = full_covarMat.cols() - 1; // ignore intercept
+  }
+  //cerr << endl<<pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols())<< endl;
 
   // mask individuals in genotype data but not in covariate data
   pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
@@ -368,10 +388,48 @@ void covariate_read(struct param* params, struct in_files* files,struct filter* 
   pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
   if(params->strict_mode) pheno_data->new_cov.array().colwise() *= pheno_data->masked_indivs.col(0).array().cast<double>();
 
-  sout <<  endl;
+  sout << "n_cov = " << params->n_cov << endl;
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.cast<int>().sum() << endl;
 
   fClass.closeFile();
+
+}
+
+int check_categories(vector<std::string>& covar, vector<std::map<std::string,int>>& categories, struct param* params, struct filter* filters, mstream& sout){
+
+  int ntotal = 0;
+
+  for(size_t i = 0, j = 0; i < covar.size(); i++){
+
+    // skip qCovar
+    if( filters->cov_colKeep_names[ covar[i] ] ) continue;
+
+    if(categories[j].size() > params->max_cat_levels){
+      sout << "ERROR: Too many categories for covariate: " << covar[i] << ". Either use '--maxCatLevels' or combine categories.\n";
+      exit(EXIT_FAILURE);
+    }
+
+    ntotal += categories[j++].size() - 1; // add K-1 dummy vars
+  }
+
+  return ntotal;
+}
+
+MatrixXd get_dummies(const Eigen::Ref<const Eigen::MatrixXd>& numCov) {
+
+  int index, nvars;
+  nvars = numCov.maxCoeff();
+
+  MatrixXd dout = MatrixXd::Zero(numCov.rows(), nvars);
+
+  for(int i = 0; i < numCov.rows(); i++){
+    if(numCov(i,0) == 0) continue; // will go to intercept
+
+    index = numCov(i,0) - 1;
+    dout(i, index) = 1;
+  }
+
+  return dout;
 
 }
 
@@ -491,7 +549,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     for (size_t i = 1; i < tmp_str_vec.size(); i++){
       // ignore sample if it is not in genotype data
-      if ( params->FID_IID_to_ind.find(tmp_str_vec[i]) == params->FID_IID_to_ind.end()) continue;
+      if (!in_map(tmp_str_vec[i], params->FID_IID_to_ind)) continue;
       indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
 
       blupf_mask( indiv_index , 0 ) = true;

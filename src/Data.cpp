@@ -236,11 +236,7 @@ void Data::write_l0_master(){
 
   // open master
   ofstream ofile;
-  ofile.open(fout.c_str(), ios::out );
-  if (!ofile.is_open()) {
-    sout << "ERROR : Cannot write to file " << fout  << endl ;
-    exit(EXIT_FAILURE);
-  }
+  openStream_write(&ofile, fout, ios::out, sout);
 
   // header
   ofile << params.nvs_stored << " " << params.block_size << endl;
@@ -294,12 +290,7 @@ void Data::write_snplist(string fname, int start, int ns){
 
   string fout = fname + ".snplist";
   ofstream ofile;
-
-  ofile.open(fout.c_str(), ios::out );
-  if (!ofile.is_open()) {
-    sout << "ERROR : Cannot write to file " << fout  << endl ;
-    exit(EXIT_FAILURE);
-  }
+  openStream_write(&ofile, fout, ios::out, sout);
 
   for(int i = 0; i < ns; i++) 
     ofile << snpinfo[start+i].ID << endl;
@@ -611,10 +602,22 @@ void Data::level_0_calculations() {
     l0.GtY.resize(params.cv_folds);
   }
 
+  // open streams to write level 0 predictions
+  if(params.write_l0_pred){
+    string fout_p;
+    files.write_preds_files.resize(params.n_pheno);
+    for(size_t ph = 0; ph < params.n_pheno; ph++){
+      files.write_preds_files[ph] = std::make_shared<ofstream>();
+      fout_p = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
+      openStream_write(files.write_preds_files[ph].get(), fout_p, ios::out | ios::binary, sout);
+    }
+  }
+
+  // start level 0
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
 
     int chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     int chrom_nsnps = chr_map[chrom][0];
     int chrom_nb = chr_map[chrom][1];
@@ -649,6 +652,12 @@ void Data::level_0_calculations() {
       block++; in_filters.step1_snp_count += bs;
     }
 
+  }
+
+  // close streams
+  if(params.write_l0_pred){
+    for(size_t ph = 0; ph < params.n_pheno; ph++)
+      files.write_preds_files[ph]->close();
   }
 
   if(params.early_exit) {
@@ -717,7 +726,7 @@ void Data::prep_parallel_l0(){
   ifstream infile;
 
   // print info
-  sout << " * running jobs in parallel (Job #" << params.job_num << ")\n";
+  sout << " * running jobs in parallel (job #" << params.job_num << ")\n";
 
   infile.open(fin.c_str(), ios::in);
   if (!infile.is_open()) {
@@ -1039,7 +1048,7 @@ void Data::make_predictions(const int ph, const  int val) {
   // if specified, write betas to file (open in append mode)
   if(!params.within_sample_l0 && params.print_block_betas) {
     outname = files.out_file + "_level1.betas";
-    ofile.open(outname.c_str(), ios::out | ios::app);
+    openStream_write(&ofile, outname, ios::out | ios::app, sout);
     ofile << ph + 1 << " ";
     ofile << beta_avg.transpose() << endl;
     ofile.close();
@@ -1051,7 +1060,7 @@ void Data::make_predictions(const int ph, const  int val) {
 
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     int chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     nn = chr_map[chrom][1] * params.n_ridge_l0;
     if(nn > 0) {
@@ -1128,7 +1137,7 @@ void Data::make_predictions_loocv(const int ph, const  int val) {
 
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
       int chrom = files.chr_read[itr];
-      if( chr_map.find(chrom) == chr_map.end() ) continue;
+      if( !in_map(chrom, chr_map) ) continue;
 
       nn = chr_map[chrom][1] * params.n_ridge_l0;
       if(nn > 0) {
@@ -1209,7 +1218,7 @@ void Data::make_predictions_binary(const int ph, const  int val) {
 
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     int chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     nn = chr_map[chrom][1] * params.n_ridge_l0;
     if(nn > 0) {
@@ -1310,7 +1319,7 @@ void Data::make_predictions_binary_loocv(const int ph, const int val) {
 
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
       int chrom = files.chr_read[itr];
-      if( chr_map.find(chrom) == chr_map.end() ) continue;
+      if( !in_map(chrom, chr_map) ) continue;
 
       nn = chr_map[chrom][1] * params.n_ridge_l0;
 
@@ -1350,7 +1359,7 @@ void Data::write_predictions(const int ph){
     int chr, nn, chr_ctr = 0;
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
       chr = files.chr_read[itr];
-      if( chr_map.find(chr) == chr_map.end() ) continue;
+      if( !in_map(chr, chr_map) ) continue;
 
       nn = chr_map[chr][1];
       if(nn > 0){
@@ -1383,7 +1392,7 @@ void Data::write_predictions(const int ph){
     int chr, nn, chr_ctr = 0;
     for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
       chr = files.chr_read[itr];
-      if( chr_map.find(chr) == chr_map.end() ) continue;
+      if( !in_map(chr, chr_map) ) continue;
 
       nn = chr_map[chr][1];
       if(nn > 0) {
@@ -1532,7 +1541,7 @@ void Data::test_snps() {
 
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
     chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
@@ -2056,7 +2065,7 @@ void Data::blup_read_chr(const int chrom) {
     for( size_t filecol = 1; filecol < id_strings.size(); filecol++ ) {
 
       // ignore sample if it is not in genotype data
-      if ( params.FID_IID_to_ind.find(id_strings[filecol]) == params.FID_IID_to_ind.end()) continue;
+      if (!in_map(id_strings[filecol], params.FID_IID_to_ind)) continue;
       indiv_index = params.FID_IID_to_ind[id_strings[filecol]];
 
       // ignore sample if it is not included in analysis
@@ -2339,7 +2348,7 @@ void Data::test_snps_fast() {
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
 
     chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     chrom_nsnps = chr_map[chrom][0];
     chrom_nb = chr_map[chrom][1];
@@ -2848,7 +2857,7 @@ void Data::test_joint() {
   for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
 
     chrom = files.chr_read[itr];
-    if( chr_map.find(chrom) == chr_map.end() ) continue;
+    if( !in_map(chrom, chr_map) ) continue;
 
     chrom_nb = chr_map[chrom][1];
 

@@ -75,10 +75,13 @@ void print_header(std::ostream& o){
   oss << "REGENIE v" << VERSION_NUMBER; 
   vnumber = oss.str();
 
-  o << left << std::setw(14) << " " << "|" << std::string(30, '=')<< "|" << endl;
-  o << left << std::setw(14) << " " << "|" << left << std::setw(6) << " " <<
-    left << std::setw(24) << vnumber << "|" << endl;
-  o << left << std::setw(14) << " " << "|" << std::string(30, '=')<< "|\n\n";
+  int out_width = 6;
+  int total_width = vnumber.size() + out_width * 2;
+
+  o << left << std::setw(14) << " " << "|" << std::string(total_width, '=')<< "|" << endl;
+  o << left << std::setw(14) << " " << "|" << left << std::setw(out_width) << " " <<
+    left << std::setw(total_width - out_width) << vnumber << "|" << endl;
+  o << left << std::setw(14) << " " << "|" << std::string(total_width, '=')<< "|\n\n";
 
   o << "Copyright (c) 2020 Joelle Mbatchou and Jonathan Marchini." << endl;
   o << "Distributed under the MIT License.\n";
@@ -119,11 +122,12 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("extract", "file with IDs of variants to retain in the analysis", cxxopts::value<std::string>(files->file_snps_include),"FILE")
     ("exclude", "file with IDs of variants to remove from the analysis", cxxopts::value<std::string>(files->file_snps_exclude),"FILE")
     ("p,phenoFile", "phenotype file (header required starting with FID IID)", cxxopts::value<std::string>(files->pheno_file),"FILE")
-    ("phenoCol", "phenotype name in header (use for each phenotype to keep)", cxxopts::value< std::vector<std::string> >(filters->pheno_colKeep_names),"STRING")
-    ("phenoColList", "comma separated list of phenotype names to keep", cxxopts::value<std::string>(),"STRING,..,STRING")
+    ("phenoCol", "phenotype name in header (use for each phenotype to keep; can use parameter expansion {i:j})", cxxopts::value< std::vector<std::string> >(),"STRING")
+    ("phenoColList", "comma separated list of phenotype names to keep (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("c,covarFile", "covariate file (header required starting with FID IID)", cxxopts::value<std::string>(files->cov_file),"FILE")
-    ("covarCol", "covariate name in header (use for each covariate to keep)", cxxopts::value< std::vector<std::string> >(filters->cov_colKeep_names),"STRING")
-    ("covarColList", "comma separated list of covariate names to keep", cxxopts::value<std::string>(),"STRING,..,STRING")
+    ("covarCol", "covariate name in header (use for each covariate to keep; can use parameter expansion {i:j})", cxxopts::value< std::vector<std::string> >(),"STRING")
+    ("covarColList", "comma separated list of covariate names to keep (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
+    ("catCovarList", "comma separated list of categorical covariates", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
     ("bt", "analyze phenotypes as binary")
     ("1,cc12", "use control=1,case=2,missing=NA encoding for binary traits")
@@ -183,6 +187,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("setl0", "comma separated list of ridge parameters to use when fitting models within blocks", cxxopts::value<std::string>(), "FLOAT,..,FLOAT")
     ("setl1", "comma separated list of ridge parameters to use when fitting model across blocks", cxxopts::value<std::string>(), "FLOAT,..,FLOAT")
     ("nauto", "number of autosomal chromosomes", cxxopts::value<int>(),"INT")
+    ("maxCatLevels", "maximum number of levels for categorical covariates", cxxopts::value<int>(params->max_cat_levels),"INT(=10)")
     ("nb", "number of blocks to use", cxxopts::value<int>(params->n_block),"INT")
     ("force-step1", "run step 1 for more than 1M variants (not recommended)")
     ("niter", "maximum number of iterations for logistic regression", cxxopts::value<int>(params->niter_max),"INT(=30)")
@@ -253,8 +258,6 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("remove") ) params->rm_indivs = true;
     if( vm.count("extract") ) params->keep_snps = true;
     if( vm.count("exclude") ) params->rm_snps = true;
-    if( vm.count("phenoCol") ) params->select_phenos = true;
-    if( vm.count("covarCol") ) params->select_covs = true;
     if( vm.count("bt") ) params->binary_mode = true;
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
@@ -315,18 +318,38 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("phenoColList") ) {
       params->select_phenos = true;
       tmp_str_vec = string_split(vm["phenoColList"].as<string>(),",");
-      filters->pheno_colKeep_names.insert( 
-          filters->pheno_colKeep_names.end(),
-          std::begin( tmp_str_vec ), 
-          std::end( tmp_str_vec)         );
+      for( size_t i = 0; i < tmp_str_vec.size(); i++) {
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->pheno_colKeep_names[cn] = true;
+      }
+    }
+    if( vm.count("phenoCol") ) {
+      params->select_phenos = true;
+      tmp_str_vec = vm["phenoCol"].as<std::vector<string>>();
+      for( size_t i = 0; i < tmp_str_vec.size(); i++)
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->pheno_colKeep_names[cn] = true;
     }
     if( vm.count("covarColList") ) {
       params->select_covs = true;
       tmp_str_vec = string_split(vm["covarColList"].as<string>(),",");
-      filters->cov_colKeep_names.insert( 
-          filters->cov_colKeep_names.end(),
-          std::begin( tmp_str_vec ), 
-          std::end( tmp_str_vec)         );
+      for( size_t i = 0; i < tmp_str_vec.size(); i++){
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->cov_colKeep_names[cn] = true;
+      }
+    }
+    if( vm.count("covarCol") ) {
+      params->select_covs = true;
+      tmp_str_vec = vm["covarCol"].as<std::vector<string>>();
+      for( size_t i = 0; i < tmp_str_vec.size(); i++)
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->cov_colKeep_names[cn] = true;
+    }
+    if( vm.count("catCovarList") ) {
+      tmp_str_vec = string_split(vm["catCovarList"].as<string>(),",");
+      for( size_t i = 0; i < tmp_str_vec.size(); i++)
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->cov_colKeep_names[cn] = false;
     }
     if( vm.count("chrList") ) {
       params->select_chrs = true;
@@ -666,7 +689,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       exit(EXIT_FAILURE);
     }
 
-    if( params->test_mode && params->select_chrs && (filters->chrKeep_test.find(-1) != filters->chrKeep_test.end()) ){
+    if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) ){
       sout << "ERROR: Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
@@ -861,6 +884,57 @@ int chrStrToInt(const string chrom, const int nChrom) {
   return -1;
 }
 
+vector<string> check_name(string const& str, mstream& sout){
+
+  int imin, imax;
+  size_t pos_start = 0, pos_end; 
+  string name, pref, suf, strerror;
+  strerror = "ERROR: Invalid string exapansion (=" + str + ").\n";
+  vector<string> strout;
+
+  if(str.size() == 0) return strout;
+
+  pos_end = str.find("{"); 
+  if(pos_end == std::string::npos) {
+    strout.push_back(str); return strout;
+  }
+
+  try {
+    // prefix if present
+    name = str.substr (pos_start, pos_end - pos_start);
+    pref = name;
+
+    // find :
+    pos_start = pos_end + 1, pos_end = str.find(":"); 
+    if(pos_end == std::string::npos) throw strerror;
+    name = str.substr (pos_start, pos_end - pos_start);
+    imin = stoi( name );
+
+    // find }
+    pos_start = pos_end+1, pos_end = str.find("}"); 
+    if(pos_end == std::string::npos) throw strerror;
+    name = str.substr (pos_start, pos_end - pos_start);
+    imax = stoi( name );
+
+  } catch (const std::invalid_argument& ia){ 
+    sout << strerror ;
+    exit(EXIT_FAILURE);
+  } catch (const std::string& msg){ 
+    sout << msg;
+    exit(EXIT_FAILURE);
+  }
+
+  // suffix is present
+  suf = str.substr (pos_end+1, std::string::npos);
+
+  for(int j = imin; j <= imax; j++){
+    name = pref + to_string(j) + suf;
+    strout.push_back(name);
+  }
+
+  return strout;
+}
+
 double convertDouble(const string& val, struct param* params, mstream& sout){
 
   if(val == params->missing_pheno_str)
@@ -872,6 +946,22 @@ double convertDouble(const string& val, struct param* params, mstream& sout){
     exit(EXIT_FAILURE);
   }
   return dval;
+}
+
+// convert to numerical category using map
+double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struct param* params, mstream& sout){
+
+  if(val == params->missing_pheno_str)
+    return params->missing_value_double;
+
+  if(in_map(val, cmap)) 
+    return cmap[val];
+
+  // add to map
+  int newcat = cmap.size();
+  cmap[val] = newcat;
+
+  return newcat;
 }
 
 

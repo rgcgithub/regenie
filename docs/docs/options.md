@@ -77,7 +77,10 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
 |`--covarColList` | STRING | Optional | Comma separated list of covariates to include in the analysis|
+|`--catCovarList` | STRING | Optional | Comma separated list of categorical covariates to include in the analysis|
 |`--pred`  | FILE | Optional  | File containing predictions from Step 1 (see Overview). **This is required for `--step 2`**|
+
+Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. `--covarCol PC{1:10}`).
 
 
 #### Genetic data file format
@@ -256,6 +259,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--minMAC`| FLOAT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
+|`--maxCatLevels`| INT| Optional| maximum number of levels for categorical covariates (for non-human studies) [default is 10]|
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|

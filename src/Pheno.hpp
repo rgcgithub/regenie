@@ -43,6 +43,8 @@ struct phenodt {
 void read_pheno_and_cov(struct in_files*,struct param*,struct filter*,struct phenodt*, struct ests*,mstream&);
 void pheno_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
 void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt*,ArrayXb&,mstream&);
+int check_categories(std::vector<std::string>&,std::vector<std::map<std::string,int>>&,struct param*,struct filter*,mstream&);
+Eigen::MatrixXd get_dummies(const Eigen::Ref<const Eigen::MatrixXd>&);
 void getCovBasis(Eigen::MatrixXd&,struct param*);
 void residualize_phenotypes(struct param*,struct phenodt*,const std::vector<std::string>&,mstream&);
 void prep_run(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);

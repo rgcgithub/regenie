@@ -284,6 +284,10 @@ void GenoMask::updateMasks_loo(const int start, const int bs, struct param* para
    // cerr << endl << Gtmp.col(ix).head(3) << "\n\n" << gblock->Gmat.col(i).head(3) << "\n\n" << maskvec.head(3) << endl;
     break;
   }
+  if(!take_max && !take_comphet) {
+    nsites.conservativeResize( nkept + 1);
+    nsites(nkept) = nkept; // to compute AAF with sum for full mask
+  }
 
 }
 
@@ -875,7 +879,7 @@ void GenoMask::prep_setlists(const std::string& fin, const std::string& prefix, 
     // get index of masks
     vector<int> mindices;
     for(size_t i = 1; i < tmp_str_vec.size(); i++){
-      if(mask_map.find( tmp_str_vec[i] ) == mask_map.end()) continue;
+      if (!in_map(tmp_str_vec[i], mask_map)) continue;
       mindices.insert(mindices.end(), mask_map[ tmp_str_vec[i] ].begin(), mask_map[ tmp_str_vec[i] ].end());
     }
     // sort and remove duplicates

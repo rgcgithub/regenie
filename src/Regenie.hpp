@@ -144,7 +144,8 @@ struct param {
   bool keep_snps = false; // user specify to keep select snps in analysis
   bool rm_snps = false; // user specify to remove snps from analysis
   bool select_phenos = false; // user specify which phenotype columns to use
-  bool select_covs = false; // user specify which covariate columns to use
+  bool select_covs = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
+  int max_cat_levels = 10; // maximum number of categories of categorical covars
   bool select_chrs = false; // user specify which chromosomes to test
 
   // other global options
@@ -293,6 +294,7 @@ struct in_files {
   std::string split_file;
   std::string out_file;
   std::string blup_file;
+  std::vector<std::shared_ptr<std::ofstream>> write_preds_files;
   std::vector<std::string> blup_files;
   std::vector<std::string> pheno_names;
   std::vector<int> pheno_index;
@@ -310,8 +312,7 @@ struct in_files {
 struct filter {
 
   // to filter phenotype/covariates/genotype
-  std::vector<std::string> pheno_colKeep_names;
-  std::vector<std::string> cov_colKeep_names;
+  std::map<std::string, bool> pheno_colKeep_names, cov_colKeep_names; // true for qVar, false for catVar
   std::map <int, bool> chrKeep_test;
   std::map <std::string, uint64> snpID_to_ind;
   ArrayXb ind_ignore;
@@ -331,8 +332,15 @@ void print_header(std::ostream&);
 void set_ridge_params(int,std::vector<double>&,const std::string,mstream&);
 void print_usage_info(struct param*,struct in_files*,mstream&);
 int chrStrToInt(const std::string, const int);
+std::vector<std::string> check_name(std::string const&,mstream&);
 double convertDouble(const std::string&,struct param*,mstream&);
+double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param*,mstream&);
 std::string print_csv(const std::vector<std::string>&);
+
+template <typename KEY, typename VALUE> 
+bool in_map(KEY element, std::map<KEY,VALUE>& emap){
+  return emap.find(element) != emap.end();
+}
 
 
 #endif

@@ -171,7 +171,8 @@ echo -e "Files are identical.\n\n==>Running test #$i\n"
 basecmd="--step 2 \
   --bed ${mntpt}example/example_3chr \
   --ref-first \
-  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --covarFile ${mntpt}example/covariates_wBin.txt \
+  --covarColList V{1:2},V4 \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --phenoColList Y2 \
   --bsize 100 \
@@ -207,6 +208,7 @@ fi
 echo -e "==>Running test #$i"
 # Next test
 rgcmd="$basecmd \
+  --catCovarList V4 \
   --extract ${mntpt}test/test_out.snplist \
   --out ${mntpt}test/test_out_extract"
 
@@ -219,6 +221,8 @@ if ! cmp --silent \
   ${REGENIE_PATH}test/test_out_Y2.regenie \
   ${REGENIE_PATH}test/test_out_extract_Y2.regenie 
 then
+  print_err
+elif (( `grep "n_cov = 3" "${REGENIE_PATH}test/test_out_extract.log" | wc -l` != 1 )); then
   print_err
 fi
 

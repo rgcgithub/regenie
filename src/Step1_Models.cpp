@@ -296,23 +296,7 @@ void ridge_level_0(const int block, struct in_files* files, struct param* params
 
       // write predictions to file if specified
       if(params->write_l0_pred) {
-        out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-        if(block == 0)
-          ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
-        else
-          ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
-
-        if (!ofile.is_open()) {
-          sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
-          exit(EXIT_FAILURE);
-        }
-
-        ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
-        if( ofile.fail() ){
-          sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
-          exit(EXIT_FAILURE);
-        }
-        ofile.close();
+        write_l0_file(files->write_preds_files[ph].get(), Xout, sout);
         //if(block ==0 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 3, 3) << endl;
       }
 
@@ -417,23 +401,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
 
     if(params->write_l0_pred) {
       Xout = l1->test_mat_conc[ph].block(0, 0, params->n_samples, params->n_ridge_l0);
-      out_pheno = files->loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
-      if(block == 0)
-        ofile.open(out_pheno.c_str(), ios::out | ios::trunc | ios::binary );
-      else
-        ofile.open(out_pheno.c_str(), ios::out | ios::app | ios::binary );
-
-      if (!ofile.is_open()) {
-        sout << "ERROR : Cannot write temporary file " << out_pheno  << endl ;
-        exit(EXIT_FAILURE);
-      }
-
-      ofile.write( reinterpret_cast<char *> (&Xout(0,0)), Xout.rows() * Xout.cols() * sizeof(double) );
-        if( ofile.fail() ){
-          sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
-          exit(EXIT_FAILURE);
-        }
-      ofile.close();
+      write_l0_file(files->write_preds_files[ph].get(), Xout, sout);
       //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
     }
 
@@ -443,6 +411,16 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
   auto t3 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2);
   sout << " (" << duration.count() << "ms) "<< endl;
+
+}
+
+void write_l0_file(ofstream* ofs, MatrixXd& Xout, mstream& sout){
+
+  ofs->write( reinterpret_cast<char *> (&Xout(0,0)), Xout.size() * sizeof(double) );
+  if( ofs->fail() ){
+    sout << "ERROR: Cannot successfully write temporary level 0 predictions to disk\n";
+    exit(EXIT_FAILURE);
+  }
 
 }
 

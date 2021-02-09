@@ -129,8 +129,8 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
   // check duplicates -- if not, store in map
   for(size_t i = 0; i < params->n_samples; i++) {
-    if (params->FID_IID_to_ind.find(tmp_ids[i]) != params->FID_IID_to_ind.end()) {
-      sout << "ERROR: Duplicate individual in bgen file : FID_IID=" << tmp_ids[i] << endl;
+    if (in_map(tmp_ids[i], params->FID_IID_to_ind)) {
+      sout << "ERROR: Duplicate individual in bgen file : FID_IID =" << tmp_ids[i] << endl;
       exit(EXIT_FAILURE);
     }
     params->FID_IID_to_ind.insert( std::make_pair( tmp_ids[i], i ) );
@@ -454,7 +454,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
     tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
 
     // check duplicates -- if not, store in map
-    if (params->FID_IID_to_ind.find(tmp_id) != params->FID_IID_to_ind.end()) {
+    if (in_map(tmp_id, params->FID_IID_to_ind)) {
       sout << "ERROR: Duplicate individual in fam file : FID_IID=" << tmp_id << endl;
       exit(EXIT_FAILURE);
     }
@@ -669,7 +669,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
 
     // check duplicates -- if not, store in map
-    if (params->FID_IID_to_ind.find(tmp_id ) != params->FID_IID_to_ind.end()) {
+    if (in_map(tmp_id, params->FID_IID_to_ind)) {
       sout << "ERROR: Duplicate individual in fam file : FID_IID=" << tmp_id << endl;
       exit(EXIT_FAILURE);
     }
@@ -829,7 +829,7 @@ void set_snps_to_keep(struct in_files* files, struct param* params, struct filte
       exit(EXIT_FAILURE);
     }
 
-    if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
+    if (in_map(tmp_str_vec[0], filters->snpID_to_ind)) {
       snp_pos = filters->snpID_to_ind[ tmp_str_vec[0] ];
       filters->geno_mask[ snp_pos ] = false;
       // adjust counts
@@ -862,7 +862,7 @@ void set_snps_to_rm(struct in_files* files, struct param* params, struct filter*
       exit(EXIT_FAILURE);
     }
 
-    if (filters->snpID_to_ind.find(tmp_str_vec[0]) != filters->snpID_to_ind.end()) {
+    if (in_map(tmp_str_vec[0], filters->snpID_to_ind)) {
       snp_pos = filters->snpID_to_ind[ tmp_str_vec[0] ];
       filters->geno_mask[ snp_pos ] = true;
       // adjust counts
@@ -2093,7 +2093,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
 
 bool in_chrList(const int snp_chr, struct filter* filters){
 
-  return ( filters->chrKeep_test.find(snp_chr)!= filters->chrKeep_test.end() );
+  return in_map(snp_chr, filters->chrKeep_test);
 }
 
 string bgi_chrList(struct filter* filters){
@@ -2254,7 +2254,7 @@ findID getIndivIndex(const string &FID, const string &IID, struct param* params,
   tmp_str = FID + "_" + IID;
 
   // check individual is in genotype data
-  indiv.is_found = ( params->FID_IID_to_ind.find(tmp_str) != params->FID_IID_to_ind.end() );
+  indiv.is_found = in_map(tmp_str, params->FID_IID_to_ind);
 
   if(indiv.is_found)
     indiv.index = params->FID_IID_to_ind[tmp_str];
@@ -2285,7 +2285,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
   myfile.openForRead (files->set_file, sout);
   if(params->check_mask_files) {
     line = files->out_file + "_masks_report.txt";
-    openStream_write(report_file, line, ios::out | ios::app, sout);
+    openStream_write(&report_file, line, ios::out | ios::app, sout);
     report_file << "\n## set file: [" << files->set_file << "]\n## list of variants not in annotation or genetic data input files\n";
   }
 
@@ -2342,7 +2342,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
     for (size_t i = 3; i < tmp_str_vec.size(); i++){
 
       // check variant is in genotype file
-      if ( filters->snpID_to_ind.find(tmp_str_vec[i]) == filters->snpID_to_ind.end()) {
+      if (!in_map(tmp_str_vec[i], filters->snpID_to_ind)) {
         if(params->check_mask_files) set_problem.push_back(tmp_str_vec[i]);
         all_in_geno = false; continue;// mark as incomplete
       }
@@ -2360,7 +2360,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
       if( params->build_mask ){
         // check annotation for set has been given for variant
         // else, assign to default annotation category 0
-        if( snpinfo[ snp_index ].anno.find(tmp_set.ID) == snpinfo[ snp_index ].anno.end() ) {
+        if (!in_map(tmp_set.ID, snpinfo[ snp_index ].anno)) {
           all_w_anno = false;
           if(params->check_mask_files) set_problem.push_back(tmp_str_vec[i]);
           snpinfo[ snp_index ].anno.insert( std::make_pair( tmp_set.ID, ainfo_null ) );
@@ -2514,7 +2514,7 @@ void set_sets_to_keep(int& nsets, const struct in_files* files, struct param* pa
   if( params->set_select_list ){
     tmp_str_vec = string_split(files->file_sets_include,",");
     for(size_t iset = 0; iset < tmp_str_vec.size(); iset++)
-      if (filters->setID_to_ind.find(tmp_str_vec[iset]) != filters->setID_to_ind.end()) {
+      if (in_map(tmp_str_vec[iset], filters->setID_to_ind)) {
         filters->setID_to_ind[ tmp_str_vec[iset] ][2] = 1;
         nsets++;
       }
@@ -2525,7 +2525,7 @@ void set_sets_to_keep(int& nsets, const struct in_files* files, struct param* pa
 
     while( myfile.readLine(name) ){ // assume single column with setname
 
-      if (filters->setID_to_ind.find(name) != filters->setID_to_ind.end()) {
+      if (in_map(name, filters->setID_to_ind)) {
         filters->setID_to_ind[ name ][2] = 1;
         nsets++;
       }
@@ -2548,7 +2548,7 @@ void set_sets_to_rm(int& nsets, const struct in_files* files, struct param* para
   if( params->set_select_list ){
     tmp_str_vec = string_split(files->file_sets_exclude,",");
     for(size_t iset = 0; iset < tmp_str_vec.size(); iset++)
-      if (filters->setID_to_ind.find(tmp_str_vec[iset]) != filters->setID_to_ind.end()) {
+      if (in_map(tmp_str_vec[iset], filters->setID_to_ind)) {
         filters->setID_to_ind[ tmp_str_vec[iset] ][2] = 0;
         nsets--;
       }
@@ -2558,7 +2558,7 @@ void set_sets_to_rm(int& nsets, const struct in_files* files, struct param* para
     myfile.openForRead (files->file_sets_exclude, sout);
 
     while( myfile.readLine(name) ){ // assume single column with setname
-      if (filters->setID_to_ind.find(name) != filters->setID_to_ind.end()) {
+      if (in_map(name, filters->setID_to_ind)) {
         filters->setID_to_ind[ name ][2] = 0;
         nsets--;
       }
@@ -2621,7 +2621,7 @@ void read_anno_cat(const struct in_files* files, struct param* params, map<strin
     }
 
     // check category has not been specified
-    if (anno_map.find(tmp_str_vec[0]) != anno_map.end()) {
+    if (in_map(tmp_str_vec[0], anno_map)) {
       sout << "ERROR: Duplicate category on line " << lineread+1 << " (=" << tmp_str_vec[0] << ").\n";
       exit(EXIT_FAILURE);
     }
@@ -2636,7 +2636,8 @@ void read_anno_cat(const struct in_files* files, struct param* params, map<strin
   }
 
   // insert category 0 if not already given
-  if (anno_map.find("0") == anno_map.end()) {
+  line = "0";
+  if (!in_map(line, anno_map)) {
     new_anno.name = "NULL";
     new_anno.id = null_cat;
     BIT_SET(new_anno.id, 0);
@@ -2696,14 +2697,14 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
     // name of variant
     sname = tmp_str_vec[0];
     // check it is in genotype file
-    if (filters->snpID_to_ind.find(sname) == filters->snpID_to_ind.end()) {
+    if (!in_map(sname, filters->snpID_to_ind)) {
       lineread++; continue;
     }
     snp_pos = filters->snpID_to_ind[ sname ];
 
     // set name
     gname = tmp_str_vec[1];
-    if (snpinfo[ snp_pos ].anno.find(gname) != snpinfo[ snp_pos ].anno.end()) {
+    if (in_map(gname, snpinfo[ snp_pos ].anno)) {
       sout << "ERROR: Duplicate variant annotations at line " << lineread+1 << ".\n";
       exit(EXIT_FAILURE);
     }
@@ -2719,7 +2720,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
         lineread++; continue;
       }
 
-      if(regions.find(tmp_str_vec[col_cat-1]) == regions.end())
+      if (!in_map(tmp_str_vec[col_cat-1], regions)) 
         regions.insert( std::make_pair( tmp_str_vec[col_cat-1], nregions++ ) );
       if(nregions > 8) {
         sout << "ERROR: Cannot have more than 8 regions.\n";
@@ -2729,7 +2730,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
     }
 
     // check category is in map
-    if (anno_map.find(tmp_str_vec[col_cat]) == anno_map.end()) {
+    if (!in_map(tmp_str_vec[col_cat], anno_map)) {
       if(params->w_anno_lab) {
         sout << "ERROR: Unknown category at line " << lineread+1 << " (=" << tmp_str_vec[col_cat] << ".\n";
         exit(EXIT_FAILURE);
@@ -2789,7 +2790,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     sname = tmp_str_vec[0];
 
     // check it is in genotype file
-    if (filters->snpID_to_ind.find(sname) == filters->snpID_to_ind.end()) {
+    if (!in_map(sname, filters->snpID_to_ind)) {
       lineread++;
       continue;
     }
@@ -2828,7 +2829,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
   myfile.openForRead (files->mask_file, sout);
   if(params->check_mask_files) {
     line = files->out_file + "_masks_report.txt";
-    openStream_write(report_file, line, ios::out, sout);
+    openStream_write(&report_file, line, ios::out, sout);
     report_file << "## mask file: [" << files->mask_file << "]\n## list of unknown annnotations in mask file\n";
   }
 
@@ -2857,11 +2858,11 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
     }
 
     // go through each category to define mask
-    std::ostringstream buffer;
+    std::vector< string > s_vec;
     for(int i = 0; i < ncat; i++){
 
       // check it is in map
-      if (anno_map.find(tmp_str_vec[i+1]) == anno_map.end()) {
+      if (!in_map(tmp_str_vec[i+1], anno_map)) {
         if( tmp_str_vec[i+1].size() > 0 ){
           valid_mask = false;
           if(params->strict_check_burden) params->fail_check = true;
@@ -2869,7 +2870,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
         }
         continue;
       }
-      buffer << anno_map[ tmp_str_vec[i+1] ].name << ((i+1) < ncat ? "," : "");
+      s_vec.push_back( anno_map[ tmp_str_vec[i+1] ].name );
 
       // set bit for category
       id |= anno_map[ tmp_str_vec[i+1] ].id;
@@ -2883,7 +2884,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
     }
 
     tmp_mask.id = id;
-    mask_str[1] = buffer.str();
+    mask_str[1] = print_csv( s_vec );
     //if(lineread<5)cerr << tmp_mask.name << "--" << tmp_mask.id << endl; 
 
     // save mask

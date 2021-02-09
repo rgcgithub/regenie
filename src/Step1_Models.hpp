@@ -68,6 +68,7 @@ double get_logist_dev(const Eigen::ArrayXd& Y, const Eigen::ArrayXd& pi, const A
 
 void ridge_level_0(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
+void write_l0_file(std::ofstream*,Eigen::MatrixXd&,mstream&);
 
 void set_mem_l1(struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_1(struct in_files*,struct param*,struct ridgel1*,mstream&);
