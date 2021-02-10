@@ -1998,7 +1998,7 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
             // sex is 1 for males and 0 o.w.
             ival = 0, lval = 2, mval = gblock->genobuf[index];
             if(params->test_mode && (chrom == params->nChrom)) {
-              mval =  gblock->genobuf[index] * 0.5 * (2 - params->sex[i]);
+              mval *= 0.5 * (2 - params->sex[i]);
               lval = params->sex[i];
             }
 
@@ -2210,7 +2210,7 @@ void compute_aaf_info(double& total, int ns, double info_num, variant_block* snp
 
     // single trait
     if(params->file_type == "bgen") snp_data->info = ((snp_data->af == 0) || (snp_data->af == 1)).select(1, 1 - snp_data->info / (2 * snp_data->ns.cast<double>() * snp_data->af * (1 - snp_data->af)) );
-    else snp_data->info = ((snp_data->af == 0) || (snp_data->af == 1)).select(1, (snp_data->info / snp_data->ns.cast<double>() - snp_data->af * snp_data->af * 4 * snp_data->ns.cast<double>() * snp_data->ns.cast<double>()) / (2 * snp_data->af * (1 - snp_data->af)) );
+    else snp_data->info = ((snp_data->af == 0) || (snp_data->af == 1)).select(1, (snp_data->info / snp_data->ns.cast<double>() - 4 * snp_data->af.square()) / (2 * snp_data->af * (1 - snp_data->af)) );
 
     if(params->setMinINFO) 
       snp_data->ignored_trait = snp_data->ignored_trait || (snp_data->info < params->min_INFO);
@@ -3112,7 +3112,7 @@ void readChunkFromPGENFileToG(const int start, const int bs, vector<uint64>& ind
             // sex is 1 for males and 0 o.w.
             ival = 0, lval = 2, mval = Geno(index);
             if(params->test_mode && (chrom == params->nChrom)) {
-              mval =  gblock->genobuf[index] * 0.5 * (2 - params->sex[i]);
+              mval *= 0.5 * (2 - params->sex[i]);
               lval = params->sex[i];
             }
 
