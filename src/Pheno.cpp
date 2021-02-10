@@ -61,6 +61,10 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->binary_mode) pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
   pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
 
+  // identify individuals with at least one phenotpe with NA
+  filters->has_missing = !(pheno_data->masked_indivs.array().rowwise().all());
+  //for(int i = 0; i <5; i++) cerr << std::boolalpha << filters->has_missing(i) << endl;
+
   // check sample size
   if( filters->ind_in_analysis.cast<int>().sum() < 1 ) {
     sout << "ERROR: Sample size cannot be < 1\n";

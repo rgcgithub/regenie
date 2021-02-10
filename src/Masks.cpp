@@ -646,7 +646,7 @@ void GenoMask::buildMask(const int isnp, const int chrom, struct param* params, 
           ns++;
 
           // counts by trait
-          update_trait_counts(index, ds, mval, lval, 0, snp_data, masked_indivs);
+          if(filters->has_missing(index)) update_trait_counts(index, ds, mval, lval, 0, snp_data, masked_indivs);
 
           // get genotype counts (convert to hardcall)
           if( params->htp_out && (take_max || take_comphet) ) {
@@ -670,6 +670,12 @@ void GenoMask::buildMask(const int isnp, const int chrom, struct param* params, 
 
     // only do this when masks is in [0,2]
     if(take_max || take_comphet){
+
+      // get counts by trait 
+      snp_data->mac += mac; // aac
+      snp_data->ns += ns; // ns
+      snp_data->nmales += nmales; // nmales
+
       if(chrom != params->nChrom) {
         mac = min( mac, 2 * ns - mac );
         snp_data->mac = snp_data->mac.min( 2 * snp_data->ns.cast<double>() - snp_data->mac );
@@ -685,9 +691,13 @@ void GenoMask::buildMask(const int isnp, const int chrom, struct param* params, 
     snp_data->ignored_trait = snp_data->mac < params->min_MAC_mask;
   }
 
+  // get counts by trait 
+  snp_data->af += total;
+
   total /= ns;
   snp_data->af1 = total / 2; // all traits
   snp_data->af /= 2 * snp_data->ns.cast<double>(); // single trait
+
   if(!take_max && !take_comphet) {
     snp_data->af1 /= nsites(isnp); // take average AAF across sites for sum rule
     snp_data->af /= nsites(isnp); 
