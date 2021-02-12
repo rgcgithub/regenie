@@ -852,7 +852,7 @@ also categorizes sets into domains (e.g. for gene sets, these would correspond t
 </code></pre>
 
 <p>Masks will be generated for each domain 
-(maximum of 8) in addition 
+(maximum of 8 per set/gene) in addition 
 to a mask combining across all domains.
 Variants can only be assigned to a single domain for each set/gene.</p>
 <h5 id="set-list-file">Set list file</h5>
@@ -988,6 +988,9 @@ listed last in the bim file).</p>
 </tr>
 </tbody>
 </table>
+<p>Three rules can be used to build masks with <code>--build-mask</code> as shown in diagram below, 
+where the last rule <code>comphet</code> applies a threshold of 2 to the mask from the <code>sum</code> rule.</p>
+<p><img alt="MaskRules" src="../img/mask_rules.png" style="text-align:center;padding: 10px;width:60%;display: block;margin-left: auto;margin-right: auto" /></p>
 <h3 id="output_1">Output</h3>
 <p><strong>With <code>--out file</code></strong></p>
 <p>Results are written in separate files for each phenotype
