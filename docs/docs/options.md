@@ -387,7 +387,7 @@ also categorizes sets into domains (e.g. for gene sets, these would correspond t
 .
 ```
 Masks will be generated for each domain 
-(maximum of 8) in addition 
+(maximum of 8 per set/gene) in addition 
 to a mask combining across all domains.
 Variants can only be assigned to a single domain for each set/gene.
 
@@ -503,6 +503,10 @@ Note that this cannot be used with the LOVO scheme.
 |`--check-burden-files`| FLAG| Optional| to check the concordance between annotation, set list and mask files [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 |`--strict-check-burden`| FLAG| Optional|to exit early if the annotation, set list and mask definition files dont agree [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 
+Three rules can be used to build masks with `--build-mask` as shown in diagram below, 
+where the last rule `comphet` applies a threshold of 2 to the mask from the `sum` rule.
+
+![MaskRules](img/mask_rules.png){ style="text-align:center;padding: 10px;width:60%;display: block;margin-left: auto;margin-right: auto"}
 
 ### Output
 **With `--out file`**

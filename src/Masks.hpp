@@ -32,7 +32,8 @@ class GenoMask {
 
   public:
     std::map <std::string, anno_name> annotations; // store identifier as 1 byte vector
-    std::vector <maskinfo> masks;
+    std::map <std::string, std::map <std::string, uchar>> regions; // store identifier as 1 byte vector
+    std::vector <maskinfo> masks, base_masks;
     std::vector <std::vector <std::string>> mask_out, list_masks;//contains mask info
     std::vector<double> aafs;
     Eigen::ArrayXi nsites;
@@ -47,8 +48,8 @@ class GenoMask {
     double minAAF = 1e-7, default_aaf = .01;
     int n_aaf_bins, max_aaf_bins = 12, nmasks_total;
     uint32_t n_mask_pass = 0; // number of masks generated
-    bool write_setlist = false;
-    bool take_max = true, take_comphet = false, w_regions = false; // either max comphet or sum
+    bool write_setlist = false, w_regions = false, w_loo = false;
+    bool take_max = true, take_comphet = false; // either max comphet or sum
     std::string gfile_prefix;
     uint64 gblock_size; // number of bytes to use for bed file format
     double max_aaf = -1; // maximum AAF to consider
@@ -57,7 +58,7 @@ class GenoMask {
 
     // functions
     void setBins(struct param*,mstream&);
-    void prepMasks(const int);
+    void prepMasks(const int,const std::string&);
     void set_snp_masks(const int,const int,std::vector<variant_block> &,vset&,std::vector<snp>&,mstream&);
     void set_snp_aafs(const int,const int,const bool,std::vector<variant_block> &,vset&,std::vector<snp>&,mstream&);
     void updateMasks(const int,const int,struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);

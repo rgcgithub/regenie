@@ -186,11 +186,11 @@ void check_sets_include_exclude(bool,const struct in_files*,struct param*,struct
 void set_sets_to_keep(int&,const struct in_files*,struct param*,struct filter*,mstream&);
 void set_sets_to_rm(int&,const struct in_files*,struct param*,struct filter*,mstream&);
 
-void get_masks_info(const struct in_files*,struct param*,struct filter*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,std::vector<snp>&,mstream& sout);
+void get_masks_info(const struct in_files*,struct param*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uchar>>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,std::vector<snp>&,mstream& sout);
 void read_anno_cat(const struct in_files*,struct param*,std::map<std::string,anno_name>&,mstream& sout);
-void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, int>&,std::vector<snp>&,mstream& sout);
+void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uchar>>&,std::vector<snp>&,mstream& sout);
 void read_aafs(const double,const struct in_files*,struct filter*,std::vector<snp>&,mstream& sout);
-void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::map <std::string, int>,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
+void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
 
 void readChunkFromBGENFileToG(const int,const int,const uint32_t,std::vector<uint64>&,std::vector<snp>&,struct param*,struct geno_block*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,std::vector<variant_block>&);
 void readChunkFromPGENFileToG(const int,const int,std::vector<uint64>&,const int&,struct param*,struct filter*,struct geno_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,const std::vector<snp>&,std::vector<variant_block>&);

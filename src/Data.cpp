@@ -3012,7 +3012,7 @@ void Data::set_groups_for_testing() {
 
   // annotate variants by categories
   if(params.build_mask) {
-    get_masks_info(&files, &params, &in_filters, bm.annotations, bm.masks, bm.mask_out, bm.all_masks, snpinfo, sout);
+    get_masks_info(&files, &params, &in_filters, bm.annotations, bm.regions, bm.masks, bm.mask_out, bm.all_masks, snpinfo, sout);
     bm.setBins(&params, sout);
   }
 
@@ -3279,7 +3279,7 @@ void Data::getMask(const int chrom, const int varset, vector< vector < uchar > >
   if(params.verbose) sout << nchunks << " chunks";
   sout << "\n     -reading in genotypes and building masks..." << flush;
 
-  bm.prepMasks(params.n_samples);  
+  bm.prepMasks(params.n_samples, jt.setinfo[chrom - 1][varset].ID);  
   Gblock.Gmat.resize(params.n_samples, bsize);
 
 

@@ -2579,9 +2579,7 @@ void set_sets_to_rm(int& nsets, const struct in_files* files, struct param* para
 }
 
 
-void get_masks_info(const struct in_files* files, struct param* params, struct filter* filters, map<std::string, anno_name>& anno_map, vector<maskinfo>& mask_map, std::vector <std::vector<string>>& mask_out, uint64& all_masks, vector<snp>& snpinfo, mstream& sout) {
-
-  std::map <std::string, int> regions;
+void get_masks_info(const struct in_files* files, struct param* params, struct filter* filters, map<std::string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uchar>>& regions, vector<maskinfo>& mask_map, std::vector <std::vector<string>>& mask_out, uint64& all_masks, vector<snp>& snpinfo, mstream& sout) {
 
   // read annotation categories if specified
   if(params->w_anno_lab) read_anno_cat(files, params, anno_map, sout);
@@ -2592,7 +2590,7 @@ void get_masks_info(const struct in_files* files, struct param* params, struct f
   if(params->set_aaf) read_aafs(params->tol, files, filters, snpinfo, sout);
 
   // read masks
-  read_masks(files, params, anno_map, regions, mask_map, mask_out, all_masks, sout);
+  read_masks(files, params, anno_map, mask_map, mask_out, all_masks, sout);
 
 }
 
@@ -2658,7 +2656,7 @@ void read_anno_cat(const struct in_files* files, struct param* params, map<strin
   sout << "n_categories = " << lineread << endl;
 }
 
-void read_anno(struct param* params, const struct in_files* files, struct filter* filters, map<string, anno_name>& anno_map, std::map <std::string, int>& regions, vector<snp>& snpinfo, mstream& sout) {
+void read_anno(struct param* params, const struct in_files* files, struct filter* filters, map<string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uchar>>& regions, vector<snp>& snpinfo, mstream& sout) {
 
   int lineread = 0, ncat = 0, col_cat = 2, nregions = 0;
   uint64 snp_pos, null_id = 0ULL;
@@ -2724,18 +2722,29 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
     // get regions
     if(params->w_regions){
+
       // check if matches with LOVO region
       if(params->mask_loo && (tmp_str_vec[col_cat-1] != params->mask_loo_region)){
         lineread++; continue;
       }
 
-      if (!in_map(tmp_str_vec[col_cat-1], regions)) 
-        regions.insert( std::make_pair( tmp_str_vec[col_cat-1], nregions++ ) );
-      if(nregions > 8) {
-        sout << "ERROR: Cannot have more than 8 regions.\n";
-        exit(EXIT_FAILURE);
-      }
-      BIT_SET(ainfo.regionid, regions[tmp_str_vec[col_cat-1]]);
+      // check if new set
+      if (!in_map(gname, regions)){ // create new map with region for set
+        BIT_SET(ainfo.regionid, 0); // set first bit
+        std::map <std::string, uchar> gene_region_map;
+        gene_region_map[tmp_str_vec[col_cat-1]] = ainfo.regionid;
+        regions[gname] = gene_region_map;
+        nregions++;
+      } else if (!in_map(tmp_str_vec[col_cat-1], regions[gname])) { // add region for set
+        if(regions[gname].size() > 7) {
+          sout << "ERROR: Cannot have more than 8 regions per set.\n";
+          exit(EXIT_FAILURE);
+        }
+        BIT_SET(ainfo.regionid, regions[gname].size()); // set bit for new region
+        regions[gname][tmp_str_vec[col_cat-1]] = ainfo.regionid;
+        nregions++;
+      } else ainfo.regionid = regions[gname][tmp_str_vec[col_cat-1]]; 
+
     }
 
     // check category is in map
@@ -2770,7 +2779,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
   myfile.closeFile();
   
   if(!params->w_anno_lab) sout << "   +number of annotations categories = " << ncat << endl;
-  if(params->w_regions) sout << "   +number of gene regions = " << nregions << endl;
+  if(params->w_regions) sout << "   +number of domains across all sets = " << nregions << endl;
 
 }
 
@@ -2821,21 +2830,21 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
 
 }
 
-void read_masks(const struct in_files* files, struct param* params, map<string, anno_name>& anno_map, std::map <std::string, int> regions, vector<maskinfo>& minfo, std::vector <std::vector<string>>& mask_out, uint64& all_masks, mstream& sout) {
+void read_masks(const struct in_files* files, struct param* params, map<string, anno_name>& anno_map, vector<maskinfo>& minfo, std::vector <std::vector<string>>& mask_out, uint64& all_masks, mstream& sout) {
 
   bool valid_mask;
   int lineread = 0, ncat = 0, n_with_missing = 0, n_non_valid = 0;
   uint64 id;
+  maskinfo tmp_mask;
   std::vector< string > tmp_str_vec, mask_str, anno_problem;
   mask_str.resize(2);
-  std::map <std::string, int>::iterator itr;
   string line;
-  maskinfo tmp_mask;
   Files myfile;
   ofstream report_file;
 
   sout << left << std::setw(20) << " * masks " << ": [" << files->mask_file << "] " << flush;
   myfile.openForRead (files->mask_file, sout);
+
   if(params->check_mask_files) {
     line = files->out_file + "_masks_report.txt";
     openStream_write(&report_file, line, ios::out, sout);
@@ -2898,21 +2907,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
 
     // save mask
     mask_out.push_back(mask_str);
-    if(params->w_regions){
-      // make a mask for each gene region
-      for (itr = regions.begin(); itr != regions.end(); ++itr) {
-        maskinfo tmp_region_mask = tmp_mask;
-        // name = mask.region
-        tmp_region_mask.region_name = itr->first + ".";
-        BIT_SET(tmp_region_mask.region, itr->second);
-        minfo.push_back(tmp_region_mask);
-      }
-      if(!params->mask_loo){
-        // add mask across all regions
-        tmp_mask.region |= 255; //set all 8 bits
-        minfo.push_back(tmp_mask);
-      }
-    } else minfo.push_back(tmp_mask);
+    minfo.push_back(tmp_mask);
 
     // take union across all categories read
     all_masks |= id;

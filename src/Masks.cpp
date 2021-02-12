@@ -91,10 +91,35 @@ void GenoMask::setBins(struct param* params, mstream& sout){
   nmasks_total = n_aaf_bins * masks.size(); // total number of masks
 
   w_regions = params->w_regions;
+  w_loo = params->mask_loo;
 
+  if(w_regions) base_masks = masks;
 }
 
-void GenoMask::prepMasks(const int ntotal) {
+void GenoMask::prepMasks(const int ntotal, const string& setID) {
+
+  maskinfo tmp_region_mask;
+  std::map <std::string, uchar>::iterator itr;
+
+  // make new set of masks if using set regions
+  if(w_regions){ 
+    masks.resize(0);
+    for(int i = 0; i < base_masks.size(); i++ ){
+      tmp_region_mask = base_masks[i];
+      for (itr = regions[setID].begin(); itr != regions[setID].end(); ++itr) {
+        // add region info
+        tmp_region_mask.region_name = itr->first + ".";
+        tmp_region_mask.region = itr->second;
+        masks.push_back(tmp_region_mask);
+      }
+      if(!w_loo){// add mask across all regions
+        tmp_region_mask = base_masks[i];
+        tmp_region_mask.region |= 255; //set all 8 bits
+        masks.push_back(tmp_region_mask);
+      }
+    }
+    nmasks_total = n_aaf_bins * masks.size();
+  } 
 
   Gtmp = MatrixXd::Constant(ntotal, nmasks_total, -3);
   colset = ArrayXb::Constant( nmasks_total, false );
@@ -631,7 +656,7 @@ void GenoMask::buildMask(const int isnp, const int chrom, struct param* params, 
 
         ds = maskvec(index);
         // distinguish missing from 0 for sum rule
-        if(!params->mask_loo && !take_max && (ds == -3) && non_missing(index,isnp)) 
+        if(!w_loo && !take_max && (ds == -3) && non_missing(index,isnp)) 
           ds = 0;
 
         if( ds != -3 ){
