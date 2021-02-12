@@ -346,9 +346,9 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       else // if categorical, convert to numeric category
         pheno_data->new_cov(indiv_index, 1 + i_cov) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
 
-      if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) {
-        sout << "ERROR: Individual has missing value in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-        exit(EXIT_FAILURE);
+      if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) { // ignore individual
+        ind_in_cov_and_geno(indiv_index) = false;
+        break;
       }
 
       i_cov++;
