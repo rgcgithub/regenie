@@ -2180,8 +2180,8 @@ void Data::set_blocks_for_testing() {
   }
   chr_map = m1;
 
-  if(params.getCorMat && nchr > 1){
-    sout << "ERROR: can only compute LD matrix for a single chromosome (use --chr/--chrList/--range.\n"; exit(EXIT_FAILURE);
+  if(params.getCorMat && (nchr > 1 || params.n_variants < 2)){
+    sout << "ERROR: can only compute LD matrix for a single chromosome (use --chr/--chrList/--range) and >=2 variants.\n"; exit(EXIT_FAILURE);
   }
 
   // summarize block sizes

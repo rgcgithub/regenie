@@ -159,7 +159,8 @@ void update_nnz_spa(uint32_t,uint32_t,variant_block*);
 void mean_impute_g(double &,const double,const bool,const bool,const bool);
 
 bool in_chrList(const int,struct filter*);
-std::string bgi_chrList(struct filter*);
+std::string bgi_chrList(struct filter*,const int&);
+std::string bgi_chrList(const int&,const int&);
 bool in_range(int,uint32_t,struct param*);
 findID getIndivIndex(const std::string&,const std::string&,struct param*,mstream&);
 

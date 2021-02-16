@@ -167,11 +167,11 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
   // edit sql statement if chromosome position range is given
   if( params->set_range ){
-    string tmp_q = sql_query + " WHERE chromosome=" + to_string(params->range_chr) + " AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
+    string tmp_q = sql_query + " WHERE chromosome IN (" + bgi_chrList(params->range_chr, params->nChrom) + ") AND position>=" + to_string(params->range_min) + " AND position<=" + to_string(params->range_max);
     sql_query = tmp_q;
   } else if( params->select_chrs ){
     
-    string tmp_q = sql_query + " WHERE chromosome IN (" + bgi_chrList(filters) + ")";
+    string tmp_q = sql_query + " WHERE chromosome IN (" + bgi_chrList(filters, params->nChrom) + ")";
     sql_query = tmp_q;
   }
 
@@ -2096,19 +2096,48 @@ bool in_chrList(const int snp_chr, struct filter* filters){
   return in_map(snp_chr, filters->chrKeep_test);
 }
 
-string bgi_chrList(struct filter* filters){
+string bgi_chrList(struct filter* filters, const int& nChrom){// for --chr/--chrList
 
-  int nchr_kept = filters->chrKeep_test.size();
-  std::ostringstream buffer;
+  string fmt;
+  vector<string> clist;
   map<int, bool >::iterator itr;
 
-  int ic = 0;
   for (itr = filters->chrKeep_test.begin(); itr != filters->chrKeep_test.end(); ++itr) {
-    buffer << "'" << to_string(itr->first) << "'";
-    if(++ic < nchr_kept) buffer << ",";
+    fmt = to_string(itr->first);
+    clist.push_back( fmt );
+
+    if(itr->first < 10){ // add X and 0X format
+      fmt = "'0" + to_string(itr->first) + "'";
+      clist.push_back( fmt );
+    } else if(itr->first == nChrom){ // add XY, X, Y
+      clist.push_back( "'X'" );
+      clist.push_back( "'XY'" );
+      clist.push_back( "'PAR1'" );
+      clist.push_back( "'PAR2'" );
+    }
   }
 
-  return buffer.str();
+  return print_csv(clist);
+}
+
+string bgi_chrList(const int& range_chr, const int& nChrom){// for range
+
+  string fmt = to_string(range_chr);
+  vector<string> clist;
+
+  if(range_chr < 10){ // add X and 0X format
+    clist.push_back( fmt );
+    fmt = "'0" + to_string(range_chr) + "'";
+    clist.push_back( fmt );
+  } else if(range_chr == nChrom){ // add XY, X, Y
+    clist.push_back( fmt );
+    clist.push_back( "'X'" );
+    clist.push_back( "'XY'" );
+    clist.push_back( "'PAR1'" );
+    clist.push_back( "'PAR2'" );
+  } else return fmt;
+
+  return print_csv(clist);
 }
 
 bool in_range(int snp_chr, uint32_t snp_pos, struct param* params){
