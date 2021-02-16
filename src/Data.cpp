@@ -1774,7 +1774,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
 
   if(params.getCorMat){// header N,M
     out = files.out_file + ".corr";
-    sout << " * computing correlation matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
+    sout << " * computing LD matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
     sout << "  + n_snps = " << params.n_variants <<"\n\n";
     ofile->openBinMode(out, std::ios_base::out | std::ios_base::binary, sout);
     ArrayXi vals(2);
@@ -2025,7 +2025,7 @@ void Data::print_cor(Files* ofile){
   double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
 
   MatrixXd LDmat = (Gblock.Gmat.transpose() * Gblock.Gmat) / (params.n_samples - params.ncov);
-  ArrayXi vals;
+  ArrayXt vals;
   vals.resize( (Gblock.Gmat.cols() * (Gblock.Gmat.cols() - 1)) / 2 );
 
   for(int i = 0, k = 0; i < LDmat.rows(); i++){

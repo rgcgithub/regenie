@@ -165,6 +165,14 @@ void Files::writeBinMode(Eigen::ArrayXi& vals, mstream& sout){
     sout << "ERROR: Cannot write values to file.\n";
     exit(EXIT_FAILURE);
   }
+}
+void Files::writeBinMode(ArrayXt& vals, mstream& sout){
+
+  outfile.write( reinterpret_cast<char *> (&vals(0)), vals.size() * sizeof(vals(0)) );
+  if (outfile.fail()) {    
+    sout << "ERROR: Cannot write values to file.\n";
+    exit(EXIT_FAILURE);
+  }
 
 }
 

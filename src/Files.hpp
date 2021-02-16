@@ -60,6 +60,7 @@ class Files {
     void closeFile();
     void openBinMode(std::string filename,std::ios_base::openmode,mstream&);
     void writeBinMode(Eigen::ArrayXi&,mstream&);
+    void writeBinMode(ArrayXt&,mstream&);
 
     // to write to file
     template <class S>

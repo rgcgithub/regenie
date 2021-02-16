@@ -68,6 +68,7 @@ typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
 typedef Eigen::Map<ArrayXb> MapArXb;
+typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
