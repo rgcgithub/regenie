@@ -1774,7 +1774,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
 
   if(params.getCorMat){// header N,M
     out = files.out_file + ".corr";
-    sout << " * computing LD matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
+    sout << " * computing correlation matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
     sout << "  + n_snps = " << params.n_variants <<"\n\n";
     ofile->openBinMode(out, std::ios_base::out | std::ios_base::binary, sout);
     ArrayXi vals(2);
