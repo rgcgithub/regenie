@@ -323,7 +323,7 @@ With BGEN/PGEN files with dosages, the imputation INFO score is provided
 Allele frequency, sample size and INFO score, if applicable, are computed using only
 non-missing samples for each phenotype.
 
-These are followed by the estimated effect sizes, standard errors, chi-square test statistics 
+These are followed by the estimated effect sizes (on original scale), standard errors, chi-square test statistics 
 and \(-\log_{10}\) p-value.
 
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files

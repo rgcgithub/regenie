@@ -212,6 +212,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for ACAT test statistic", cxxopts::value<std::string>(), "a,b(=1,1)")
+    ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
     ;
 
 
@@ -305,6 +306,13 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
+    if( vm.count("compute-corr") ) {
+      params->getCorMat = true;
+      params->run_mode = 2;
+      params->skip_blups = params->strict_mode = true;
+      params->binary_mode = false;
+      params->min_MAC = 0.5;
+    }
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
       // only works when compiled with boost IO library
@@ -508,7 +516,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
 
 
-    if( vm.count("joint") ){
+    if( !params->getCorMat && vm.count("joint") ){
 
       if( vm.count("test") ){ 
         sout << "ERROR : cannot use --test with --joint.\n" << params->err_help;
@@ -521,7 +529,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->snp_set = true;
     }
 
-    if( vm.count("anno-file") || vm.count("mask-def") ){
+    if( !params->getCorMat && (vm.count("anno-file") || vm.count("mask-def")) ){
 
       if(vm.count("anno-labels")) params->w_anno_lab = true;
 
@@ -613,7 +621,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     }
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
-    if( !vm.count("bsize") && !params->snp_set ) {
+    if( !vm.count("bsize") && !params->snp_set && !params->getCorMat ) {
       sout << "ERROR : must specify the block size using '--bsize'.\n" << params->err_help;
       exit(EXIT_FAILURE);
     } else if(vm.count("bsize") && ( params->block_size < 2 )){
@@ -715,7 +723,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       sout << "ERROR: " << files->cov_file  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }
-    if(!file_exists (files->pheno_file)) {
+    if(!params->getCorMat && !file_exists (files->pheno_file) ) {
       sout << "ERROR: " << files->pheno_file  << " doesn't exist.\n" << params->err_help ;
       exit(EXIT_FAILURE);
     }

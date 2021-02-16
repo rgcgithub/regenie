@@ -141,6 +141,33 @@ bool Files::checkFileExtension(std::string filename) {
   return fs::extension(filename) == ".gz";
 }
 
+void Files::openBinMode(std::string filename, std::ios_base::openmode mode, mstream& sout){
+
+  try {
+    if(mode & std::ios_base::out){
+      read_mode = false;
+      outfile.open(filename.c_str(), mode);
+      if (!outfile) throw filename;    
+    } else {
+      infile.open(filename.c_str(), mode);
+      if (!infile) throw filename;    
+    }
+  } catch (const std::string& fname) {
+    sout << "ERROR: Cannot open file : " << fname << std::endl;
+    exit(EXIT_FAILURE);
+  }
+}
+
+void Files::writeBinMode(Eigen::ArrayXi& vals, mstream& sout){
+
+  outfile.write( reinterpret_cast<char *> (&vals(0)), vals.size() * sizeof(vals(0)) );
+  if (outfile.fail()) {    
+    sout << "ERROR: Cannot write values to file.\n";
+    exit(EXIT_FAILURE);
+  }
+
+}
+
 // Split string by tokens
 std::vector<std::string> string_split(std::string const& s, const char* delims) {
 

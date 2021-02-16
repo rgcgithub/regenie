@@ -137,6 +137,7 @@ struct param {
   bool strict_mode = false; // remove individuals with any NA
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
+  bool getCorMat = false;
 
   // filters 
   bool rm_indivs = false; // user specify to remove genotyped samples from analysis

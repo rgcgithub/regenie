@@ -107,6 +107,7 @@ class Data {
     std::string print_sum_stats(const double,const double,const int,const std::string,const double,const double,const double,const double,const bool);
     std::string print_sum_stats(const double,const double,const double,const double,const bool);
     std::string print_sum_stats_htp(const double,const double,const double,const double,const double,const double,const double,const Eigen::MatrixXd&,const double,const int,const bool);
+    void print_cor(Files*);
 
     // step 2 using multithreading in eigen
     double check_pval(double,int,int,int);

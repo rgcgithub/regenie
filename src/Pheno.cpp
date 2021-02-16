@@ -40,10 +40,21 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file.empty());
 
-  // read in phenotype (mean-impute for QT)
-  pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
-  if(params->binary_mode && !params->test_mode)
-    m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
+  if(params->getCorMat){ // intitiate values for phenotype info
+
+    params->n_pheno = 1;
+    ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, true );
+    pheno_data->phenotypes = MatrixXd::Constant( params->n_samples, 1, 1);
+    pheno_data->masked_indivs = MatrixXb::Constant( params->n_samples, 1, true);
+    pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
+
+  } else { // read in phenotype (mean-impute for QT)
+
+    pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
+    if(params->binary_mode && !params->test_mode)
+      m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
+
+  }
 
   // Intercept
   pheno_data->new_cov = MatrixXd::Ones(params->n_samples, 1);
@@ -442,7 +453,7 @@ MatrixXd get_dummies(const Eigen::Ref<const Eigen::MatrixXd>& numCov) {
 void prep_run (struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout){
 
   // for step 2, check blup files
-  if (params->test_mode){
+  if (params->test_mode && !params->getCorMat){
     // individuals not in blup file will have their phenotypes masked
     blup_read(files, params, pheno_data, m_ests, sout);
     if(params->write_samples) write_ids(files, params, pheno_data, sout);
@@ -458,7 +469,7 @@ void prep_run (struct in_files* files, struct param* params, struct phenodt* phe
   if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, sout);
 
   // residualize phenotypes (skipped for BTs when testing)
-  if(!params->test_mode || !params->binary_mode) residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
+  if( !params->getCorMat && (!params->test_mode || !params->binary_mode) ) residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
 }
 

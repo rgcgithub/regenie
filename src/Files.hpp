@@ -37,7 +37,7 @@ class Files {
 
   public:
     // variables
-    bool is_gz;
+    bool is_gz = false;
     bool read_mode = true;
 
     // for reading
@@ -58,6 +58,8 @@ class Files {
     void ignoreLines(int);
     void openForWrite(std::string filename,mstream&);
     void closeFile();
+    void openBinMode(std::string filename,std::ios_base::openmode,mstream&);
+    void writeBinMode(Eigen::ArrayXi&,mstream&);
 
     // to write to file
     template <class S>

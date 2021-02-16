@@ -104,7 +104,7 @@ void GenoMask::prepMasks(const int ntotal, const string& setID) {
   // make new set of masks if using set regions
   if(w_regions){ 
     masks.resize(0);
-    for(int i = 0; i < base_masks.size(); i++ ){
+    for(size_t i = 0; i < base_masks.size(); i++ ){
       tmp_region_mask = base_masks[i];
       for (itr = regions[setID].begin(); itr != regions[setID].end(); ++itr) {
         // add region info

@@ -1772,6 +1772,18 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
   string tmpstr, mask_header;
   if(params.build_mask) mask_header = build_mask_header();
 
+  if(params.getCorMat){// header N,M
+    out = files.out_file + ".corr";
+    sout << " * computing correlation matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
+    sout << "  + n_snps = " << params.n_variants <<"\n\n";
+    ofile->openBinMode(out, std::ios_base::out | std::ios_base::binary, sout);
+    ArrayXi vals(2);
+    vals << params.n_samples , params.n_variants;
+    //cerr << vals << endl;
+    ofile->writeBinMode(vals, sout);
+    return;
+  }
+
   if(!params.split_by_pheno){ // single file
 
     out = files.out_file + ".regenie" + (params.gzOut ? ".gz" : "");
@@ -1799,6 +1811,8 @@ void Data::setup_output(Files* ofile, string& out, std::vector<Files*>& ofile_sp
 }
 
 void Data::print_test_info(){
+
+  if(params.getCorMat) return;
 
   if(params.write_masks) {
     bm.write_info(&params, &in_filters, sout);
@@ -2005,6 +2019,32 @@ std::string Data::print_sum_stats_htp(const double beta, const double se, const 
   return buffer.str();
 }
 
+void Data::print_cor(Files* ofile){
+
+  int bits = 16; // break [0,1] into 2^bits intervals
+  double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
+
+  MatrixXd LDmat = (Gblock.Gmat.transpose() * Gblock.Gmat) / (params.n_samples - params.ncov);
+  ArrayXi vals;
+  vals.resize( (Gblock.Gmat.cols() * (Gblock.Gmat.cols() - 1)) / 2 );
+
+  for(int i = 0, k = 0; i < LDmat.rows(); i++){
+    for(int j = i+1; j < LDmat.cols(); j++){
+      vals(k++) = LDmat(i,j) * LDmat(i,j) * mult + 0.5; // round to nearest integer
+    }
+  }
+
+  //cerr << LDmat.block(0,0,5,5) << "\n\n" << vals.head(5);
+
+  ofile->writeBinMode(vals, sout);
+  ofile->closeFile();
+
+  exit_early();
+
+}
+
+
+
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -2113,6 +2153,9 @@ void Data::set_blocks_for_testing() {
 
   params.total_n_block = 0;
   int blocks_left = params.n_block;
+  int nchr = 0;
+
+  if(params.getCorMat) params.block_size = params.n_variants;
 
   map<int, vector<int> >::iterator itr;
   map<int, vector<int> > m1;
@@ -2132,9 +2175,14 @@ void Data::set_blocks_for_testing() {
       itr->second[1] = nb;
       params.total_n_block += nb;
     }
+    if(params.getCorMat && (itr->second[1] > 0)) nchr++;
     m1.insert(pair<int, vector<int> >(itr->first, itr->second));
   }
   chr_map = m1;
+
+  if(params.getCorMat && nchr > 1){
+    sout << "ERROR: can only compute LD matrix for a single chromosome (use --chr/--chrList/--range.\n"; exit(EXIT_FAILURE);
+  }
 
   // summarize block sizes
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
@@ -2356,13 +2404,14 @@ void Data::test_snps_fast() {
 
     sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
 
-    // read polygenic effect predictions from step 1
-    blup_read_chr(chrom);
+    if(!params.getCorMat){
+      // read polygenic effect predictions from step 1
+      blup_read_chr(chrom);
 
-    // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-    if(params.binary_mode) compute_res_bin(chrom);
-    else compute_res();
-
+      // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
+      if(params.binary_mode) compute_res_bin(chrom);
+      else compute_res();
+    }
 
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
@@ -2378,6 +2427,8 @@ void Data::test_snps_fast() {
 
       // read SNP, impute missing & compute association test statistic
       analyze_block(chrom, bs, &snp_tally, block_info);
+
+      if(params.getCorMat) print_cor(&ofile);
 
       // print the results
       for(int isnp = 0; isnp < bs; isnp++) {
@@ -2501,9 +2552,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
   }
 
 
-  setNbThreads(1);
   // start openmp for loop
 #if defined(_OPENMP)
+  setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
 #endif
   for(int isnp = 0; isnp < n_snps; isnp++) {
@@ -2524,7 +2575,7 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     residualize_geno(isnp, block_info);
 
     // skip SNP if fails filters
-    if( block_info->ignored ) continue;
+    if( block_info->ignored || params.getCorMat ) continue;
     
     block_info->pval_log = ArrayXd::Zero(params.n_pheno);
     block_info->bhat = ArrayXd::Zero(params.n_pheno);
@@ -2620,7 +2671,9 @@ void Data::analyze_block(const int &chrom, const int &n_snps, tally* snp_tally, 
     //if( (isnp==0) || (isnp == (n_snps-1)) ) cout << "G"<<isnp+1<<" MAF = " <<  block_info.MAF << endl;
   }
 
+#if defined(_OPENMP)
   setNbThreads(params.threads);
+#endif
 
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
