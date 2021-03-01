@@ -163,7 +163,7 @@ phenotype and the genetic marker.
 
 #### Binary traits
 
-For binary traits, logistic regression is used to test association of
+For binary traits, logistic regression score test is used to test association of
 the phenotype and the genetic marker.
 
 The logistic regression model includes the LOCO predictions from

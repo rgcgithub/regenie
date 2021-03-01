@@ -262,7 +262,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|
-|`--threads`| INT | Optional| number of computational threads to use [default=all]|
+|`--threads`| INT | Optional| number of computational threads to use [default=all-1]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
 |`--verbose`| FLAG | Optional| verbose screen output|
 |`--help`| FLAG | Optional| Prints usage and options list to screen|

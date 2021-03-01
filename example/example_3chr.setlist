@@ -1,2 +1,3 @@
 SET1 1 1 mog_0,mog_1,mog_2,mog_3,mog_4,mog_5,mog_6,mog_7,mog_8,mog_9,mog_10,mog_11,mog_12,mog_13,mog_14,mog_15,mog_16,mog_17,mog_18,mog_19,mog_20,mog_21,mog_22,mog_23,mog_24,mog_25,mog_26,mog_27,mog_28,mog_29,mog_30,mog_31,mog_32,mog_33,mog_34,mog_35,mog_36,mog_37,mog_38,mog_39
-SET2 3 500 null_20,null_21,null_22,null_23,null_24,null_25,null_26,null_27,null_28,null_29,null_30,null_31,null_32,null_33,null_34,null_35,null_36,null_37,null_38,null_39,null_40,null_41,null_42,null_43,null_44,null_45,null_46,null_47,null_48,null_49
+SET2 3 500 null_20,null_21,null_22,null_23,null_24,null_25,null_26,null_27,null_28,null_29,null_30,null_31,null_32,null_33,null_34,null_35,null_36,null_37,null_38,null_39,null_40,null_41,null_42,null_43,null_44,null_45,null_46,null_47,null_48,null_49,rsidNull1
+SET4 3 23 rsidNull2,rsidNull3
