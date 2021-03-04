@@ -172,13 +172,17 @@
 <p>The <strong>regenie</strong> source code is hosted on
 <a href="https://github.com/rgcgithub/regenie">Github</a>.</p>
 <h2 id="installation">Installation</h2>
-<p>Note: <strong>regenie</strong> requires compilation with <a href="https://gcc.gnu.org">GCC</a> version &gt;= 5.1 (on Linux) or Clang version &gt;=3.3 (on Mac OSX)</p>
+<p>Note: <strong>regenie</strong> requires compilation with 
+<a href="https://gcc.gnu.org">GCC</a> version &gt;= 5.1 (on Linux) 
+or Clang version &gt;=3.3 (on Mac OSX)</p>
 <h3 id="pre-compiled-binaries">Pre-compiled binaries</h3>
 <p>Pre-compiled binaries are available in the 
 <a href="https://github.com/rgcgithub/regenie/releases">Github repository</a>.
-These are provided for Linux and Mac OSX computing environments and
-are statically linked. 
-For the Linux binaries, user should have GLIBC version &gt;= 2.22 installed.</p>
+These are provided for Linux (including Centos7) and Mac OSX 
+computing environments and are statically linked. 
+For the Linux binaries, users should have GLIBC version &gt;= 2.22 installed.
+Additionally, they are provided compiled with Intel MKL library which
+will provide speedups for many of the operations done in <strong>regenie</strong>. </p>
 <h3 id="standard-installation">Standard installation</h3>
 <ol>
 <li><strong>regenie</strong> requires the
@@ -194,13 +198,18 @@ For the Linux binaries, user should have GLIBC version &gt;= 2.22 installed.</p>
  using the Boost Iostream library. 
 If this library is installed on the system, you should compile using 
 <code>make HAS_BOOST_IOSTREAM=1</code>. </p>
+<p>Furthermore, we have enabled compilation of <strong>regenie</strong> with
+the Intel Math Kernel (MKL) library. You first need to have it installed 
+on your system and modify the MKLROOT variable in the <code>Makefile</code>
+to the installed MKL library path.</p>
 <h3 id="with-docker">With Docker</h3>
 <p>Alternatively, you can use a Docker image to run <strong>regenie</strong>. 
 A guide to using docker is available on 
 the <a href="https://github.com/rgcgithub/regenie/wiki/Using-docker">Github page</a>.</p>
 <h3 id="with-conda">With conda</h3>
 <p>To install with conda, follow the directions 
-<a href="https://anaconda.org/bioconda/regenie">here</a>.</p>
+<a href="https://anaconda.org/bioconda/regenie">here</a>.
+Note that we do not maintain the package in conda.</p>
 <h2 id="computing-requirements">Computing requirements</h2>
 <p>We have tested <strong>regenie</strong> on 64-bit Linux and 64-bit Mac OSX computing environments.</p>
 <p>Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. </p>
