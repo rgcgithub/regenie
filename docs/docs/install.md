@@ -5,15 +5,19 @@ The **regenie** source code is hosted on
 
 ##Installation
 
-Note: **regenie** requires compilation with [GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) or Clang version >=3.3 (on Mac OSX)
+Note: **regenie** requires compilation with 
+[GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) 
+or Clang version >=3.3 (on Mac OSX)
 
 ### Pre-compiled binaries
 
 Pre-compiled binaries are available in the 
 [Github repository](https://github.com/rgcgithub/regenie/releases).
-These are provided for Linux and Mac OSX computing environments and
-are statically linked. 
-For the Linux binaries, user should have GLIBC version >= 2.22 installed.
+These are provided for Linux (including Centos7) and Mac OSX 
+computing environments and are statically linked. 
+For the Linux binaries, users should have GLIBC version >= 2.22 installed.
+Additionally, they are provided compiled with Intel MKL library which
+will provide speedups for many of the operations done in **regenie**. 
 
 
 ### Standard installation
@@ -31,6 +35,11 @@ For the Linux binaries, user should have GLIBC version >= 2.22 installed.
 If this library is installed on the system, you should compile using 
 `make HAS_BOOST_IOSTREAM=1`. 
 
+Furthermore, we have enabled compilation of **regenie** with
+the Intel Math Kernel (MKL) library. You first need to have it installed 
+on your system and modify the MKLROOT variable in the `Makefile`
+to the installed MKL library path.
+
 ### With Docker
 Alternatively, you can use a Docker image to run **regenie**. 
 A guide to using docker is available on 
@@ -39,6 +48,7 @@ the [Github page](https://github.com/rgcgithub/regenie/wiki/Using-docker).
 ### With conda
 To install with conda, follow the directions 
 [here](https://anaconda.org/bioconda/regenie).
+Note that we do not maintain the package in conda.
 
 
 
