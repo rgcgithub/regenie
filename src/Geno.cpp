@@ -59,8 +59,15 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
     tmp_snp.offset = bgen_tmp.get_position();
     while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
 
-      bgen_tmp.ignore_probs();
       assert(alleles.size() == 2) ; // only bi-allelic allowed
+      // check phasing for first variant
+      if(lineread == 0){
+        bgen_tmp.read_probs( &probs ) ;
+        if( probs[0].size() != 3 ){ // unphased only
+          sout << "ERROR: Only unphased bgen are supported."<< endl;
+          exit(EXIT_FAILURE);
+        }
+      } else bgen_tmp.ignore_probs();
 
       tmp_snp.chrom = chrStrToInt(chromosome, params->nChrom);
       if (tmp_snp.chrom == -1) {
