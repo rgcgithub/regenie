@@ -171,6 +171,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   uint32_t position ;
   std::string chromosome, rsid;
   std::vector< std::string > alleles ;
+  std::vector< std::vector< double > > probs ;
 
   // edit sql statement if chromosome position range is given
   if( params->set_range ){
@@ -226,7 +227,11 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         if( snpinfo.empty() ){
           bgen.jumpto(tmp_snp.offset);
           bgen.read_variant( &chromosome, &position, &rsid, &alleles );
-          bgen.ignore_probs();
+          bgen.read_probs( &probs ) ;
+          if( probs[0].size() != 3 ){ // unphased only
+            sout << "ERROR: Only unphased bgen are supported."<< endl;
+            exit(EXIT_FAILURE);
+          }
           variant_bgen_size = bgen.get_position() - tmp_snp.offset;
           variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
           assert( tmp_snp.ID == rsid );
