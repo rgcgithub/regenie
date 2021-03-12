@@ -116,6 +116,7 @@ fit.regenie <- function() {
       "--bsize 400 ",
       "--step 2 ",
       mode.rg, " ", 
+      "--chr ", opt$chr, " ",
       "--pred ", outprefix, rg.suffix, "_pred.list ",
       "--out ", outprefix, rg.suffix, "_chr", opt$chr
     )
