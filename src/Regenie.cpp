@@ -213,6 +213,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for ACAT test statistic", cxxopts::value<std::string>(), "a,b(=1,1)")
     ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
+    ("output-corr-text", "output matrix of Pearson correlations to text file")
     ;
 
 
@@ -312,6 +313,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       params->skip_blups = params->strict_mode = true;
       params->binary_mode = false;
       params->min_MAC = 0.5;
+      if(vm.count("output-corr-text")) params->cor_out_txt = true;
     }
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
