@@ -3152,7 +3152,7 @@ void Data::get_sum_stats(const int chrom, const int varset, vector<variant_block
     getMask(chrom, varset, snp_data_blocks, insize, outsize, all_snps_info);
     n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
     //cerr << "M=" << n_snps << endl;
-    if(params.skip_test) return;
+    if(params.skip_test || (n_snps == 0)) return;
 
     // starting association testing with built masks
     t1 = std::chrono::high_resolution_clock::now();
@@ -3358,10 +3358,10 @@ void Data::getMask(const int chrom, const int varset, vector< vector < uchar > >
 
     readChunk(chrom, varset, nvar_read, bsize, snp_data_blocks, insize, outsize, all_snps_info);
 
-    setNbThreads(1);
 
     // build genotype matrix
 #if defined(_OPENMP)
+    setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
 #endif
     for(int isnp = 0; isnp < bsize; isnp++) {
@@ -3377,7 +3377,9 @@ void Data::getMask(const int chrom, const int varset, vector< vector < uchar > >
       }
 
     }
+#if defined(_OPENMP)
     setNbThreads(params.threads);
+#endif
 
     // update mask (taking max/sum)
     if(params.mask_loo)

@@ -431,6 +431,11 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
   vector<variant_block> tmp_snp_info; 
   snp tmpsnp;
 
+  if(n_mask_pass == 0){
+    all_snps_info = tmp_snp_info;
+    return;
+  }
+
   // store masks for testing (ignore those that failed filters)
   int k = 0;
   for(size_t i = 0; i < masks.size(); i++){
