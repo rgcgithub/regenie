@@ -119,6 +119,8 @@ void GenoMask::prepMasks(const int ntotal, const string& setID) {
       }
     }
     nmasks_total = n_aaf_bins * masks.size();
+    gvec.resize(nmasks_total);
+    for(int i = 0; i < nmasks_total; i++) gvec[i].resize(gblock_size);
   } 
 
   Gtmp = MatrixXd::Constant(ntotal, nmasks_total, -3);
@@ -320,6 +322,7 @@ void GenoMask::updateMasks_loo(const int start, const int bs, struct param* para
 void GenoMask::tally_masks(struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs){
 
 #if defined(_OPENMP)
+  setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
 #endif
   // get mask by aggregating across increasing AAF categories
