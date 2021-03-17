@@ -92,6 +92,7 @@ void GenoMask::setBins(struct param* params, mstream& sout){
 
   w_regions = params->w_regions;
   w_loo = params->mask_loo;
+  write_masks = params->write_masks;
 
   if(w_regions) base_masks = masks;
 }
@@ -119,8 +120,10 @@ void GenoMask::prepMasks(const int ntotal, const string& setID) {
       }
     }
     nmasks_total = n_aaf_bins * masks.size();
-    gvec.resize(nmasks_total);
-    for(int i = 0; i < nmasks_total; i++) gvec[i].resize(gblock_size);
+    if(write_masks){
+      gvec.resize(nmasks_total);
+      for(int i = 0; i < nmasks_total; i++) gvec[i].resize(gblock_size);
+    }
   } 
 
   Gtmp = MatrixXd::Constant(ntotal, nmasks_total, -3);

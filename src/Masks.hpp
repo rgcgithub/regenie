@@ -48,7 +48,7 @@ class GenoMask {
     double minAAF = 1e-7, default_aaf = .01;
     int n_aaf_bins, max_aaf_bins = 12, nmasks_total;
     uint32_t n_mask_pass = 0; // number of masks generated
-    bool write_setlist = false, w_regions = false, w_loo = false;
+    bool write_setlist = false, write_masks = false, w_regions = false, w_loo = false;
     bool take_max = true, take_comphet = false; // either max comphet or sum
     std::string gfile_prefix;
     uint64 gblock_size; // number of bytes to use for bed file format
