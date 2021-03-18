@@ -2378,7 +2378,7 @@ void Data::test_snps_fast() {
 
 #if defined(_OPENMP)
   omp_set_num_threads(params.threads); // set threads in OpenMP
-  sout << " with multithreading using OpenMP";
+  sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
 #endif
   sout << endl;
 
@@ -2892,7 +2892,7 @@ void Data::test_joint() {
 
 #if defined(_OPENMP)
   omp_set_num_threads(params.threads); // set threads in OpenMP
-  sout << " with multithreading using OpenMP";
+  sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
 #endif
   sout << endl;
 
