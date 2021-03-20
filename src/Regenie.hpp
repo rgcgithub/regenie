@@ -174,7 +174,8 @@ struct param {
   uint32_t n_variants = 0, nvs_stored = 0; // number of variants in genotype file
   std::map <std::string, uint32_t> FID_IID_to_ind;
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
-  bool with_bgi = false; // input bgi index file for BGEN format
+  bool with_bgi = false, zlib_compress; // input bgi index file for BGEN format and compression format
+  uint BGENbits = 0; // bit-encoding used in BGEN file
   bool ref_first = false; // ordering of REF/ALT alleles in input genotype file
   std::vector<bool> sex; // 0 is female, 1 is male
 

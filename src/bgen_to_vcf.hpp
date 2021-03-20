@@ -120,14 +120,20 @@ struct BgenParser {
     //std::cout << m_state << " " << e_ReadyForVariant << std::endl;
   }
 
+  // modified by J Mbatchou (03/19/21)
   std::ostream& summarise( std::ostream& o ) const {
+
     o << "   -summary : bgen file ("
       << ( m_context.flags & genfile::bgen::e_Layout2 ? "v1.2 layout" : "v1.1 layout" )
-      << ", "
-      << ( m_context.flags & genfile::bgen::e_CompressedSNPBlocks ? "compressed" : "uncompressed" ) << ")"
+      << ", ";
+    if((m_context.flags & genfile::bgen::e_CompressedSNPBlocks) == genfile::bgen::e_ZlibCompression)
+      o << "zlib ";
+    else if((m_context.flags & genfile::bgen::e_CompressedSNPBlocks) == genfile::bgen::e_ZstdCompression)
+      o << "zstd ";
+    o << ( m_context.flags & genfile::bgen::e_CompressedSNPBlocks ? "compressed" : "uncompressed" ) << ")"
       << " with " 
       << m_context.number_of_samples << " " << ( m_have_sample_ids ? "named" : "anonymous" ) << " samples and "
-      << m_context.number_of_variants << " variants.\n" ;
+      << m_context.number_of_variants << " variants" ;
     return o ;
   }
 

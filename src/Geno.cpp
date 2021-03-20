@@ -52,6 +52,9 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   bgen_tmp.open( files->bgen_file ) ;
   bgen_tmp.summarise( sout.coss ) ;
   bgen_tmp.summarise( cerr ) ;
+  // add in the number of bits
+  if(params->BGENbits>0) sout << " with " << params->BGENbits << "-bit encoding.\n";
+  else sout << ".\n";
 
   // get info for variants
   if( params->with_bgi ) read_bgi_file(bgen_tmp, files, params, filters, snpinfo, sout);
@@ -1350,8 +1353,8 @@ void check_bgen(const string bgen_file, struct param* params){
   BgenParser bgen_ck;
   bgen_ck.open( bgen_file ) ;
   bool layoutV2 = bgen_ck.get_layout();
-  bool zlib_compress = bgen_ck.get_compression();
-  if( !layoutV2 || !zlib_compress ){
+  params->zlib_compress = bgen_ck.get_compression();
+  if( !layoutV2 ){
     params->streamBGEN = false;
     return;
   }
@@ -1409,11 +1412,21 @@ void check_bgen(const string bgen_file, struct param* params){
   geno_block_uncompressed.resize(size_block_post_compression);
   bfile.read( reinterpret_cast<char *> (&geno_block[0]), size_block - 4);
 
-  // uncompress the block using zlib
-  uLongf dest_size = size_block_post_compression;
-  if( (uncompress( &(geno_block_uncompressed[0]), &dest_size, &geno_block[0], size_block - 4) != Z_OK) || (dest_size != size_block_post_compression) ){
-    params->streamBGEN = false;
-    return;
+  // uncompress the block
+  //cout << "zlib:"<< std::boolalpha << zlib_compress ;
+  if(params->zlib_compress){ // using zlib
+    uLongf dest_size = size_block_post_compression;
+    if( (uncompress( &(geno_block_uncompressed[0]), &dest_size, &geno_block[0], size_block - 4) != Z_OK) || (dest_size != size_block_post_compression) ){
+      params->streamBGEN = false;
+      return;
+    }
+  } else { // using zstd
+    size_t const dest_size = ZSTD_decompress(&(geno_block_uncompressed[0]), size_block_post_compression, &geno_block[0], size_block - 4) ;
+    //cerr << size_block_post_compression << " " << dest_size << " " << size_block - 4 <<endl;
+    if( dest_size != size_block_post_compression ){
+      params->streamBGEN = false;
+      return;
+    }
   }
 
   // stream to uncompressed block
@@ -1453,8 +1466,8 @@ void check_bgen(const string bgen_file, struct param* params){
   // bits per probability
   std::memcpy(&bits_prob, &(buffer[0]), 1);
   //cout << ",bits:"<< bits_prob ;
-  buffer ++;
-  if( (phasing != 0) || (bits_prob != 8) ){
+  params->BGENbits = bits_prob;;
+  if( bits_prob != 8 ){
     params->streamBGEN = false;
     return;
   }
@@ -1665,9 +1678,18 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
   vector < uchar > geno_block_uncompressed;
   geno_block_uncompressed.resize(outsize);
 
-  // uncompress the block using zlib
-  uLongf dest_size = outsize;
-  if( (uncompress( &(geno_block_uncompressed[0]), &dest_size, &((*geno_block)[0]), insize) != Z_OK) || (dest_size != outsize) ){
+  // uncompress the block
+  bool compress_fail;
+  if(params->zlib_compress){ // using zlib
+    uLongf dest_size = outsize;
+    compress_fail = (uncompress( &(geno_block_uncompressed[0]), &dest_size, &((*geno_block)[0]), insize - 4) != Z_OK) || (dest_size != outsize);
+  } else { // using zstd
+    size_t const dest_size = ZSTD_decompress(&(geno_block_uncompressed[0]), outsize, &((*geno_block)[0]), insize - 4) ;
+    //cerr << outsize << " " << dest_size << " " << insize - 4 << endl;
+    compress_fail = (dest_size != outsize);
+  }
+  // check it was successful
+  if( compress_fail ){
     sout << "ERROR: Failed to decompress genotype data block for variant: " << infosnp->ID << endl;
     exit(EXIT_FAILURE);
   }
