@@ -2995,7 +2995,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
 // step 2 with snp-sets
 void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpcount, vector<uint64>& indices, vector<snp>& snpinfo, struct param* params, struct geno_block* gblock, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info) {
 
-  int ns, hc_val, lval, nmales;
+  int ns, hc_val, lval, ncarriers, nmales;
   uint32_t index ;
   double ds, total, mac, mval, ival, info_num;
   std::string chromosome, rsid;
@@ -3011,15 +3011,14 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
     // reset variant info
     prep_snp_stats(snp_data, params);
 
-    ns = 0, hc_val = 0, index = 0, nmales = 0;
+    ns = 0, hc_val = 0, index = 0, ncarriers = 0, nmales = 0;
     total = 0, mac = 0, info_num = 0;
 
-    // set to correct position
+    // set to correct position and read in data
     gblock->bgen.jumpto( snpinfo[ indices[snpcount + snp] ].offset );
     gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
     gblock->bgen.read_probs( &probs ) ;
     //sout << "["<< chrom << "]SNPid stored ("<< snpinfo[snpcount+bs].chrom <<") = " << snpinfo[snpcount+bs].ID<< "/ SNPIDread ("<<chromosome<<")= " << rsid << endl; exit 1;
-    //assert(chrStrToInt(chromosome, params->nChrom) == chrom);
 
     for( std::size_t i = 0; i < probs.size(); ++i ) {
 
@@ -3034,12 +3033,11 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
 
         if( filters->ind_in_analysis(index) ){
           if( !params->strict_mode || (params->strict_mode && masked_indivs(index,0)) ){
-            total += ds;
             // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
             // sex is 1 for males and 0 o.w.
             lval = 2, mval = ds;
             if(params->test_mode && (chrom == params->nChrom)) {
-              mval =  ds * 0.5 * (2 - params->sex[i]);
+              mval *= 0.5 * (2 - params->sex[i]);
               lval = params->sex[i];
             }
 
@@ -3048,7 +3046,10 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
             else
               ival = 4 * probs[i][0] + probs[i][1] - ds * ds;
 
-            total += gblock->genobuf[index];
+            // check if carrier
+            if(params->build_mask && params->singleton_carriers && (ds >= 0.5)) ncarriers ++;
+
+            total += ds; 
             mac += mval;
             nmales += lval;
             info_num += ival;
@@ -3071,15 +3072,16 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
     }
 
     // check MAC
-    if( params->test_mode){
+    if( params->test_mode ){
       compute_mac(chrom != params->nChrom, mac, total, ns, nmales, snp_data, params);
 
       if(mac < params->min_MAC) { 
         snp_data->ignored = true; continue;
       }
+
+      if(params->build_mask && params->singleton_carriers) snp_data->singleton = (ncarriers == 1); 
     }
 
-    //sout << "SNP#" << snp + 1 << "AC=" << mac << " BAD="<< (bad_snps(snp)?"BAD":"GOOD")<< endl;
     compute_aaf_info(total, ns, info_num, snp_data, params);
 
     if(params->test_mode && params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
@@ -3139,7 +3141,6 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
   }
 
 }
-
 
 void readChunkFromPGENFileToG(const int start, const int bs, vector<uint64>& indices, const int &chrom, struct param* params, struct filter* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const vector<snp>& snpinfo, vector<variant_block> &all_snps_info){
 
