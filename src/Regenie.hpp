@@ -338,6 +338,8 @@ std::vector<std::string> check_name(std::string const&,mstream&);
 double convertDouble(const std::string&,struct param*,mstream&);
 double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param*,mstream&);
 std::string print_csv(const std::vector<std::string>&);
+void set_threads(struct param*);
+
 
 template <typename KEY, typename VALUE> 
 bool in_map(KEY element, std::map<KEY,VALUE>& emap){

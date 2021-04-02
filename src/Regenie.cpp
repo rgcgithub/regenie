@@ -985,3 +985,13 @@ std::string print_csv(const vector<string>& vlist){
   return buffer.str();
 
 }
+
+void set_threads(struct param* params) {
+
+#if defined(_OPENMP)
+  omp_set_num_threads(params->threads); // set threads in OpenMP
+#endif
+  setNbThreads(params->threads);
+
+}
+

@@ -61,19 +61,20 @@ Data::~Data() {
 
 void Data::run() {
 
-  if(params.test_mode) {
+  // set number of threads
+  set_threads(&params);
+
+  if(params.test_mode) { // step 2
     if(params.streamBGEN) check_bgen(files.bgen_file, &params);
 
     if( params.snp_set ) test_joint();
     else test_snps_fast();
     //else test_snps(); // disabled after v1.0.7
 
+  } else { // step 1
 
-  } else {
     sout << "Fitting null model\n";
 
-    // set number of threads
-    setNbThreads(params.threads);
     // set up file for reading
     file_read_initialization();
     // if splitting l0 into many jobs
@@ -98,6 +99,7 @@ void Data::run() {
     // output results
     output();
   }
+
 }
 
 
@@ -1515,7 +1517,7 @@ void Data::test_snps() {
   vector < Files* > ofile_split;
   MatrixXd WX, GW, sqrt_denum, scaleG_pheno;
 
-  setNbThreads(params.threads); // set threads
+  set_threads(&params); // set threads
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
@@ -2377,12 +2379,10 @@ void Data::test_snps_fast() {
   vector < Files* > ofile_split;
 
 #if defined(_OPENMP)
-  omp_set_num_threads(params.threads); // set threads in OpenMP
   sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
 #endif
   sout << endl;
 
-  setNbThreads(params.threads);
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
@@ -2891,12 +2891,10 @@ void Data::test_joint() {
   }
 
 #if defined(_OPENMP)
-  omp_set_num_threads(params.threads); // set threads in OpenMP
   sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
 #endif
   sout << endl;
 
-  setNbThreads(params.threads);
   file_read_initialization(); // set up files for reading
   read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, sout);   // read phenotype and covariate files
   prep_run(&files, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
