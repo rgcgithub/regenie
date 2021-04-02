@@ -708,6 +708,7 @@ was not successful in which case the user would need to delete the files)</p>
 <p>See the <a href="https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1">Wiki page</a> for more details on how to run the level 0 models for Step 1 
 of <strong>regenie</strong> in parallel.</p>
 <!---
+|`--minCaseCount`| INT | Optional | flag to ignore BTs with low case counts [default is 10]|
 |`--interaction`| STRING| Optional| to perform GxE interaction test|
 |`--interaction-snp`| STRING| Optional| to perform GxSNP interaction test|
 |`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
@@ -1023,6 +1024,10 @@ AAF across sites included in the mask.</p>
 <p>If using <code>--write-mask</code>, the masks will be saved to 
 <code>file_masks.{bed,bim,fam}</code>. </p>
 <!---
+|`--write-mask-snplist`| FLAG| Optional| to write list of variants that went into each mask to file|
+If using `--write-mask-snplist`, the list of variants in each mask will be saved to 
+`file_masks.snplist`.
+
 |`--mask-lodo`| FLAG| Optional| to perform LODO (leave-one-domain-out) scheme|
 |`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
 With `--write-setlist`, new set list files will be written which contain list of sets
@@ -1030,6 +1035,7 @@ based on the written masks.
 The option takes in a file with 2 columns containing 
 a file suffix for the new set list file, as well as a list of the masks
 which will constitute the sets (set names/chr/pos are obtained from the input set list file).
+
 
 <pre><code class="bash">onlyLoFs Mask1
 LoFs+Splice Mask1,Mask3
