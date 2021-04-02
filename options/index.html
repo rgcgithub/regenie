@@ -331,6 +331,12 @@ you can check they are the same using  the following command (the message should
 </tr>
 </tbody>
 </table>
+<!---
+|`--tpheno-file`| STRING| Optional| to use a phenotype file in transposed format|
+|`--tpheno-indexCol`| INT| Optional| index of phenotype name column in transposed phenotype file|
+|`--tpheno-ignoreCols`| INT| Optional| indexes of columns to ignore in transposed phenotype file|
+--->
+
 <p>Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. <code>--covarCol PC{1:10}</code>).</p>
 <h4 id="genetic-data-file-format">Genetic data file format</h4>
 <p><strong>regenie</strong> can read BGEN files, bed/bim/fam files or pgen/psam/pvar 
@@ -340,7 +346,7 @@ files in Step 1 and Step 2.</p>
 <p>The bed/bim/fam file format is described <a href="https://www.cog-genomics.org/plink/1.9/formats">here</a>.</p>
 <p>The pgen/pvar/psam file format is described <a href="https://www.cog-genomics.org/plink/2.0/formats#pgen">here</a>.</p>
 <p>Tools useful for genetic data file format conversion are : <a href="http://www.cog-genomics.org/plink/">PLINK</a>, <a href="https://www.well.ox.ac.uk/~gav/qctool/">QCTOOL</a>, <a href="https://samtools.github.io/bcftools/">BCFTOOLS</a>.</p>
-<p>Step 2 of <strong>regenie</strong> can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
+<p>Step 2 of <strong>regenie</strong> can be sped up by using BGEN files using v1.2 format with 8 bits encoding 
 (genotype file can be generated with <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> using 
 option <code>--export bgen-1.2 'bits=8'</code>) as well as having an accompanying .bgi index file 
 (a useful tool to create such file is bgenix which is part of the BGEN library).</p>
@@ -503,6 +509,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FILE</td>
 <td>Optional</td>
 <td>run level 1 specifying the master file from '--split-l0'</td>
+</tr>
+<tr>
+<td><code>--minCaseCount</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>flag to ignore BTs with low case counts [default is 10]</td>
 </tr>
 <tr>
 <td><code>--keep-l0</code></td>
@@ -701,6 +713,20 @@ These are automatically deleted at the end of the program (unless the run
 was not successful in which case the user would need to delete the files)</p>
 <p>See the <a href="https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1">Wiki page</a> for more details on how to run the level 0 models for Step 1 
 of <strong>regenie</strong> in parallel.</p>
+<!---
+|`--interaction`| STRING| Optional| to perform GxE interaction test|
+|`--interaction-snp`| STRING| Optional| to perform GxSNP interaction test|
+|`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
+
+Interaction testing
+To perform GxE interaction tests, you can use option `--interaction covariate_name`. If the covariate 
+is categorical and you want a specific baseline level, you can use `--interaction covariate_name[baseline_level]`.
+To perform GxSNP interaction test, you can use option `--interaction-snp snpID`, where the variant must be present 
+in the genotype file. By default, additive encoding is used but you can use dominant (dom), recessive (rec),
+or categorical (cat) coding for the interacting variant.
+For example, to specify dominant coding for the variant, use `--interaction-snp snpID[dom]`
+--->
+
 <h3 id="output">Output</h3>
 <table>
 <thead>
@@ -969,6 +995,12 @@ listed last in the bim file).</p>
 <td>to perform LOVO scheme</td>
 </tr>
 <tr>
+<td><code>--write-mask-snplist</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to write list of variants that went into each mask to file</td>
+</tr>
+<tr>
 <td><code>--check-burden-files</code></td>
 <td>FLAG</td>
 <td>Optional</td>
@@ -1002,7 +1034,10 @@ When using <code>--mask-lovo</code>, the mask name will be the same as above but
 AAF across sites included in the mask.</p>
 <p>If using <code>--write-mask</code>, the masks will be saved to 
 <code>file_masks.{bed,bim,fam}</code>. </p>
+<p>If using <code>--write-mask-snplist</code>, the list of variants in each mask will be saved to 
+<code>file_masks.snplist</code>. </p>
 <!---
+|`--mask-lodo`| FLAG| Optional| to perform LODO (leave-one-domain-out) scheme|
 |`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
 With `--write-setlist`, new set list files will be written which contain list of sets
 based on the written masks. 

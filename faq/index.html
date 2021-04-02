@@ -171,6 +171,13 @@ final predictions when varying the block size.</p>
 <p>We recommend to use a smaller set of about 500K directly genotyped SNPs in step 1, which should be sufficient to capture genome-wide polygenic effects. Note that using too many SNPs in Step 1 (e.g. &gt;1M) can lead to a high computational burden due to the resulting higher number of predictors in the level 1 models.</p>
 <p><br/></p>
 <ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> Does <strong>regenie</strong> compute a GRM like many linear mixed model approaches? 
+</span></li>
+</ul>
+<p>The model used in <strong>regenie</strong> to perform whole genome regression has close ties to a linear mixed model based on an infinitesimal model where the polygenic effects have been integrated out so that the covariance matrix of the trait involves an NxN genetic relatedness matrix (GRM).
+In <strong>regenie</strong>, we directly estimate the polygenic effects using ridge regression which corresponds to fitting a linear regression model with a L2 penalty to impose shrinkage. Hence, we bypass having to compute a NxN GRM and use the polygenic effect estimates to control for relatedness and polygenicity when testing variants for association.</p>
+<p><br/></p>
+<ul>
 <li><span style="font-size: large; font-style: italic;color:#404040"> What do I do if I get the error "Uh-oh, SNP XX has low variance (=XX)" in step 1? 
 </span></li>
 </ul>
