@@ -1882,6 +1882,7 @@ std::string Data::print_header_output_single(){
   std::ostringstream buffer;
 
   buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
+    ( params.af_cc ? "A1FREQ_CASES A1FREQ_CONTROLS ":"") << 
     ( !params.build_mask && params.dosage_mode ? "INFO ":"") << 
     "N TEST BETA SE CHISQ LOG10P";
   if(params.joint_test) buffer << " DF";
@@ -1932,11 +1933,12 @@ std::string Data::print_sum_stats(const double beta, const double se, const doub
 }
 
 // native format - single pheno
-std::string Data::print_sum_stats(const double af, const double info, const int n, const string model, const double beta, const double se, const double chisq, const double pv, const bool test_pass){
+std::string Data::print_sum_stats(const double af, const double af_cases, const double af_ctrls, const double info, const int n, const string model, const double beta, const double se, const double chisq, const double pv, const bool test_pass){
 
   std::ostringstream buffer;
 
   buffer << af << " " ;
+  if(params.af_cc) buffer << af_cases << " " << af_ctrls << " ";
   if(!params.build_mask && params.dosage_mode) buffer << info << " ";
   buffer << n << " " << model << " " << beta << ' ' << se << ' ' << chisq << ' ';
   if(test_pass) buffer << pv;
@@ -2477,7 +2479,7 @@ void Data::test_snps_fast() {
 
 
           if(!params.split_by_pheno) ofile << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), j, !block_info[isnp].test_fail[j]);
-          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].ns(j),test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]);
+          else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].af_cases(j), block_info[isnp].af_ctrls(j), block_info[isnp].info(j), block_info[isnp].ns(j),test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]);
           else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].mac(j), block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]);
 
           if(params.split_by_pheno) (*ofile_split[j]) << endl;
@@ -3002,7 +3004,7 @@ void Data::test_joint() {
             }
 
             if(!params.split_by_pheno) ofile << print_sum_stats(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), j, !block_info[isnp].test_fail[j]) << (params.joint_test? " 1" : ""); // DF
-            else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].ns(j), test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]) << (params.joint_test? " 1" : ""); // DF
+            else if(!params.htp_out) (*ofile_split[j]) << print_sum_stats(block_info[isnp].af(j), block_info[isnp].af_cases(j), block_info[isnp].af_ctrls(j), block_info[isnp].info(j), block_info[isnp].ns(j), test_string, block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), !block_info[isnp].test_fail[j]) << (params.joint_test? " 1" : ""); // DF
             else (*ofile_split[j]) << print_sum_stats_htp(block_info[isnp].bhat(j), block_info[isnp].se_b(j), block_info[isnp].chisq_val(j), block_info[isnp].pval_log(j), block_info[isnp].af(j), block_info[isnp].info(j), block_info[isnp].mac(j), block_info[isnp].genocounts, zcrit, j, !block_info[isnp].test_fail[j]) << (params.joint_test? ";DF=1" : "");
 
             if(params.split_by_pheno) (*ofile_split[j]) << endl;

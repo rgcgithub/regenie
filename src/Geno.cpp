@@ -1539,6 +1539,8 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
             if(filters->has_missing(index)) update_trait_counts(index, ds, mval, lval, ival, snp_data, masked_indivs);
           }
 
+	  if( params->af_cc ) update_n_af_cc(index, ds, snp_data, masked_indivs, phenotypes_raw);
+	  
           // get genotype counts (convert to hardcall)
           if( params->htp_out ) {
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
@@ -1784,6 +1786,8 @@ void parseSnpfromBGEN(const int isnp, const int &chrom, vector<uchar>* geno_bloc
         if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, ival, snp_data, masked_indivs);
       }
 
+      if( params->af_cc ) update_n_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
+	
       // get genotype counts (convert to hardcall)
       if( params->htp_out ) {
         hc_val = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
@@ -1922,10 +1926,12 @@ void parseSnpfromBed(const int isnp, const int &chrom, const vector<uchar> geno_
           mac += mval;
           nmales += lval;
           ns++;
-
+	 
           // counts by trait
           if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, 0, snp_data, masked_indivs);
         }
+
+        if( params->af_cc ) update_n_af_cc(index, hc, snp_data, masked_indivs, phenotypes_raw);
 
         // get genotype counts
         if( params->htp_out ) 
@@ -2047,6 +2053,8 @@ void readChunkFromPGENFileToG(const int &start, const int &bs, const int &chrom,
             // counts by trait
             if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, ival, snp_data, masked_indivs);
           }
+
+	  if( params->af_cc ) update_n_af_cc(index, gblock->genobuf[index], snp_data, masked_indivs, phenotypes_raw);
 
           // get genotype counts
           if( params->htp_out ) {
@@ -2201,16 +2209,28 @@ void prep_snp_stats(variant_block* snp_data, struct param* params){
 
     // reset variant info
     snp_data->af = ArrayXd::Zero(params->n_pheno);
+    snp_data->af_cases = ArrayXd::Zero(params->n_pheno);
+    snp_data->af_ctrls = ArrayXd::Zero(params->n_pheno);
     snp_data->mac = ArrayXd::Zero(params->n_pheno);
     snp_data->info = ArrayXd::Zero(params->n_pheno);
     snp_data->nmales = ArrayXi::Zero(params->n_pheno);
     snp_data->ns = ArrayXi::Zero(params->n_pheno);
+    snp_data->n_cases = ArrayXi::Zero(params->n_pheno);
+    snp_data->n_ctrls = ArrayXi::Zero(params->n_pheno);
     snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
     snp_data->ignored = false;
     snp_data->ignored_trait = ArrayXb::Constant(params->n_pheno, false);
     snp_data->fastSPA = params->use_SPA;
     snp_data->n_non_zero = 0;
 
+}
+
+void update_n_af_cc(int index, double genoValue, variant_block* snp_data, const Ref<const MatrixXb>& mask, const Ref<const MatrixXd>& ymat){
+
+  snp_data->n_cases.array() += mask.row(index).array().cast<int>() * ymat.row(index).array().cast<int>();
+  snp_data->n_ctrls.array() += mask.row(index).array().cast<int>() * (1 - ymat.row(index).array().cast<int>());
+  snp_data->af_cases.array() += genoValue * (mask.row(index).array().cast<double>() * ymat.row(index).array().cast<double>());
+  snp_data->af_ctrls.array() += genoValue * (mask.row(index).array().cast<double>() * (1 - ymat.row(index).array().cast<double>()));
 }
 
 void update_trait_counts(int index, double genoValue, double macValue, int sexValue, double infoValue, variant_block* snp_data, const Ref<const MatrixXb>& mask){
@@ -2272,6 +2292,8 @@ void compute_aaf_info(double& total, int ns, double info_num, variant_block* snp
   total /= ns;
   snp_data->af1 = total / 2; // all traits
   snp_data->af /= 2 * snp_data->ns.cast<double>(); // single trait
+  snp_data->af_cases /= 2 * snp_data->n_cases.cast<double>();
+  snp_data->af_ctrls /= 2 * snp_data->n_ctrls.cast<double>();
 
   if(params->test_mode && params->dosage_mode){
 
@@ -3059,6 +3081,8 @@ void readChunkFromBGENFileToG(const int bs, const int chrom, const uint32_t snpc
             if(filters->has_missing(index)) update_trait_counts(index, ds, mval, lval, ival, snp_data, masked_indivs);
           }
 
+	  if( params->af_cc ) update_n_af_cc(index, ds, snp_data, masked_indivs, phenotypes_raw);
+
           // get genotype counts (convert to hardcall)
           if( params->htp_out ) {
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
@@ -3198,6 +3222,8 @@ void readChunkFromPGENFileToG(const int start, const int bs, vector<uint64>& ind
             // counts by trait
             if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, ival, snp_data, masked_indivs);
           }
+
+	  if( params->af_cc ) update_n_af_cc(index, gblock->genobuf[index], snp_data, masked_indivs, phenotypes_raw);
 
           // get genotype counts
           if( params->htp_out ) {

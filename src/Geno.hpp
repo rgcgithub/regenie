@@ -76,8 +76,8 @@ struct geno_block {
 
 struct variant_block {
   double scale_fac, af1, info1;
-  Eigen::ArrayXi ns, nmales;
-  Eigen::ArrayXd af, mac, info;
+  Eigen::ArrayXi ns, n_cases, n_ctrls, nmales;
+  Eigen::ArrayXd af, af_cases, af_ctrls, mac, info;
   Eigen::ArrayXd Gmod;
   Eigen::MatrixXd genocounts;
   std::vector<bool> test_fail;
@@ -153,6 +153,7 @@ void jumpto_bed(uint64,struct in_files*);
 void prep_snp_stats(variant_block*,struct param*);
 void update_trait_counts(int,double,double,int,double,variant_block*,const Eigen::Ref<const MatrixXb>&);
 void update_genocounts(bool,int,int,Eigen::MatrixXd&,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
+void update_n_af_cc(int, double, variant_block*, const Eigen::Ref<const MatrixXb>&, const Eigen::Ref<const Eigen::MatrixXd>&);
 void compute_mac(bool,double&,double,int,int,variant_block*,struct param*);
 void compute_aaf_info(double&,int,double,variant_block*,struct param*);
 void update_nnz_spa(uint32_t,uint32_t,variant_block*);

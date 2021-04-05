@@ -196,6 +196,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
     ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
     ("print-pheno", "Print phenotype name when writing sample IDs to file (only for step 2)")
+    ("af-cc", "Print allele frequency in cases and controls in output (only for step 2)")
     ;
 
   // extra options
@@ -284,6 +285,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("print-pheno") ) params->print_pheno_name = true;
+    if( vm.count("af-cc") ) params->af_cc = true;
     if( vm.count("early-exit") ) params->early_exit = true;
     if( vm.count("force-step1") ) params->force_run = true;
     if( vm.count("lowmem") ) params->write_l0_pred = true;
@@ -579,6 +581,16 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         }
       }
 
+      if(!params->test_mode && vm.count("af-cc")) {
+        params->af_cc = false;
+        sout << "WARNING : Option --af-cc only works for step 2.\n";
+      }
+      
+      if( vm.count("htp") && vm.count("af-cc")) {
+        params->af_cc = false;
+        sout << "WARNING : Cannot use --af-cc with --htp.\n";
+      }
+      
       params->snp_set = true;
       params->build_mask = true;
 

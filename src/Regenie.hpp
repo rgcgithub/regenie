@@ -247,6 +247,7 @@ struct param {
   bool fix_maxstep_null = false; // if user specifies max step size
   bool back_correct_se = false; // for SE with Firth
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
+  bool af_cc = false; // print af in cases/controls to output
   bool htp_out = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
   bool set_range = false;
