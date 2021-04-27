@@ -983,29 +983,43 @@ void Data::rm_l0_files(int ph){
 std::string get_fullpath(std::string fname){
 
   string fout;
+  fs::path fullpath;
 
   try {
 
     // convert to full path using boost filesystem library
     // this can generate errors due to LC_ALL locale being invalid
-    fs::path fullpath;
     fullpath = fs::absolute(fname);
     fout = fullpath.make_preferred().string();
 
   } catch ( std::runtime_error& ex ) {
 
+    // to avoid boost::filesystem error
+    setenv("LC_ALL", "C", 1);
+
     try {
 
-      // use realpath
-      char buf[PATH_MAX];
-      char *res = realpath(fname.c_str(), buf);
-      if(res) fout = string(buf);
-      else fout = fname; // if failed to get full path
+      // try again
+      fullpath = fs::absolute(fname);
+      fout = fullpath.make_preferred().string();
 
-    } catch ( const std::bad_alloc& ) {
-      fout = fname; // if failed to get full path
+    } catch ( std::runtime_error& ex ) {
+
+      try {
+
+        // use realpath
+        char buf[PATH_MAX];
+        char *res = realpath(fname.c_str(), buf);
+        if(res) fout = string(buf);
+        else fout = fname; // if failed to get full path
+
+      } catch ( const std::bad_alloc& ) {
+        fout = fname; // if failed to get full path
+      } catch ( std::runtime_error& ex ) {
+        fout = fname; // if failed to get full path
+      }
+
     }
-
   }
 
   return fout;
