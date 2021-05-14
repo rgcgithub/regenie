@@ -853,7 +853,6 @@ void Data::output() {
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
   string pfile, out_blup_list, out_prs_list, loco_filename, prs_filename;
-  string fullpath_str, path_prs;
   Files outb, outp;
 
   sout << "Output\n" << "------\n";
@@ -875,16 +874,13 @@ void Data::output() {
 
     if( params.make_loco || params.binary_mode || params.print_prs ) {
 
-      fullpath_str = get_fullpath(loco_filename);
-      if(params.print_prs) path_prs = get_fullpath(prs_filename);
-
       if( !params.binary_mode ) { // for quantitative traits
-        outb << files.pheno_names[ph]  << " " <<  fullpath_str << endl;
-        if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
+        outb << files.pheno_names[ph]  << " " <<  loco_filename << endl;
+        if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  prs_filename << endl;
       } else { // for binary traits - check level 1 ridge converged
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
-          outb << files.pheno_names[ph]  << " " << fullpath_str << endl;
-          if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
+          outb << files.pheno_names[ph]  << " " << loco_filename << endl;
+          if(params.print_prs) outp << files.pheno_names[ph]  << " " <<  prs_filename << endl;
         } else {
           if(params.write_l0_pred) rm_l0_files(ph); // cleanup level 0 predictions
           sout << "Level 1 logistic did not converge. LOCO predictions calculations are skipped.\n\n";
