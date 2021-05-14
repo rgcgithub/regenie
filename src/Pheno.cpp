@@ -478,6 +478,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   int n_files = 0, tmp_index, n_masked_prior, n_masked_post;
   uint32_t indiv_index;
+  double blup_val;
   string line, tmp_pheno;
   std::vector< string > tmp_str_vec, tmp_prs_vec;
   vector<bool> read_pheno(params->n_pheno, false);
@@ -552,23 +553,28 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
       exit(EXIT_FAILURE);
     }
 
-    if( params->use_prs ){ // read in second line
-      fClass.readLine(line);
-      tmp_prs_vec = string_split(line,"\t ");
+    // read second line to check for missing predictions
+    fClass.readLine(line);
+    tmp_prs_vec = string_split(line,"\t ");
 
-      if( tmp_prs_vec[0] != "0") {
-        sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";
-        exit(EXIT_FAILURE);
-      }
+    if( params->use_prs  && (tmp_prs_vec[0] != "0") ){ // read in second line
+      sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";
+      exit(EXIT_FAILURE);
     }
 
     for (size_t i = 1; i < tmp_str_vec.size(); i++){
       // ignore sample if it is not in genotype data
       if (!in_map(tmp_str_vec[i], params->FID_IID_to_ind)) continue;
       indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
+      blup_val = convertDouble(tmp_prs_vec[i], params, sout);
 
-      blupf_mask( indiv_index , 0 ) = true;
-      if( params->use_prs ) m_ests->blups(indiv_index, ph) = convertDouble(tmp_prs_vec[i], params, sout);
+      // ignore samples where prediction is NA
+      blupf_mask( indiv_index , 0 ) = (blup_val != params->missing_value_double);
+      //cerr << tmp_str_vec[i] << "\t" << std::boolalpha << blupf_mask( indiv_index , 0 ) << endl; 
+      if (!blupf_mask( indiv_index , 0 )) continue;
+
+      if( params->use_prs ) 
+        m_ests->blups(indiv_index, ph) = blup_val;
     }
 
     // mask samples not in file
@@ -577,7 +583,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     if( n_masked_post < n_masked_prior ){
       sout << "    + " << n_masked_prior - n_masked_post <<
-        " individuals don't have LOCO predictions and will be ignored for the trait\n";
+        " individuals with missing LOCO predictions will be ignored for the trait\n";
     }
 
     // check not everyone is masked
