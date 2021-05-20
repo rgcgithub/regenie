@@ -332,6 +332,8 @@ you can check they are the same using  the following command (the message should
 </tbody>
 </table>
 <!---
+|`--extract-or`  | FILE | Optional | Inclusion file that lists IDs of variants to keep regardless of minimum MAC filter|
+|`--exclude-or`  | FILE | Optional | Exclusion file that lists IDs of variants to remove unless MAC is above threshold|
 |`--tpheno-file`| STRING| Optional| to use a phenotype file in transposed format|
 |`--tpheno-indexCol`| INT| Optional| index of phenotype name column in transposed phenotype file|
 |`--tpheno-ignoreCols`| INT| Optional| indexes of columns to ignore in transposed phenotype file|
@@ -708,7 +710,10 @@ was not successful in which case the user would need to delete the files)</p>
 <p>See the <a href="https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1">Wiki page</a> for more details on how to run the level 0 models for Step 1 
 of <strong>regenie</strong> in parallel.</p>
 <!---
+|`-no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
 |`--minCaseCount`| INT | Optional | flag to ignore BTs with low case counts [default is 10]|
+|`--write-null-firth`| FLAG| Optional| to write the null estimates for approximate Firth [can be used in step 1 or 2] |
+|`--use-null-firth`| FILE| Optional| to use stored null estimates for approximate Firth in step 2 |
 |`--interaction`| STRING| Optional| to perform GxE interaction test|
 |`--interaction-snp`| STRING| Optional| to perform GxSNP interaction test|
 |`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
@@ -744,7 +749,8 @@ For example, to specify dominant coding for the variant, use `--interaction-snp 
 <p>A log file <code>file.log</code> of the output is generated.</p>
 <p><strong>Using <code>--step 1 --out file</code></strong></p>
 <p>For the <script type="math/tex">P</script> phenotypes, files <code>file_1.loco</code>,...,<code>file_P.loco</code> are output with the
-per-chromosome LOCO predictions as rows of the files. 
+per-chromosome LOCO predictions as rows of the files 
+(following the order of the phenotypes in the phenotype file header). 
 If option <code>--gz</code> was used, the files will be compressed in gzip format and have extension <code>.loco.gz</code>.</p>
 <p>Genotyped individuals specified using option <code>--remove</code> are excluded from this file. 
 Individuals with missing phenotype values kept in the analysis 
@@ -769,8 +775,14 @@ With BGEN/PGEN files with dosages, the imputation INFO score is provided
 (IMPUTE info score for BGEN and Mach Rsq for PGEN).
 Allele frequency, sample size and INFO score, if applicable, are computed using only
 non-missing samples for each phenotype.</p>
-<p>These are followed by the estimated effect sizes (on original scale), standard errors, chi-square test statistics 
+<p>These are followed by the estimated effect sizes (for allele 1 on the original scale), standard errors, chi-square test statistics 
 and <script type="math/tex">-\log_{10}</script> p-value.</p>
+<!---
+With option `--no-split`, the summary statistics for all traits are written to a single file `file.regenie`,
+with the same format as above. Note that allele frequency, sample size and INFO score are reported using
+all analyzed samples.
+--->
+
 <p>If option <code>--write-samples</code> was used, IDs of samples used for each trait will be written in files
 <code>file_&lt;phenotype1_name&gt;.regenie.ids,...,file_&lt;phenotypeP_name&gt;.regenie.ids</code> (tab separated, no header).</p>
 <h2 id="burden-testing">Burden testing</h2>
@@ -881,6 +893,10 @@ A1CF 10  50806630  10:50806630:A:G,10:50806630:A:AT,...
 </code></pre>
 
 <p>Variants in the same set must belong to the chromosome specified in the 2nd column.</p>
+<!---
+Variants in the same set can belong to different chromosomes.
+--->
+
 <h5 id="set-inclusionexclusion-file-format">Set inclusion/exclusion file format</h5>
 <p>The file must have a single column of set/gene names corresponding to those in the 
 set list file.</p>
