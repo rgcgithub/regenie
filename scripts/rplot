@@ -1,0 +1,122 @@
+#!/usr/bin/env Rscript
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# rplot     [andrey.ziyatdinov@regeneron.com]
+#
+# Plot Regenie results
+#
+# rplot uses the Rscript executable to run R code for plotting.
+# Required R libraries: docopt, data.table, dplyr, unglue, 
+# ggplot2, scales, ggrepel.
+#
+# Inspired by https://github.com/coolbutuseless/dplyr-cli.
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+suppressMessages({
+  library(docopt)
+  library(data.table)
+  library(dplyr)
+  library(unglue)
+  library(ggplot2)
+  library(scales)
+  library(ggrepel)
+})
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# configuration for docopt
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+doc <- "rplot
+
+Usage:
+  rplot <command> (--file=FILE) (--out=PREFIX) [--htp]
+  Rscript rplot <command> (--file=FILE) (--out=PREFIX) [--htp]
+  rplot -h | --help
+  rplot lovo -f lovo.regenie.gz -o out
+
+Options:
+  -h --help               show the help
+  -f FILE --file=FILE     Regenie output file
+  -o PREFIX --out=PREFIX  output prefix
+  --htp                   flag for HTPv4 format
+  "
+
+arg <- docopt(doc)
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# LOVO
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+if(arg$command == "lovo") {
+  # check inputs
+  stopifnot(!is.null(arg$file))
+  stopifnot(file.exists(arg$file))
+  stopifnot(!is.null(arg$out))
+
+  # Set format of sum stats file
+  if(arg$htp){
+    cols.extract <- c("Chr","Pos","Name","Pval")
+    fn.pval <- function(x) -log10(x)
+  } else {
+    cols.extract <- c("CHROM","GENPOS", "ID", "LOG10P")
+    fn.pval <- function(x) x
+  }
+
+  # read lovo results
+  lovo <- fread(arg$file) %>% as_tibble
+  stopifnot(all(cols.extract %in% names(lovo)))
+  lovo <- lovo %>%
+    select(all_of(cols.extract)) %>%
+    setNames(c("CHROM","GENPOS", "ID", "LOG10P")) %>%
+    mutate(
+      LOG10P = fn.pval(LOG10P),
+      ID = unglue_vec(ID, "{}_{x}")
+    )
+
+  # full mask will correspond to "NA" for ID
+  full.mask.p <- lovo[ is.na(lovo$ID), "LOG10P"] %>% pull
+  stopifnot(length(full.mask.p) == 1)
+  lovo <- lovo[!is.na(lovo$ID),]
+  # get chr
+  chr <- lovo$CHROM[1]
+  stopifnot(all(lovo$CHROM == chr))
+
+  # extract variant with extreme LOG10P
+  lovo$score <- full.mask.p - lovo$LOG10P
+  med <- median(lovo$score)
+  iqb <- quantile(lovo$score, c(0.25,0.75))
+  iqr <- diff(iqb)
+  min.b <- iqb[1] - 1.5 * iqr
+  max.b <- iqb[2] + 1.5 * iqr
+  lovo_top <- lovo[ (lovo$score < min.b) | (lovo$score > max.b),]
+  # if no extreme variants, choose the one with largest p-value
+  if(nrow(lovo_top) == 0) lovo_top = lovo %>% slice_max(order_by = score)
+  lovo_top <- lovo_top %>% distinct
+  # limit to top 3 for smaller & top 1 for larger (should be less common) 
+  top3.max <- lovo_top %>%
+    slice_max(n=3, order_by = score)
+  top1.min <- lovo_top %>%
+    slice_min(n=1, order_by = score)
+  lovo_top <- rbind(top1.min, top3.max) %>% distinct
+
+
+  # plot
+  p <- ggplot(lovo, aes(GENPOS, LOG10P)) +
+    geom_point(size = 2) +
+    geom_label_repel(data = lovo_top, aes(GENPOS, LOG10P, label = ID))
+
+  # Add line for full mask
+  p <- p +
+    geom_hline(yintercept = full.mask.p, col="red")
+
+  p <- p +  scale_x_continuous(labels = comma) +
+    labs(
+      x = paste0("Genomic position on chomosome ", chr),
+      y = bquote("Observed p-value (on -"*log[10]~"scale)")
+      ) +
+    theme_minimal()
+
+  # save
+  f_out <- paste0(arg$out, ".lovo.png")
+  ggsave(f_out, plot = p, dpi = 100)
+} 
