@@ -873,7 +873,8 @@ void GenoMask::write_genovec(const int isnp){
 
 void GenoMask::set_gvalue(const int isnp, const int byte, const int bit_start, const int val){
 
-  if(val == -3) gvec[isnp][byte] |= (1<<bit_start); // 01
+  // bug fix: -2.5 is rounded to -2 not -3
+  if(val < 0) gvec[isnp][byte] |= (1<<bit_start); // 01
   else if(val == 1) gvec[isnp][byte] |= (2<<bit_start); //10
   else if(val == 0) gvec[isnp][byte] |= (3<<bit_start); //11
 
