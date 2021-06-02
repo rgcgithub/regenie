@@ -16,7 +16,7 @@ The method has the following properties
 Full documentation for the **regenie** can be found [here](https://rgcgithub.github.io/regenie/).
 
 ## Citation 
-Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet (2021).
+Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet (2021).[https://doi.org/10.1038/s41588-021-00870-7](https://doi.org/10.1038/s41588-021-00870-7)
 
 ## License
 
