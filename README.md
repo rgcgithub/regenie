@@ -33,6 +33,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 2.1 (Added interaction testing functionality for GxG and GxE tests [options `--interaction/--interaction-snp, respectively]`; new options `--write-null-firth/--use-null-firth` to store the estimates from approximate Firth null model; new option `--minCaseCount` to filter out BTs with low number of cases from the analysis; new option `--no-split` to enforce output of summary stats to a single file for all traits; added support for tranposed phenotype file format with `--tphenoFile`)
+
 Version 2.0.2 (Bug fix for burden testing with BGEN files not in v1.2 with 8-bit encoding; enabled faster step 2 implementation with Zstd compressed BGEN files in v1.2 with 8-bit encoding)
 
 Version 2.0.1 (New option `--catCovList` to specify categorical covariates; Enabled parameter expansion when specifying select phenotypes/covariates to analyze [e.g. 'PC{1:10}'])
