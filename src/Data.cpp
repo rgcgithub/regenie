@@ -2443,7 +2443,7 @@ void Data::test_snps_fast() {
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
-      sout << " block [" << block + 1 << "] : " << flush;
+      sout << " block [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
 
       bs = params.block_size;
       if( ((bb + 1) * params.block_size) > chrom_nsnps)
@@ -2955,7 +2955,7 @@ void Data::test_joint() {
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
 
-      sout << " set [" << block + 1 << "] : " << flush;
+      sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
 
       bs = jt.setinfo[chrom - 1][bb].snp_indices.size();
       sout << bs << " variants..." << flush;
