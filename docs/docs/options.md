@@ -346,7 +346,7 @@ More specifically, a user can combine genetic variants within a gene (or region)
 |`--extract-setlist`  | STRING | Optional | Comma-separated list of variant sets to keep|
 |`--exclude-setlist`  | STRING | Optional | Comma-separated list of variant sets to remove|
 |`--aaf-file`  | FILE | Optional | File with variant AAF to use when building masks (instead of AAF estimated from sample)|
-|`--mask-def`  | FILE | Required | File with mask definitions using the annotations defined in `--anno-labels`|
+|`--mask-def`  | FILE | Required | File with mask definitions using the annotations defined in `--anno-file`|
 
 #### Annotation input files
 
