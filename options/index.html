@@ -712,16 +712,19 @@ of <strong>regenie</strong> in parallel.</p>
 <!---
 |`-no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
 |`--minCaseCount`| INT | Optional | flag to ignore BTs with low case counts [default is 10]|
+|`--af-cc`| FLAG | Optional| to output A1FREQ in case/controls separately in the step 2 result file|
+|`--apply-rint`| FLAG | Optional| to apply Rank Inverse Normal Transformation (RINT) to quantitative phenotypes |
 |`--write-null-firth`| FLAG| Optional| to write the null estimates for approximate Firth [can be used in step 1 or 2] |
 |`--use-null-firth`| FILE| Optional| to use stored null estimates for approximate Firth in step 2 |
 |`--interaction`| STRING| Optional| to perform GxE interaction test|
-|`--interaction-snp`| STRING| Optional| to perform GxSNP interaction test|
+|`--interaction-snp`| STRING| Optional| to perform GxG interaction test|
 |`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
+|`--starting-block`| INT| Optional| to start step 2 at a specific block/set number (useful if program crashes during a job)|
 
 Interaction testing
 To perform GxE interaction tests, you can use option `--interaction covariate_name`. If the covariate 
 is categorical and you want a specific baseline level, you can use `--interaction covariate_name[baseline_level]`.
-To perform GxSNP interaction test, you can use option `--interaction-snp snpID`, where the variant must be present 
+To perform GxG interaction test, you can use option `--interaction-snp snpID`, where the variant must be present 
 in the genotype file. By default, additive encoding is used but you can use dominant (dom), recessive (rec),
 or categorical (cat) coding for the interacting variant.
 For example, to specify dominant coding for the variant, use `--interaction-snp snpID[dom]`

@@ -248,6 +248,17 @@ This model has close ties to a linear mixed model (LMM) based on an infinitesima
 </li>
 </ul>
 </li>
+</ul>
+<p><br/></p>
+<ul>
+<li>
+<p><span style="font-size: large;font-style: italic; color:#404040"> What is reported in A1FREQ when building masks? 
+</span></p>
+<ul>
+<li>For the <code>max</code> and <code>comphet</code> rules, the resulting burden masks take on values in [0,2] just like single variants so we compute A1FREQ the same way as done for single variants (i.e. mean(G)/2 where G is a genotype vector).</li>
+<li>For the <code>sum</code> rule, A1FREQ is computed as the average of the effect allele frequencies across all sites included in the mask.</li>
+</ul>
+</li>
 </ul></div>
         
         
