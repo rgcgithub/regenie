@@ -96,7 +96,7 @@ The pgen/pvar/psam file format is described [here](https://www.cog-genomics.org/
 
 Tools useful for genetic data file format conversion are : [PLINK](http://www.cog-genomics.org/plink/), [QCTOOL](https://www.well.ox.ac.uk/~gav/qctool/), [BCFTOOLS](https://samtools.github.io/bcftools/).
 
-Step 2 of **regenie** can be sped up with BGEN files by using v1.2 format with 8 bits encoding 
+Step 2 of **regenie** can be sped up by using BGEN files using v1.2 format with 8 bits encoding 
 (genotype file can be generated with [PLINK2](https://www.cog-genomics.org/plink/2.0/) using 
 option `--export bgen-1.2 'bits=8'`) as well as having an accompanying .bgi index file 
 (a useful tool to create such file is bgenix which is part of the BGEN library).
@@ -290,7 +290,8 @@ A log file `file.log` of the output is generated.
 **Using `--step 1 --out file`**
 
 For the \(P\) phenotypes, files `file_1.loco`,...,`file_P.loco` are output with the
-per-chromosome LOCO predictions as rows of the files. 
+per-chromosome LOCO predictions as rows of the files 
+(following the order of the phenotypes in the phenotype file header). 
 If option `--gz` was used, the files will be compressed in gzip format and have extension `.loco.gz`.
 
 Genotyped individuals specified using option `--remove` are excluded from this file. 
@@ -322,7 +323,7 @@ With BGEN/PGEN files with dosages, the imputation INFO score is provided
 Allele frequency, sample size and INFO score, if applicable, are computed using only
 non-missing samples for each phenotype.
 
-These are followed by the estimated effect sizes (on original scale), standard errors, chi-square test statistics 
+These are followed by the estimated effect sizes (for allele 1 on the original scale), standard errors, chi-square test statistics 
 and \(-\log_{10}\) p-value.
 
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
