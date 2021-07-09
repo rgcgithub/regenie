@@ -1,4 +1,5 @@
-![Build Status](https://github.com/rgcgithub/regenie/actions/workflows/test.yml/badge.svg)
+[![build](https://github.com/rgcgithub/regenie/actions/workflows/test.yml/badge.svg)](https://github.com/rgcgithub/regenie/actions/workflows/test.yml)
+[![Regenie](https://anaconda.org/bioconda/regenie/badges/installer/conda.svg)](https://anaconda.org/bioconda/regenie)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **regenie** is a C++ program for whole genome regression modelling of large [genome-wide association studies](https://en.wikipedia.org/wiki/Genome-wide_association_study).
@@ -14,7 +15,7 @@ The method has the following properties
 - It can perform gene/region-based burden tests
 - It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
 - It is ideally suited for implementation in [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
-- It can be installed with [Conda](https://anaconda.org/bioconda/regenie) [![Regenie](https://anaconda.org/bioconda/regenie/badges/installer/conda.svg)](https://anaconda.org/bioconda/regenie)
+- It can be installed with [Conda](https://anaconda.org/bioconda/regenie) 
 
 Full documentation for the **regenie** can be found [here](https://rgcgithub.github.io/regenie/).
 
