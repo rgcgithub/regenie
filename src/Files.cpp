@@ -52,17 +52,21 @@ void Files::openForRead(std::string const& filename, mstream& sout){
 
   openStream(&infile, filename, mode, sout);
 
+# if defined(HAS_BOOST_IOSTREAM)
   if(is_gz){
     ingzfile.push(boost::iostreams::gzip_decompressor());
     ingzfile.push(infile);
   }
+#endif
 
 }
 
 bool Files::readLine(std::string& line){
 
+# if defined(HAS_BOOST_IOSTREAM)
   if(is_gz) 
     return static_cast<bool>( getline(ingzfile, line) );
+#endif
 
   return  static_cast<bool>( getline(infile, line) );
 }
@@ -76,9 +80,11 @@ void Files::ignoreLines(int const& nlines){
 
   while(linenumber++ < nlines){
 
-    if(is_gz) 
+    if(is_gz) {
+# if defined(HAS_BOOST_IOSTREAM)
       ingzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    else 
+#endif
+    } else 
       infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
 
   }
@@ -112,8 +118,10 @@ void Files::closeFile(){
 
   if( read_mode ){
 
+# if defined(HAS_BOOST_IOSTREAM)
     if(is_gz) 
       ingzfile.reset();
+#endif
     infile.close();
 
   } else {
@@ -159,19 +167,6 @@ void Files::openMode(std::string const& filename, std::ios_base::openmode mode, 
     openStream(&infile, filename, mode, sout);
   }
 
-}
-
-
-template <typename T>
-void openStream(T* ofs, std::string const& fname, std::ios_base::openmode mode, mstream& sout){
-
-  ofs->open(fname, mode);
-  if (ofs->fail()) {
-    std::string str_mode = mode & std::ios_base::out ? "write" : "read";
-    throw "cannot " + str_mode + " file : " + fname ;
-  }
-
-  return;
 }
 
 // Split string by tokens

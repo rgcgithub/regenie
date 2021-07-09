@@ -100,7 +100,16 @@ class Files {
 };
 
 template <typename T>
-void openStream(T*,std::string const&,std::ios_base::openmode,mstream&);
+void openStream(T* ofs, std::string const& fname, std::ios_base::openmode mode, mstream& sout){
+
+  ofs->open(fname, mode);
+  if (ofs->fail()) {
+    std::string str_mode = mode & std::ios_base::out ? "write" : "read";
+    throw "cannot " + str_mode + " file : " + fname ;
+  }
+
+  return;
+}
 std::vector<std::string> string_split(std::string const&,const char*);
 
 #endif
