@@ -94,8 +94,9 @@ We have several changes in **regenie** v2.2 to improve the computational efficie
 * We have improved the implementation of the score tests for binary traits to reduce the number of matrix operations performed and this reduced the CPU timings by ~60% from the previous version 2.0.2.
 
 ![Step2time](img/timings_Step2_BT.png)
+*Note that there is an added memory cost of ~8NKP bytes [N=#samples; K=#covariates;P=#samples] so ~800MB extra for a UKB 500K run with 10 traits & 20 covariates.*
 
-* We have also made use of the sparsity of the genotype vector for rarer variants (more so with binary traits) and this reduced the timing in our experiments by ~20% in Step 2.
+* We have also made use of the sparsity of the genotype vector for rarer variants in Step 2 (more so with binary traits) and this reduced the timing in our experiments by ~20% on average.
 
 ![Step2SparseTime](img/timings_Step2_BT_v2.2.png)
 

@@ -70,6 +70,8 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
 |`--extract`  | FILE | Optional | Inclusion file that lists IDs of variants to keep|
 |`--exclude`  | FILE | Optional | Exclusion file that lists IDs of variants to remove|
+|`--extract-or`  | FILE | Optional | Inclusion file that lists IDs of variants to keep regardless of minimum MAC filter|
+|`--exclude-or`  | FILE | Optional | Exclusion file that lists IDs of variants to remove unless MAC is above threshold|
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
@@ -78,9 +80,12 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--covarColList` | STRING | Optional | Comma separated list of covariates to include in the analysis|
 |`--catCovarList` | STRING | Optional | Comma separated list of categorical covariates to include in the analysis|
 |`--pred`  | FILE | Optional  | File containing predictions from Step 1 (see Overview). **This is required for `--step 2`**|
+|`--tpheno-file`| STRING| Optional| to use a phenotype file in transposed format (e.g. BED format)|
+|`--tpheno-indexCol`| INT| Optional| index of phenotype name column in transposed phenotype file|
+|`--tpheno-ignoreCols`| INT| Optional| indexes of columns to ignore in transposed phenotype file|
 
 Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. `--covarCol PC{1:10}`).
-
+Also, multiple files can be specified for `--extract/--exclude/--keep/--remove` by using a comma-separated list.
 
 #### Genetic data file format
 
@@ -188,6 +193,10 @@ In Step 2, missing values are dropped when testing each trait.
 
 To remove all samples that have missing values at **any** of the \(P\) phenotypes, use option `--strict` in Step 1 and 2.
 
+If using the transposed phenotype file format with option `--tpheno-file`, 
+the header line must contain subject IDs as "FID_IID",
+otherwise use option `--iid-only` and only include IIDs (so will assume FID=IID).
+
 #### Predictions file format
 
 Running `--step 1 --out foo` will produce
@@ -238,9 +247,12 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--keep-l0`| FLAG | Optional | avoid deleting the level 0 predictions written on disk after fitting the level 1 models|
 |`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
 |`--force-step1`|FLAG| Optional| flag to run step 1 when >1M variants are used (not recommened)|
+|`--minCaseCount`| INT | Optional | flag to ignore BTs with low case counts [default is 10]|
+|`--apply-rint`| FLAG | Optional| to apply Rank Inverse Normal Transformation (RINT) to quantitative phenotypes |
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
+|`--use-relative-path`| FLAG| Optional| to use relative paths instead of absolute ones for the step 1 output pred.list file|
 |`--use-prs`|FLAG| Optional| flag to use whole genome PRS in `--pred` (this is output in step 1 when using `--print-prs`)|
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
 |`--force-impute`|FLAG| Optional| flag to keep and impute missing observations for QTs in step 2|
@@ -249,6 +261,8 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--firth`| FLAG | Optional | specify to use Firth likelihood ratio test (LRT) as fallback for p-values less than threshold|
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
 |`--firth-se`| FLAG | Optional | flag to compute SE based on effect size and LRT p-value when using Firth correction (instead of based on Hessian of unpenalized log-likelihood)|
+|`--write-null-firth`| FLAG| Optional| to write the null estimates for approximate Firth [can be used in step 1 or 2] |
+|`--use-null-firth`| FILE| Optional| to use stored null estimates for approximate Firth in step 2 |
 |`--spa`| FLAG | Optional| specify to use Saddlepoint approximation as fallback for p-values less than threshold|
 |`--pThresh`| FLOAT | Optional| P-value threshold below which to apply Firth/SPA correction [default is 0.05]
 |`--test`| STRING | Optional | specify to carry out dominant or recessive test [default is additive; argument can be `dominant` or `recessive`]|
@@ -257,6 +271,9 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--range` | STRING | Optional | specify chromosome region for variants to test in step 2 [format=CHR:MINPOS-MAXPOS] |
 |`--minMAC`| FLOAT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
+|`--af-cc`| FLAG | Optional| to output A1FREQ in case/controls separately in the step 2 result file|
+|`-no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
+|`--starting-block`| INT| Optional| to start step 2 at a specific block/set number (useful if program crashes during a job)|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
 |`--maxCatLevels`| INT| Optional| maximum number of levels for categorical covariates (for non-human studies) [default is 10]|
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
@@ -278,6 +295,19 @@ was not successful in which case the user would need to delete the files)
 See the [Wiki page](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for more details on how to run the level 0 models for Step 1 
 of **regenie** in parallel.
 
+<!---
+|`--interaction`| STRING| Optional| to perform GxE interaction test|
+|`--interaction-snp`| STRING| Optional| to perform GxG interaction test|
+|`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
+
+Interaction testing
+To perform GxE interaction tests, you can use option `--interaction covariate_name`. If the covariate 
+is categorical and you want a specific baseline level, you can use `--interaction covariate_name[baseline_level]`.
+To perform GxG interaction test, you can use option `--interaction-snp snpID`, where the variant must be present 
+in the genotype file. By default, additive encoding is used but you can use dominant (dom), recessive (rec),
+or categorical (cat) coding for the interacting variant.
+For example, to specify dominant coding for the variant, use `--interaction-snp snpID[dom]`
+--->
 
 ### Output
 
@@ -300,11 +330,16 @@ are included in the file and have their predictions set to missing.
 
 The list of blup files needed for step 2 (association testing) is written to  `file_pred.list`.
 
-If using `--print-prs`, files `files_1.prs`,...,`files_P.prs` will be written with the 
+If using `--print-prs`, files `file_1.prs`,...,`file_P.prs` will be written with the 
 whole genome predictions (i.e. PRS) without using LOCO scheme (similar format as the .loco files).
 The list of these files is written to `file_prs.list` and can be used in step 2 with `--pred` and 
 specifying flag `--use-prs`. Note that as these are not obtained using a LOCO scheme, 
 association tests could suffer from proximal contamination.
+
+If using option `--write-null-firth`, the estimates for approximate Firth under the null will be written to files
+`file_1.firth,...,file_P.firth` and the list of these files is written to `file_firth.list`. This can be
+used in step 2 as `--use-null-firth file_firth.list`. Note that it assumes the same set of covariates are 
+used in Step 1 and 2.
 
 **Using`--step 2 --out file`** 
 
@@ -324,11 +359,15 @@ Allele frequency, sample size and INFO score, if applicable, are computed using 
 non-missing samples for each phenotype.
 
 These are followed by the estimated effect sizes (for allele 1 on the original scale), standard errors, chi-square test statistics 
-and \(-\log_{10}\) p-value.
+and \(-\log_{10}\) p-value. An additional column is included to specify if Firth/SPA corrections failed.
+
+With option `--no-split`, the summary statistics for all traits are written to a single file `file.regenie`,
+with the same format as above. Additionaly, an accompanying file with the trait names corresponding to Y1,Y2,... 
+will be generated in ‘file.regenie.Ydict’. Note that allele frequency, sample size and INFO score are computed using
+all analyzed samples.
 
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
-
 
 
 ## Burden testing
@@ -348,6 +387,8 @@ More specifically, a user can combine genetic variants within a gene (or region)
 |`--exclude-setlist`  | STRING | Optional | Comma-separated list of variant sets to remove|
 |`--aaf-file`  | FILE | Optional | File with variant AAF to use when building masks (instead of AAF estimated from sample)|
 |`--mask-def`  | FILE | Required | File with mask definitions using the annotations defined in `--anno-file`|
+
+Note: multiple files can be specified for `--extract-sets/--exclude-sets` by using a comma-separated list.
 
 #### Annotation input files
 
@@ -405,8 +446,6 @@ A1CF 10  50806630  10:50806630:A:G,10:50806630:A:AT,...
 .
 ```
 
-Variants in the same set must belong to the chromosome specified in the 2nd column.
-
 ##### Set inclusion/exclusion file format
 The file must have a single column of set/gene names corresponding to those in the 
 set list file.
@@ -460,7 +499,7 @@ By default, a mask based on singleton sites are always included.
 For example, `--aaf-bins 0.01,0.05` will generate 3 masks for AAFs in 
 [0,0.01], [0,0.05] and singletons.
 
-#### LOVO scheme
+#### LOVO/LODO schemes
 
 The leave-one-variant-out (LOVO) scheme takes all sites goint into a mask,
 and builds LOVO masks 
@@ -474,10 +513,17 @@ the mask name,
 and the AAF cutoff (either 'singleton' or a double in (0,1)).
 
 If using a 4-column annotation file, then `--mask-lovo` should have 
-the set name, 
+the gene name, 
 the domain name,
 the mask name, 
 and the AAF cutoff.
+So the LOVO masks will be generated for a specific gene domain.
+
+The leave-one-domain-out (LODO) scheme (specified by `--mask-lodo`) 
+takes all sites goint into a mask and builds a LODO mask for each domain specified for the gene
+by excluding all variants in the domain. 
+The full mask including all sites will also be computed. 
+The argument for `--mask-lodo` should have the gene name, the mask name and the AAF cutoff.
 
 
 #### Writing mask files 
@@ -489,7 +535,7 @@ and these hard-calls will be used for the association testing.
 The PLINK bed file is written using 'ref-last' encoding (i.e. REF allele is 
 listed last in the bim file).
 
-Note that this cannot be used with the LOVO scheme.
+Note that this cannot be used with the LOVO/LODO schemes.
 
 ### Options
 | Option | Argument | Type | Description|
@@ -500,6 +546,8 @@ Note that this cannot be used with the LOVO scheme.
 |`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
+|`--mask-lodo`| FLAG| Optional| to perform LODO scheme|
+|`--write-mask-snplist`| FLAG| Optional| to write list of variants that went into each mask to file|
 |`--check-burden-files`| FLAG| Optional| to check the concordance between annotation, set list and mask files [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 |`--strict-check-burden`| FLAG| Optional|to exit early if the annotation, set list and mask definition files dont agree [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 
@@ -528,7 +576,8 @@ With `--build-mask sum`, the reported mask AAF corresponds to the average
 AAF across sites included in the mask.
 
 If using `--write-mask`, the masks will be saved to 
-`file_masks.{bed,bim,fam}`. 
+`file_masks.{bed,bim,fam}` and if using `--write-mask-snplist`, 
+the list of variants included in each mask will be saved to `file_masks.snplist`. 
 
 <!---
 |`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|

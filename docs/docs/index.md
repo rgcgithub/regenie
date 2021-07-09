@@ -17,8 +17,9 @@ traits with unbalanced case-control ratios
 - It is ideally suited for implementation in
   [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
 
-**Citation** 
-Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet (2021).
+##Citation
+
+Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet 53, 1097–1103 (2021). https://doi.org/10.1038/s41588-021-00870-7
 
 
 ## License 
