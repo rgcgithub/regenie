@@ -44,7 +44,7 @@ void Files::openForRead(std::string const& filename, mstream& sout){
 
   // only used if compiled with boost iostream
 # if not defined(HAS_BOOST_IOSTREAM)
-  if(is_gz) {
+  if(is_gz) 
     throw "cannot read gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').";
 #endif
 
