@@ -54,6 +54,10 @@ fi
 
 echo -e "==>Running step 1 of REGENIE"
 # Prepare regenie command to run for Step 1
+## with transposed phenotype file format
+#  --tpheno-file ${mntpt}example/tphenotype_bin.txt${fsuf} \
+#  --tpheno-indexCol 4 \
+#  --tpheno-ignoreCols {1:3} \
 fail_msg="Step 1 of REGENIE did not finish successfully."
 basecmd="--step 1 \
   --bed ${mntpt}example/example \
@@ -158,15 +162,14 @@ if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
   ( zcat < ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ) > ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie
 fi
 
-if ! cmp --silent \
-  ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
-  ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
+if [ "`cat ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie | wc -l`" != "1001" ]
 then
-  print_custom_err "ERROR: Uh oh... Files are different!"
+  print_err
 fi
 
+
 (( i++ ))
-echo -e "Files are identical.\n\n==>Running test #$i\n"
+echo -e "==>Running test #$i"
 # Next test
 basecmd="--step 2 \
   --bed ${mntpt}example/example_3chr \
@@ -260,6 +263,7 @@ rgcmd="--step 2 \
   --aaf-bins 0.2 \
   --chrList 1,3 \
   --htp TEST \
+  --write-mask-snplist \
   --out ${mntpt}test/test_out_masks_V2"
 
 # run regenie
@@ -278,6 +282,8 @@ elif [ ! -f ${REGENIE_PATH}test/test_out_masks_V2_masks.bed ]; then
 elif [ "$(hexdump -e \"%07_ax\ \"\ 16/1\ \"\ %02x\"\ \"\\n\"  -n 3 ${REGENIE_PATH}test/test_out_masks_V2_masks.bed | head -n 1 | awk '{print $2,$3,$4}' | tr ' ' ',')" != "6c,1b,01" ]; then
   print_err
 elif [ "`wc -l ${REGENIE_PATH}test/test_out_masks_V2_masks.{bim,fam} | awk '{print $1}' | head -n 2| paste -sd','`" != "4,494" ]; then
+  print_err
+elif [ ! -f ${REGENIE_PATH}test/test_out_masks_V2_masks.snplist ]; then
   print_err
 elif [ "`cat ${REGENIE_PATH}test/test_out_masks_V2_tmp2.setlist | head -n 1 | tr ',' '\n' | wc -l`" != "2" ]; then
   print_err
@@ -347,5 +353,5 @@ fi
 
 echo "SUCCESS: REGENIE build passed the tests!"
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
+rm ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
 

@@ -45,7 +45,8 @@ Eigen::MatrixXd _inverse(const Eigen::MatrixXd& V)
 
 inline void _assign_wts(vector<double> &wts, int index, double value, int verbose) {
   wts[index] = value;
-  if(verbose > 1) cout << " w[" << index << "] = " << value << endl;
+  if(verbose > 1) cout << " w[" << index << "] = " << value << 
+    " (equal to zero = " << (value == 0.0) << ")" << endl;
 }
 
 void _complement(int n, const vector<int> &s1, vector<int> &s2)
@@ -259,6 +260,16 @@ double jburden_pnorm(const Eigen::MatrixXd& A,
  * Enumerate all sets of k out of n numbers
  * nchoosek function in the R package ic.infer
 ****************************************************/
+
+// the number of all set of k out of n
+// Implementation in Boost Library: https://www.boost.org/doc/libs/1_56_0/libs/math/doc/html/math_toolkit/factorials/sf_binomial.html
+// - Binomial coefficients are calculated using table lookup of factorials where possible.
+// - Otherwise, it is implemented in terms of the beta function using the relations.
+double jburden_choose_boost(int n, int k)
+{
+  double ret = boost::math::binomial_coefficient<double>(n, k);
+  return ret;
+}
 
 // the number of all set of k out of n
 int jburden_choose(int n, int k)
@@ -774,11 +785,16 @@ int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
 
   // C. Outer loop over weights: w(1), w(2), ..., w(n-1)
   for(int i = 1; i < (nw - 1); ++i) {
-    int n_sets = jburden_choose(n, i);
     // NB: choose(40, 20) = 137,846,528,820
+    // (depreciated due to overflow) 
+    // int n_sets = jburden_choose(n, i);
+    double n_sets_numeric = jburden_choose_boost(n, i);
+    // check if n_set is not overflowed
+    int max_int = std::numeric_limits<int>::max();
+    bool overflow = (n_sets_numeric > (double)(max_int));
 
     // approximate?
-    bool approx = (n_approx > 0) & (n_approx < n_sets);
+    bool approx = (n_approx > 0) & ((double)n_approx < n_sets_numeric);
     
     // sets of (n_approx or n_sets) indices from the range [0; n]
     list<vector<int>> sets;
@@ -795,7 +811,7 @@ int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
 
     // print info.
     if(verbose) {
-      cout << " w[" << i << "]" << "; #sets = " << n_sets << 
+      cout << " w[" << i << "]" << "; #sets = " << n_sets_numeric << 
         "; approx. = " << approx << 
         "; #set to compute = " << n_sets_comp << endl;
     }
@@ -843,7 +859,7 @@ int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
       // No. elements in total = n_sets
       // Approximation by sum of normals: 
       //   wts[i] = n_sets * mu, where mu = sum(comp) / n_sets_comp
-      _assign_wts(wts, i, (sum_comp / n_sets_comp) * n_sets, verbose);
+      _assign_wts(wts, i, (sum_comp / n_sets_comp) * n_sets_numeric, verbose);
     } else {
       // 2. Exact weight, i.e., n_sets_comp = n_sets
       _assign_wts(wts, i, sum_comp, verbose);

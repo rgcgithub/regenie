@@ -25,17 +25,18 @@
 */
 
 #include "Regenie.hpp"
+#include "Files.hpp"
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
-#include "Files.hpp"
 #include "Pheno.hpp"
 
 using namespace std;
 using namespace Eigen;
 using namespace boost;
+using boost::math::normal;
 
 
-void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
+void read_pheno_and_cov(struct in_files* files, struct param* params, struct filter* filters, struct phenodt* pheno_data, struct ests* m_ests, struct geno_block* gblock, mstream& sout) {
 
   ArrayXb ind_in_pheno_and_geno = ArrayXb::Constant( params->n_samples, false );
   ArrayXb ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, files->cov_file.empty());
@@ -50,7 +51,11 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   } else { // read in phenotype (mean-impute for QT)
 
-    pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
+    if(params->transposedPheno)
+      tpheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
+    else
+      pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
+
     if(params->binary_mode && !params->test_mode)
       m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
 
@@ -58,34 +63,31 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   // Intercept
   pheno_data->new_cov = MatrixXd::Ones(params->n_samples, 1);
-  if(params->strict_mode) pheno_data->new_cov.array() *= pheno_data->masked_indivs.col(0).array().cast<double>();;
 
   // read in covariates
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
 
+  // if doing GxG interaction
+  if(params->interaction_snp) extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno && ind_in_cov_and_geno;
-  pheno_data->masked_indivs.array().colwise() *= filters->ind_in_analysis;
-  if( params->strict_mode ) 
-    filters->ind_in_analysis = filters->ind_in_analysis && pheno_data->masked_indivs.col(0).array();
-  pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
-  if(params->binary_mode) pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
-  pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
+  setMasks(params, filters, pheno_data, sout);
+  sout << " * number of individuals used in analysis = " << params->n_analyzed << endl;
 
-  // identify individuals with at least one phenotpe with NA
-  filters->has_missing = !(pheno_data->masked_indivs.array().rowwise().all());
-  //for(int i = 0; i <5; i++) cerr << std::boolalpha << filters->has_missing(i) << endl;
-
-  // check sample size
-  if( filters->ind_in_analysis.cast<int>().sum() < 1 ) {
-    sout << "ERROR: Sample size cannot be < 1\n";
-    exit(EXIT_FAILURE);
+  // apply rint
+  if(params->rint) {
+    sout << "   -applying RINT to all phenotypes\n";
+    apply_rint(pheno_data, params);
   }
-  sout << " * number of individuals used in analysis = " << filters->ind_in_analysis.cast<int>().sum() << endl;
+
+  // print case-control counts per trait
+  if(params->binary_mode && params->verbose)
+    print_cc_info(params, files, pheno_data, sout);
 
 }
 
-void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_pheno_and_geno, mstream& sout) {
+void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_pheno_and_geno, mstream& sout) {
 
   uint32_t indiv_index;
   bool all_miss;
@@ -103,28 +105,33 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // check that FID and IID are first two entries in header
   tmp_str_vec = string_split(line,"\t ");
-  if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
-    sout << "ERROR: Header of phenotype file must start with: FID IID" << endl;
-    exit(EXIT_FAILURE);
-  }
+  if( tmp_str_vec.size() < 2 ) 
+    throw "header of phenotype file has too few columns.";
+  else if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) 
+    throw "header of phenotype file must start with: FID IID.";
+
+  // check pheno with preds 
+  map<string, bool> with_blup;
+  if(params->test_mode && !params->getCorMat) check_blup(with_blup, files, params, sout);
 
   // get phenotype names 
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
   for(int i = 0; i < keep_cols.size(); i++ ) {
     if(params->select_phenos) // check if keeping pheno
       keep_cols(i) = in_map(tmp_str_vec[i+2], filters->pheno_colKeep_names);
+    if(params->test_mode && !params->skip_blups && keep_cols(i)) // check phenotype had prs from step 1
+      keep_cols(i) = has_blup(tmp_str_vec[i+2], with_blup, params, sout);
 
     if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
   }
   params->n_pheno = keep_cols.count();
 
   // check #pheno
-  if(params->n_pheno < 1){
-    sout << "ERROR: Need at least one phenotype." << endl;
-    exit(EXIT_FAILURE);
-  } 
+  if(params->n_pheno < 1)
+    throw "need at least one phenotype.";
+
   sout << "n_pheno = " << params->n_pheno << endl;
-  params->strict_mode = params->n_pheno == 1; // drop all missing observations
+  params->strict_mode |= (params->n_pheno == 1); // drop all missing observations
 
   // how missingness is handles
   if( params->strict_mode ) sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
@@ -145,10 +152,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( (int)tmp_str_vec.size() != (2+keep_cols.size()) ){
-      sout << "ERROR: Incorrectly formatted phenotype file." << endl;
-      exit(EXIT_FAILURE);
-    }
+    if( (int)tmp_str_vec.size() != (2+keep_cols.size()) )
+      throw "incorrectly formatted phenotype file.";
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
     if(!person.is_found) continue;
@@ -158,10 +163,8 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     // check duplicate
     if( !ind_in_pheno_and_geno(indiv_index) ){
       ind_in_pheno_and_geno( indiv_index ) = true;
-    } else {
-      sout << "ERROR: Individual appears more than once in phenotype file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-      exit(EXIT_FAILURE);
-    }
+    } else 
+      throw "individual appears more than once in phenotype file: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] ;
 
     // read phenotypes 
     all_miss = true;
@@ -171,7 +174,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
       pheno_data->phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j], params, sout);
 
-      // for BT, save raw data and force 0/1 values
+      // for BT, save raw data and check 0/1/NA values
       if (params->binary_mode) {
 
         if(!params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double)) 
@@ -179,25 +182,17 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
         pheno_data->phenotypes_raw(indiv_index, i_pheno) = pheno_data->phenotypes(indiv_index, i_pheno);
 
-        if(fabs(pheno_data->phenotypes_raw(indiv_index, i_pheno)) > params->numtol && fabs(pheno_data->phenotypes_raw(indiv_index, i_pheno)-1) > params->numtol ) {
+        if( (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 0) && 
+            (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 1) ) {
 
-          if(params->within_sample_l0){
-            sout << "ERROR: No missing value allowed in phenotype file with option -within" << endl;
-            exit(EXIT_FAILURE);
-          } else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
-            sout << "ERROR: A phenotype value is not "<<
-              (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA") <<
-              " for individual: FID=" << tmp_str_vec[0] << 
-              " IID=" << tmp_str_vec[1] << 
-              " Y=" << tmp_str_vec[2+j] << endl;
-            //sout << "Use flag '--1' for 1/2/NA encoding [1=control|2=case|NA=missing]." << endl;
-            exit(EXIT_FAILURE);
+          if(params->within_sample_l0)
+            throw "no missing value allowed in phenotype file with option -within";
+          else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
+            std::string msg = (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA");
+            throw "a phenotype value is not " + msg + " for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
           }
 
-          pheno_data->phenotypes_raw(indiv_index, i_pheno) = params->missing_value_double;
           pheno_data->masked_indivs(indiv_index, i_pheno) = false;
-          if( params->strict_mode ) pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
-
         }
       }
 
@@ -207,41 +202,41 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
         all_miss = false;
       } else {
         if( params->test_mode && params->rm_missing_qt ) pheno_data->masked_indivs(indiv_index, i_pheno) = false;
-        if( params->strict_mode ) pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
+        if( params->strict_mode ) {
+          pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
+          all_miss = true;
+          break; // skip rest of the row
+        }
       }
 
       i_pheno++;
     }
 
     if( all_miss ) ind_in_pheno_and_geno( indiv_index ) = false; // if individual has no phenotype data at all
-
   }
 
   // mask individuals in genotype data but not in phenotype data
   pheno_data->masked_indivs.array().colwise() *= ind_in_pheno_and_geno;
 
   // check if all individuals have missing/invalid phenotype
-  if(pheno_data->masked_indivs.cast<int>().colwise().sum().array().minCoeff() == 0){
-    sout << "ERROR: All individuals have missing/invalid phenotype values." << endl;
-    exit(EXIT_FAILURE);
-  }
+  int mInd;
+  if(pheno_data->masked_indivs.array().colwise().count().minCoeff(&mInd) == 0)
+    throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'." ;
+
+  // ignore traits with fewer than the specified minimum case count
+  if(params->binary_mode)
+    rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
 
   if(!params->binary_mode || !params->test_mode){
 
-    if(!params->binary_mode){
-      // impute missing with mean
-      for(size_t i = 0; i < params->n_samples;i++) 
-        for(int j = 0; j < params->n_pheno;j++) {
-          if( pheno_data->phenotypes(i,j) != params->missing_value_double ) {
-            pheno_data->phenotypes(i,j) -= total(j) / ns(j);	  
-          }  else pheno_data->phenotypes(i,j) = 0.0;
-        }
-    } else {
+    if(!params->binary_mode) // impute missing with mean
+      for(int j = 0; j < params->n_pheno; j++) 
+        pheno_data->phenotypes.col(j).array() = ( pheno_data->phenotypes.col(j).array() != params->missing_value_double ).select( pheno_data->phenotypes.col(j).array(), total(j) / ns(j));
+    else 
       for(int j = 0; j < params->n_pheno; j++) {
-        mean = (pheno_data->masked_indivs.col(j).array()).select( pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).cast<double>().sum();
-        pheno_data->phenotypes.col(j).array() = (pheno_data->masked_indivs.col(j).array()).select(pheno_data->phenotypes.col(j).array() - mean, 0);
+        mean = pheno_data->masked_indivs.col(j).array().select( pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).count();
+        pheno_data->phenotypes.col(j).array() = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array(), mean);
       }
-    }
 
     // apply masking
     pheno_data->phenotypes.array() *= pheno_data->masked_indivs.array().cast<double>();
@@ -249,28 +244,232 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   }
 
   // number of phenotyped individuals 
-  sout <<  "   -number of phenotyped individuals = " << ind_in_pheno_and_geno.cast<int>().sum() << endl;
-
-  // check that there cases are present
-  if(params->binary_mode){
-    for(int j = 0; j < params->n_pheno;j++) {
-      if( ( pheno_data->phenotypes_raw.col(j).array() == 1 ).count() == 0){
-        sout << "ERROR: No cases present for phenotype: " << files->pheno_names[j] << endl; 
-        exit(EXIT_FAILURE);
-      }
-    }
-  }
-
-  pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
-  if(params->strict_mode) sout << "   -number of individuals remaining with non-missing phenotypes = " << pheno_data->Neff(0) << endl;
+  sout <<  "   -number of phenotyped individuals " <<
+   (params->strict_mode ? "with no missing data" : "" ) << 
+   " = " << ind_in_pheno_and_geno.count() << endl;
 
   fClass.closeFile();
 
 }
 
-void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, ArrayXb& ind_in_cov_and_geno, mstream& sout) {
+// in transposed format
+void tpheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_pheno_and_geno, mstream& sout) {
 
-  int nc_cat = 0;
+  uint32_t nid;
+  string line, yname;
+  std::vector< string > header, tmp_str_vec;
+  map<int,uint32_t> indiv_index;
+  map<int,uint32_t>::iterator itr;
+  Files fClass;
+
+  sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
+  fClass.openForRead(files->pheno_file, sout);
+  fClass.readLine(line);
+  check_str(line); // remove carriage returns at the end of line if any
+  header = string_split(line,"\t ");
+
+  // identify phenotype column
+  size_t ncols_file = header.size();
+  for(size_t i=0; i < ncols_file; i++ ){
+    if(in_map((int)(i+1), filters->tpheno_colrm)) continue;
+    else if((i+1) == filters->tpheno_indexCol) continue;
+    else { // get index of individuals in genotype file
+
+      if(params->tpheno_iid_only) // assume FID=IID
+        line = header[i] + "_" + header[i];
+      else
+        line = header[i];
+
+      if (!in_map(line, params->FID_IID_to_ind)) continue;
+      nid = params->FID_IID_to_ind[line];
+      // check duplicate
+      if( !ind_in_pheno_and_geno(nid) ){
+        ind_in_pheno_and_geno( nid ) = true;
+      } else 
+        throw "individual appears more than once in phenotype file: ID=" + header[i];
+
+      indiv_index[i] = nid;
+    }
+
+  }
+
+  // check sample size
+  if(indiv_index.size() == 0)
+    throw "no individuals in phenotype file have genetic data.";
+
+  // check pheno with preds 
+  map<string, bool> with_blup;
+  if(params->test_mode && !params->getCorMat) check_blup(with_blup, files, params, sout);
+
+  params->n_pheno = 0;
+  int icol = 0;
+  // for each trait
+  while( fClass.readLine(line) ){
+
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() != ncols_file )
+      throw "incorrectly formatted phenotype file.";
+
+    // check trait name
+    yname = tmp_str_vec[ filters->tpheno_indexCol - 1 ]; 
+    if(params->select_phenos && !in_map(yname, filters->pheno_colKeep_names)) continue;
+    if(params->test_mode && !params->getCorMat && !has_blup(yname, with_blup, params, sout)) continue;
+    files->pheno_names.push_back( yname );
+    //cerr << params->n_pheno << " " << yname << endl;
+
+    // resize matrices
+    params->n_pheno++;
+    pheno_data->phenotypes.conservativeResize(params->n_samples, params->n_pheno);
+    pheno_data->phenotypes.rightCols(1).array() = 0;
+    pheno_data->masked_indivs.conservativeResize(params->n_samples, params->n_pheno);
+    pheno_data->masked_indivs.rightCols(1).array() = true;
+    if(params->binary_mode) {
+      pheno_data->phenotypes_raw.conservativeResize(params->n_samples, params->n_pheno);
+      pheno_data->phenotypes_raw.rightCols(1).array() = 0;
+    }
+
+    // read in phenotype data
+    for (itr = indiv_index.begin(); itr != indiv_index.end(); ++itr) {
+
+      nid = itr->second;
+      pheno_data->phenotypes(nid, icol) = convertDouble(tmp_str_vec[itr->first], params, sout);
+      
+      if (params->binary_mode) { // for BT, save raw data and force 0/1 values
+
+        if(!params->CC_ZeroOne && (pheno_data->phenotypes(nid, icol) != params->missing_value_double)) 
+          pheno_data->phenotypes(nid, icol) -= 1; // if using 1/2/NA encoding
+        pheno_data->phenotypes_raw(nid, icol) = pheno_data->phenotypes(nid, icol);
+
+        if( (pheno_data->phenotypes_raw(nid, icol)!= 0) && 
+            (pheno_data->phenotypes_raw(nid, icol)!= 1) ) {
+
+          if(params->within_sample_l0)
+            throw "no missing value allowed in phenotype file with option -within";
+          else if( pheno_data->phenotypes_raw(nid, icol) != params->missing_value_double ){
+            std::string msg = (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA");
+            throw "a phenotype value is not " + msg + " for individual: ID=" + header[itr->first] + " Y=" + tmp_str_vec[itr->first];
+          }
+
+          pheno_data->masked_indivs(nid, icol) = false;
+        }
+      }
+
+      if(params->test_mode && params->rm_missing_qt && (pheno_data->phenotypes(nid, icol) == params->missing_value_double) ) 
+        pheno_data->masked_indivs(nid, icol) = false;
+
+    }
+    icol++;
+  }
+
+  // check #pheno
+  if(params->n_pheno < 1)
+    throw "need at least one phenotype.";
+
+  sout << "n_pheno = " << params->n_pheno << endl;
+
+  params->strict_mode |= (params->n_pheno == 1); // drop all missing observations
+  // how missingness is handled
+  if( params->strict_mode ) {
+    sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
+    pheno_data->masked_indivs.array().colwise() *= pheno_data->masked_indivs.array().rowwise().all();
+  } else if( !params->rm_missing_qt  && !params->binary_mode) 
+    sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
+  
+  ind_in_pheno_and_geno = pheno_data->masked_indivs.array().rowwise().any(); // if individual has no phenotype data at all
+  // mask individuals in genotype data but not in phenotype data
+  pheno_data->masked_indivs.array().colwise() *= ind_in_pheno_and_geno;
+
+
+  // check if all individuals have missing/invalid phenotype
+  int mInd;
+  if(pheno_data->masked_indivs.array().colwise().count().minCoeff(&mInd) == 0)
+    throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'.";
+  //cerr << std::boolalpha << pheno_data->masked_indivs << endl; exit(-1);
+
+  // ignore traits with fewer than the specified minimum case count
+  if(params->binary_mode)
+    rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
+
+  if(!params->binary_mode || !params->test_mode){
+    double mean;
+
+    for(int j = 0; j < params->n_pheno; j++) {
+
+      if(!params->binary_mode){
+        // impute missing with mean
+        mean = ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).select( pheno_data->phenotypes.col(j).array(), 0).sum();
+        mean /= ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).count();
+        pheno_data->phenotypes.col(j).array() = ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).select( pheno_data->phenotypes.col(j).array() - mean, 0);
+      } else {
+        mean = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).count();
+        pheno_data->phenotypes.col(j).array() = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array() - mean, 0);
+      }
+
+    }
+  }
+
+  // apply masking
+  pheno_data->phenotypes.array() *= pheno_data->masked_indivs.array().cast<double>();
+  //cerr <<endl<<pheno_data->phenotypes.topRows(5) << endl; exit(-1);
+
+  // number of phenotyped individuals 
+  sout <<  "   -number of phenotyped individuals " <<
+   (params->strict_mode ? "with no missing data" : "" ) << 
+   " = " << ind_in_pheno_and_geno.count() << endl;
+
+  fClass.closeFile();
+
+}
+
+// remove phenotypes with low case counts
+void rm_phenoCols(Ref<ArrayXb> sample_keep, struct in_files* files, struct param* params, struct phenodt* pheno_data, mstream& sout) { 
+
+  ArrayXb colrm = (pheno_data->phenotypes_raw.array() == 1).colwise().count() < params->mcc;
+  int npass = (!colrm).count(); 
+  //sout << npass << endl;
+
+  if(npass == 0) 
+    throw "all phenotypes have less than " + to_string( params->mcc ) +  " cases.";
+  else if( colrm.count() == 0 ) 
+    return;
+
+  std::vector< string > tmp_str_vec;
+  MatrixXd ynew (params->n_samples, npass);
+  MatrixXb mnew (params->n_samples, npass);
+
+  sout << "   -removing phenotypes with fewer than " << params->mcc << " cases\n";
+
+  for(int i = 0, j = 0; i < params->n_pheno; i++ ) {
+
+    if(colrm(i)) {
+      if(params->verbose) sout << "    +WARNING: Phenotype '" << files->pheno_names[i] << "' has too few cases so it will be ignored.\n";
+      continue;
+    } 
+
+    //cerr << j+1 << ":" << files->pheno_names[i] << endl;
+    tmp_str_vec.push_back( files->pheno_names[i] );
+    ynew.col(j) = pheno_data->phenotypes_raw.col(i);
+    mnew.col(j) = pheno_data->masked_indivs.col(i);
+    j++;
+
+  }
+  //sout << pheno_data->masked_indivs.colwise().count().array() << "\n\n" << mnew.colwise().count().array() << endl;
+
+  files->pheno_names = tmp_str_vec;
+  pheno_data->phenotypes = ynew;
+  if(params->binary_mode) pheno_data->phenotypes_raw = ynew;
+  pheno_data->masked_indivs = mnew;
+  params->n_pheno = pheno_data->masked_indivs.cols();
+
+  // remove samples with no phenotype values
+  sample_keep = sample_keep && (pheno_data->masked_indivs.rowwise().count().array() > 0);
+  sout << "    + n_pheno = " << npass << endl;
+
+}
+
+void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
+
+  int nc_cat = 0, inter_col = -1, np_inter = 0;
   uint32_t indiv_index;
   ArrayXb keep_cols;
   string line;
@@ -286,10 +485,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   // check header
   tmp_str_vec = string_split(line,"\t ");
-  if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) {
-    sout << "ERROR: Header of covariate file must start with: FID IID" << endl;
-    exit(EXIT_FAILURE);
-  }
+  if( (tmp_str_vec[0] != "FID") || (tmp_str_vec[1] != "IID") ) 
+    throw "header of covariate file must start with: FID IID.";
 
   // get covariate names 
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
@@ -302,23 +499,31 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     if(keep_cols(i)){
       covar_names.push_back( tmp_str_vec[i+2] );
       nc_cat += !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
+      // with interaction test
+      if(params->w_interaction && !params->interaction_snp && (filters->interaction_cov == tmp_str_vec[i+2]) ) {
+        inter_col = keep_cols.head(i+1).count(); 
+        np_inter = 1;
+        params->interaction_cat = !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
+      }
     }
   }
   categories.resize(nc_cat);
 
   // check all covariates specified are in the file
   params->n_cov = keep_cols.count(); 
-  if( (int)filters->cov_colKeep_names.size() != params->n_cov ) {
-    sout << "ERROR: Not all covariates specified are found in the covariate file.\n";
-    exit(EXIT_FAILURE);
-  }
+  if( (int)filters->cov_colKeep_names.size() != params->n_cov ) 
+    throw "not all covariates specified are found in the covariate file.";
+
+  if(params->w_interaction && !params->interaction_snp && (np_inter != 1))
+    throw "cannot find the interaction covariate specified in the covariate file.";
 
   // check #covariates is > 0
   if(params->n_cov < 1){ // only intercept will be included
     sout << "n_cov = " << params->n_cov << " (+ intercept)" << endl;
-    ind_in_cov_and_geno = ArrayXb::Constant( params->n_samples, true );
+    ind_in_cov_and_geno = true;
     return ;
   }
+  sout << "n_cov = " << params->n_cov << endl;
 
   // allocate memory 
   pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov);
@@ -328,10 +533,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   while( fClass.readLine(line) ){
     tmp_str_vec = string_split(line,"\t ");
 
-    if( (int)tmp_str_vec.size() != (keep_cols.size()+2) ){
-      sout << "ERROR: Incorrectly formatted covariate file." << endl;
-      exit(EXIT_FAILURE);
-    }
+    if( (int)tmp_str_vec.size() != (keep_cols.size()+2) )
+      throw "incorrectly formatted covariate file.";
 
     person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
     if(!person.is_found) continue;
@@ -339,12 +542,10 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     indiv_index = person.index;
 
     // check duplicate
-    if( !ind_in_cov_and_geno(indiv_index) ){
+    if( !ind_in_cov_and_geno(indiv_index) )
       ind_in_cov_and_geno(indiv_index) = true;
-    } else {
-      sout << "ERROR: Individual appears more than once in covariate file: FID=" << tmp_str_vec[0] << " IID=" << tmp_str_vec[1] << endl;
-      exit(EXIT_FAILURE);
-    }
+    else 
+      throw "individual appears more than once in covariate file: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1];
 
     // read covariate data and check for missing values
     for(int i_cov = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
@@ -354,8 +555,14 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       // if quantitative
       if( filters->cov_colKeep_names[ covar_names[i_cov] ] )
         pheno_data->new_cov(indiv_index, 1 + i_cov) = convertDouble(tmp_str_vec[2+j], params, sout);
-      else // if categorical, convert to numeric category
+      else {// if categorical
+        // set null category if interaction test and base level is specified
+        if(params->w_interaction && !params->interaction_snp && (covar_names[i_cov] == filters->interaction_cov) && 
+            (categories[i_cat].size() == 0) && filters->interaction_cov_null_level.size() > 0 )
+          categories[i_cat][filters->interaction_cov_null_level] = 0;
+        // convert to numerical
         pheno_data->new_cov(indiv_index, 1 + i_cov) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
+      }
 
       if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) { // ignore individual
         ind_in_cov_and_geno(indiv_index) = false;
@@ -377,24 +584,52 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     // copy intercept column
     full_covarMat.col(0) = pheno_data->new_cov.col(0);
 
-    for(int i = 1, j = 1; i < pheno_data->new_cov.cols(); i++){
+    for(int i = 1, j = 1, icat = 0; i < pheno_data->new_cov.cols(); i++){
+      n_dummies = 1;
       //cerr << i << "/" << pheno_data->new_cov.cols()-1 << " - " << covar_names[i-1] << " is q: " << std::boolalpha << filters->cov_colKeep_names[ covar_names[i-1] ] << endl;
 
       if( filters->cov_colKeep_names[ covar_names[i-1] ] ) // copy col
-        full_covarMat.col(j++) = pheno_data->new_cov.col(i);
+        full_covarMat.col(j) = pheno_data->new_cov.col(i);
       else { 
+        icat++;
         n_dummies = pheno_data->new_cov.col(i).maxCoeff();
-        if( n_dummies > 0 ){
+        if( n_dummies > 0 )
           full_covarMat.block(0, j, full_covarMat.rows(), n_dummies) = get_dummies(pheno_data->new_cov.col(i));
-          j+= n_dummies;
-        }
       }
+
+      if(params->w_interaction && !params->interaction_snp && (inter_col == i)) { 
+
+        if(n_dummies == 0)
+          throw "categorical variable to use for interaction test only has a single category.";
+
+        inter_col = j; // reset starting column
+        np_inter = n_dummies; // get number of dummies to use
+        if(params->interaction_cat) // if categorical, save levels
+          extract_names(params->interaction_lvl_names, categories[icat-1]);
+      }
+
+      j+= n_dummies;
     }
 
     pheno_data->new_cov = full_covarMat;
-    params->n_cov = full_covarMat.cols() - 1; // ignore intercept
+    params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
   }
-  //cerr << endl<<pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols())<< endl;
+
+  if(params->w_interaction && !params->interaction_snp){ // extract column(s) but keep in new_cov
+    pheno_data->interaction_cov = pheno_data->new_cov.block(0, inter_col, pheno_data->new_cov.rows(), np_inter );
+    /*
+    // remove columns from X
+    if((inter_col+np_inter+1) != pheno_data->new_cov.cols()) {
+      int ncol_right = pheno_data->new_cov.cols() - inter_col - np_inter;
+      pheno_data->new_cov.block(0, inter_col, pheno_data->new_cov.rows(), ncol_right) = pheno_data->new_cov.block(0, inter_col + np_inter, pheno_data->new_cov.rows(), ncol_right);
+    }
+    pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(),pheno_data->new_cov.cols() - np_inter);
+    params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
+    */
+  }
+
+  //cerr << endl<<pheno_data->new_cov.topRows(5) << endl;
+  //if(params->w_interaction)cerr << endl<<pheno_data->interaction_cov.topRows(5)<< endl;
 
   // mask individuals in genotype data but not in covariate data
   pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
@@ -402,13 +637,109 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   // apply masking
   pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
   if(params->strict_mode) pheno_data->new_cov.array().colwise() *= pheno_data->masked_indivs.col(0).array().cast<double>();
+  // for interaction testing
+  if(params->w_interaction && !params->interaction_snp){ 
+    pheno_data->interaction_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
+    if(params->strict_mode) pheno_data->interaction_cov.array().colwise() *= pheno_data->masked_indivs.col(0).array().cast<double>();
+  }
 
-  sout << "n_cov = " << params->n_cov << endl;
-  sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.cast<int>().sum() << endl;
+  sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.count() << endl;
+  if(params->w_interaction) {
+    sout <<  "   -testing for interaction with "
+      << (params->interaction_snp? "variant " : "")
+      << "'" << filters->interaction_cov << "'\n";
+    if(!params->binary_mode && !params->no_robust) {
+      sout <<  "    +using " << 
+        (params->force_robust && params->force_hc4? "HC4 robust SE" : "" ) << 
+        (params->force_robust && !params->force_hc4? "HC3 robust SE" : "" ) << 
+        (!params->force_robust ? "HLM model" : "" ) << 
+        " when testing variants with MAC below " << params->rareMAC_inter << endl;
+      if(!params->force_robust && !params->rint)
+        sout <<  "    +WARNING: HLM should be used with RINTed traits (otherwise use option --apply-rint)\n"; 
+    }
+  }
 
   fClass.closeFile();
 
 }
+
+void setMasks(struct param* params, struct filter* filters, struct phenodt* pheno_data, mstream& sout){
+
+  // mask samples
+  if( params->strict_mode ) // keep if non-missing for all traits
+    filters->ind_in_analysis = filters->ind_in_analysis && pheno_data->masked_indivs.array().rowwise().all();
+  else // keep if non-missing for any trait
+    filters->ind_in_analysis = filters->ind_in_analysis && pheno_data->masked_indivs.array().rowwise().any();
+
+  // individuals kept in the analysis
+  pheno_data->masked_indivs.array().colwise() *= filters->ind_in_analysis;
+
+  // mask Y and X matrices
+  pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
+  if(params->binary_mode) 
+    pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
+  pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
+  if( params->w_interaction ) 
+    pheno_data->interaction_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
+
+  // identify individuals masked for at least 1 trait
+  filters->has_missing = !(pheno_data->masked_indivs.array().rowwise().all());
+  //for(int i = 0; i <5; i++) cerr << std::boolalpha << filters->has_missing(i) << endl;
+
+  // check sample size
+  params->n_analyzed = filters->ind_in_analysis.count();
+  if( params->n_analyzed < 1 ) 
+    throw "sample size cannot be < 1.";
+  pheno_data->Neff = pheno_data->masked_indivs.colwise().count().cast<double>();
+  //sout << pheno_data->Neff << endl;
+
+}
+
+
+void print_cc_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
+
+  int ncases, ncontrols;
+  ArrayXd yvec;
+
+  // go through each trait and print number of cases and controls
+  sout << " * case-control counts for each trait:\n";
+
+  for (size_t i = 0; i < files->pheno_names.size(); i++){
+
+    ncases = pheno_data->masked_indivs.col(i).select( pheno_data->phenotypes_raw.col(i).array(), 0).sum();
+    ncontrols = pheno_data->masked_indivs.col(i).select( 1 - pheno_data->phenotypes_raw.col(i).array(), 0).sum();
+    sout << "   - '" << files->pheno_names[i] << "': " <<
+      ncases << " cases and " << ncontrols << " controls\n";
+
+  }
+}
+
+
+void extract_interaction_snp(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, struct geno_block* gblock, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
+
+  // read snp
+  pheno_data->interaction_cov.resize(params->n_samples, 1);
+  read_snp(params->interaction_snp_offset, pheno_data->interaction_cov.col(0).array(), ind_in_cov_and_geno, filters, files, gblock, params);
+  /*
+  cerr << params->interaction_snp_offset << " " << ind_in_cov_and_geno.count() <<  "\n\n"
+    << endl << pheno_data->interaction_cov.topRows(5)
+    << endl; exit(-1);
+    */
+
+  // apply coding
+  code_snp(pheno_data->interaction_cov, ind_in_cov_and_geno, params->interaction_snp_offset, filters, files, params, sout);
+  //cerr << pheno_data->interaction_cov.topRows(5) << endl; exit(-1);
+
+  // mask individuals with missing genotypes for the variant
+  pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
+
+  if(params->gwas_condtl){ // add to covariates
+    pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
+    pheno_data->new_cov.rightCols( pheno_data->interaction_cov.cols() ) = pheno_data->interaction_cov;
+  }
+
+}
+
 
 int check_categories(vector<std::string>& covar, vector<std::map<std::string,int>>& categories, struct param* params, struct filter* filters, mstream& sout){
 
@@ -419,10 +750,8 @@ int check_categories(vector<std::string>& covar, vector<std::map<std::string,int
     // skip qCovar
     if( filters->cov_colKeep_names[ covar[i] ] ) continue;
 
-    if((int)categories[j].size() > params->max_cat_levels){
-      sout << "ERROR: Too many categories for covariate: " << covar[i] << ". Either use '--maxCatLevels' or combine categories.\n";
-      exit(EXIT_FAILURE);
-    }
+    if((int)categories[j].size() > params->max_cat_levels)
+      throw "too many categories for covariate: " + covar[i] + ". Either use '--maxCatLevels' or combine categories.";
 
     ntotal += categories[j++].size() - 1; // add K-1 dummy vars
   }
@@ -448,9 +777,22 @@ MatrixXd get_dummies(const Eigen::Ref<const Eigen::MatrixXd>& numCov) {
 
 }
 
+void extract_names(vector<string>& names, map<string,int>& map_names){
+
+  map<string, int >::iterator itr;
+  names.resize( map_names.size() - 1); // ignore 0 category
+
+  for (itr = map_names.begin(); itr != map_names.end(); ++itr) {
+    if(itr->second == 0) continue; // ignore 0 category
+    names[ itr->second - 1 ] = itr->first; // map_names has values in 0-{K-1}
+  }
+  //for(auto i:names) cerr << i << "\n";
+
+}
+
 // Adjust for covariates (incl. intercept)
 // in step 2, also read blups and check
-void prep_run (struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout){
+void prep_run (struct in_files* files, struct filter* filters, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout){
 
   // for step 2, check blup files
   if (params->test_mode && !params->getCorMat){
@@ -460,16 +802,112 @@ void prep_run (struct in_files* files, struct param* params, struct phenodt* phe
   }
 
   // compute N for each trait
-  pheno_data->Neff = pheno_data->masked_indivs.cast<double>().colwise().sum();
+  setMasks(params, filters, pheno_data, sout);
 
-  // orthonormal basis
-  getCovBasis(pheno_data->new_cov, params);
+  // for interaction test with BTs, add E^2 to covs
+  if( params->binary_mode && params->w_interaction && 
+      (!params->interaction_snp || params->gwas_condtl) ) {
+    pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
+    pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov.array().square().matrix();
+  }
+
+  // orthonormal basis (save number of lin. indep. covars.)
+  params->ncov = getBasis(pheno_data->new_cov, params);
 
   // compute offset for BT (only in step 1)
-  if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, sout);
+  if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, files, sout);
+
+  // with interaction test, remove colinear columns
+  if( params->w_interaction ) {
+    // apply QR decomp
+    QRcheck(pheno_data->interaction_cov, params);
+    //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
+    params->ncov_interaction = pheno_data->interaction_cov.cols();
+    params->n_tests_per_variant += 3; // marginal + inter + joint
+    // with GxG tests
+    if(params->interaction_snp && !params->gwas_condtl) {
+
+      // for add coding, add G_E^2 (check G_E is not binary)
+      if(params->binary_mode && params->int_add_coding && 
+          (pheno_data->interaction_cov.maxCoeff() == 2) ) {
+        params->int_add_esq = true;
+        params->interaction_istart = 2 * params->ncov_interaction;
+        pheno_data->interaction_cov_res.resize(pheno_data->interaction_cov.rows(), pheno_data->interaction_cov.cols() * 2);
+        pheno_data->interaction_cov_res << pheno_data->interaction_cov, pheno_data->interaction_cov.array().square().matrix();
+
+      } else {
+        params->interaction_istart = params->ncov_interaction;
+        // keep original and residualized version
+        pheno_data->interaction_cov_res = pheno_data->interaction_cov;
+      }
+
+      // remove covariate effects
+      if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_snp, params, pheno_data, sout))
+        throw "Var(SNP)=0 for interaction test variant.";
+    }
+    //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
+
+    // for interaction tests with QTs using HLM - keep raw Y
+    if(!params->binary_mode)
+      pheno_data->phenotypes_raw = pheno_data->phenotypes;
+
+    // allocate per thread if using OpenMP
+#if defined(_OPENMP)
+    pheno_data->Hmat.resize(params->threads);
+    pheno_data->scf_i.resize(params->threads);
+#else
+    pheno_data->Hmat.resize(1);
+    pheno_data->scf_i.resize(1);
+#endif
+    
+  }
 
   // residualize phenotypes (skipped for BTs when testing)
-  if( !params->getCorMat && (!params->test_mode || !params->binary_mode) ) residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
+  if( !params->getCorMat && (!params->test_mode || !params->binary_mode) ) 
+    residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
+
+  // store indices for ADAM
+  if(params->use_adam && params->adam_mini){
+    params->adam_indices.resize(params->n_pheno);
+    for(int ph = 0; ph < params->n_pheno; ph++){
+      params->adam_indices[ph].resize(pheno_data->masked_indivs.col(ph).count(),1);
+      for(size_t i = 0, j = 0; i < params->n_samples; i++)
+        if(pheno_data->masked_indivs(i,ph)) params->adam_indices[ph](j++) = i;
+    }
+  }
+}
+
+// get list of phenotypes in pred file
+void check_blup(map<string,bool>& y_read, struct in_files* files, struct param* params, mstream& sout) {
+
+  string line, tmp_pheno;
+  std::vector< string > tmp_str_vec;
+  Files fClass;
+
+  // skip reading if specified by user
+  if( params->skip_blups ) return;
+
+  fClass.openForRead(files->blup_file, sout);
+
+  while (fClass.readLine(line)){
+    tmp_str_vec = string_split(line,"\t ");
+
+    // each line contains a phenotype name and the corresponding blup file name
+    if( tmp_str_vec.size() != 2 )
+      throw "could not check blup list file : " + files->blup_file;
+
+    y_read[ tmp_str_vec[0] ] = true;
+  }
+
+  fClass.closeFile();
+}
+
+bool has_blup(string const& yname, map<string,bool> const& y_read, struct param const* params, mstream& sout) {
+
+  if( params->skip_blups || in_map(yname, y_read)) return true;
+
+  sout << "WARNING: No blup file provided for phenotype '" << yname << "' so it will be ignored.\n";
+  return false;
 
 }
 
@@ -482,7 +920,8 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   string line, tmp_pheno;
   std::vector< string > tmp_str_vec, tmp_prs_vec;
   vector<bool> read_pheno(params->n_pheno, false);
-  MatrixXb blupf_mask;
+  ArrayXd full_prs;
+  ArrayXb blupf_mask;
   Files fClass;
 
   // allocate memory
@@ -502,10 +941,8 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     tmp_str_vec = string_split(line,"\t ");
 
     // each line contains a phenotype name and the corresponding blup file name
-    if( tmp_str_vec.size() != 2 ){
-      sout << "ERROR: Incorrectly formatted blup list file : " << files->blup_file << endl;
-      exit(EXIT_FAILURE);
-    }
+    if( tmp_str_vec.size() != 2 )
+      throw "incorrectly formatted blup list file : " + files->blup_file;
 
     // get index of phenotype in phenotype matrix
     vector<string>::iterator it = std::find(files->pheno_names.begin(), files->pheno_names.end(), tmp_str_vec[0]);
@@ -515,10 +952,8 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     files->pheno_index.push_back(tmp_index);
 
     // check that phenotype only has one file
-    if(read_pheno[tmp_index]){
-      sout << "ERROR: Phenotype \'" << tmp_pheno << "\' appears more than once in blup list file." << endl;
-      exit(EXIT_FAILURE);
-    }
+    if(read_pheno[tmp_index])
+      throw "phenotype \'" + tmp_pheno + "\' appears more than once in blup list file.";
 
     n_files++;
     read_pheno[tmp_index] = true;
@@ -526,12 +961,14 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   }
 
   // force all phenotypes in phenotype file to be used
-  if(n_files != params->n_pheno) {
-    sout << "ERROR : Number of files (" << n_files <<")  is not equal to the number of phenotypes.\n" ;
-    exit(EXIT_FAILURE);
-  }
+  if(n_files != params->n_pheno) 
+    throw "number of files (" + to_string( n_files ) + ")  is not equal to the number of phenotypes." ;
+
   sout << "n_files = " << n_files << endl;
   fClass.closeFile();
+
+  // allocate memory for LTCO 
+  if(params->w_ltco) m_ests->ltco_prs = MatrixXd::Zero(params->n_samples, params->n_pheno);
 
   // read blup file for each phenotype
   for(int ph = 0; ph < params->n_pheno; ph++) {
@@ -541,26 +978,22 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     sout << "] for phenotype \'" << files->pheno_names[i_pheno] << "\'\n";
     fClass.openForRead(files->blup_files[ph], sout);
 
-    // mask all individuals not present in .loco file
-    blupf_mask = MatrixXb::Constant(params->n_samples, 1, false);
+    // to mask all individuals not present in .loco file
+    blupf_mask = ArrayXb::Constant(params->n_samples, false);
     n_masked_prior = pheno_data->masked_indivs.col(ph).cast<int>().sum();
-    // only read first line which has FID_IID
+    // read first line which has FID_IID
     fClass.readLine(line);
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec[0] != "FID_IID") {
-      sout << "ERROR: Header of blup file must start with FID_IID (=" << tmp_str_vec[0] << ").\n";
-      exit(EXIT_FAILURE);
-    }
+    if( tmp_str_vec[0] != "FID_IID") 
+      throw "header of blup file must start with FID_IID (=" + tmp_str_vec[0] + ")";
 
     // read second line to check for missing predictions
     fClass.readLine(line);
     tmp_prs_vec = string_split(line,"\t ");
 
-    if( params->use_prs  && (tmp_prs_vec[0] != "0") ){ // read in second line
-      sout << "ERROR: Second line must start with 0 (=" << tmp_prs_vec[0] << ").\n";
-      exit(EXIT_FAILURE);
-    }
+    if( params->use_prs && (tmp_prs_vec[0] != "0") )
+      throw "second line must start with 0 (=" + tmp_prs_vec[0] + ").";
 
     for (size_t i = 1; i < tmp_str_vec.size(); i++){
       // ignore sample if it is not in genotype data
@@ -569,17 +1002,17 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
       blup_val = convertDouble(tmp_prs_vec[i], params, sout);
 
       // ignore samples where prediction is NA
-      blupf_mask( indiv_index , 0 ) = (blup_val != params->missing_value_double);
-      //cerr << tmp_str_vec[i] << "\t" << std::boolalpha << blupf_mask( indiv_index , 0 ) << endl; 
-      if (!blupf_mask( indiv_index , 0 )) continue;
-
+      blupf_mask( indiv_index ) = (blup_val != params->missing_value_double);
+      //cerr << tmp_str_vec[i] << "\t" << std::boolalpha << blupf_mask( indiv_index ) << endl; 
+      if (!blupf_mask( indiv_index )) continue;
+      
       if( params->use_prs ) 
         m_ests->blups(indiv_index, ph) = blup_val;
     }
 
     // mask samples not in file
-    pheno_data->masked_indivs.col(ph).array() = pheno_data->masked_indivs.col(ph).array() && blupf_mask.col(0).array();
-    n_masked_post = pheno_data->masked_indivs.col(ph).cast<int>().sum();
+    pheno_data->masked_indivs.col(ph).array() = pheno_data->masked_indivs.col(ph).array() && blupf_mask;
+    n_masked_post = pheno_data->masked_indivs.col(ph).count();
 
     if( n_masked_post < n_masked_prior ){
       sout << "    + " << n_masked_prior - n_masked_post <<
@@ -587,9 +1020,53 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     }
 
     // check not everyone is masked
-    if( n_masked_post < 1 ){
-      sout << "ERROR: none of the individuals remaining in the analysis are in the LOCO predictions file from step 1.\n Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.\n";
-    exit(EXIT_FAILURE);
+    if( n_masked_post < 1 )
+      throw "none of the individuals remaining in the analysis are in the LOCO predictions file from step 1.\n"
+        "Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.";
+
+    if(params->w_ltco){ // go through each line and sum up the loco prs
+
+      bool chr_ltco;
+      int nchr_file = 0;
+      double ds;
+      full_prs = ArrayXd::Zero( params->n_samples );
+
+      // Re-open file (since skipped 2nd row)
+      fClass.closeFile();
+      fClass.openForRead(files->blup_files[ph], sout);
+      fClass.ignoreLines(1); // skip first row
+
+      while( fClass.readLine(line) ){
+
+        tmp_prs_vec = string_split(line,"\t ");
+        if( tmp_prs_vec.size() != tmp_str_vec.size() )
+          throw "number of entries for chromosome " + tmp_prs_vec[0] + 
+            " does not match with that in header (" + 
+            to_string(tmp_prs_vec.size()) + " vs " + to_string(tmp_str_vec.size()) + ")";
+
+        // check if it is the LTCO chromosome
+        chr_ltco = (chrStrToInt(tmp_prs_vec[0], params->nChrom) == params->ltco_chr);
+
+        for (size_t i = 1; i < tmp_str_vec.size(); i++){
+          // ignore sample if it is not in genotype data
+          if (!in_map(tmp_str_vec[i], params->FID_IID_to_ind)) continue;
+          indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
+          if(!pheno_data->masked_indivs(indiv_index,ph)) continue;
+
+          ds = convertDouble(tmp_prs_vec[i], params, sout);
+          if(chr_ltco) m_ests->ltco_prs(indiv_index, ph) = - ds;
+          full_prs(indiv_index) += ds;
+        }
+
+        nchr_file++;
+      }
+
+      if( nchr_file != params->nChrom )
+        throw "incorrectly formatted file.";
+
+      m_ests->ltco_prs.col(ph).array() += full_prs / (nchr_file - 1);
+      //cerr << m_ests->ltco_prs.col(ph).head(5)<<endl;
+
     }
 
     fClass.closeFile();
@@ -599,7 +1076,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
 
 // write ids of samples included in step 2 (done for each trait)
-void write_ids(struct in_files* files, struct param* params, struct phenodt* pheno_data, mstream& sout){
+void write_ids(struct in_files const* files, struct param* params, struct phenodt const* pheno_data, mstream& sout){
 
   uint32_t index;
   map<string, uint32_t >::iterator itr_ind;
@@ -632,10 +1109,10 @@ void write_ids(struct in_files* files, struct param* params, struct phenodt* phe
 }
 
 
-void getCovBasis(MatrixXd& new_cov,struct param* params){
+int getBasis(MatrixXd& X,struct param const* params){
 
-  // eigen-decompose cov matrix
-  MatrixXd xtx = new_cov.transpose() * new_cov;
+  // eigen-decompose NxK matrix
+  MatrixXd xtx = X.transpose() * X;
   SelfAdjointEigenSolver<MatrixXd> es(xtx);
   VectorXd D = es.eigenvalues();
   MatrixXd V = es.eigenvectors();
@@ -644,15 +1121,56 @@ void getCovBasis(MatrixXd& new_cov,struct param* params){
   // eigenvalues sorted in increasing order
   int non_zero_eigen = (D.array() > D.tail(1)(0) * params->eigen_val_rel_tol).count();
   RowVectorXd vv1 = D.tail(non_zero_eigen).array().sqrt();
-  new_cov *= V.rightCols(non_zero_eigen);
-  new_cov.array().rowwise() /= vv1.array();
+  X *= V.rightCols(non_zero_eigen);
+  X.array().rowwise() /= vv1.array();
 
-  params->ncov = non_zero_eigen; // save number of lin. indep. covars.
+  return non_zero_eigen;
+}
+
+void QRcheck(MatrixXd& mat, struct param* params){
+
+  vector<string> new_names;
+
+  // find set of linearly independent cols
+  ColPivHouseholderQR<MatrixXd> qrA(mat);
+  qrA.setThreshold(params->qr_tol); 
+  int indCols = qrA.rank();
+
+  if(indCols == 0)
+    throw "rank of matrix is 0.";
+  else if ( indCols < mat.cols() ){
+    ArrayXi colKeep = qrA.colsPermutation().indices();
+    std::vector<int> new_indices;
+
+    // keep only linearly independent columns
+    MatrixXd tmpM (mat.rows(), indCols);
+
+    for(int i = 0; i < indCols; i++){
+      tmpM.col(i) = mat.col( colKeep(i) );
+      if(params->interaction_cat) new_names.push_back( params->interaction_lvl_names[ colKeep(i) ]);
+    }
+
+    mat = tmpM;
+    if(params->interaction_cat) params->interaction_lvl_names = new_names;
+  } 
+
+  // check no columns has sd = 0
+  check_sd(mat, params->n_analyzed - params->ncov, params->numtol);
+
+}
+
+void check_sd(const Eigen::Ref<const Eigen::MatrixXd>& mat, int const& n, double const& numtol){
+
+  RowVectorXd mu = mat.colwise().mean();
+  VectorXd sd = (mat.rowwise() - mu).colwise().norm().array() / sqrt(n);
+
+  if(sd.minCoeff() < numtol)
+    throw "one of the columns has sd=0";
 
 }
 
 
-void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
+void residualize_phenotypes(struct param const* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
   sout << "   -residualizing and scaling phenotypes...";
   auto t1 = std::chrono::high_resolution_clock::now();
 
@@ -663,16 +1181,75 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
 
   // check sd is not 0 
   MatrixXd::Index minIndex;
-  if(pheno_data->scale_Y.minCoeff(&minIndex) < params->numtol){
-    sout << "ERROR: Phenotype \'" << pheno_names[minIndex] << "\' has sd=0." << endl;
-    exit(EXIT_FAILURE);
-  }
+  if(pheno_data->scale_Y.minCoeff(&minIndex) < params->numtol)
+    throw "phenotype \'" + pheno_names[minIndex] + "\' has sd=0.";
+
   pheno_data->phenotypes.array().rowwise() /= pheno_data->scale_Y.array();
 
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
   sout << " (" << duration.count() << "ms) "<< endl;
+}
+
+bool residualize_matrix(MatrixXd& mat, ArrayXd& scf, struct param const* params, struct phenodt* pheno_data, mstream& sout) {
+
+  // residuals (centered) 
+  MatrixXd beta = mat.transpose() * pheno_data->new_cov;
+  mat -= pheno_data->new_cov * beta.transpose();
+
+  scf = mat.colwise().norm().array() / sqrt(params->n_analyzed - params->ncov);
+
+  // check sd is not 0 
+  if(scf.minCoeff() < params->numtol)
+    return false;
+
+  // scale
+  mat.array().rowwise() /= scf.matrix().transpose().array();
+
+  return true;
+}
+
+void apply_QR(MatrixXd& mat, struct param const* params, bool const& scale){
+
+  // find set of linearly independent cols
+  ColPivHouseholderQR<MatrixXd> qrA(mat);
+  qrA.setThreshold(params->qr_tol); 
+  int indCols = qrA.rank();
+
+  if(indCols == 0)
+    throw "rank of matrix is 0.";
+  else if ( indCols < mat.cols() ){
+    ArrayXi colKeep = qrA.colsPermutation().indices();
+    std::vector<int> new_indices;
+
+    // keep only linearly independent columns
+    MatrixXd tmpM (mat.rows(), indCols);
+
+    for(int i = 0; i < indCols; i++)
+      tmpM.col(i) = mat.col( colKeep(i) );
+
+    mat = tmpM;
+  } 
+
+  if(scale)
+    rescale_mat(mat, params);
+
+}
+
+void rescale_mat(Ref<MatrixXd> mat, struct param const* params){
+
+    RowVectorXd mu = mat.colwise().sum() / params->n_samples;
+    mat.rowwise() -= mu;
+
+    // check sd is not 0 
+    ArrayXd scf = mat.colwise().norm().array() / sqrt(params->n_samples - 1);
+    if(scf.minCoeff() < params->numtol)
+      throw "sd = 0 occurred";
+
+    // scale
+    mat.array().rowwise() /= scf.matrix().transpose().array();
+
 }
 
 void check_str(string& mystring ){
@@ -683,3 +1260,52 @@ void check_str(string& mystring ){
 
 }
 
+void apply_rint(struct phenodt* pheno_data, struct param const* params){
+
+  // for each trait, apply rank-inverse normal transformation
+  for(int ph = 0; ph < params->n_pheno; ph++)
+    rint_pheno(pheno_data->phenotypes.col(ph), pheno_data->masked_indivs.col(ph).array());
+
+}
+
+void rint_pheno(Ref<MatrixXd> Y, Ref<ArrayXb> mask){
+
+  int nvals = mask.count();
+  vector<rank_pair> yvals;
+  yvals.resize(nvals);
+
+  // get the index for each value
+  for(int i = 0, j = 0; i < Y.rows(); i++){
+    if(!mask(i)) continue;
+    yvals[j].val = Y(i,0);
+    yvals[j].index = i;
+    j++;
+  }
+
+  // sort by values keeping track of index
+  std::sort(yvals.begin(), yvals.end(), cmp_rank_pair);
+
+  // take care of ties
+  int n_eq;
+  for(int i = 0; i < nvals; i+=n_eq){
+    n_eq = 1;
+    while(((i+n_eq) < nvals) && (yvals[i+n_eq].val == yvals[i].val)) n_eq++;
+    for(int j = 0; j < n_eq; j++)
+      yvals[i+j].val = (i+1) + (n_eq-1)/2.0;
+  }
+
+  // apply INT with the ranks
+  double kc = 3/8.0, rint_val;
+  normal nd(0,1);
+  //cerr << Y.block(0,0,6,1)<<endl;
+  for(auto const& ypair : yvals){
+    rint_val = (ypair.val - kc) / (nvals - 2 * kc + 1);
+    Y( ypair.index, 0 ) = quantile(nd, rint_val);
+  }
+  //cerr << endl << endl << Y.block(0,0,6,1)<<endl;
+
+}
+
+bool cmp_rank_pair(struct rank_pair& a, struct rank_pair& b) {
+  return a.val < b.val;
+}

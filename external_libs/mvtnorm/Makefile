@@ -1,5 +1,4 @@
-FLAG=-O2 -DNDEBUG
-
+FLAG=-O2 -DNDEBUG -fPIC
 
 libMvtnorm.a: mvtnorm.o mvt.o randomF77.o
 	ar rcs $@ $^ 

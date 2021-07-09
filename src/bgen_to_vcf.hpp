@@ -137,6 +137,23 @@ struct BgenParser {
     return o ;
   }
 
+  // Added by JMbatchou (04/04/21)
+  std::string summarise( ) {
+    std::ostringstream o; 
+    o << "   -summary : bgen file ("
+      << ( m_context.flags & genfile::bgen::e_Layout2 ? "v1.2 layout" : "v1.1 layout" )
+      << ", ";
+    if((m_context.flags & genfile::bgen::e_CompressedSNPBlocks) == genfile::bgen::e_ZlibCompression)
+      o << "zlib ";
+    else if((m_context.flags & genfile::bgen::e_CompressedSNPBlocks) == genfile::bgen::e_ZstdCompression)
+      o << "zstd ";
+    o << ( m_context.flags & genfile::bgen::e_CompressedSNPBlocks ? "compressed" : "uncompressed" ) << ")"
+      << " with " 
+      << m_context.number_of_samples << " " << ( m_have_sample_ids ? "named" : "anonymous" ) << " samples and "
+      << m_context.number_of_variants << " variants" ;
+    return o.str() ;
+  }
+
   bool get_layout () {
     return (m_context.flags & genfile::bgen::e_Layout2);
   }

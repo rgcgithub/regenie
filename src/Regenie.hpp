@@ -58,6 +58,7 @@
 
 #include "Eigen/Dense"
 #include "Eigen/StdVector"
+#include <Eigen/SparseCore>
 
 #ifdef __linux__
 #include <omp.h>
@@ -71,8 +72,11 @@ typedef unsigned long long uint64;
 typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
+typedef Eigen::Map<Eigen::MatrixXd > MapMatXd;
 typedef Eigen::Map<ArrayXb> MapArXb;
 typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
+typedef Eigen::SparseMatrix<double> SpMat;
+typedef Eigen::SparseVector<double> SpVec;
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
@@ -142,13 +146,15 @@ struct param {
   bool strict_mode = false; // remove individuals with any NA
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
+  bool transposedPheno = false, tpheno_iid_only = false;
   bool getCorMat = false, cor_out_txt = false;
 
   // filters 
   bool rm_indivs = false; // user specify to remove genotyped samples from analysis
   bool keep_indivs = false; // user specify to keep only select genotyped samples in the analysis
-  bool keep_snps = false; // user specify to keep select snps in analysis
-  bool rm_snps = false; // user specify to remove snps from analysis
+  bool keep_snps = false, keep_or = false; // user specify to keep select snps in analysis
+  bool rm_snps = false, rm_or = false; // user specify to remove snps from analysis
+  bool mk_snp_map = false, keep_snp_map = false;
   bool select_phenos = false; // user specify which phenotype columns to use
   bool select_covs = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
   int max_cat_levels = 10; // maximum number of categories of categorical covars
@@ -159,22 +165,28 @@ struct param {
   const double missing_value_double = -999;
   int nChrom = 23; // total number of chromosome numbers (sex chromosomes collapsed in chr23)
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
-  double numtol = 1e-6;
+  int mcc = 10; // minimum case count
+  double numtol = 1e-6, qr_tol = 1e-7;
+  double numtol_firth = 1e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-16;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0;
   bool verbose = false;
-  bool early_exit = false;
+  bool early_exit = false, rint = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
   int njobs, job_num, parallel_nGeno, parallel_nBlocks, parallel_nSnps;
+  int start_block = 1;
+  bool use_adam = false, adam_mini = true; // use ADAM for log. reg.
+  double adam_alpha = 0.001, adam_beta1 = 0.9, adam_beta2 = 0.999, adam_eps = 1e-7, adam_batch_size = 128;
+  std::vector<Eigen::ArrayXi> adam_indices;
 
   // for input data
-  uint32_t n_samples = 0; // number of samples
+  uint32_t n_samples = 0, n_analyzed = 0; // number of samples
   int n_pheno = 0; // number of phenotypes
   int n_cov = 0; // number of covariates
-  int ncov; // number of linearly independent covariates
+  int ncov, ncov_interaction; // number of linearly independent covariates
   uint32_t n_variants = 0, nvs_stored = 0; // number of variants in genotype file
   std::map <std::string, uint32_t> FID_IID_to_ind;
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
@@ -182,6 +194,7 @@ struct param {
   uint BGENbits = 0; // bit-encoding used in BGEN file
   bool ref_first = false; // ordering of REF/ALT alleles in input genotype file
   std::vector<bool> sex; // 0 is female, 1 is male
+  std::vector<Eigen::ArrayXd> bed_lookup_table; // plink bed lookup table
 
 
   // step 1 
@@ -199,12 +212,13 @@ struct param {
   bool make_loco = true; // specify whether to compute & ouput LOCO predictions
   bool print_prs = false; // specify to print PRS (i.e. no LOCO used)
   bool write_blups = false; // write BLUP predictions for each chromosome
+  bool use_rel_path = false; // write relative paths in pred.list file
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool rm_l0_pred = true; // specify whether to delete written level 0 predictions after level 1
   bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
   bool force_run = false; // if using more than max nvariants in step 1
   int max_step1_variants = 1e6; // prevent users using too many step 1 variants
-  int niter_max_ridge = 500; // max number of iterations for ridge logistic reg.
+  int niter_max_ridge = 500, niter_max_ridge_adam = 25; // max number of iterations for ridge logistic reg.
   int niter_max_line_search_ridge = 100; // max number of iterations for line search in ridge logistic reg.
   double l1_ridge_tol = 1e-4; // tolerance level for convergence criteria
   double l1_ridge_eps = 1e-5; // epsilon used to set weights for 0/1 probabilities
@@ -214,7 +228,7 @@ struct param {
   std::vector<double> tau; // ridge parameters at level 1
   // TO REMOVE
   bool within_sample_l0 = false; // specify to use within-sample predictions as features at level 1 (default is to use out-of-sample predictions)
-  std::vector<int> cv_sizes;
+  Eigen::ArrayXi cv_sizes;
 
 
   // step 2
@@ -225,14 +239,24 @@ struct param {
   bool dosage_mode = false; // track if dosages are present for step 2
   bool split_by_pheno = true; // specify whether to write testing result in separate phenotype files
   bool skip_blups = false;
+  bool with_flip = true; // can flip to minor allele for all variants
   bool use_prs = false; // adjust for whole genome PRS (no LOCO)
   double min_MAC = 5, min_MAC_mask; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
   double min_INFO = 0; // minimum INFO score of SNPs (dosages) in testing mode
   bool setMinINFO = false;
   bool write_samples = false; // write sample IDs for each trait
-  double alpha_pvalue = 0.05; // significance threshold above which to use firth correction
+  double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
+  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_coding = false, int_add_esq = false; // interaction test
+  int interaction_istart = 0, ltco_chr;
+  uint64 interaction_snp_offset; // index in genotype file
+  bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
+  double rareMAC_inter = 1000; // MAC below which to use HLM
+  int n_tests_per_variant = 1;
+  std::vector<std::string> interaction_lvl_names; // name of levels if using categorical variable for test
+  bool gwas_condtl = false;
+  std::string condtl_suff;
   // spa
   bool use_SPA = false; // saddlepoint approximation to estimate pvalue
   int niter_max_spa = 1000; 
@@ -240,18 +264,18 @@ struct param {
   // firth
   bool firth = false;// firth correction using LRT
   bool firth_approx = false; // approx. to Firth LRT
+  bool write_null_firth = false, use_null_firth = false, compute_all_chr = false; // write/use null coefficients from approx. Firth
   int niter_max = 30; // max number of iterations for logistic reg.
-  double numtol_firth = 1e-5; // tolerance level for firth
-  int niter_max_firth = 250; // max number of iterations in Firth logistic reg.
+  int niter_max_firth = 250, niter_max_firth_adam = 25; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
-  int retry_maxstep_firth=5, retry_niter_firth=5000; // fallback settings for null approx. firth regression
+  int retry_maxstep_firth=5, retry_niter_firth = 5000; // fallback settings for null approx. firth regression
   bool fix_maxstep_null = false; // if user specifies max step size
   bool back_correct_se = false; // for SE with Firth
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
-  bool htp_out = false; 
+  bool htp_out = false, af_cc = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
   bool set_range = false;
   int range_chr; 
@@ -270,14 +294,14 @@ struct param {
   bool keep_sets = false; // user specify to keep select sets in analysis
   bool rm_sets = false; // user specify to remove sets from analysis
   bool w_regions = false; // categorize by set regions 
-  int max_cat = 64; // maximum number of annotations (to fit in uint64)
+  uint max_cat = 64, nmax_regions = 16; // maximum number of annotations (to fit in uint64)
   std::vector<std::string> mbins; // temporary object to store aaf bins
   bool mask_rule_max = true, mask_rule_comphet = false; // default use max to combine mask
   std::string mask_rule = "max";
   bool set_aaf = false;// for user-given AAFs for building masks
   bool singleton_carriers = false; // carrier count used to define singletons
-  bool write_masks = false, write_setlist = false; //write masks to bed file
-  bool mask_loo = false;
+  bool write_masks = false, write_setlist = false, write_mask_snplist = false; //write masks to bed file
+  bool mask_loo = false, mask_lodo = false;
   bool p_joint_only = false;
   std::string mask_loo_name, mask_loo_set, mask_loo_region; // for LOO with masks
   double mask_loo_aaf;
@@ -293,22 +317,26 @@ struct in_files {
   std::string bed_prefix;
   std::string pgen_prefix;
   std::string bgen_file, sample_file;
-  std::string file_ind_include, file_ind_exclude;
-  std::string file_snps_include, file_snps_exclude;
-  std::string file_sets_include, file_sets_exclude;
+  std::vector<std::string> file_ind_include, file_ind_exclude;
+  std::vector<std::string> file_snps_include, file_snps_exclude;
+  std::vector<std::string> file_snps_include_or, file_snps_exclude_or;
+  std::vector<std::string> file_sets_include, file_sets_exclude;
+  std::string sets_include, sets_exclude;
   std::string cov_file, pheno_file;
   std::string loco_tmp_prefix = "";
   std::string split_file;
   std::string out_file;
   std::string blup_file;
+  std::string null_firth_file;
   std::vector<std::shared_ptr<std::ofstream>> write_preds_files;
-  std::vector<std::string> blup_files;
+  std::vector<std::string> blup_files, null_firth_files;
   std::vector<std::string> pheno_names;
   std::vector<int> pheno_index;
   std::vector<int> chr_counts, chr_read;
   uint64 bed_block_size; // prevent overflow
-  std::ifstream bed_ifstream;
+  std::ifstream geno_ifstream;
   std::vector<uchar> inbed;
+  std::vector<std::vector<uchar>> bed_data_blocks;
   std::string set_file, new_sets;
   std::string anno_file, anno_labs_file, mask_file, aaf_file;
   std::vector<int> bstart, btot; // for parallel l0
@@ -320,35 +348,48 @@ struct filter {
 
   // to filter phenotype/covariates/genotype
   std::map<std::string, bool> pheno_colKeep_names, cov_colKeep_names; // true for qVar, false for catVar
+  std::map<int, bool> tpheno_colrm;
+  uint32_t tpheno_indexCol;
+  std::string interaction_cov;
+  std::string interaction_cov_null_level;//if categorical
   std::map <int, bool> chrKeep_test;
-  std::map <std::string, uint64> snpID_to_ind;
+  std::map <std::string, uint32_t> snpID_to_ind;
   ArrayXb ind_ignore, has_missing, ind_in_analysis;
   uint32_t step1_snp_count = 0;
-  std::vector<bool> geno_mask;
-  std::map <std::string, std::vector<int>> setID_to_ind;//chr,index
+  std::map <std::string, std::vector<int>> setID_to_ind;//chr,index,is_kept
 
 };
 
 template <typename T> 
-void start_log(T,const std::string,MeasureTime*,mstream&);
+void start_log(T,const std::string&,MeasureTime*,mstream&);
 
-void print_help(bool);
-void read_params_and_check(int argc,char *argv[],struct param*,struct in_files*,struct filter*,MeasureTime*,mstream&);
+void print_help(bool const&);
+void read_params_and_check(int& argc,char *argv[],struct param*,struct in_files*,struct filter*,MeasureTime*,mstream&);
+void check_file(std::string const&,std::string const&);
 void print_header(std::ostream&);
-void set_ridge_params(int,std::vector<double>&,const std::string,mstream&);
-void print_usage_info(struct param*,struct in_files*,mstream&);
-int chrStrToInt(const std::string, const int);
+void set_ridge_params(int const&,std::vector<double>&,mstream&);
+void print_usage_info(struct param const*,struct in_files*,mstream&);
+int chrStrToInt(const std::string&, const int&);
 std::vector<std::string> check_name(std::string const&,mstream&);
-double convertDouble(const std::string&,struct param*,mstream&);
-double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param*,mstream&);
+double convertDouble(const std::string&,struct param const*,mstream&);
+double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param const*,mstream&);
+void check_inter_var(std::string&,std::string&,mstream&);
 std::string print_csv(const std::vector<std::string>&);
+std::string print_scsv(const std::vector<std::string>&);
+void get_logp(double&,const double&);
+void allocate_mat(Eigen::MatrixXd&,int const&,int const&);
+std::string print_mat_dims(Eigen::MatrixXd const&);
 void set_threads(struct param*);
 
-
 template <typename KEY, typename VALUE> 
-bool in_map(KEY element, std::map<KEY,VALUE>& emap){
+bool in_map(KEY element, std::map<KEY,VALUE> const& emap){
   return emap.find(element) != emap.end();
 }
+
+template <typename T> int sgn(T val) {
+  return (T(0) < val) - (val < T(0));
+}
+
 
 
 #endif

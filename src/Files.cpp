@@ -36,144 +36,142 @@ Files::~Files(){
 }
 
 // Open file (either regular or gzipped)
-void Files::openForRead(std::string filename, mstream& sout){
+void Files::openForRead(std::string const& filename, mstream& sout){
 
-  is_gz = checkFileExtension(filename);
+  read_mode = true;
+  is_gz = isGzipped(filename, true);
+  //std::cerr << filename << " - gzip = " << std::boolalpha << is_gz << std::endl;
 
   // only used if compiled with boost iostream
 # if not defined(HAS_BOOST_IOSTREAM)
   if(is_gz) {
-    sout << "ERROR: Cannot read gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').\n";
-    exit(EXIT_FAILURE);
-  }
+    throw "cannot read gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').";
 #endif
 
   std::ios_base::openmode mode = (is_gz ? std::ios_base::in | std::ios_base::binary : std::ios_base::in ); 
 
-  infile.open(filename.c_str(), mode);
-  if (!infile) {    
-    sout << "ERROR: Cannot open file : " << filename << std::endl;
-    exit(EXIT_FAILURE);
-  }
+  openStream(&infile, filename, mode, sout);
 
-# if defined(HAS_BOOST_IOSTREAM)
   if(is_gz){
     ingzfile.push(boost::iostreams::gzip_decompressor());
     ingzfile.push(infile);
   }
-#endif
 
 }
 
 bool Files::readLine(std::string& line){
 
-# if defined(HAS_BOOST_IOSTREAM)
-  if(is_gz) return static_cast<bool>( getline(ingzfile, line) );
-#endif
+  if(is_gz) 
+    return static_cast<bool>( getline(ingzfile, line) );
 
   return  static_cast<bool>( getline(infile, line) );
 }
 
 
-void Files::ignoreLines(int nlines){
+void Files::ignoreLines(int const& nlines){
 
   int linenumber=0;
+
   if(nlines < 1) return;
 
   while(linenumber++ < nlines){
-# if defined(HAS_BOOST_IOSTREAM)
-    if(is_gz) ingzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-    else infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-# else
-    infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
-#endif
+
+    if(is_gz) 
+      ingzfile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+    else 
+      infile.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+
   }
 }
 
 
 // Open file for writing
-void Files::openForWrite(std::string filename, mstream& sout){
+void Files::openForWrite(std::string const& filename, mstream& sout){
 
   read_mode = false;
-  is_gz = checkFileExtension(filename);
+  is_gz = isGzipped(filename, false);
 
   // only used if compiled with boost iostream
 # if not defined(HAS_BOOST_IOSTREAM)
-  if(is_gz) {
-    sout << "ERROR: Cannot write gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').\n";
-    exit(EXIT_FAILURE);
-  }
+  if(is_gz) 
+    throw "cannot write gzip file if compilation is not done with the Boost Iostream library (i.e. 'make HAS_BOOST_IOSTREAM=1').";
 #endif
 
   std::ios_base::openmode mode = (is_gz ? std::ios_base::out | std::ios_base::binary : std::ios_base::out ); 
 
-  outfile.open(filename.c_str(), mode);
-  if (!outfile) {    
-    sout << "ERROR: Cannot open file : " << filename << std::endl;
-    exit(EXIT_FAILURE);
-  }
+  openStream(&outfile, filename, mode, sout);
 
-# if defined(HAS_BOOST_IOSTREAM)
   if(is_gz){
     outgzfile.push(boost::iostreams::gzip_compressor());
     outgzfile.push(outfile);
   }
-#endif
+
 }
 
 void Files::closeFile(){
 
   if( read_mode ){
-# if defined(HAS_BOOST_IOSTREAM)
-    if(is_gz) ingzfile.reset();
-#endif
+
+    if(is_gz) 
+      ingzfile.reset();
     infile.close();
+
   } else {
-# if defined(HAS_BOOST_IOSTREAM)
-    if(is_gz) outgzfile.reset();
-#endif
+
+    if(is_gz) 
+      outgzfile.reset();
     outfile.close();
+
   }
 }
 
 // Check file extension
-bool Files::checkFileExtension(std::string filename) {
-  return fs::extension(filename) == ".gz";
-}
+bool Files::isGzipped(std::string const& filename, bool const& check_file) {
 
-void Files::openBinMode(std::string filename, std::ios_base::openmode mode, mstream& sout){
+  // require all gzipped file to end in .gz
+  if( fs::extension(filename) != ".gz" )
+    return false;
 
-  try {
-    if(mode & std::ios_base::out){
-      read_mode = false;
-      outfile.open(filename.c_str(), mode);
-      if (!outfile) throw filename;    
-    } else {
-      infile.open(filename.c_str(), mode);
-      if (!infile) throw filename;    
-    }
-  } catch (const std::string& fname) {
-    sout << "ERROR: Cannot open file : " << fname << std::endl;
-    exit(EXIT_FAILURE);
-  }
-}
+  // open file and check first 2 bytes (should equal 0x1f8b)
+  if(check_file){
+    infile.open(filename, std::ios_base::in | std::ios_base::binary);
+    if (infile.fail()) 
+      throw "cannot read file : " + filename ;
 
-void Files::writeBinMode(Eigen::ArrayXi& vals, mstream& sout){
+    uchar header[2];
+    infile.read( reinterpret_cast<char *> (&header[0]), 2);
+    infile.close();
 
-  outfile.write( reinterpret_cast<char *> (&vals(0)), vals.size() * sizeof(vals(0)) );
-  if (outfile.fail()) {    
-    sout << "ERROR: Cannot write values to file.\n";
-    exit(EXIT_FAILURE);
-  }
-}
-void Files::writeBinMode(ArrayXt& vals, mstream& sout){
-
-  outfile.write( reinterpret_cast<char *> (&vals(0)), vals.size() * sizeof(vals(0)) );
-  if (outfile.fail()) {    
-    sout << "ERROR: Cannot write values to file.\n";
-    exit(EXIT_FAILURE);
+    if ( (header[0] != 0x1f) || (header[1] != 0x8b) ) 
+      return false;
   }
 
+  return true;
+}
+
+void Files::openMode(std::string const& filename, std::ios_base::openmode mode, mstream& sout){
+
+  if(mode & std::ios_base::out){
+    read_mode = false;
+    openStream(&outfile, filename, mode, sout);
+  } else {
+    read_mode = true;
+    openStream(&infile, filename, mode, sout);
+  }
+
+}
+
+
+template <typename T>
+void openStream(T* ofs, std::string const& fname, std::ios_base::openmode mode, mstream& sout){
+
+  ofs->open(fname, mode);
+  if (ofs->fail()) {
+    std::string str_mode = mode & std::ios_base::out ? "write" : "read";
+    throw "cannot " + str_mode + " file : " + fname ;
+  }
+
+  return;
 }
 
 // Split string by tokens
@@ -199,13 +197,3 @@ std::vector<std::string> string_split(std::string const& s, const char* delims) 
 }
 
 
-void openStream_write(std::ofstream* ofs, std::string const& fname, std::ios_base::openmode mode, mstream& sout){
-
-  ofs->open(fname, mode);
-  if (ofs->fail()) {    
-    sout << "ERROR: Cannot write to file : " << fname << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  return;
-}

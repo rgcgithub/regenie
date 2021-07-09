@@ -31,9 +31,12 @@ struct ests {
 
   Eigen::MatrixXd offset_logreg;
   Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> blups;
+  Eigen::MatrixXd ltco_prs;
   Eigen::MatrixXd Gamma_sqrt;
   Eigen::MatrixXd Y_hat_p;
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > Xt_Gamma_X_inv;
+  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > X_Gamma;
+  Eigen::MatrixXd bhat_start; // for interaction tests
 
 };
 
@@ -63,10 +66,11 @@ struct ridgel1 {
 };
 
 
-void fit_null_logistic(const int,struct param*,struct phenodt*,struct ests*,mstream&);
-double get_logist_dev(const Eigen::ArrayXd& Y, const Eigen::ArrayXd& pi, const ArrayXb& mask);
+void fit_null_logistic(const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
+bool fit_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&);
+double get_logist_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
 
-void ridge_level_0(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
+void ridge_level_0(const int&,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
 void write_l0_file(std::ofstream*,Eigen::MatrixXd&,mstream&);
 
@@ -77,12 +81,16 @@ void ridge_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct r
 void ridge_logistic_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_logistic_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ests*,struct ridgel1*,mstream&);
 
-bool get_wvec(int ph, Eigen::ArrayXd& etavec, Eigen::ArrayXd& pivec, Eigen::ArrayXd& wvec, const Eigen::ArrayXd& beta, const MatrixXb& masks, const Eigen::MatrixXd& offset, const Eigen::MatrixXd& test_mat,const double);
-double compute_log_lik(const double,const double);
+bool run_log_ridge_loocv(const double&,const int&,const int&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
+void run_log_ridge_loocv_adam(const int&,const double&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
 
-void read_l0(int,int,struct in_files*,struct param*,struct ridgel1*,mstream&);
-void read_l0_chunk(int,int,int,int,const std::string,struct param*,struct ridgel1*,mstream&);
+bool get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const double&);
+void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&);
+double compute_log_lik(const double&,const double&);
 
-long getSize(std::string fname);
+void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);
+void read_l0_chunk(int const&,int const&,int const&,int const&,const std::string&,struct param*,struct ridgel1*,mstream&);
+
+uint64 getSize(std::string const& fname);
 #endif
 

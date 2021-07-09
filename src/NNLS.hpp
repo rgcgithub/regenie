@@ -36,6 +36,7 @@
 #include <list>
 
 #include <boost/math/distributions.hpp>
+#include <boost/math/special_functions/binomial.hpp> // binomial_coefficient
 
 #include "Eigen/Dense"
 
@@ -73,7 +74,10 @@ int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
 // the number of all set of k out of n
 int jburden_choose(int n, int k);
 // enumerate all sets of k out of n numbers
+int jburden_choose(int n, int k);
+double jburden_choose_boost(int n, int k);
 void jburden_nchoosek(int n, int k, std::list<std::vector<int>> &ll);
+void jburden_nchoosek_sample(int n, int k, int s, list<vector<int>> &ll);
 
 struct FitNNLS 
 {

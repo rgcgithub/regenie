@@ -28,13 +28,14 @@
 #include <regex>
 #include <chrono>
 #include "Regenie.hpp"
+#include "Files.hpp"
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
-#include "Files.hpp"
 #include "Pheno.hpp"
 #include "Masks.hpp"
+#include "HLM.hpp"
 #include "Data.hpp"
 
 
@@ -54,7 +55,21 @@ int main( int argc, char** argv ) {
   Data data;
   read_params_and_check(argc, argv, &data.params, &data.files, &data.in_filters, &data.runtime, data.sout);
 
-  data.run();
+  try {// after opening sout
+
+    data.run();
+
+  } catch (bad_alloc& badAlloc) {
+    data.sout << "ERROR: bad_alloc caught, not enough memory (" << badAlloc.what() << ")\n";
+    exit(EXIT_FAILURE);
+  } catch (const std::string& msg){ 
+    data.sout << "ERROR: " << msg << endl;
+    exit(EXIT_FAILURE);
+  } catch (const char* msg) {
+    std::string str_msg = msg;
+    data.sout <<  "ERROR: " <<  str_msg << endl;
+    exit(EXIT_FAILURE);
+  }
 
   data.runtime.stop();
 
@@ -83,7 +98,7 @@ void print_header(std::ostream& o){
     left << std::setw(total_width - out_width) << vnumber << "|" << endl;
   o << left << std::setw(14) << " " << "|" << std::string(total_width, '=')<< "|\n\n";
 
-  o << "Copyright (c) 2020 Joelle Mbatchou and Jonathan Marchini." << endl;
+  o << "Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov and Jonathan Marchini." << endl;
   o << "Distributed under the MIT License.\n";
 #ifdef HAS_BOOST_IOSTREAM
   o << "Compiled with Boost Iostream library.\n";
@@ -100,7 +115,7 @@ void print_header(std::ostream& o){
 }
 
 
-void read_params_and_check(int argc, char *argv[], struct param* params, struct in_files* files, struct filter* filters, MeasureTime* mt, mstream& sout) {
+void read_params_and_check(int& argc, char *argv[], struct param* params, struct in_files* files, struct filter* filters, MeasureTime* mt, mstream& sout) {
 
   cxxopts::Options AllOptions(argv[0], "");
 
@@ -117,10 +132,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("bgen", "BGEN file", cxxopts::value<std::string>(files->bgen_file),"FILE")
     ("sample", "sample file corresponding to BGEN file", cxxopts::value<std::string>(files->sample_file),"FILE")
     ("ref-first", "use the first allele as the reference for BGEN or PLINK bed/bim/fam input format [default assumes reference is last]")
-    ("keep", "file listing samples to retain in the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(files->file_ind_include),"FILE")
-    ("remove", "file listing samples to remove from the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(files->file_ind_exclude),"FILE")
-    ("extract", "file with IDs of variants to retain in the analysis", cxxopts::value<std::string>(files->file_snps_include),"FILE")
-    ("exclude", "file with IDs of variants to remove from the analysis", cxxopts::value<std::string>(files->file_snps_exclude),"FILE")
+    ("keep", "comma-separated list of files listing samples to retain in the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(),"FILE")
+    ("remove", "comma-separated list of files listing samples to remove from the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(),"FILE")
+    ("extract", "comma-separated list of files with IDs of variants to retain in the analysis", cxxopts::value<std::string>(),"FILE")
+    ("exclude", "comma-separated list of files with IDs of variants to remove from the analysis", cxxopts::value<std::string>(),"FILE")
     ("p,phenoFile", "phenotype file (header required starting with FID IID)", cxxopts::value<std::string>(files->pheno_file),"FILE")
     ("phenoCol", "phenotype name in header (use for each phenotype to keep; can use parameter expansion {i:j})", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("phenoColList", "comma separated list of phenotype names to keep (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
@@ -145,6 +160,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("strict", "remove all samples with missingness at any of the traits")
     ("print-prs", "also output polygenic predictions without using LOCO (=whole genome PRS)")
     ("gz", "compress output files (gzip format)")
+    ("apply-rint", "apply Rank-Inverse Normal Transformation to quantitative traits")
     ("threads", "number of threads", cxxopts::value<int>(params->threads),"INT")
     ("pred", "file containing the list of predictions files from step 1", cxxopts::value<std::string>(files->blup_file),"FILE")
     ("ignore-pred", "skip reading predictions from step 1 (equivalent to linear/logistic regression with only covariates)")
@@ -152,20 +168,28 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("write-samples", "write IDs of samples included for each trait (only in step 2)")
     ("minMAC", "minimum minor allele count (MAC) for tested variants", cxxopts::value<double>(params->min_MAC),"FLOAT(=5)")
     ("minINFO", "minimum imputation info score (Impute/Mach R^2) for tested variants", cxxopts::value<double>(params->min_INFO),"DOUBLE(=0)")
-    ("split", "split asssociation results into separate files for each trait")
+    ("no-split", "combine asssociation results into a single for all traits")
     ("firth", "use Firth correction for p-values less than threshold")
     ("approx", "use approximation to Firth correction for computational speedup")
     ("spa", "use Saddlepoint approximation (SPA) for p-values less than threshold")
     ("pThresh", "P-value threshold below which to apply Firth/SPA correction", cxxopts::value<double>(params->alpha_pvalue),"FLOAT(=0.05)")
+    ("write-null-firth", "store coefficients from null models with approximate Firth for step 2")
+    ("compute-all", "store Firth estimates for all chromosomes")
+    ("use-null-firth", "use stored coefficients for null model in approximate Firth", cxxopts::value<std::string>(files->null_firth_file),"FILE")
     ("chr", "specify chromosome to test in step 2 (use for each chromosome)", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(),"CHR:MINPOS-MAXPOS")
+    ("af-cc", "print effect allele frequencies among cases/controls for step 2")
     ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
+    ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
+    ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
+    ("force-condtl", "also condition on interacting SNP in the marginal GWAS test")
+    ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
     ("set-list", "file with sets definition", cxxopts::value<std::string>(files->set_file),"FILE")
-    ("extract-sets", "file with IDs of sets to retain in the analysis", cxxopts::value<std::string>(files->file_sets_include),"FILE")
-    ("exclude-sets", "file with IDs of sets to remove from the analysis", cxxopts::value<std::string>(files->file_sets_exclude),"FILE")
-    ("extract-setlist", "comma separated list of sets to retain in the analysis", cxxopts::value<std::string>(files->file_sets_include),"FILE")
-    ("exclude-setlist", "comma separated list of sets to remove from the analysis", cxxopts::value<std::string>(files->file_sets_exclude),"FILE")
+    ("extract-sets", "comma-separated list of files with IDs of sets to retain in the analysis", cxxopts::value<std::string>(),"FILE")
+    ("exclude-sets", "comma-separated list of files with IDs of sets to remove from the analysis", cxxopts::value<std::string>(),"FILE")
+    ("extract-setlist", "comma separated list of sets to retain in the analysis", cxxopts::value<std::string>(),"STRING")
+    ("exclude-setlist", "comma separated list of sets to remove from the analysis", cxxopts::value<std::string>(),"STRING")
     ("anno-file", "file with variant annotations", cxxopts::value<std::string>(files->anno_file),"FILE")
     ("anno-labels", "file with labels to annotations", cxxopts::value<std::string>(files->anno_labs_file),"FILE")
     ("mask-def", "file with mask definitions", cxxopts::value<std::string>(files->mask_file),"FILE")
@@ -175,45 +199,63 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     ("singleton-carrier", "define singletons as variants with a single carrier in the sample")
     ("write-mask", "write masks in PLINK bed/bim/fam format")
     ("mask-lovo", "apply Leave-One-Variant-Out (LOVO) scheme when building masks (<set_name>,<mask_name>,<aaf_cutoff>)", cxxopts::value<std::string>(),"STRING")
+    ("mask-lodo", "apply Leave-One-Domain-Out (LODO) scheme when building masks (<set_name>,<mask_name>,<aaf_cutoff>)", cxxopts::value<std::string>(),"STRING")
     ("skip-test", "skip computing association tests after building masks")
     ("check-burden-files", "check annotation file, set list file and mask file for consistency")
-    ("strict-check-burden", "to exit early if the annotation, set list and mask definition files dont agree")
+    ("strict-check-burden", "to exit early if the annotation, set list and mask definition files don't agree")
     ;
 
 
   // extended options
   AllOptions.add_options("Additional")
     ("v,verbose", "verbose screen output")
+    ("minCaseCount", "minimum number of cases per trait", cxxopts::value<int>(params->mcc),"INT=10")
+    ("tpheno-file", "transposed phenotype file (each row is a phenotype)", cxxopts::value<std::string>(files->pheno_file),"FILE")
+    ("tpheno-indexCol", "index of column which contain phenotype name", cxxopts::value<uint32_t>(filters->tpheno_indexCol),"INT")
+    ("tpheno-ignoreCols", "comma separated list of indexes for columns to ignore (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"INT,...,INT")
+    ("iid-only", "to specify if header in transposed phenotype file only contains sample IID")
+    ("extract-or", "file with IDs of variants to retain in the analysis regardless of MAC", cxxopts::value<std::string>(),"FILE")
+    ("exclude-or", "file with IDs of variants to remove from the analysis if MAC falls below threshold", cxxopts::value<std::string>(),"FILE")
     ("setl0", "comma separated list of ridge parameters to use when fitting models within blocks", cxxopts::value<std::string>(), "FLOAT,..,FLOAT")
     ("setl1", "comma separated list of ridge parameters to use when fitting model across blocks", cxxopts::value<std::string>(), "FLOAT,..,FLOAT")
+    ("use-relative-path", "use relative paths for Step 1 pred.list file")
     ("nauto", "number of autosomal chromosomes", cxxopts::value<int>(),"INT")
     ("maxCatLevels", "maximum number of levels for categorical covariates", cxxopts::value<int>(params->max_cat_levels),"INT(=10)")
     ("nb", "number of blocks to use", cxxopts::value<int>(params->n_block),"INT")
+    ("starting-block", "start run at a specific block/set number for step 2", cxxopts::value<int>(params->start_block),"INT")
     ("force-step1", "run step 1 for more than 1M variants (not recommended)")
+    ("write-mask-snplist", "file with list of variants that went into each mask")
+    ("force-ltco", "use a Leave-Two-Chromosome-Out (LTCO) scheme", cxxopts::value<int>(params->ltco_chr),"INT")
     ("niter", "maximum number of iterations for logistic regression", cxxopts::value<int>(params->niter_max),"INT(=30)")
     ("maxstep-null", "maximum step size in null Firth logistic regression", cxxopts::value<int>(params->maxstep_null),"INT(=25)")
     ("maxiter-null", "maximum number of iterations in null Firth logistic regression", cxxopts::value<int>(params->niter_max_firth_null),"INT(=1000)")
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
     ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
     ("print-pheno", "Print phenotype name when writing sample IDs to file (only for step 2)")
+    ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
+    ("output-corr-text", "output matrix of Pearson correlations to text file")
+    ("print-vcov", "print variance-covariance matrix for interaction test to file")
     ;
 
   // extra options
   AllOptions.add_options("Extra")
     ("print", "print estimated effect sizes from level 0 and level 1 models")
-    //("nostream", "print estimated effect sizes from level 0 and level 1 models")
     ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
+    ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
+    ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
+    ("no-robust", "don't use robust SEs or HLM for GxE test")
     ("joint", "comma spearated list of joint tests to perform", cxxopts::value<std::string>(params->burden),"STRING")
     ("joint-only", "only output p-values from joint tests")
     ("write-setlist", "file with list of masks to combine as sets", cxxopts::value<std::string>(files->new_sets),"FILE")
     ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for ACAT test statistic", cxxopts::value<std::string>(), "a,b(=1,1)")
-    ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
-    ("output-corr-text", "output matrix of Pearson correlations to text file")
+    ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
+    ("use-adam", "use ADAM to fit penalized logistic models")
+    ("adam-mini", "use mini-batch for ADAM")
     ;
 
 
@@ -246,42 +288,43 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     start_log(arguments, files->out_file, mt, sout);
     vector< string > tmp_str_vec;
 
-    if( (vm.count("bgen") + vm.count("bed")  + vm.count("pgen"))  != 1 ){
-      sout << "ERROR: You must use either --bed,--bgen or --pgen.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if( (vm.count("bgen") + vm.count("bed")  + vm.count("pgen"))  != 1 )
+      throw "must use either --bed,--bgen or --pgen.";
 
     if( vm.count("bgen") ) params->file_type = "bgen";
     if( vm.count("bed") ) params->file_type = "bed";
     if( vm.count("pgen") ) params->file_type = "pgen";
     if( vm.count("sample") ) params->bgenSample = true;
     if( vm.count("ref-first") ) params->ref_first = true;
-    if( vm.count("keep") ) params->keep_indivs = true;
-    if( vm.count("remove") ) params->rm_indivs = true;
-    if( vm.count("extract") ) params->keep_snps = true;
-    if( vm.count("exclude") ) params->rm_snps = true;
     if( vm.count("bt") ) params->binary_mode = true;
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
+    if( vm.count("apply-rint") && !vm.count("bt")) params->rint = true;
     if( vm.count("strict") ) params->strict_mode = true;
     if( vm.count("print-prs") ) params->print_prs = true;
+    if( vm.count("use-relative-path") ) params->use_rel_path = true;
     if( vm.count("ignore-pred") ) params->skip_blups = true;
     if( vm.count("use-prs") ) params->use_prs = true;
     if( vm.count("force-impute") ) params->rm_missing_qt = false;
-    if( vm.count("split") ) params->split_by_pheno = true;
+    if( vm.count("no-split") ) params->split_by_pheno = false;
     if( vm.count("approx") ) params->firth_approx = true;
     if( vm.count("nauto") ) params->nChrom = vm["nauto"].as<int>() + 1;
     if( vm.count("maxstep-null") | vm.count("maxiter-null") ) params->fix_maxstep_null = true;
     if( vm.count("firth") ) params->firth = true;
+    if( vm.count("write-null-firth") ) params->write_null_firth = true;
+    if( vm.count("use-null-firth") ) params->use_null_firth = true;
+    if( vm.count("compute-all") ) params->compute_all_chr = true;
     if( vm.count("spa") ) params->use_SPA = true;
     if( vm.count("minMAC") ) params->setMinMAC = true;
     if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
+    if( vm.count("af-cc") ) params->af_cc = true;
+    if( vm.count("tpheno-file") ) params->transposedPheno = true;
     if( vm.count("v") ) params->verbose = true;
     if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
     //if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;
-    if( vm.count("within") ) params->within_sample_l0 = true;
+    //if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
     if( vm.count("print-pheno") ) params->print_pheno_name = true;
     if( vm.count("early-exit") ) params->early_exit = true;
@@ -289,25 +332,31 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("lowmem") ) params->write_l0_pred = true;
     if( vm.count("keep-l0") ) params->rm_l0_pred = false;
     if( vm.count("split-l0") ) params->split_l0 = true;
-    if( vm.count("run-l0") ) { params->run_l0_only = params->write_l0_pred = params->keep_snps = true; params->rm_snps = false;}
+    if( vm.count("run-l0") ) { params->run_l0_only = params->write_l0_pred = params->keep_snps = true;}
     if( vm.count("run-l1") ) params->run_l1_only = params->write_l0_pred = true;
     if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
+    if( vm.count("use-adam") ) params->use_adam = true;
+    if( vm.count("adam-mini") ) params->adam_mini = true;
+    if( vm.count("force-ltco") ) params->w_ltco = true;
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
-    if( vm.count("extract-sets") ) params->keep_sets = true;
-    if( vm.count("exclude-sets") ) params->rm_sets = true;
-    if( vm.count("extract-setlist") ) params->set_select_list = params->keep_sets = true;
-    if( vm.count("exclude-setlist") ) params->set_select_list = params->rm_sets = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
     if( vm.count("mask-lovo") ) params->mask_loo = true;
+    if( vm.count("mask-lodo") ) params->mask_lodo = true;
     if( vm.count("write-mask") ) params->write_masks = true;
     if( vm.count("write-setlist") ) params->write_setlist = true;
+    if( vm.count("write-mask-snplist") ) params->write_mask_snplist = true;
     if( vm.count("skip-test") ) params->skip_test = true;
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
-    if( vm.count("compute-corr") ) {
+    if( vm.count("force-robust") ) params->force_robust = true;
+    if( vm.count("force-hc4") ) params->force_robust = params->force_hc4 = true;
+    if( vm.count("no-robust") ) params->no_robust = true;
+    if( vm.count("hlm-novquad") ) params->hlm_vquad = false;
+    if( vm.count("print-vcov") ) params->print_vcov = true;
+    if( vm.count("compute-corr") || vm.count("output-corr-text") ) {
       params->getCorMat = true;
       params->run_mode = 2;
       params->skip_blups = params->strict_mode = true;
@@ -320,7 +369,7 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       // only works when compiled with boost IO library
       params->gzOut = true;
 # else
-      sout << "WARNING : REGENIE was not compiled with Boost Iostream library so ignoring option '--gz'.\n";
+      sout << "WARNING: REGENIE was not compiled with Boost Iostream library so ignoring option '--gz'.\n";
 #endif
     }
 
@@ -361,47 +410,97 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         for(auto cn : check_name(tmp_str_vec[i], sout))
           filters->cov_colKeep_names[cn] = false;
     }
+    if( vm.count("covarFile") && (params->run_mode ==2) && (vm.count("interaction") || vm.count("interaction-snp")) ) {
+      params->w_interaction = true;
+      if(vm.count("interaction-snp")) params->interaction_snp = params->w_ltco =  true;
+      check_inter_var(filters->interaction_cov, filters->interaction_cov_null_level, sout);
+      if(!vm.count("interaction-snp") && !in_map(filters->interaction_cov,filters->cov_colKeep_names))
+        filters->cov_colKeep_names[filters->interaction_cov] = true; // assume qt
+      if(vm.count("interaction-snp") && vm.count("force-condtl"))
+        params->gwas_condtl = true;
+    }
+    if( vm.count("tpheno-ignoreCols") ) {
+      tmp_str_vec = string_split(vm["tpheno-ignoreCols"].as<string>(),",");
+      for( size_t i = 0; i < tmp_str_vec.size(); i++) {
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->tpheno_colrm[ stoi(cn) ] = true;
+      }
+    }
     if( vm.count("chrList") ) {
       params->select_chrs = true;
       tmp_str_vec = string_split(vm["chrList"].as<string>(),",");
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
-        filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
+        for(auto cn : check_name(tmp_str_vec[ichr], sout))
+          filters->chrKeep_test[ chrStrToInt(cn, params->nChrom) ] = true;
     }
     if( vm.count("chr") ) {
       params->select_chrs = true;
       tmp_str_vec = vm["chr"].as<std::vector<string>>();
       for( size_t ichr = 0; ichr < tmp_str_vec.size(); ichr++)
-        filters->chrKeep_test.insert( std::make_pair( chrStrToInt(tmp_str_vec[ichr], params->nChrom), true ) );
+        filters->chrKeep_test[ chrStrToInt(tmp_str_vec[ichr], params->nChrom) ] = true;
+    }
+    if( vm.count("keep") ){
+      files->file_ind_include = string_split(vm["keep"].as<string>(),",");
+      params->keep_indivs = true;
+    }
+    if( vm.count("remove") ){
+      files->file_ind_exclude = string_split(vm["remove"].as<string>(),",");
+      params->rm_indivs = true;
+    }
+    if( vm.count("extract") ){
+      files->file_snps_include = string_split(vm["extract"].as<string>(),",");
+      params->keep_snps = true;
+    }
+    if( !vm.count("run-l0") && vm.count("exclude") ){
+      files->file_snps_exclude = string_split(vm["exclude"].as<string>(),",");
+      params->rm_snps = true;
+    }
+    if( vm.count("extract-or") ){
+      files->file_snps_include_or = string_split(vm["extract-or"].as<string>(),",");
+      params->keep_or = true;
+    }
+    if( vm.count("exclude-or") ){
+      files->file_snps_exclude_or = string_split(vm["exclude-or"].as<string>(),",");
+      params->rm_or = true;
+    }
+    if( vm.count("extract-sets") ){
+      files->file_sets_include = string_split(vm["extract-sets"].as<string>(),",");
+      params->keep_sets = true;
+    }
+    if( vm.count("exclude-sets") ){
+      files->file_sets_exclude = string_split(vm["exclude-sets"].as<string>(),",");
+      params->rm_sets = true;
+    }
+    if( vm.count("extract-setlist") ) {
+      params->set_select_list = params->keep_sets = true;
+      files->file_sets_include.resize(1);
+      files->file_sets_include[0] = vm["extract-setlist"].as<string>();
+    }
+    if( vm.count("exclude-setlist") ) {
+      params->set_select_list = params->rm_sets = true;
+      files->file_sets_exclude.resize(1);
+      files->file_sets_exclude[0] = vm["exclude-setlist"].as<string>();
     }
     if( vm.count("split-l0") ) { // Format: FILE,INT
       tmp_str_vec = string_split(vm["split-l0"].as<string>(),",");
-      if(tmp_str_vec.size() != 2 ){
-        sout << "ERROR: Wrong format for --split-l0 (must be FILE,INT).\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+      if(tmp_str_vec.size() != 2 )
+        throw "wrong format for --split-l0 (must be FILE,INT).";
       files->split_file = tmp_str_vec[0];
       params->njobs = atoi( tmp_str_vec[1].c_str() );
     }
     if( vm.count("run-l0") ) { // Format: FILE,INT
       tmp_str_vec = string_split(vm["run-l0"].as<string>(),",");
-      if(tmp_str_vec.size() != 2 ){
-        sout << "ERROR: Wrong format for --run-l0 (must be FILE,INT).\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+      if(tmp_str_vec.size() != 2 )
+        throw "wrong format for --run-l0 (must be FILE,INT).";
       files->split_file = tmp_str_vec[0];
       params->job_num = atoi( tmp_str_vec[1].c_str() );
-      if(params->job_num < 1 ){
-        sout << "ERROR: Invalid job number for --run-l0 (must be >=1).\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+      if(params->job_num < 1 )
+        throw "invalid job number for --run-l0 (must be >=1).";
     }
     if( vm.count("test") ) {
       if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
       else if( vm["test"].as<string>() == "recessive") params->test_type = 2; 
-      else {
-        sout << "ERROR: Unrecognized argument for option --test, must be either 'dominant' or 'recessive'.\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+      else throw "unrecognized argument for option --test, must be either 'dominant' or 'recessive'.";
     }
     if( vm.count("range") ) { // Format: Chr:min-max
       char tmp_chr[20];
@@ -409,11 +508,9 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       string tmpd = vm["range"].as<string>();
 
       if(sscanf( tmpd.c_str(), "%[^:]:%lf-%lf", tmp_chr, &p0, &p1 ) != 3
-          || (p0 < 0) || (p1 < 0) ){ 
+          || (p0 < 0) || (p1 < 0) ) 
         //cerr << tmp_chr << "\t" << p0 << "\t" << p1 << endl;
-        sout << "ERROR: Wrong format for --range (must be CHR:MINPOS-MAXPOS).\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+        throw "wrong format for --range (must be CHR:MINPOS-MAXPOS).";
 
       tmpd = tmp_chr;
       params->range_chr = chrStrToInt(tmpd, params->nChrom);
@@ -424,13 +521,10 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if( vm.count("build-mask") ) {
       if( params->mask_rule == "max") params->mask_rule_max = true; 
       else if( params->mask_rule == "sum") params->mask_rule_max = false; 
-      else if( params->mask_rule == "comphet") { params->mask_rule_max = false, params->mask_rule_comphet = true; 
-      } else {
-        sout << "ERROR : Unrecognized argument for option --build-mask (=" << params->mask_rule << ").\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      }
+      else if( params->mask_rule == "comphet") { 
+        params->mask_rule_max = false, params->mask_rule_comphet = true; 
+      } else throw "unrecognized argument for option --build-mask (=" + params->mask_rule + ").";
     }
-
     if( vm.count("acat-beta") ) {
       tmp_str_vec = string_split(vm["acat-beta"].as<string>(),",");
       params->acat_a1 = convertDouble( tmp_str_vec[0], params, sout);
@@ -439,22 +533,19 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
 
     if ( params->run_mode == 1 ) params->test_mode = false;
     else if (params->run_mode == 2 ) params->test_mode = true;
-    else {
-      sout << "ERROR: Specify which mode regenie should be running using option --step.\n" << params->err_help;
-      exit(EXIT_FAILURE);
-    }
+    else throw "specify which mode regenie should be running using option --step.";
 
     if(!params->test_mode) {
 
       // loocv only used with out-of-sample predictions
       if(params->use_loocv && params->within_sample_l0) {
-        sout << "WARNING : Option --loocv cannot be used with option --within.\n" ;
+        sout << "WARNING: option --loocv cannot be used with option --within.\n" ;
         params->use_loocv = false;
       }
 
       // writing of level 0 predictions only available when using out-of-sample predictions
       if(params->write_l0_pred && params->within_sample_l0){
-        sout << "WARNING : Option --lowmem cannot be used with option --within.\n" ;
+        sout << "WARNING: option --lowmem cannot be used with option --within.\n" ;
         params->write_l0_pred = false;
       }
 
@@ -468,11 +559,9 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         params->lambda.erase( unique( params->lambda.begin(), params->lambda.end() ), params->lambda.end() );
         params->n_ridge_l0 = params->lambda.size();
         // parameters must be less in (0, 1)
-        if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 ){
-          sout << "ERROR: You must specify values for --l0 in (0,1).\n" << params->err_help;
-          exit(EXIT_FAILURE);
-        } 
-      } else set_ridge_params(params->n_ridge_l0, params->lambda, params->err_help, sout);
+        if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 )
+          throw "must specify values for --l0 in (0,1).";
+      } else set_ridge_params(params->n_ridge_l0, params->lambda, sout);
 
       // user specified ridge parameters to use at l1
       if( vm.count("setl1") ) {
@@ -483,73 +572,62 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         std::sort(params->tau.begin(), params->tau.end());
         params->tau.erase( unique( params->tau.begin(), params->tau.end() ), params->tau.end() );
         params->n_ridge_l1 = params->tau.size();
-        if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 || (params->n_ridge_l1 == 0) ){
-          sout << "ERROR: You must specify values for --l1 in (0,1).\n" << params->err_help;
-          exit(EXIT_FAILURE);
-        }
-      } else set_ridge_params(params->n_ridge_l1, params->tau, params->err_help, sout);
+        if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 || (params->n_ridge_l1 == 0) )
+          throw "must specify values for --l1 in (0,1).";
+      } else set_ridge_params(params->n_ridge_l1, params->tau, sout);
 
       // firth only done in test mode
       if(params->firth) params->firth = false;
       if(params->use_SPA) params->use_SPA = false;
-      params->streamBGEN = false;
       params->test_type = 0;
       if( vm.count("range") ) {
         params->set_range = false; 
-        sout << "WARNING : Option --range only works for step 2.\n";
+        sout << "WARNING: option --range only works for step 2.\n";
+      }
+      if(params->rm_or || params->keep_or){
+        sout << "WARNING: Options --extract-or/--exclude-or only work in step 2.\n";
+        params->rm_or = params->keep_or = false;
       }
 
     } else if(params->firth && !params->binary_mode) {
       // firth correction is only applied to binary traits
-      sout << "WARNING : Option --firth will not be applied (it is only run with binary traits).\n";
+      sout << "WARNING: option --firth will not be applied (it is only run with binary traits).\n";
       params->firth = false;
     } else if(params->use_SPA && !params->binary_mode) {
       // SPA is only applied to binary traits
-      sout << "WARNING : Option --spa will not be applied (it is only run with binary traits).\n";
+      sout << "WARNING: option --spa will not be applied (it is only run with binary traits).\n";
       params->use_SPA = false;
     }
 
 
     if(params->test_mode && params->use_loocv) params->use_loocv = false;
 
-    if( (vm.count("write-samples") || vm.count("write-mask")) && vm.count("bgen") && !vm.count("sample") ){
-      sout << "ERROR : must specify sample file (using --sample) if writing sample IDs to file.\n" << params->err_help;
-      exit(EXIT_FAILURE);
-    }
-
+    if( (vm.count("write-samples") || vm.count("write-mask")) && vm.count("bgen") && !vm.count("sample") )
+      throw "must specify sample file (using --sample) if writing sample IDs to file.";
 
     if( !params->getCorMat && vm.count("joint") ){
 
-      if( vm.count("test") ){ 
-        sout << "ERROR : cannot use --test with --joint.\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      } else if ( vm.count("nnls-napprox") && params->nnls_napprox < 1 ){
-        sout << "ERROR : must pass positive integer for --nnls-napprox\n";
-        exit(EXIT_FAILURE);
-      }
-
+      if( vm.count("test") ) 
+        throw "cannot use --test with --joint.";
+      else if ( vm.count("nnls-napprox") && params->nnls_napprox < 1 )
+        throw "must pass positive integer for --nnls-napprox.";
       params->snp_set = true;
     }
+    if( vm.count("write-null-firth") && vm.count("use-prs") )
+      throw "cannot use --write-null-firth with --use-prs";
 
     if( !params->getCorMat && (vm.count("anno-file") || vm.count("mask-def")) ){
 
       if(vm.count("anno-labels")) params->w_anno_lab = true;
 
-      if( !(vm.count("anno-file") && vm.count("mask-def")) ){
-        sout << "ERROR : must use --anno-file with --mask-def.\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      } 
+      if( !(vm.count("anno-file") && vm.count("mask-def")) )
+        throw "must use --anno-file with --mask-def.";
 
-      if( (params->test_type > 0) && !params->mask_rule_max && !params->mask_rule_comphet ){
-        sout << "ERROR : only additive test allowed when using 'sum' in --build-mask.\n" << params->err_help;
-        exit(EXIT_FAILURE);
-      } 
+      if( (params->test_type > 0) && !params->mask_rule_max && !params->mask_rule_comphet )
+        throw "only additive test allowed when using 'sum' in --build-mask.";
 
-      if(params->write_masks && !params->mask_rule_max && !params->mask_rule_comphet ){
-        sout << "ERROR : Cannot write masks when using 'sum' in --build-mask.\n";
-        exit(EXIT_FAILURE);
-      }
-
+      if(params->write_masks && !params->mask_rule_max && !params->mask_rule_comphet )
+        throw "cannot write masks when using 'sum' in --build-mask.";
 
       // store aaf bins if given
       if( vm.count("aaf-bins") ) 
@@ -557,14 +635,12 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
       else tmp_str_vec.resize(0);
       params->mbins = tmp_str_vec;
 
-
       if( vm.count("mask-lovo") ) {
         int cstart = 1;
         tmp_str_vec = string_split(vm["mask-lovo"].as<string>(),",");
-        if(tmp_str_vec.size() < 3){
-          cerr << "ERROR: Wrong format for option --mask-lovo.\n";
-          exit(EXIT_FAILURE);
-        } else if ( tmp_str_vec.size() == 4 ) {
+        if(tmp_str_vec.size() < 3)
+          throw "wrong format for option --mask-lovo.";
+        else if ( tmp_str_vec.size() == 4 ) {
           params->w_regions = true; cstart++;
         }
         params->mask_loo_set = tmp_str_vec[0];
@@ -574,7 +650,24 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
         params->mbins[0] = tmp_str_vec[cstart+1]; // either singleton or AAF cutoff
 
         if(params->write_masks){
-          sout << "WARNING : Cannot use --write-mask with --mask-lovo.\n";
+          sout << "WARNING: cannot use --write-mask with --mask-lovo.\n";
+          params->write_masks = false;
+        }
+      }
+
+      if( vm.count("mask-lodo") ) {
+        tmp_str_vec = string_split(vm["mask-lodo"].as<string>(),",");
+        if(tmp_str_vec.size() != 3)
+          throw "wrong format for option --mask-lodo.";
+        else if(vm.count("mask-lovo"))
+          throw "cannot use --mask-lovo with --mask-lodo.";
+        params->w_regions = true;
+        params->mask_loo_set = tmp_str_vec[0];
+        params->mask_loo_name = tmp_str_vec[1];
+        params->mbins.resize(1);
+        params->mbins[0] = tmp_str_vec[2]; // either singleton or AAF cutoff
+        if(params->write_masks){
+          sout << "WARNING: cannot use --write-mask with --mask-lodo.\n";
           params->write_masks = false;
         }
       }
@@ -589,47 +682,53 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     if(!params->build_mask && params->strict_check_burden) params->strict_check_burden = false;
     if(!params->write_masks && params->skip_test) params->skip_test = false;
     if(!params->write_masks && params->write_setlist) {
-      sout << "WARNING : Must use --write-setlist with --write-mask.\n";
+      sout << "WARNING: must use --write-setlist with --write-mask.\n";
       params->write_setlist = false;
     }
-
-    if( params->snp_set && !vm.count("set-list") ){
-      sout << "ERROR : must specify set list (using --set-list).\n" << params->err_help;
-      exit(EXIT_FAILURE);
+    if( vm.count("write-mask-snplist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
+      sout << "WARNING: cannot use --write-mask-snplist with LOVO/LODO.\n";
+      params->write_mask_snplist = false;
     }
+
+    if( params->snp_set && !vm.count("set-list") )
+      throw "must specify set list (using --set-list).";
 
     if( params->snp_set && 
         (vm.count("extract-sets")+vm.count("exclude-sets")+vm.count("extract-setlist")+vm.count("exclude-setlist"))>1 
-      ){
-      sout << "ERROR :Must use only one of --extract-sets/--exclude-sets/--extract-setlist/--exclude-setlist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    } 
+      )
+      throw "must use only one of --extract-sets/--exclude-sets/--extract-setlist/--exclude-setlist.";
 
     if(!params->test_mode && params->setMinMAC){
-      sout << "WARNING : Option --minMAC only works in step 2 of REGENIE.\n";
+      sout << "WARNING: option --minMAC only works in step 2 of REGENIE.\n";
       params->setMinMAC = false;
     }
-    if(params->test_mode && params->min_MAC < 0.5){
-      sout << "ERROR: minimum MAC must be at least 0.5.\n" << params->err_help;
-      exit(EXIT_FAILURE);
-    }
+    if(params->test_mode && params->min_MAC < 0.5)
+      throw "minimum MAC must be at least 0.5.";
     if(!params->test_mode && params->setMinINFO){
-      sout << "WARNING : Option --minINFO only works in step 2 of REGENIE.\n";
+      sout << "WARNING: option --minINFO only works in step 2 of REGENIE.\n";
       params->setMinINFO = false;
     }
-    if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) ){
-      sout << "ERROR: minimum info score must be in [0,1].\n" << params->err_help;
-      exit(EXIT_FAILURE);
+    if( !params->split_by_pheno && params->w_interaction){
+      sout << "WARNING: option --no-split does not work for interaction tests.\n";
+      params->split_by_pheno = true;
     }
+    if( !params->split_by_pheno && params->nnls_out_all){
+      sout << "WARNING: option --no-split does not work with --nnls-verbose.\n";
+      params->split_by_pheno = true;
+    }
+    if( (!params->test_mode || !params->binary_mode || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
+      sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
+      params->af_cc = false;
+    }
+
+    if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) )
+      throw "minimum info score must be in [0,1].";
     if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
-    if( !vm.count("bsize") && !params->snp_set && !params->getCorMat ) {
-      sout << "ERROR : must specify the block size using '--bsize'.\n" << params->err_help;
-      exit(EXIT_FAILURE);
-    } else if(vm.count("bsize") && ( params->block_size < 2 )){
-      sout << "ERROR : Block size must be at least 2.\n" << params->err_help;
-      exit(EXIT_FAILURE);
-    }
+    if( !vm.count("bsize") && !params->snp_set && !params->getCorMat ) 
+      throw "must specify the block size using '--bsize'.";
+    else if(vm.count("bsize") && ( params->block_size < 2 ))
+      throw "block size must be at least 2.";
     if(params->set_aaf && !params->build_mask) params->set_aaf = false;
 
     // determine number of threads if not specified
@@ -639,145 +738,175 @@ void read_params_and_check(int argc, char *argv[], struct param* params, struct 
     // check parallel l0
     if(params->test_mode && 
         (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
-      sout << "WARNING : Options --split-l0/--run-l0/--run-l1 only work in step 1.\n";
+      sout << "WARNING: options --split-l0/--run-l0/--run-l1 only work in step 1.\n";
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
     } else if( vm.count("nb") && 
         (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
-      sout << "WARNING : Options --split-l0/--run-l0/--run-l1 cannot be used with --nb.\n";
+      sout << "WARNING: options --split-l0/--run-l0/--run-l1 cannot be used with --nb.\n";
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
     }
-    if( (vm.count("run-l0")||vm.count("run-l1")) && !file_exists(files->split_file) ){
-      sout << "ERROR: " << files->split_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if( vm.count("run-l0") || vm.count("run-l1") ) check_file(files->split_file, "run-l0/l1");
 
     // set Firth as default if both Firth and SPA are specified
     if(params->use_SPA && params->firth) {
-      sout << "WARNING : Only one of --firth/--spa can be used. Only Firth will be used.\n";
+      sout << "WARNING: only one of --firth/--spa can be used. Only Firth will be used.\n";
       params->use_SPA = false;
     }
+    params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set;
+    params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set;
 
     // check firth fallback pvalue threshold
-    if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
-      sout << "ERROR: Firth fallback p-value threshold must be in (0,1).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
+      throw "Firth fallback p-value threshold must be in (0,1).";
     // check SPA fallback pvalue threshold
-    if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) ){
-      sout << "ERROR: SPA fallback p-value threshold must be in (0,1).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
+      throw "SPA fallback p-value threshold must be in (0,1).";
     if(params->firth_approx && !params->firth) params->firth_approx = false;
 
     // check arguments for logistic regression 
-    if(params->binary_mode && (params->niter_max < 1)){
-      sout << "ERROR: Invalid argument for --niter (must be positive integer).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->firth && (params->maxstep_null < 1)){
-      sout << "ERROR: Invalid argument for --maxstep-null (must be a positive integer).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->firth && (params->niter_max_firth_null < 1)){
-      sout << "ERROR: Invalid argument for --maxiter-null (must be a positive integer).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->nChrom < 2){
-      sout << "ERROR: Invalid argument for --nauto (must be > 1).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->set_range && (params->range_chr == -1)){
-      sout << "ERROR: Unrecognized chromosome in --range.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->rm_indivs && params->keep_indivs ){
-      sout << "ERROR: Cannot use both --keep and --remove.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->rm_snps && params->keep_snps ){
-      sout << "ERROR: Cannot use both --extract and --exclude.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if(params->binary_mode && (params->niter_max < 1))
+      throw "invalid argument for --niter (must be positive integer).";
+    if(params->firth && (params->maxstep_null < 1))
+      throw "invalid argument for --maxstep-null (must be a positive integer).";
+    if(params->firth && (params->niter_max_firth_null < 1))
+      throw "invalid argument for --maxiter-null (must be a positive integer).";
+    if(params->nChrom < 2)
+      throw "invalid argument for --nauto (must be > 1).";
+    if(params->set_range && (params->range_chr == -1))
+      throw "unrecognized chromosome in --range.";
+    if(params->rm_indivs && params->keep_indivs )
+      throw "cannot use both --keep and --remove.";
+    if(params->rm_snps && params->keep_snps )
+      throw "cannot use both --extract and --exclude.";
+    if(params->rm_or && params->keep_or )
+      throw "cannot use both --extract-or and --exclude-or.";
 
-    if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) ){
-      sout << "ERROR: Invalid chromosome specified by --chr/--chrList.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )
+      throw "invalid chromosome specified by --chr/--chrList.";
 
-    if(params->test_mode && !params->skip_blups && !vm.count("pred")) {
-      sout << "ERROR: You must specify --pred if using --step 2 (otherwise use --ignore-pred).\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-
-    if(params->test_mode && (params->file_type == "pgen") && !params->fastMode){
-      sout << "ERROR: Cannot use --nostream with PGEN format.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->file_type == "bgen") {
-      if(!file_exists (files->bgen_file)) {
-        sout << "ERROR: " << files->bgen_file  << " doesn't exist.\n" << params->err_help ;
-        exit(EXIT_FAILURE);
+    if(params->test_mode && !params->skip_blups && !vm.count("pred")) 
+      throw "must specify --pred if using --step 2 (otherwise use --ignore-pred).";
+    if(vm.count("interaction") || vm.count("interaction-snp")){
+      if(!vm.count("interaction-snp") && (!vm.count("covarFile") || !params->test_mode) )
+        throw "can only use --interaction with --covarFile in step 2.";
+      if( vm.count("interaction") && vm.count("interaction-snp") ) 
+        throw "cannot use both --interaction and --interaction-snp";
+      if(vm.count("spa"))
+        throw "cannot use --interaction with Firth or SPA tests.";
+      if(vm.count("interaction-snp") && vm.count("use-prs"))
+        throw "cannot use --interaction-snp with full PRS.";
+      if(vm.count("firth") && !vm.count("approx")){
+        sout << "WARNING: using approximate Firth for association testing.\n";
+        params->firth_approx = true;
       }
+    }
+
+    if(vm.count("force-ltco") && vm.count("use-prs"))
+      throw "cannot use LTCO with full PRS.";
+    if(vm.count("use-null-firth") && !params->firth_approx) 
+      throw "option --use-null-firth only wors with approximate Firth test.";
+
+    if(params->transposedPheno){
+      if(vm.count("phenoFile") ) 
+        throw "cannot use both --phenoFile and --tpheno-file.";
+      if(!vm.count("tpheno-indexCol") ) 
+        throw "must specify --tpheno-indexCol with --tpheno-file.";
+      if(vm.count("iid-only"))
+        params->tpheno_iid_only = true;
+    }
+    if(vm.count("starting-block")){
+      if(!params->test_mode)
+        throw "option --starting-block only works in step 2";
+      else if(params->start_block<1)
+        throw "starting block must be >=1";
+    }
+
+    if(params->test_mode && (params->file_type == "pgen") && !params->fastMode)
+      throw "cannot use --nostream with PGEN format.";
+    if(params->file_type == "bgen") {
+      check_file (files->bgen_file, "bgen"); 
       string bgifile = files->bgen_file + ".bgi";
       params->with_bgi = file_exists (bgifile) ;
     }
-    if(vm.count("covarFile") & !file_exists (files->cov_file)) {
-      sout << "ERROR: " << files->cov_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
+    if(vm.count("covarFile")) check_file(files->cov_file,"covarFile");
+    if(!params->getCorMat) check_file(files->pheno_file,"phenoFile"); 
+    if(params->file_type == "bed"){
+      check_file(files->bed_prefix + ".bed", "bed");
+      check_file(files->bed_prefix + ".bim", "bed");
+      check_file(files->bed_prefix + ".fam", "bed");
     }
-    if(!params->getCorMat && !file_exists (files->pheno_file) ) {
-      sout << "ERROR: " << files->pheno_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
+    if(params->file_type == "pgen"){
+      check_file(files->pgen_prefix + ".pgen", "pgen");
+      check_file(files->pgen_prefix + ".psam", "pgen");
+      check_file(files->pgen_prefix + ".pvar", "pgen");
     }
-    if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bed")) {
-      sout << "ERROR: " << files->bed_prefix << ".bed"  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
+    if(params->keep_indivs)
+      for(auto cn : files->file_ind_include)
+        check_file(cn, "keep");
+    if(params->rm_indivs)
+      for(auto cn : files->file_ind_exclude)
+        check_file(cn, "remove");
+    if(!vm.count("run-l0") && params->keep_snps)
+      for(auto cn : files->file_snps_include)
+        check_file(cn, "extract");
+    if(params->rm_snps)
+      for(auto cn : files->file_snps_exclude)
+        check_file(cn, "exclude");
+    if(params->keep_or)
+      for(auto cn : files->file_snps_include_or)
+        check_file(cn, "extract-or");
+    if(params->rm_or)
+      for(auto cn : files->file_snps_exclude_or)
+      check_file(cn, "exclude-or");
+    if(params->snp_set) {
+      check_file(files->set_file, "set-list");
+      if(!vm.count("extract-setlist") && params->keep_sets)
+        for(auto cn : files->file_sets_include)
+          check_file(cn, "extract-sets");
+      if(!vm.count("exclude-setlist") && params->rm_sets)
+        for(auto cn : files->file_sets_exclude)
+          check_file(cn, "exclude-sets");
     }
-    if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".bim")) {
-      sout << "ERROR: " << files->bed_prefix << ".bim"  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
+    if(params->build_mask){
+      check_file(files->anno_file, "anno-file");
+      check_file(files->mask_file, "mask-def");
+      if(vm.count("anno-labels")) check_file(files->anno_labs_file, "anno-labels");
     }
-    if((params->file_type == "bed") & !file_exists (files->bed_prefix + ".fam")) {
-      sout << "ERROR : " << files->bed_prefix << ".fam"  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->snp_set && !file_exists (files->set_file)) {
-      sout << "ERROR : " << files->set_file << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->build_mask && !file_exists (files->anno_file)) {
-      sout << "ERROR : " << files->anno_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->build_mask && vm.count("anno-labels") && !file_exists (files->anno_labs_file)) {
-      sout << "ERROR : " << files->anno_labs_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->build_mask && !file_exists (files->mask_file)) {
-      sout << "ERROR : " << files->mask_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
-    if(params->set_aaf && !file_exists (files->aaf_file)) {
-      sout << "ERROR : " << files->aaf_file  << " doesn't exist.\n" << params->err_help ;
-      exit(EXIT_FAILURE);
-    }
+    if(params->set_aaf) check_file(files->aaf_file, "aaf-file");
 
   } catch (const cxxopts::OptionException& e) {
     print_header(cerr);
     cerr << "ERROR: " << e.what() << endl << params->err_help << endl;
+    exit(EXIT_FAILURE);
+  } catch (const std::string& msg) {// after opening sout
+    sout <<  "ERROR: " <<  msg << "\n" <<  params->err_help << "\n";
+    exit(EXIT_FAILURE);
+  } catch (const char* msg) {// after opening sout
+    std::string str_msg = msg;
+    sout <<  "ERROR: " <<  str_msg << "\n" <<  params->err_help << "\n";
     exit(EXIT_FAILURE);
   }
 
   return;
 }
 
+void check_file(string const& infile, string const& option_name){
+
+  if(infile == "") 
+    throw "Invalid argument (=' ') specified for option --" + option_name;
+  else if(!file_exists (infile))
+    throw infile + " doesn't exist for option --" + option_name;
+
+}
+
 
 template <typename T> 
-void start_log(T arguments, const string out_file, MeasureTime* mt, mstream& sout){
+void start_log(T arguments, const string& out_file, MeasureTime* mt, mstream& sout){
 
   string log_name = out_file + ".log";
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
   if (!sout.coss.is_open()) {
+    print_header(cerr);
     cerr << "ERROR: Cannot write log file '" << log_name << "'\n" ;
     exit(EXIT_FAILURE);
   } 
@@ -805,25 +934,23 @@ void start_log(T arguments, const string out_file, MeasureTime* mt, mstream& sou
 
 }
 
-void set_ridge_params(int nparams, vector<double>& in_param, const string err_help, mstream& sout){
+void set_ridge_params(int const& nparams, vector<double>& in_param, mstream& sout){
 
-  if(nparams < 2){
-    sout << "ERROR: Number of ridge parameters must be at least 2 (=" << nparams << ").\n" << err_help;
-    exit(EXIT_FAILURE);
-  } else {
-    // endpoints are 0.01 and 0.99 
-    double step = 1.0 / ( nparams - 1 );
-    double val = step;
-    in_param.resize( nparams);
+  if(nparams < 2)
+    throw "number of ridge parameters must be at least 2 (=" + to_string( nparams ) + ")";
 
-    for( int index_p = 1; index_p < (nparams - 1); index_p++, val += step) in_param[index_p] = val;
-    in_param[0] = 0.01;
-    in_param[nparams-1] = 0.99;
+  // endpoints are 0.01 and 0.99 
+  double step = 1.0 / ( nparams - 1 );
+  double val = step;
+  in_param.resize( nparams);
 
-  }
+  for( int index_p = 1; index_p < (nparams - 1); index_p++, val += step) in_param[index_p] = val;
+  in_param[0] = 0.01;
+  in_param[nparams-1] = 0.99;
+
 }
 
-void print_usage_info(struct param* params, struct in_files* files, mstream& sout){
+void print_usage_info(struct param const* params, struct in_files* files, mstream& sout){
 
   double total_ram;
   string ram_unit;
@@ -843,15 +970,21 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
     // 3P + B
     total_ram = params->n_pheno * 3 + params->block_size; // y, mask, y_resid, g
     if(params->binary_mode) {
-      total_ram += 2 * params->n_pheno + params->block_size; // y_raw, gamma_hat, g_resid
+      total_ram += 2 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
+      if(params->start_block > params->total_n_block)
+        throw "Starting block > number of blocks analyzed";
     }
     if((params->file_type == "bed") && params->fastMode) total_ram += params->block_size/4.0/sizeof(double); //for extracting snp_data_block
     if(params->mask_loo) total_ram += params->block_size; // loo masks
+    // for Hmat (G_E, G, G*E )
+    if(params->w_interaction) 
+      total_ram += params->threads * ((params->interaction_snp ? 2 : 1) * params->ncov_interaction + 1); 
   }
 
   total_ram *= params->n_samples * sizeof(double);
   total_ram += params->nvs_stored * sizeof(struct snp);
+  if( params->getCorMat ) total_ram += params->block_size * params->block_size * sizeof(double);
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   total_ram /= 1024.0 * 1024.0; 
   if( total_ram > 1000 ) {
@@ -881,7 +1014,7 @@ void print_usage_info(struct param* params, struct in_files* files, mstream& sou
   }
 }
 
-int chrStrToInt(const string chrom, const int nChrom) {
+int chrStrToInt(const string& chrom, const int& nChrom) {
 
   // if label is chr1, chr2,...
   string s_chr = std::regex_replace(chrom, std::regex(R"(^chr)"), "");
@@ -899,7 +1032,7 @@ vector<string> check_name(string const& str, mstream& sout){
   int imin, imax;
   size_t pos_start = 0, pos_end; 
   string name, pref, suf, strerror;
-  strerror = "ERROR: Invalid string exapansion (=" + str + ").\n";
+  strerror = "invalid string expansion (=" + str + ").\n";
   vector<string> strout;
 
   if(str.size() == 0) return strout;
@@ -927,12 +1060,8 @@ vector<string> check_name(string const& str, mstream& sout){
     imax = stoi( name );
 
   } catch (const std::invalid_argument& ia){ 
-    sout << strerror ;
-    exit(EXIT_FAILURE);
-  } catch (const std::string& msg){ 
-    sout << msg;
-    exit(EXIT_FAILURE);
-  }
+    throw strerror ;
+  } 
 
   // suffix is present
   suf = str.substr (pos_end+1, std::string::npos);
@@ -945,21 +1074,20 @@ vector<string> check_name(string const& str, mstream& sout){
   return strout;
 }
 
-double convertDouble(const string& val, struct param* params, mstream& sout){
+double convertDouble(const string& val, struct param const* params, mstream& sout){
 
   if(val == params->missing_pheno_str)
     return params->missing_value_double;
 
   double dval;
-  if(sscanf(val.c_str(), "%lf", &dval) != 1){
-    sout << "ERROR: Could not convert value to double: " << val << endl;
-    exit(EXIT_FAILURE);
-  }
+  if(sscanf(val.c_str(), "%lf", &dval) != 1)
+    throw "could not convert value to double: " + val;
+
   return dval;
 }
 
 // convert to numerical category using map
-double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struct param* params, mstream& sout){
+double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struct param const* params, mstream& sout){
 
   if(val == params->missing_pheno_str)
     return params->missing_value_double;
@@ -974,7 +1102,29 @@ double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struc
   return newcat;
 }
 
+// for strings with format: str[lvl]
+void check_inter_var(std::string& str, std::string& lvl, mstream& sout){
 
+  string name;
+  size_t pos_start = 0, pos_end; 
+
+  // check if contains "["
+  pos_end = str.find("["); 
+  if(pos_end == std::string::npos) 
+    return ;
+  name = str.substr (pos_start, pos_end - pos_start);
+
+  // find "]"
+  pos_start = pos_end + 1, pos_end = str.find("]"); 
+  if(pos_end == std::string::npos) 
+    throw "ERROR: Invalid string :" + str ;
+
+  lvl = str.substr (pos_start, pos_end - pos_start);
+
+  str = name;
+}
+
+// comma separated strings
 std::string print_csv(const vector<string>& vlist){
 
   std::ostringstream buffer;
@@ -986,6 +1136,42 @@ std::string print_csv(const vector<string>& vlist){
 
 }
 
+// semi-colon separated strings
+std::string print_scsv(const vector<string>& vlist){
+
+  std::ostringstream buffer;
+
+  for(size_t i = 0; i < vlist.size(); i++)
+    buffer << vlist[i] << ((i+1) == vlist.size() ? "" : ";");
+
+  return buffer.str();
+
+}
+
+// get logp from chisq(1)
+void get_logp(double& logp, const double& Tstat){
+
+  boost::math::chi_squared chisq1(1);
+
+  double pv = cdf(complement(chisq1, Tstat));
+
+  if(pv == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * Tstat ) - 0.5 * Tstat * M_LOG10E ;
+  else logp = log10(pv);
+
+  logp *= -1;
+
+}
+
+void allocate_mat(MatrixXd& M, int const& nrows, int const& ncols){
+  M.resize(nrows, ncols);
+}
+
+std::string print_mat_dims(MatrixXd const& mat){
+  std::ostringstream buffer;
+  buffer << "#rows=" << mat.rows() << "\n#cols=" <<  mat.cols();
+  return buffer.str();
+}
+
 void set_threads(struct param* params) {
 
 #if defined(_OPENMP)
@@ -994,4 +1180,3 @@ void set_threads(struct param* params) {
   setNbThreads(params->threads);
 
 }
-

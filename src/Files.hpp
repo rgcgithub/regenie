@@ -52,15 +52,21 @@ class Files {
 
 
     // functions
-    bool checkFileExtension(std::string filename);
-    void openForRead(std::string filename,mstream&);
-    bool readLine(std::string& line);
-    void ignoreLines(int);
-    void openForWrite(std::string filename,mstream&);
+    bool isGzipped(std::string  const&,bool const&);
+    void openForRead(std::string const&,mstream&);
+    bool readLine(std::string&);
+    void ignoreLines(int const&);
+    void openForWrite(std::string const&,mstream&);
     void closeFile();
-    void openBinMode(std::string filename,std::ios_base::openmode,mstream&);
-    void writeBinMode(Eigen::ArrayXi&,mstream&);
-    void writeBinMode(ArrayXt&,mstream&);
+    void openMode(std::string const&,std::ios_base::openmode,mstream&);
+    template<typename Derived>
+      void writeBinMode(Eigen::ArrayBase< Derived >& vals, mstream& sout){
+        outfile.write( reinterpret_cast<char *> (&vals(0)), vals.size() * sizeof(vals(0)) );
+        if (outfile.fail()) {    
+          sout << "ERROR: Cannot write values to file.\n";
+          exit(EXIT_FAILURE);
+        }
+      }
 
     // to write to file
     template <class S>
@@ -93,7 +99,8 @@ class Files {
     ~Files();
 };
 
+template <typename T>
+void openStream(T*,std::string const&,std::ios_base::openmode,mstream&);
 std::vector<std::string> string_split(std::string const&,const char*);
-void openStream_write(std::ofstream*,std::string const&,std::ios_base::openmode,mstream&);
 
 #endif

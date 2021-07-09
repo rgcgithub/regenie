@@ -153,21 +153,20 @@ if [ -f ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ]; then
   ( zcat < ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie.gz ) > ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie
 fi
 
-if ! cmp --silent \
-  ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie \
-  ${REGENIE_PATH}example/example.test_bin_out_firth_Y1.regenie 
+if [ "`cat ${REGENIE_PATH}test/test_bin_out_firth_Y1.regenie | wc -l`" != "1001" ]
 then
-  print_custom_err "ERROR: Uh oh... Files are different!"
+  print_err
 fi
 
 
 (( i++ ))
-echo -e "Files are identical.\n\n==>Running test #$i\n"
+echo -e "==>Running test #$i"
 # Next test
 basecmd="--step 2 \
   --bed ${mntpt}example/example_3chr \
   --ref-first \
-  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --covarFile ${mntpt}example/covariates_wBin.txt \
+  --covarColList V{1:2},V4 \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --phenoColList Y2 \
   --bsize 100 \
@@ -201,6 +200,7 @@ fi
 echo -e "==>Running test #$i"
 # Next test
 rgcmd="$basecmd \
+  --catCovarList V4 \
   --extract ${mntpt}test/test_out.snplist \
   --out ${mntpt}test/test_out_extract"
 
@@ -212,6 +212,8 @@ if ! cmp --silent \
   ${REGENIE_PATH}test/test_out_Y2.regenie \
   ${REGENIE_PATH}test/test_out_extract_Y2.regenie 
 then
+  print_err
+elif (( `grep "n_cov = 3" "${REGENIE_PATH}test/test_out_extract.log" | wc -l` != 1 )); then
   print_err
 fi
 

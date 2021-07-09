@@ -33,6 +33,8 @@
 #include <string>
 #include <stdio.h>
 #include <stdlib.h>
+#include <memory>
+#include "pvar_ffi_support.h"
 #include "pgenlib_ffi_support.h"
 #include "include/pgenlib_read.h"
 
@@ -41,7 +43,7 @@ class PgenReader {
 public:
   PgenReader();
 
-  void Load(std::string filename, uint32_t cur_sample_ct, std::vector<int> sample_subset_1based);
+  void Load(std::string filename, uint32_t cur_sample_ct, std::vector<int> sample_subset_1based, int nthr);
 
   uint32_t GetRawSampleCt() const;
 
@@ -59,9 +61,9 @@ public:
 
   void ReadIntHardcalls(std::vector<int>& buf, int variant_idx, int allele_idx);
 
-  void ReadHardcalls(std::vector<double>& buf, int variant_idx, int allele_idx);
+  void ReadHardcalls(double* buf, size_t const& n, int const& thr, int variant_idx, int allele_idx);
 
-  void Read(std::vector<double>& buf, int variant_idx, int allele_idx);
+  void Read(double* buf, size_t const& n, int const& thr, int variant_idx, int allele_idx);
 
   void Close();
 
@@ -71,16 +73,18 @@ private:
   plink2::PgenFileInfo* _info_ptr;
   uintptr_t* _allele_idx_offsetsp = nullptr;
   //plink2::RefcountedWptr* _allele_idx_offsetsp;
-  //plink2::RefcountedWptr* _nonref_flagsp;
-  plink2::PgenReader* _state_ptr;
-  uintptr_t* _subset_include_vec;
-  uintptr_t* _subset_include_interleaved_vec;
-  uint32_t* _subset_cumulative_popcounts;
-  plink2::PgrSampleSubsetIndex _subset_index;
-  uint32_t _subset_size;
+  plink2::RefcountedWptr* _nonref_flagsp;
 
-  plink2::PgenVariant _pgv;
+  // have all below be threads specific
+  std::vector<plink2::PgenReader*> _state_ptr;
+  std::vector<plink2::PgrSampleSubsetIndex> _subset_index;
+  std::vector<std::shared_ptr<plink2::PgenVariant>> _pgv;
+  std::vector<uintptr_t*> _subset_include_interleaved_vec;
+  std::vector<uint32_t*> _subset_cumulative_popcounts;
+  std::vector<uint32_t> _subset_size;
+  std::vector<uintptr_t*> _subset_include_vec;
 
+  /*
   // kPglNypTransposeBatch (= 256) variants at a time, and then transpose
   uintptr_t* _multivar_vmaj_geno_buf;
   uintptr_t* _multivar_vmaj_phasepresent_buf;
@@ -88,9 +92,9 @@ private:
   uintptr_t* _multivar_smaj_geno_batch_buf;
   uintptr_t* _multivar_smaj_phaseinfo_batch_buf;
   uintptr_t* _multivar_smaj_phasepresent_batch_buf;
+*/
 
-  void SetSampleSubsetInternal(std::vector<int>& sample_subset_1based);
-
+  void SetSampleSubsetInternal(std::vector<int>& sample_subset_1based, int const& thr);
   void ReadAllelesPhasedInternal(int variant_idx);
 };
 

@@ -16,7 +16,7 @@ The method has the following properties
 Full documentation for the **regenie** can be found [here](https://rgcgithub.github.io/regenie/).
 
 ## Citation 
-Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet (2021).
+Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet 53, 1097–1103 (2021). https://doi.org/10.1038/s41588-021-00870-7
 
 You can access the paper [here](https://doi.org/10.1038/s41588-021-00870-7).
 
@@ -35,6 +35,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 2.2 (Faster implementation of Step 1 and 2 (see [here](https://rgcgithub.github.io/regenie/performance/#new-timings-improvements) for details); new options `--write-null-firth/--use-null-firth` to store the estimates from approximate Firth null model; new option `--minCaseCount` to filter out BTs with low number of cases from the analysis; new option `--no-split` to enforce output of summary stats to a single file for all traits; added support for tranposed phenotype file format with `--tphenoFile`)
+
 Version 2.0.2 (Bug fix for burden testing with BGEN files not in v1.2 with 8-bit encoding; enabled faster step 2 implementation with Zstd compressed BGEN files in v1.2 with 8-bit encoding)
 
 Version 2.0.1 (New option `--catCovList` to specify categorical covariates; Enabled parameter expansion when specifying select phenotypes/covariates to analyze [e.g. 'PC{1:10}'])

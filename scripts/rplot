@@ -55,10 +55,10 @@ if(arg$command == "lovo") {
 
   # Set format of sum stats file
   if(arg$htp){
-    cols.extract <- c("Chr","Pos","Name","Pval")
+    cols.extract <- c("Chr","Pos","Name", "Effect", "Pval")
     fn.pval <- function(x) -log10(x)
   } else {
-    cols.extract <- c("CHROM","GENPOS", "ID", "LOG10P")
+    cols.extract <- c("CHROM","GENPOS", "ID", "BETA", "LOG10P")
     fn.pval <- function(x) x
   }
 
@@ -67,7 +67,7 @@ if(arg$command == "lovo") {
   stopifnot(all(cols.extract %in% names(lovo)))
   lovo <- lovo %>%
     select(all_of(cols.extract)) %>%
-    setNames(c("CHROM","GENPOS", "ID", "LOG10P")) %>%
+    setNames(c("CHROM","GENPOS", "ID", "BETA", "LOG10P")) %>%
     mutate(
       LOG10P = fn.pval(LOG10P),
       ID = unglue_vec(ID, "{}_{x}")
@@ -75,6 +75,7 @@ if(arg$command == "lovo") {
 
   # full mask will correspond to "NA" for ID
   full.mask.p <- lovo[ is.na(lovo$ID), "LOG10P"] %>% pull
+  full.mask.b <- lovo[ is.na(lovo$ID), "BETA"] %>% pull
   stopifnot(length(full.mask.p) == 1)
   lovo <- lovo[!is.na(lovo$ID),]
   # get chr
@@ -100,7 +101,7 @@ if(arg$command == "lovo") {
   lovo_top <- rbind(top1.min, top3.max) %>% distinct
 
 
-  # plot
+  # plot p-values
   p <- ggplot(lovo, aes(GENPOS, LOG10P)) +
     geom_point(size = 2) +
     geom_label_repel(data = lovo_top, aes(GENPOS, LOG10P, label = ID))
@@ -118,5 +119,26 @@ if(arg$command == "lovo") {
 
   # save
   f_out <- paste0(arg$out, ".lovo.png")
+  ggsave(f_out, plot = p, dpi = 100)
+
+
+  # plot effect sizes
+  p <- ggplot(lovo, aes(GENPOS, BETA)) +
+    geom_point(size = 2) +
+    geom_label_repel(data = lovo_top, aes(GENPOS, BETA, label = ID))
+
+  # Add line for full mask
+  p <- p +
+    geom_hline(yintercept = full.mask.b, col="red")
+
+  p <- p +  scale_x_continuous(labels = comma) +
+    labs(
+      x = paste0("Genomic position on chomosome ", chr),
+      y = "Estimated effect"
+    ) +
+    theme_minimal()
+
+  # save
+  f_out <- paste0(arg$out, ".lovo_beta.png")
   ggsave(f_out, plot = p, dpi = 100)
 } 

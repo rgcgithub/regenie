@@ -58,28 +58,28 @@ class JTests {
     std::vector<std::string> variant_names;
 
     // for prep.
-    void get_test_info(const struct param*,const std::string,mstream&);
-    bool set_vars(const int,const int,std::vector<variant_block>&);
-    void compute_qr_G(const Eigen::Ref<const MatrixXb>&,struct geno_block*);
+    bool get_test_info(const struct param*,const std::string&,mstream&);
+    bool set_vars(const int&,const int&,std::vector<variant_block> const&);
+    void compute_qr_G(const Eigen::Ref<const MatrixXb>&,struct geno_block const*);
 
     // assoc. tests
-    std::string apply_joint_test(const int,const int,const int,struct phenodt*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,std::vector<variant_block>&,const std::string,struct param*);
-    void compute_minp(const int,const int,const std::vector<variant_block>&);
-    void compute_acat(const int,const int,const std::vector<variant_block>&);
+    std::string apply_joint_test(const int&,const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,const std::string&,struct param const*);
+    void compute_minp(const int&,const int&,const std::vector<variant_block>&);
+    void compute_acat(const int&,const int&,const std::vector<variant_block>&);
     void compute_ftest(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
     void compute_nnls(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
-    void compute_gates(const int,const std::vector<variant_block>&);
+    void compute_gates(const int&,const std::vector<variant_block>&);
     double get_me(const Eigen::Ref<const Eigen::MatrixXd>&);
 
     // print results
-    std::string print_output(const int,const int,const int,const std::string,struct param*);
-    std::string print_sum_stats(const int,const int,const int,struct param*);
-    std::string print_sum_stats_htp(const int,const int,const int,const std::string,struct param*);
+    std::string print_output(const int&,const int&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_sum_stats(const int&,const int&,const int&,const int&,struct param const*);
+    std::string print_sum_stats_htp(const int&,const int&,const int&,const std::string&,struct param const*);
 
-    void get_variant_names(int,int,std::vector<snp>&);
+    void get_variant_names(int const&,int const&,std::vector<snp> const&);
     void reset_vals();
-    void get_pv(const double);
-    int test_ind(const std::string);
+    void get_pv(const double&);
+    int test_ind(const std::string&);
 
     JTests();
     ~JTests();
