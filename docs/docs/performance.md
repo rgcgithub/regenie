@@ -95,13 +95,13 @@ We have several changes in **regenie** v2.2 to improve the computational efficie
 
 ![Step2time](img/timings_Step2_BT.png)
 
-* We have also made use of the sparsity of the genotype vector for rarer variants which helped reduce the timing by ~15% on average in Step 2.
+* We have also made use of the sparsity of the genotype vector for rarer variants (more so with binary traits) and this reduced the timing in our experiments by ~20% in Step 2.
 
-![Step2QTtime](img/timings_Step2_QT_v2.2.png)
+![Step2SparseTime](img/timings_Step2_BT_v2.2.png)
 
-*In our experiments, common variants are defined as having MAF > 5% and rare variants are defined as having MAF < 1% (using MAC 5 threshold).*
+*In our experiments, common variants are defined as having MAF > 5% and rare variants are defined as having MAF < 1% and no correction (i.e. Firth/SPA) is used.*
 
 * We have added new options `--write-null-firth` and `--use-null-firth` to reduce the timing of Step 2 with approximate Firth when ran in parallel jobs split in smaller chunks within chromosomes. More specifically, `--write-null-firth` can be used in Step 1 to fit the null model for approximate Firth test and store the resulting estimates to file. Then in Step 2, specifying `--use-null-firth` will re-use these parameter estimates to reduce the timing of the approximate Firth null model fitting. 
-*We thank Juha Karjalainen for sugegsting this feature.*
+*We thank Juha Karjalainen for suggesting this feature.*
 
 Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in **regenie** and each setting was replicated 5 times.
