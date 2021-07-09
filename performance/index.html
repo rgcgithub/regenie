@@ -154,6 +154,8 @@
                 
             <li class="second-level"><a href="#binary-traits">Binary traits</a></li>
                 
+            <li class="second-level"><a href="#new-timings-improvements">New timings improvements</a></li>
+                
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
@@ -218,7 +220,29 @@ faster than SAIGE in elapsed time, respectively, which suggests that <strong>reg
 Overall, <strong>regenie</strong> using Firth correction was 8x faster than SAIGE in CPU hours 
 and 26.8x faster in elapsed time.</p>
 <p>All runs above were done on the same computing environment (16 virtual CPU cores of 
-a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).</p></div>
+a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).</p>
+<h3 id="new-timings-improvements">New timings improvements</h3>
+<p>We have several changes in <strong>regenie</strong> v2.2 to improve the computational efficiency:</p>
+<ul>
+<li>The genotype file reading in Step 1 is now multi-threaded for all supported formats (i.e. BED, PGEN, and BGEN) and uses a faster file reading implementation for BGEN v1.2 format with 8-bit encoding. From our timings experiments below, these changes helped reduce the CPU time by 40-60% depending on the input format. </li>
+</ul>
+<p><img alt="Step1time" src="../img/timings_Step1.png" /></p>
+<p><em>Note that we used a small number of SNPs for Step 1 in our experiments (20K) so the timing improvement will not be as high in a real Step 1 run where ~500K SNPs would be used.</em></p>
+<ul>
+<li>We have improved the implementation of the score tests for binary traits to reduce the number of matrix operations performed and this reduced the CPU timings by ~60% from the previous version 2.0.2.</li>
+</ul>
+<p><img alt="Step2time" src="../img/timings_Step2_BT.png" />
+<em>Note that there is an added memory cost of ~8NKP bytes [N=#samples; K=#covariates;P=#samples] so ~800MB extra for a UKB 500K run with 10 traits &amp; 20 covariates.</em></p>
+<ul>
+<li>We have also made use of the sparsity of the genotype vector for rarer variants in Step 2 (more so with binary traits) and this reduced the timing in our experiments by ~20% on average.</li>
+</ul>
+<p><img alt="Step2SparseTime" src="../img/timings_Step2_BT_v2.2.png" /></p>
+<p><em>In our experiments, common variants are defined as having MAF &gt; 5% and rare variants are defined as having MAF &lt; 1% and no correction (i.e. Firth/SPA) is used.</em></p>
+<ul>
+<li>We have added new options <code>--write-null-firth</code> and <code>--use-null-firth</code> to reduce the timing of Step 2 with approximate Firth when ran in parallel jobs split in smaller chunks within chromosomes. More specifically, <code>--write-null-firth</code> can be used in Step 1 to fit the null model for approximate Firth test and store the resulting estimates to file. Then in Step 2, specifying <code>--use-null-firth</code> will re-use these parameter estimates to reduce the timing of the approximate Firth null model fitting. 
+<em>We thank Juha Karjalainen for suggesting this feature.</em></li>
+</ul>
+<p>Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in <strong>regenie</strong> and each setting was replicated 5 times.</p></div>
         
         
     </div>
