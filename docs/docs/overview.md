@@ -1,8 +1,7 @@
 ## Overview 
 
 This page provides an overview of the models and methods implemented in
-**regenie**. A full description is given in our 
- [BioRxiv pre-print](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1).
+**regenie**. A full description is given in our [paper](https://doi.org/10.1038/s41588-021-00870-7).
 
 **regenie** carries out genome-wide association tests for both
   quantitative and binary (case-control) phenotypes. It is designed to handle

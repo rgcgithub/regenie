@@ -20,7 +20,7 @@ to handle missing data.
 From the real data applications we have performed so far with traits having up to ~20% (for quantitative) 
 and ~5% (for binary) missing observations, our imputation scheme resulted in 
 nearly identical results as from discarding missing observations when analyzing each trait 
-separately (see the [BioRxiv pre-print](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1) for details). 
+separately (see the [paper](https://doi.org/10.1038/s41588-021-00870-7) for details). 
 Hence, we recommend to analyze traits in groups that have similar missingness patterns with resonably 
 low amount of missingness (<15%).
 

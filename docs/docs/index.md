@@ -18,10 +18,7 @@ traits with unbalanced case-control ratios
   [Apache Spark](https://spark.apache.org/) (see [GLOW](https://projectglow.io/))
 
 **Citation** 
-Joelle Mbatchou, Leland Barnard, Joshua Backman, Anthony Marcketta, Jack A. Kosmicki, Andrey Ziyatdinov, Christian Benner, Colm O'Dushlaine, Mathew Barber, Boris Boutkov, Lukas Habegger, Manuel Ferreira, Jeffrey Reid, Goncalo Abecasis, Evan Maxwell, Jonathan Marchini.
-(2020)
-Computationally efficient whole genome regression for quantitative and binary traits
- [[BioRxiv pre-print]](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v2)
+Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet (2021).
 
 
 ## License 

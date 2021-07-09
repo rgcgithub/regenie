@@ -7,7 +7,7 @@ programs for GWAS on large cohorts.
 2. SAIGE - [Zhou et al. (2018) Nature Genetics 50, 1335–1341](https://www.nature.com/articles/s41588-018-0184-y)[[Software]](https://github.com/weizhouUMICH/SAIGE)
 3. fastGWA - [Jiang et al. (2019) Nature Genetics 51, 1749–1755](https://www.nature.com/articles/s41588-019-0530-8) [[Software]](https://cnsgenomics.com/software/gcta/#Overview)
 
-Full details for all the runs are available in our [BioRxiv pre-print](https://www.biorxiv.org/content/10.1101/2020.06.19.162354v1).
+Full details for all the runs are available in our [paper](https://doi.org/10.1038/s41588-021-00870-7).
 
 ### Quantitative traits
 We ran **regenie**, BOLT-LMM and fastGWA on 
@@ -80,3 +80,28 @@ and 26.8x faster in elapsed time.
 
 All runs above were done on the same computing environment (16 virtual CPU cores of 
 a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).
+
+### New timings improvements
+
+We have several changes in **regenie** v2.2 to improve the computational efficiency:
+
+* The genotype file reading in Step 1 is now multi-threaded for all supported formats (i.e. BED, PGEN, and BGEN) and uses a faster file reading implementation for BGEN v1.2 format with 8-bit encoding. From our timings experiments below, these changes helped reduce the CPU time by 40-60% depending on the input format. 
+
+![Step1time](img/timings_Step1.png)
+
+*Note that we used a small number of SNPs for Step 1 in our experiments (20K) so the timing improvement will not be as high in a real Step 1 run where ~500K SNPs would be used.*
+
+* We have improved the implementation of the score tests for binary traits to reduce the number of matrix operations performed and this reduced the CPU timings by ~60% from the previous version 2.0.2.
+
+![Step2time](img/timings_Step2_BT.png)
+
+* We have also made use of the sparsity of the genotype vector for rarer variants which helped reduce the timing by ~15% on average in Step 2.
+
+![Step2QTtime](img/timings_Step2_QT_v2.2.png)
+
+*In our experiments, common variants are defined as having MAF > 5% and rare variants are defined as having MAF < 1% (using MAC 5 threshold).*
+
+* We have added new options `--write-null-firth` and `--use-null-firth` to reduce the timing of Step 2 with approximate Firth when ran in parallel jobs split in smaller chunks within chromosomes. More specifically, `--write-null-firth` can be used in Step 1 to fit the null model for approximate Firth test and store the resulting estimates to file. Then in Step 2, specifying `--use-null-firth` will re-use these parameter estimates to reduce the timing of the approximate Firth null model fitting. 
+*We thank Juha Karjalainen for sugegsting this feature.*
+
+Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in **regenie** and each setting was replicated 5 times.
