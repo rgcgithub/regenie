@@ -107,10 +107,12 @@ void Files::openForWrite(std::string const& filename, mstream& sout){
 
   openStream(&outfile, filename, mode, sout);
 
+# if defined(HAS_BOOST_IOSTREAM)
   if(is_gz){
     outgzfile.push(boost::iostreams::gzip_compressor());
     outgzfile.push(outfile);
   }
+#endif
 
 }
 
@@ -126,8 +128,10 @@ void Files::closeFile(){
 
   } else {
 
+# if defined(HAS_BOOST_IOSTREAM)
     if(is_gz) 
       outgzfile.reset();
+#endif
     outfile.close();
 
   }
