@@ -1,3 +1,5 @@
+![Build Status](https://github.com/rgcgithub/regenie/actions/workflows/test.yml/badge.svg)
+
 **regenie** is a C++ program for whole genome regression modelling of large [genome-wide association studies](https://en.wikipedia.org/wiki/Genome-wide_association_study).
 
 It is developed and supported by a team of scientists at the Regeneron Genetics Center.
