@@ -28,9 +28,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: Read VERSION file
-        id: getversion
-        run: echo "::set-output name=version::$(cat VERSION)"
+    - 
+      name: Read VERSION file
+      id: getversion
+      run: echo "::set-output name=version::$(cat VERSION)"
     
     - 
       name: Build & Push Docker image
