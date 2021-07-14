@@ -656,7 +656,6 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
       for(int j = 0; j < params->n_ridge_l1; ++j ) {
         if( l1->pheno_l1_not_converged(ph) ) break;
 
-
         niter_cur = 0;
         // use warm starts (i.e. set final beta of previous ridge param 
         // as initial beta for current ridge param)
@@ -755,7 +754,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
         //cerr << "\nFold=" << i << " tau = " << params->tau[j] << " beta=" << betanew.matrix().transpose().array() << endl;
         //if(i==1) exit(EXIT_FAILURE);
 
-        if(niter_cur > params->niter_max){
+        if(niter_cur > params->niter_max_ridge){
           sout << "WARNING: Penalized logistic regression did not converge! (Increase --niter)\n";
           l1->pheno_l1_not_converged(ph) = true;
           break;
