@@ -61,7 +61,7 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
       pheno_data->Hmat[thread].rightCols(nullHLM.Vlin.cols()) = (nullHLM.Vlin.array().colwise() * gblock->Gmat.col(isnp).array()).matrix();
 
     // get G_E if specified (not re-scaled)
-    if(params->interaction_snp && !params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov;
+    if(!params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov;
 
     snp_data->fitHLM = true;
     return;
@@ -81,7 +81,7 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
   // start filling matrix with C*G terms (for GxG, also add residual of G_E)
   pheno_data->Hmat[thread].resize(pheno_data->interaction_cov.rows(), params->ncov_interaction + params->interaction_istart + 1);
   pheno_data->Hmat[thread].rightCols(params->ncov_interaction) = iMat;
-  if(params->interaction_snp && !params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov_res;
+  if(!params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov_res;
 
 }
 
@@ -147,7 +147,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     MapArXd bhat (tau.col(i).data(), tau.rows(), 1);
     gscale = pheno_data->scale_Y(i) * sd_yres(i) / snp_data->scale_fac;
     iscale = pheno_data->scale_Y(i) * sd_yres(i) / pheno_data->scf_i[thread];
-    if(params->interaction_snp && !params->gwas_condtl) cscale = pheno_data->scale_Y(i) * sd_yres(i) / pheno_data->scl_inter_snp;
+    if(!params->gwas_condtl) cscale = pheno_data->scale_Y(i) * sd_yres(i) / pheno_data->scl_inter_X;
 
     // using sandwich estimator
     if(params->no_robust) // model-based
@@ -159,9 +159,9 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     //if(index==500) {cerr << "\nZ:\n" << Z << "\nV=\n" << Vmat ; exit(-1);}
 
     // print cov(beta) (rescale)
-    if(params->print_vcov && params->interaction_snp && !params->gwas_condtl){
+    if(params->print_vcov && !params->gwas_condtl){
       Files fout;
-      fout.openForWrite( files->out_file + "_" + files->pheno_names[i] + "_" + filters->interaction_cov + "_" + snpinfo[index].ID + ".vcov", sout);
+      fout.openForWrite(files->out_file + "_" + files->pheno_names[i] + "_" + filters->interaction_cov + "_" + snpinfo[index].ID + ".vcov", sout);
       MatrixXd scvec (pheno_data->Hmat[thread].cols(), 1);
       scvec.col(0).array().head( cscale.size() ) = cscale;
       scvec(beg, 0) = gscale;
@@ -172,8 +172,8 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     }
 
     ///////////////////////
-    // for GxG_E test, print main effect of G_E
-    if(params->interaction_snp && !params->gwas_condtl){
+    // print main effect of G_E
+    if(!params->gwas_condtl){
       for(int j = 0; j < params->ncov_interaction; j++){ 
         sehat = sqrt(Vmat(j,j)) * cscale(j);
         if(params->interaction_cat)
@@ -309,7 +309,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
     //cerr << "\n" << bhat << "\n\n" << Vmat.array().sqrt().matrix() << "\n\n"; exit(-1);
 
     // print cov(beta) (rescale)
-    if(params->print_vcov && params->interaction_snp && !params->gwas_condtl){
+    if(params->print_vcov && !params->gwas_condtl){
       Files fout;
       fout.openForWrite( files->out_file + "_" + files->pheno_names[i] + "_" + filters->interaction_cov + "_" + snpinfo[index].ID + ".vcov", sout);
       IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
@@ -318,8 +318,8 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
     }
 
     ///////////////////////
-    // for GxG_E test, print main effect of G_E
-    if(params->interaction_snp && !params->gwas_condtl){
+    // print main effect of G_E
+    if(!params->gwas_condtl){
       for(int j = 0; j < params->ncov_interaction; j++){ 
         sehat = sqrt(Vmat(j,j));
         if(params->interaction_cat)
@@ -560,11 +560,11 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     }
 
     // print cov(beta) (rescale)
-    if(params->print_vcov && params->interaction_snp && !params->gwas_condtl){
+    if(params->print_vcov && !params->gwas_condtl){
       Files fout;
       fout.openForWrite( files->out_file + "_" + files->pheno_names[i] + "_" + filters->interaction_cov + "_" + snpinfo[index].ID + ".vcov", sout);
       MatrixXd scvec (pheno_data->Hmat[thread].cols(), 1);
-      scvec.col(0).array().head( pheno_data->scl_inter_snp.size() ) = 1/pheno_data->scl_inter_snp;
+      scvec.col(0).array().head( pheno_data->scl_inter_X.size() ) = 1/pheno_data->scl_inter_X;
       scvec(beg, 0) = 1/snp_data->scale_fac;
       scvec.col(0).array().tail( pheno_data->scf_i[thread].size() ) = 1/pheno_data->scf_i[thread];
       IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
@@ -573,8 +573,8 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     }
 
     ///////////////////////
-    // for GxG_E test, print main effect of G_E
-    if(params->interaction_snp && !params->gwas_condtl){
+    // print main effect of G_E
+    if(!params->gwas_condtl){
       for(int j = 0; j < beg; j++){ 
         tstat = fabs( bhat(j) * bhat(j) / Vmat(j,j) );
         sehat = sqrt(Vmat(j,j));
@@ -587,9 +587,9 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_snp(j), sehat/pheno_data->scl_inter_snp(j), -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_snp(j), sehat/pheno_data->scl_inter_snp(j), -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), -1, -1, true, 1, params, (i+1));
       }
     }
 
@@ -673,14 +673,14 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   //if(isnp==0 & ipheno==0)cerr << bhat << "\n\n" << se << endl;exit(-1);
 
   // print cov(beta) (rescale)
-  if(params->print_vcov && params->interaction_snp && !params->gwas_condtl){
+  if(params->print_vcov && !params->gwas_condtl){
     Files fout;
     fout.openForWrite( files->out_file + "_" + files->pheno_names[ipheno] + "_" + filters->interaction_cov + "_" + snpinfo[index].ID + ".vcov", sout);
     ArrayXd wvec = mask.select( ( pivec * (1 - pivec) ).sqrt(), 0);
     MatrixXd XtW = pheno_data->Hmat[thread].transpose() * wvec.matrix().asDiagonal();
     ColPivHouseholderQR<MatrixXd> qr(XtW * XtW.transpose());
     MatrixXd scvec (pheno_data->Hmat[thread].cols(), 1);
-    scvec.col(0).array().head( pheno_data->scl_inter_snp.size() ) = 1/pheno_data->scl_inter_snp;
+    scvec.col(0).array().head( pheno_data->scl_inter_X.size() ) = 1/pheno_data->scl_inter_X;
     scvec(beg, 0) = 1/snp_data->scale_fac;
     scvec.col(0).array().tail( pheno_data->scf_i[thread].size() ) = 1/pheno_data->scf_i[thread];
     IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
@@ -690,7 +690,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
 
   ///////////////////////
   //////  GxG: G_E main effect
-  if(params->interaction_snp && !params->gwas_condtl){
+  if(!params->gwas_condtl){
     for(int j = 0; j < beg; j++){
       if(params->interaction_cat)
         stmp="-INT_" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
@@ -701,9 +701,9 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
 
       // print sum_stats
       if(params->htp_out) 
-        buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_snp(j), se(j)/pheno_data->scl_inter_snp(j), -1, -1, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
+        buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), se(j)/pheno_data->scl_inter_X(j), -1, -1, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
       else 
-        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_snp(j), se(j)/pheno_data->scl_inter_snp(j), -1, -1, true, 1, params, (ipheno+1));
+        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), se(j)/pheno_data->scl_inter_X(j), -1, -1, true, 1, params, (ipheno+1));
     }
   }
 

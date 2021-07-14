@@ -228,7 +228,7 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
   if( params.strict_mode ) {
 
-    if(dt_thr->is_sparse) // Gsparse is on raw scale
+    if(params.skip_blups && dt_thr->is_sparse) // Gsparse is on raw scale (must have yres centered)
       dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / (sqrt( params.n_analyzed - params.ncov ));
     else
       dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / sqrt( params.n_analyzed - params.ncov );
@@ -1358,9 +1358,9 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
       // compute SE = log(allelic OR) / zstat
       outse_val = fabs(log(effect_val)) / sqrt(chisq);
       buffer << effect_val << "\t" << effect_val * exp(- params->zcrit * outse_val) << "\t" << effect_val * exp(params->zcrit * outse_val) << "\t" << outp_val << "\t";
-    } else if(!print_pv && !print_beta) 
+    } else if(!print_beta) 
       buffer << "NA" << "\t" << "NA" << "\t" << "NA" << "\t" << "NA" << "\t";
-    else if(!print_pv && print_beta) // used in interaction tests
+    else // used in interaction tests
       buffer << exp(beta) << "\t" << exp(beta - params->zcrit * se) << "\t" << exp(beta + params->zcrit * se) << "\tNA\t"; 
 
   }
@@ -1378,19 +1378,16 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // info column
   vector<string> infoCol;
   if(print_beta){
-    if(params->binary_mode){
-
-      if(!print_pv){ // only have NA
-        infoCol.push_back( "REGENIE_BETA=NA" );
-        infoCol.push_back( "REGENIE_SE=NA" );
-        if(!params->firth) infoCol.push_back( "SE=NA" );
-      } else {
-        infoCol.push_back( "REGENIE_BETA=" + to_string(beta) );
-        infoCol.push_back( "REGENIE_SE=" + to_string(se) );
-        // SPA/uncorrected logistic => also print SE from allelic OR
-        if(!params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
-      }
-
+    if(params->binary_mode && test_pass){
+      infoCol.push_back( "REGENIE_BETA=" + to_string(beta) );
+      infoCol.push_back( "REGENIE_SE=" + to_string(se) );
+      // SPA/uncorrected logistic => also print SE from allelic OR
+      if(print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
+    } else if(params->binary_mode){
+      infoCol.push_back( "REGENIE_BETA=NA" );
+      infoCol.push_back( "REGENIE_SE=NA");
+      // SPA/uncorrected logistic => also print SE from allelic OR
+      if(print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
     } else infoCol.push_back( "REGENIE_SE=" + to_string(se) );// fot QTs
   }
   // info score

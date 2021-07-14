@@ -24,6 +24,7 @@
 
 */
 
+#include <unordered_set>
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
@@ -66,9 +67,17 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   // read in covariates
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
-
-  // if doing GxG interaction
-  if(params->interaction_snp) extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+  if(params->w_interaction){
+    if(params->interaction_snp) // if doing GxG interaction
+      extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+    if(params->gwas_condtl){ // append to new_cov
+      pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
+      pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov;
+      params->n_cov = pheno_data->new_cov.cols() - 1;// ignore intercept
+    }
+  }
+  //cerr << endl<<pheno_data->new_cov.topRows(5) << endl;
+  //if(params->w_interaction) cerr << endl<<pheno_data->interaction_cov.topRows(5)<< endl;
 
   // mask individuals 
   filters->ind_in_analysis = ind_in_pheno_and_geno && ind_in_cov_and_geno;
@@ -220,7 +229,10 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // check if all individuals have missing/invalid phenotype
   int mInd;
-  if(pheno_data->masked_indivs.array().colwise().count().minCoeff(&mInd) == 0)
+  ArrayXi nobs_per_trait = pheno_data->masked_indivs.array().colwise().count().cast<int>();
+  if((nobs_per_trait == 0).all())
+    throw "all individuals have missing/invalid values for all traits." ;
+  if(nobs_per_trait.minCoeff(&mInd) == 0)
     throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'." ;
 
   // ignore traits with fewer than the specified minimum case count
@@ -382,9 +394,11 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
 
   // check if all individuals have missing/invalid phenotype
   int mInd;
-  if(pheno_data->masked_indivs.array().colwise().count().minCoeff(&mInd) == 0)
-    throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'.";
-  //cerr << std::boolalpha << pheno_data->masked_indivs << endl; exit(-1);
+  ArrayXi nobs_per_trait = pheno_data->masked_indivs.array().colwise().count().cast<int>();
+  if((nobs_per_trait == 0).all())
+    throw "all individuals have missing/invalid values for all traits." ;
+  if(nobs_per_trait.minCoeff(&mInd) == 0)
+    throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'." ;
 
   // ignore traits with fewer than the specified minimum case count
   if(params->binary_mode)
@@ -469,9 +483,11 @@ void rm_phenoCols(Ref<ArrayXb> sample_keep, struct in_files* files, struct param
 
 void covariate_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
 
-  int nc_cat = 0, inter_col = -1, np_inter = 0;
+  int nc_cat = 0, np_inter = 0;
   uint32_t indiv_index;
   ArrayXb keep_cols;
+  ArrayXd inter_cov_column;
+  MatrixXd inter_cov_matrix;
   string line;
   std::vector< string > tmp_str_vec, covar_names;
   std::vector< std::map<std::string,int> > categories;
@@ -501,7 +517,6 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       nc_cat += !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
       // with interaction test
       if(params->w_interaction && !params->interaction_snp && (filters->interaction_cov == tmp_str_vec[i+2]) ) {
-        inter_col = keep_cols.head(i+1).count(); 
         np_inter = 1;
         params->interaction_cat = !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
       }
@@ -526,8 +541,9 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   sout << "n_cov = " << params->n_cov << endl;
 
   // allocate memory 
-  pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov);
+  pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov - np_inter);
   pheno_data->new_cov.col(0) = MatrixXd::Ones(params->n_samples, 1);
+  if(params->w_interaction && !params->interaction_snp) inter_cov_column.resize(params->n_samples);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -548,106 +564,115 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       throw "individual appears more than once in covariate file: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1];
 
     // read covariate data and check for missing values
-    for(int i_cov = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
+    for(int i_cov = 0, i_col = 0, i_cat = 0, j = 0; j < keep_cols.size(); j++) {
 
       if( !keep_cols(j) ) continue;
 
-      // if quantitative
-      if( filters->cov_colKeep_names[ covar_names[i_cov] ] )
-        pheno_data->new_cov(indiv_index, 1 + i_cov) = convertDouble(tmp_str_vec[2+j], params, sout);
-      else {// if categorical
-        // set null category if interaction test and base level is specified
-        if(params->w_interaction && !params->interaction_snp && (covar_names[i_cov] == filters->interaction_cov) && 
-            (categories[i_cat].size() == 0) && filters->interaction_cov_null_level.size() > 0 )
-          categories[i_cat][filters->interaction_cov_null_level] = 0;
-        // convert to numerical
-        pheno_data->new_cov(indiv_index, 1 + i_cov) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
-      }
+      // interaction covariate
+      if(params->w_interaction && !params->interaction_snp && (covar_names[i_cov] == filters->interaction_cov)){
 
-      if( pheno_data->new_cov(indiv_index, 1 + i_cov) == params->missing_value_double ) { // ignore individual
-        ind_in_cov_and_geno(indiv_index) = false;
-        break;
+        if( filters->cov_colKeep_names[ covar_names[i_cov] ] ) // if quantitative
+          inter_cov_column(indiv_index) = convertDouble(tmp_str_vec[2+j], params, sout);
+        else{ // set null category if interaction test and base level is specified
+          if( (categories[i_cat].size() == 0) && filters->interaction_cov_null_level.size() > 0 )
+            categories[i_cat][filters->interaction_cov_null_level] = 0;
+          inter_cov_column(indiv_index) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
+        }
+
+        if( inter_cov_column(indiv_index) == params->missing_value_double ) { // ignore individual
+          ind_in_cov_and_geno(indiv_index) = false;
+          break;
+        }
+
+      } else { // regular covariate
+
+        if( filters->cov_colKeep_names[ covar_names[i_cov] ] ) // quantitative
+          pheno_data->new_cov(indiv_index, 1 + i_col) = convertDouble(tmp_str_vec[2+j], params, sout);
+        else // categorical so convert to numerical
+          pheno_data->new_cov(indiv_index, 1 + i_col) = convertNumLevel(tmp_str_vec[2+j], categories[i_cat++], params, sout);
+
+        if( pheno_data->new_cov(indiv_index, 1 + i_col) == params->missing_value_double ) { // ignore individual
+          ind_in_cov_and_geno(indiv_index) = false;
+          break;
+        }
+
+        i_col++;
       }
 
       i_cov++;
     }
 
   }
-  //cerr << endl<<pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols())<< endl;
+  //cerr << endl<<pheno_data->new_cov.block(0,0,3,pheno_data->new_cov.cols())<< endl;
+  //if(params->w_interaction && !params->interaction_snp) cerr << inter_cov_column.head(3);
+
+  // mask individuals in genotype data but not in covariate data
+  pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
+  if(inter_cov_column.size() > 0) inter_cov_column *= ind_in_cov_and_geno.cast<double>();
 
   // add dummy variables if needed
   if(nc_cat > 0){
     int n_dummies;
-    int n_add = check_categories(covar_names, categories, params, filters, sout) - nc_cat; // new columns to add (or remove if single category)
-    MatrixXd full_covarMat (pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + n_add);
+    int n_add = check_categories(covar_names, categories, params, filters, sout) - nc_cat + params->interaction_cat; // new columns to add (or remove if single category) & ignore interaction cov if categorical
 
+    MatrixXd full_covarMat (pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + n_add);
     // copy intercept column
     full_covarMat.col(0) = pheno_data->new_cov.col(0);
 
-    for(int i = 1, j = 1, icat = 0; i < pheno_data->new_cov.cols(); i++){
+    for(int i = 0, raw_col = 1, full_col = 1, icat = -1; i < params->n_cov; i++){
       n_dummies = 1;
-      //cerr << i << "/" << pheno_data->new_cov.cols()-1 << " - " << covar_names[i-1] << " is q: " << std::boolalpha << filters->cov_colKeep_names[ covar_names[i-1] ] << endl;
 
-      if( filters->cov_colKeep_names[ covar_names[i-1] ] ) // copy col
-        full_covarMat.col(j) = pheno_data->new_cov.col(i);
-      else { 
+      if( filters->cov_colKeep_names[ covar_names[i] ] ) { // qCovar so copy column
+
+        if(params->w_interaction && !params->interaction_snp && (covar_names[i] == filters->interaction_cov))  
+          inter_cov_matrix = inter_cov_column.matrix();
+        else
+          full_covarMat.col(full_col) = pheno_data->new_cov.col(raw_col);
+
+      } else { // cCovar
+
         icat++;
-        n_dummies = pheno_data->new_cov.col(i).maxCoeff();
-        if( n_dummies > 0 )
-          full_covarMat.block(0, j, full_covarMat.rows(), n_dummies) = get_dummies(pheno_data->new_cov.col(i));
+
+        if(params->w_interaction && !params->interaction_snp && (covar_names[i] == filters->interaction_cov)) { 
+
+          np_inter = inter_cov_column.maxCoeff(); // get number of dummies to use
+
+          if( np_inter == 0 ) // too few categories
+            throw "interacting covariate '" + covar_names[i] + "' only has a single category.";
+
+          inter_cov_matrix = get_dummies(inter_cov_column);
+          extract_names(params->interaction_lvl_names, categories[icat]); // save levels
+
+          continue;
+
+        } else {
+
+          n_dummies = pheno_data->new_cov.col(raw_col).maxCoeff();
+          if( n_dummies > 0 )
+            full_covarMat.block(0, full_col, full_covarMat.rows(), n_dummies) = get_dummies(pheno_data->new_cov.col(raw_col).array());
+
+        }
+
       }
+      //cerr << i << " " << raw_col << " " << icat << " " << covar_names[i]  << endl;
 
-      if(params->w_interaction && !params->interaction_snp && (inter_col == i)) { 
-
-        if(n_dummies == 0)
-          throw "categorical variable to use for interaction test only has a single category.";
-
-        inter_col = j; // reset starting column
-        np_inter = n_dummies; // get number of dummies to use
-        if(params->interaction_cat) // if categorical, save levels
-          extract_names(params->interaction_lvl_names, categories[icat-1]);
-      }
-
-      j+= n_dummies;
+      raw_col++;
+      full_col += n_dummies;
     }
 
     pheno_data->new_cov = full_covarMat;
     params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
   }
 
-  if(params->w_interaction && !params->interaction_snp){ // extract column(s) but keep in new_cov
-    pheno_data->interaction_cov = pheno_data->new_cov.block(0, inter_col, pheno_data->new_cov.rows(), np_inter );
-    /*
-    // remove columns from X
-    if((inter_col+np_inter+1) != pheno_data->new_cov.cols()) {
-      int ncol_right = pheno_data->new_cov.cols() - inter_col - np_inter;
-      pheno_data->new_cov.block(0, inter_col, pheno_data->new_cov.rows(), ncol_right) = pheno_data->new_cov.block(0, inter_col + np_inter, pheno_data->new_cov.rows(), ncol_right);
-    }
-    pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(),pheno_data->new_cov.cols() - np_inter);
-    params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
-    */
-  }
-
-  //cerr << endl<<pheno_data->new_cov.topRows(5) << endl;
-  //if(params->w_interaction)cerr << endl<<pheno_data->interaction_cov.topRows(5)<< endl;
-
-  // mask individuals in genotype data but not in covariate data
-  pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
-
-  // apply masking
-  pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
-  if(params->strict_mode) pheno_data->new_cov.array().colwise() *= pheno_data->masked_indivs.col(0).array().cast<double>();
-  // for interaction testing
-  if(params->w_interaction && !params->interaction_snp){ 
-    pheno_data->interaction_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
-    if(params->strict_mode) pheno_data->interaction_cov.array().colwise() *= pheno_data->masked_indivs.col(0).array().cast<double>();
-  }
+  if(params->w_interaction && !params->interaction_snp) // save inter cov
+    pheno_data->interaction_cov = filters->cov_colKeep_names[filters->interaction_cov] ? inter_cov_column.matrix() : inter_cov_matrix;
 
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.count() << endl;
   if(params->w_interaction) {
     sout <<  "   -testing for interaction with "
       << (params->interaction_snp? "variant " : "")
       << "'" << filters->interaction_cov << "'\n";
+
     if(!params->binary_mode && !params->no_robust) {
       sout <<  "    +using " << 
         (params->force_robust && params->force_hc4? "HC4 robust SE" : "" ) << 
@@ -657,6 +682,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       if(!params->force_robust && !params->rint)
         sout <<  "    +WARNING: HLM should be used with RINTed traits (otherwise use option --apply-rint)\n"; 
     }
+
   }
 
   fClass.closeFile();
@@ -730,51 +756,66 @@ void extract_interaction_snp(struct param* params, struct in_files* files, struc
   code_snp(pheno_data->interaction_cov, ind_in_cov_and_geno, params->interaction_snp_offset, filters, files, params, sout);
   //cerr << pheno_data->interaction_cov.topRows(5) << endl; exit(-1);
 
-  // mask individuals with missing genotypes for the variant
-  pheno_data->masked_indivs.array().colwise() *= ind_in_cov_and_geno;
-
-  if(params->gwas_condtl){ // add to covariates
-    pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
-    pheno_data->new_cov.rightCols( pheno_data->interaction_cov.cols() ) = pheno_data->interaction_cov;
-  }
-
 }
 
 
 int check_categories(vector<std::string>& covar, vector<std::map<std::string,int>>& categories, struct param* params, struct filter* filters, mstream& sout){
 
-  int ntotal = 0;
+  int ntotal = 0, n_levels = 0;
 
   for(size_t i = 0, j = 0; i < covar.size(); i++){
 
     // skip qCovar
     if( filters->cov_colKeep_names[ covar[i] ] ) continue;
 
-    if((int)categories[j].size() > params->max_cat_levels)
-      throw "too many categories for covariate: " + covar[i] + ". Either use '--maxCatLevels' or combine categories.";
+    n_levels = categories[j++].size();
 
-    ntotal += categories[j++].size() - 1; // add K-1 dummy vars
+    if( n_levels > params->max_cat_levels) // too many categories
+      throw "too many categories for covariate: " + covar[i] + " (=" + to_string( n_levels ) + "). Either use '--maxCatLevels' or combine categories.";
+    else if( n_levels == 1) // too few categories
+      sout << "WARNING: covariate ' " << covar[i] << "' only has a single category so it will be ignored\n";
+
+    // for interaction test
+    if(params->w_interaction && !params->interaction_snp && (covar[i] == filters->interaction_cov)) // skip it
+      continue;
+     
+    ntotal += n_levels - 1; // add K-1 dummy vars
   }
 
   return ntotal;
 }
 
-MatrixXd get_dummies(const Eigen::Ref<const Eigen::MatrixXd>& numCov) {
+MatrixXd get_dummies(const Eigen::Ref<const Eigen::ArrayXd>& numCov) {
 
-  int index, nvars;
-  nvars = numCov.maxCoeff();
+  int index, nvars = numCov.maxCoeff();
+  MatrixXd dout = MatrixXd::Zero(numCov.size(), nvars);
+  //cerr << dout.rows() << "***" << dout.cols() << "--min=" << numCov.minCoeff() << endl;
 
-  MatrixXd dout = MatrixXd::Zero(numCov.rows(), nvars);
+  for(int i = 0; i < numCov.size(); i++){
+    if(numCov(i) == 0) continue; // will go to intercept
 
-  for(int i = 0; i < numCov.rows(); i++){
-    if(numCov(i,0) == 0) continue; // will go to intercept
-
-    index = numCov(i,0) - 1;
+    index = numCov(i) - 1;
     dout(i, index) = 1;
   }
 
   return dout;
 
+}
+
+// check if need to add E^2 (i.e. if single column and not 0/1)
+bool add_square_term(const Eigen::Ref<const Eigen::MatrixXd>& X) {
+
+  if(X.cols() > 1) // categorical
+    return false;
+
+  std::unordered_set<double> vals(X.col(0).data(), X.col(0).data() + X.rows());
+  if(vals.size() > 2) // not dichotomous
+    return true;
+
+  if((vals.find(0) != vals.end()) && (vals.find(1) != vals.end())) // only 0/1
+    return false;
+
+  return true;
 }
 
 void extract_names(vector<string>& names, map<string,int>& map_names){
@@ -805,8 +846,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   setMasks(params, filters, pheno_data, sout);
 
   // for interaction test with BTs, add E^2 to covs
-  if( params->binary_mode && params->w_interaction && 
-      (!params->interaction_snp || params->gwas_condtl) ) {
+  if( params->binary_mode && params->w_interaction && params->gwas_condtl ) {
     pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
     pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov.array().square().matrix();
   }
@@ -824,26 +864,25 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
     params->ncov_interaction = pheno_data->interaction_cov.cols();
     params->n_tests_per_variant += 3; // marginal + inter + joint
-    // with GxG tests
-    if(params->interaction_snp && !params->gwas_condtl) {
+    params->int_add_esq_term = add_square_term(pheno_data->interaction_cov);
 
-      // for add coding, add G_E^2 (check G_E is not binary)
-      if(params->binary_mode && params->int_add_coding && 
-          (pheno_data->interaction_cov.maxCoeff() == 2) ) {
-        params->int_add_esq = true;
+    if(!params->gwas_condtl) { // include main effects of Xinter
+
+      params->int_add_esq = params->binary_mode && params->int_add_esq_term;
+      if(params->int_add_esq){ // use G_E and G_E^2
         params->interaction_istart = 2 * params->ncov_interaction;
         pheno_data->interaction_cov_res.resize(pheno_data->interaction_cov.rows(), pheno_data->interaction_cov.cols() * 2);
         pheno_data->interaction_cov_res << pheno_data->interaction_cov, pheno_data->interaction_cov.array().square().matrix();
-
-      } else {
+      } else { // use only G_E
         params->interaction_istart = params->ncov_interaction;
         // keep original and residualized version
         pheno_data->interaction_cov_res = pheno_data->interaction_cov;
       }
 
       // remove covariate effects
-      if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_snp, params, pheno_data, sout))
-        throw "Var(SNP)=0 for interaction test variant.";
+      if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_X, params, pheno_data, sout))
+        throw "Var=0 for the interaction risk factor.";
+
     }
     //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
 

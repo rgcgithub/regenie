@@ -183,7 +183,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
     ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
     ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
-    ("force-condtl", "also condition on interacting SNP in the marginal GWAS test")
+    ("force-condtl", "to also condition on interacting SNP in the marginal GWAS test")
+    ("no-condtl", "to print out all main effects in GxE interaction test")
     ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
     ("set-list", "file with sets definition", cxxopts::value<std::string>(files->set_file),"FILE")
     ("extract-sets", "comma-separated list of files with IDs of sets to retain in the analysis", cxxopts::value<std::string>(),"FILE")
@@ -416,8 +417,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       check_inter_var(filters->interaction_cov, filters->interaction_cov_null_level, sout);
       if(!vm.count("interaction-snp") && !in_map(filters->interaction_cov,filters->cov_colKeep_names))
         filters->cov_colKeep_names[filters->interaction_cov] = true; // assume qt
-      if(vm.count("interaction-snp") && vm.count("force-condtl"))
-        params->gwas_condtl = true;
+      if(vm.count("no-condtl") || (vm.count("interaction-snp") && !vm.count("force-condtl")) )
+        params->gwas_condtl = false;
     }
     if( vm.count("tpheno-ignoreCols") ) {
       tmp_str_vec = string_split(vm["tpheno-ignoreCols"].as<string>(),",");
@@ -681,6 +682,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(!params->build_mask && params->check_mask_files) params->check_mask_files = false;
     if(!params->build_mask && params->strict_check_burden) params->strict_check_burden = false;
     if(!params->write_masks && params->skip_test) params->skip_test = false;
+    if(!params->w_interaction) params->gwas_condtl = false;
     if(!params->write_masks && params->write_setlist) {
       sout << "WARNING: must use --write-setlist with --write-mask.\n";
       params->write_setlist = false;
@@ -979,7 +981,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
     if(params->mask_loo) total_ram += params->block_size; // loo masks
     // for Hmat (G_E, G, G*E )
     if(params->w_interaction) 
-      total_ram += params->threads * ((params->interaction_snp ? 2 : 1) * params->ncov_interaction + 1); 
+      total_ram += params->threads * ((params->gwas_condtl ? 1 : 2) * params->ncov_interaction + 1); 
   }
 
   total_ram *= params->n_samples * sizeof(double);

@@ -1554,7 +1554,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<std::shared_ptr<F
 
 void Data::print_test_info(){
 
-  if(params.getCorMat) return;
+  if(params.getCorMat) { params.with_flip = false; return; }
 
   if(params.write_masks) {
 

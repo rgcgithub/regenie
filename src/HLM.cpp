@@ -50,7 +50,7 @@ void HLM::prep_run(struct phenodt const* pheno_data, struct param const* params)
   allocate_mat(Vlin, pheno_data->interaction_cov.rows(), params->ncov_interaction + 1);
   Vlin << MatrixXd::Ones(pheno_data->interaction_cov.rows(),1), pheno_data->interaction_cov; 
 
-  if(params->hlm_vquad){
+  if(params->hlm_vquad && params->int_add_esq_term){
 
     // set V = (1, E, E^2) [ apply QR to U = (E,E^2), center & scale, and set V = (1, U)]
     MatrixXd Vtmp (Vlin.rows(), params->ncov_interaction * 2);
@@ -71,11 +71,15 @@ void HLM::prep_run(struct phenodt const* pheno_data, struct param const* params)
   }
 
   // set X = (covs, E^2, blup) - covs may include E
-  MatrixXd Xtmp (pheno_data->new_cov.rows(), params->ncov + params->ncov_interaction);
-  Xtmp << pheno_data->new_cov, pheno_data->interaction_cov.array().square().matrix();
-  //cerr << "pre:\n" << Xtmp.topRows(5) << "\n\n";
-  apply_QR(Xtmp, params, false);
+  MatrixXd Xtmp (pheno_data->new_cov.rows(), params->ncov + (params->int_add_esq_term ? params->ncov_interaction : 0 ));
+  if(params->int_add_esq_term) {
+    //cerr << "pre:\n" << Xtmp.topRows(5) << "\n\n";
+    Xtmp << pheno_data->new_cov, pheno_data->interaction_cov.array().square().matrix();
+    apply_QR(Xtmp, params, false);
+  } else
+    Xtmp = pheno_data->new_cov;
   //cerr << "post:\n" << Xtmp.topRows(5) << "\n\n";
+
   allocate_mat(X, Xtmp.rows(), Xtmp.cols() + (params->skip_blups ? 0 : 1) );
   X.leftCols(Xtmp.cols()) = Xtmp; 
 

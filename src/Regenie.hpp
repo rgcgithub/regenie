@@ -248,14 +248,14 @@ struct param {
   bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
-  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_coding = false, int_add_esq = false; // interaction test
+  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_coding = false, int_add_esq_term = false, int_add_esq = false; // interaction test
   int interaction_istart = 0, ltco_chr;
   uint64 interaction_snp_offset; // index in genotype file
   bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
   double rareMAC_inter = 1000; // MAC below which to use HLM
   int n_tests_per_variant = 1;
   std::vector<std::string> interaction_lvl_names; // name of levels if using categorical variable for test
-  bool gwas_condtl = false;
+  bool gwas_condtl = true;
   std::string condtl_suff;
   // spa
   bool use_SPA = false; // saddlepoint approximation to estimate pvalue
