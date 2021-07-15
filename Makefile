@@ -26,11 +26,11 @@ STATIC       := 0
 
 ############
 
-CXX           = g++
-CXXFLAGS      = -O3 -Wall -pedantic -ffast-math -std=c++11 -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
+CXX           ?= g++
+CXXFLAGS      ?= -O3 -Wall -pedantic -ffast-math -std=c++11 -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
 
 EFILE         = regenie
-CFLAGS        =
+CFLAGS        ?=
 
 # check BGEN_PATH is set
 ifneq ($(MAKECMDGOALS),clean)
