@@ -46,7 +46,7 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
   sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
 
   auto t1 = std::chrono::high_resolution_clock::now();
-  ArrayXd betaold, etavec, pivec, loco_offset;
+  ArrayXd betaold, etavec, pivec, loco_offset, wvec;
   MatrixXd XtW;
   if(params->w_interaction) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
 
@@ -70,7 +70,8 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
 
     if(params->test_mode){
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
-      m_ests->Gamma_sqrt.col(i) = (pivec * (1 - pivec) ).sqrt().matrix();
+      get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
+      m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
       m_ests->Xt_Gamma_X_inv[i] = (m_ests->X_Gamma[i].transpose() * m_ests->X_Gamma[i]).colPivHouseholderQr().inverse();
       if(params->w_interaction) m_ests->bhat_start.col(i) = betaold.matrix();
