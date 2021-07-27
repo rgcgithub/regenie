@@ -25,12 +25,14 @@ OPENBLAS_ROOT =
 STATIC       := 0
 
 ############
-
-CXX           = g++
-CXXFLAGS      = -O3 -Wall -pedantic -ffast-math -std=c++11 -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
+# Use only if not set
+CXX          ?= g++
+CXXFLAGS     ?= -O3 
+# required flags
+CXXFLAGS     += -std=c++11 -pedantic -ffast-math -Wall -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
 
 EFILE         = regenie
-CFLAGS        =
+CFLAGS       ?=
 
 # check BGEN_PATH is set
 ifneq ($(MAKECMDGOALS),clean)
