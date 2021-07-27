@@ -690,7 +690,8 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               if( k != i) {
 
                 // get w=p*(1-p) and check none of the values are 0
-                if( get_wvec(etavec, pivec, wvec, betaold, masked_in_folds[k].col(ph).array(), l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->l1_ridge_eps) ){
+                get_pvec(etavec, pivec, betaold, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
@@ -715,7 +716,8 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               for(int k = 0; k < params->cv_folds; ++k ) {
                 if( k != i) {
                   // get w=p*(1-p) and check none of the values are 0
-                  invalid_wvec = get_wvec(etavec, pivec, wvec, betanew, masked_in_folds[k].col(ph).array(), l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->l1_ridge_eps);
+                  get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                  invalid_wvec = get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps);
                   if( invalid_wvec ) break; // do another halving
                 }
               }
@@ -732,7 +734,8 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
                 // get w=p*(1-p) and check none of the values are 0
-                if( get_wvec(etavec, pivec, wvec, betanew, masked_in_folds[k].col(ph).array(), l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->l1_ridge_eps) ){
+                get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
@@ -926,7 +929,8 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   while(niter_cur++ < params->niter_max_ridge) {
 
     // get w=p*(1-p) and check none of the values are 0
-    if( get_wvec(etavec, pivec, wvec, betaold, mask, offset, X, params->l1_ridge_eps) ){
+    get_pvec(etavec, pivec, betaold, offset, X);
+    if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
       sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
       return false;
     }
@@ -951,7 +955,8 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     betanew = Hinv.solve(XtWZ).array();
 
     // get w=p*(1-p) and check none of the values are 0
-    if( get_wvec(etavec, pivec, wvec, betanew, mask, offset, X, params->l1_ridge_eps) ){
+    get_pvec(etavec, pivec, betanew, offset, X);
+    if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
       sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
       return false;
     }
@@ -1026,9 +1031,7 @@ void run_log_ridge_loocv_adam(const int& ph, const double& lambda, ArrayXd& beta
 }
 
 
-bool get_wvec(ArrayXd& etavec, ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXb>& mask, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat, const double& tol){
-
-  get_pvec(etavec, pivec, beta, offset, Xmat);
+bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, const double& tol){
 
   wvec = ArrayXd::Ones( mask.size() );// set all entries to 1
   // avoid 0 weights by setting w to eps when p is within eps of 0/1
