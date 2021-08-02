@@ -754,12 +754,14 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   std::map <std::string, uint32_t> tmp_map;
 
   params->n_variants = snpinfo.size(); // current variants count
+
   if(params->set_range)
     sout << "   -number of variants after filtering on range = " << params->n_variants << endl;
 
   // if inclusion/exclusion file is given
   if(params->rm_snps || params->keep_snps) {
 
+    assert( snpinfo.size() == filters->snpID_to_ind.size() ); // should be the same
     ArrayXb geno_mask;// true = keep, false = rm
 
     // apply masking to snps
@@ -829,6 +831,7 @@ void check_snps_include_exclude_or(struct in_files* files, struct param* params,
   if(!(params->rm_or || params->keep_or)) 
     return;
 
+  assert( snpinfo.size() == filters->snpID_to_ind.size() ); // should be the same
   ArrayXb geno_mask;// if true, check MAC
 
   if( params->rm_or ) {
@@ -918,11 +921,10 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
 
 ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, mstream& sout) {
 
-  uint32_t nids = map_ID.size(), index;
   string line;
   std::vector< string > tmp_str_vec ;
   Files myfile;
-  ArrayXb mask = ArrayXb::Constant(nids, false); 
+  ArrayXb mask = ArrayXb::Constant( map_ID.size() , false); 
 
   for(auto fin : file_list) {
 
@@ -934,10 +936,8 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
       if( tmp_str_vec.size() < 1 )
         throw "incorrectly formatted file.";
 
-      if (in_map(tmp_str_vec[0], map_ID)) {
-        index = map_ID[ tmp_str_vec[0] ];
-        mask[index] = true;
-      }
+      if( in_map(tmp_str_vec[0], map_ID) ) 
+        mask( map_ID[ tmp_str_vec[0] ] ) = true;
     }
 
     myfile.closeFile();
