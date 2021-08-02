@@ -807,6 +807,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "cannot use LTCO with full PRS.";
     if(vm.count("use-null-firth") && !params->firth_approx) 
       throw "option --use-null-firth only wors with approximate Firth test.";
+    if(vm.count("write-null-firth") && 
+        ((params->test_mode && !params->firth_approx) || !(params->test_mode || params->binary_mode)) ) {
+      sout << "WARNING: option --write-null-firth only works for BTs with approximate Firth test.\n";
+      params->write_null_firth = false;
+    }
 
     if(params->transposedPheno){
       if(vm.count("phenoFile") ) 
