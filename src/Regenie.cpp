@@ -180,7 +180,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(),"CHR:MINPOS-MAXPOS")
     ("af-cc", "print effect allele frequencies among cases/controls for step 2")
-    ("test", "'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
+    ("test", "'additive', 'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
     ("set-list", "file with sets definition", cxxopts::value<std::string>(files->set_file),"FILE")
     ("extract-sets", "comma-separated list of files with IDs of sets to retain in the analysis", cxxopts::value<std::string>(),"FILE")
     ("exclude-sets", "comma-separated list of files with IDs of sets to remove from the analysis", cxxopts::value<std::string>(),"FILE")
@@ -499,9 +499,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "invalid job number for --run-l0 (must be >=1).";
     }
     if( vm.count("test") ) {
-      if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
+      if( vm["test"].as<string>() == "additive") params->test_type = 0; 
+      else if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
       else if( vm["test"].as<string>() == "recessive") params->test_type = 2; 
-      else throw "unrecognized argument for option --test, must be either 'dominant' or 'recessive'.";
+      else throw "unrecognized argument for option --test, must be either 'additive', 'dominant' or 'recessive'.";
     }
     if( vm.count("range") ) { // Format: Chr:min-max
       char tmp_chr[20];
