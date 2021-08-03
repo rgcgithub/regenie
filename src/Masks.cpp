@@ -696,7 +696,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       if( ds != -3 ){
         lval = 0, mval = ds;
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex[i];
+          lval = params->sex(i);
           mval = ds * 0.5 * (2 - lval);
         }
         total += ds;
@@ -860,7 +860,7 @@ void GenoMask::write_famfile(struct param* params, struct filter const* filters,
       out << 
         params->FIDvec[index][0] << "\t" <<
         params->FIDvec[index][1] << "\t" <<
-        "0\t0\t" << params->sex[i] << "\t-9\n";
+        "0\t0\t" << params->sex(i) << "\t-9\n";
     }
 
     index++;

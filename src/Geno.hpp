@@ -113,6 +113,13 @@ struct variant_block {
   std::vector<std::string> sum_stats;
 };
 
+// for conditional analyses
+struct cond_geno_info {
+  bool dosage_mode;
+  PgenReader pgr;
+  ArrayXb sample_keep; // keep track of samples in analysis
+  Eigen::ArrayXi sample_index; // index of samples in analysis
+};
 
 struct findID {
   uint32_t index;
@@ -124,7 +131,9 @@ struct findID {
 void check_bgen(const std::string&,struct param*);
 void prep_bgen(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,BgenParser&,mstream&);
 void read_bgen_sample(const std::string&,struct param*,std::vector<std::string> &,mstream&);
+void read_bgen_sample(const std::string&,std::vector<std::string> &,mstream&);
 void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
+void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,mstream&);
 
 void read_bed_bim_fam(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
@@ -157,7 +166,7 @@ void parseSnpfromBed(const int&,const int&,const std::vector<uchar>&,struct para
 void readChunkFromPGENFileToG(std::vector<uint64> const&,const int&,struct param const*,struct filter const*,struct geno_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,std::vector<snp> const&,std::vector<variant_block>&);
 
 void skip_snps(uint64 const&,struct param const*,struct in_files*,struct geno_block*);
-void jumpto_bed(uint64 const&,struct in_files*);
+void jumpto_bed(uint64 const&,uint64 const&,std::ifstream&);
 void buildLookupTable(std::vector<Eigen::ArrayXd>&);
 void prep_snp_stats(variant_block*,struct param const*);
 void initialize_thread_data(std::vector<data_thread>&,struct param const&);
@@ -178,6 +187,7 @@ void writeSnplist(std::string const&,int const&,int const&,std::vector<snp> cons
 bool in_chrList(const int&,struct filter const*);
 std::string bgi_chrList(struct filter*,const int&);
 std::string bgi_chrList(const int&,const int&);
+std::string bgi_rsidList(std::map <std::string, uint64>&);
 bool in_range(int const&,uint32_t const&,struct param const*);
 findID getIndivIndex(const std::string&,const std::string&,struct param*,mstream&);
 
@@ -212,7 +222,25 @@ void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_n
 void read_snp(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct geno_block*,struct param*);
 void read_snp_bed(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*);
 void read_snp_pgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct geno_block*,struct param*);
-void read_snp_bgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,int const&);
+void read_snp_bgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,std::string const&,struct param*,int const&);
 void code_snp(Eigen::MatrixXd&,Eigen::Ref<ArrayXb>,uint64 const&,struct filter*,struct in_files*,struct param*,mstream&);
+
+// for conditional analyses
+void get_conditional_vars(std::map<std::string,uint64>&,struct in_files*,struct param const*,mstream&);
+void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,uint32_t>&,std::vector<snp> const&,mstream&);
+void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,uint64>&,mstream&);
+Eigen::MatrixXd extract_from_genofile(Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,mstream&);
+void setup_bgen(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,struct filter*,mstream&);
+void read_snps_bgen(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>,std::string const&);
+void setup_pgen(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,mstream&);
+uint32_t read_pvar(std::map<std::string,uint64>&,struct in_files*);
+uint32_t read_psam(struct cond_geno_info&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*);
+void prep_pgen(uint32_t&,uint32_t&,struct cond_geno_info&,struct in_files const*);
+void read_snps_pgen(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>);
+void setup_bed(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,mstream&);
+uint32_t read_bim(std::map<std::string,uint64>&,struct in_files*);
+uint32_t read_fam(struct cond_geno_info&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*);
+void prep_bed(uint32_t&,struct cond_geno_info&,struct in_files const*);
+void read_snps_bed(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*,mstream&);
 
 #endif

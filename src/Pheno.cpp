@@ -67,6 +67,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   // read in covariates
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
+  if(params->condition_snps)
+      extract_condition_snps(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
   if(params->w_interaction){
     if(params->interaction_snp) // if doing GxG interaction
       extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
@@ -91,7 +93,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   }
 
   // print case-control counts per trait
-  if(params->binary_mode && params->verbose)
+  if(params->binary_mode)
     print_cc_info(params, files, pheno_data, sout);
 
 }
@@ -759,6 +761,33 @@ void extract_interaction_snp(struct param* params, struct in_files* files, struc
 }
 
 
+void extract_condition_snps(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, struct geno_block* gblock, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
+
+  int count = 0;
+  std::map <std::string, uint64>::iterator itr;
+  MatrixXd Gcov;
+
+  if(params->condition_file) 
+    Gcov = extract_from_genofile(ind_in_cov_and_geno, filters, files, params, sout);
+  else { // just read the snps
+
+    sout << "    +conditioning on variants in [" << files->condition_snps_list << "] n_used = " << filters->condition_snp_names.size() << endl;
+
+    Gcov.resize(params->n_samples, filters->condition_snp_names.size());
+    for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr, count++) 
+      read_snp(itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters, files, gblock, params);
+
+  }
+  
+  // Add to covariates
+  pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + Gcov.cols());
+  pheno_data->new_cov.rightCols(Gcov.cols()) = Gcov;
+
+  //cerr << Gcov.topRows(5) << "\n\n" << pheno_data->new_cov.topRows(5) << "\n\n";
+
+}
+
+
 int check_categories(vector<std::string>& covar, vector<std::map<std::string,int>>& categories, struct param* params, struct filter* filters, mstream& sout){
 
   int ntotal = 0, n_levels = 0;
@@ -812,7 +841,7 @@ bool add_square_term(const Eigen::Ref<const Eigen::MatrixXd>& X) {
   if(vals.size() > 2) // not dichotomous
     return true;
 
-  if((vals.find(0) != vals.end()) && (vals.find(1) != vals.end())) // only 0/1
+  if(vals.find(0) != vals.end()) // one of the values is 0
     return false;
 
   return true;
@@ -864,20 +893,27 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
     params->ncov_interaction = pheno_data->interaction_cov.cols();
     params->n_tests_per_variant += 3; // marginal + inter + joint
-    params->int_add_esq_term = add_square_term(pheno_data->interaction_cov);
+    params->int_add_extra_term = add_square_term(pheno_data->interaction_cov);
+    params->add_homdev = params->add_homdev && params->int_add_extra_term && (pheno_data->interaction_cov.array()>=1.5).any();
 
     if(!params->gwas_condtl) { // include main effects of Xinter
 
-      params->int_add_esq = params->binary_mode && params->int_add_esq_term;
+      params->int_add_esq = params->binary_mode && !params->add_homdev && params->int_add_extra_term;
       if(params->int_add_esq){ // use G_E and G_E^2
         params->interaction_istart = 2 * params->ncov_interaction;
         pheno_data->interaction_cov_res.resize(pheno_data->interaction_cov.rows(), pheno_data->interaction_cov.cols() * 2);
         pheno_data->interaction_cov_res << pheno_data->interaction_cov, pheno_data->interaction_cov.array().square().matrix();
+      } else if(params->add_homdev){ // only with additive coding (add hom. correction term)
+        pheno_data->interaction_homdev = (pheno_data->interaction_cov.array()>=1.5).cast<double>().matrix();
+        params->interaction_istart = 2 * params->ncov_interaction;
+        pheno_data->interaction_cov_res.resize(pheno_data->interaction_cov.rows(), pheno_data->interaction_cov.cols() * 2);
+        pheno_data->interaction_cov_res << pheno_data->interaction_cov, pheno_data->interaction_homdev;
       } else { // use only G_E
         params->interaction_istart = params->ncov_interaction;
         // keep original and residualized version
         pheno_data->interaction_cov_res = pheno_data->interaction_cov;
       }
+      //cerr << pheno_data->interaction_cov_res.topRows(5) << "\n\n";
 
       // remove covariate effects
       if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_X, params, pheno_data, sout))
@@ -891,13 +927,8 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
       pheno_data->phenotypes_raw = pheno_data->phenotypes;
 
     // allocate per thread if using OpenMP
-#if defined(_OPENMP)
-    pheno_data->Hmat.resize(params->threads);
-    pheno_data->scf_i.resize(params->threads);
-#else
-    pheno_data->Hmat.resize(1);
-    pheno_data->scf_i.resize(1);
-#endif
+    pheno_data->Hmat.resize(params->neff_threads);
+    pheno_data->scf_i.resize(params->neff_threads);
     
   }
 

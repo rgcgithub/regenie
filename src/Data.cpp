@@ -103,11 +103,7 @@ void Data::run_step1(){
 void Data::run_step2(){
 
   // allocate per thread if using OpenMP
-#if defined(_OPENMP)
-  Gblock.thread_data.resize(params.threads);
-#else
-  Gblock.thread_data.resize(1);
-#endif
+  Gblock.thread_data.resize(params.neff_threads);
 
   if( params.snp_set ) test_joint();
   else test_snps_fast();
@@ -128,6 +124,9 @@ void Data::file_read_initialization() {
 
   // for l0 in parallel
   if(params.run_l0_only) prep_parallel_l0();
+
+  if( params.condition_snps )
+    get_conditional_vars(in_filters.condition_snp_names, &files, &params, sout);
 
   if(params.file_type == "bed") read_bed_bim_fam(&files, &params, &in_filters, snpinfo, chr_map, sout);
   else if(params.file_type == "pgen") read_pgen_pvar_psam(&files, &params, &in_filters, &Gblock, snpinfo, chr_map, sout);
@@ -1972,7 +1971,7 @@ void Data::analyze_block(int const& chrom, int const& n_snps, tally* snp_tally, 
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps; isnp++) {
 
-      jumpto_bed( snpinfo[indices[isnp]].offset, &files );
+      jumpto_bed( snpinfo[indices[isnp]].offset, files.bed_block_size, files.geno_ifstream);
       snp_data_blocks[isnp].resize(files.bed_block_size);
       files.geno_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
 
@@ -2417,7 +2416,7 @@ void Data::readChunk(vector<uint64>& indices, int const& chrom, vector< vector <
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps; isnp++) {
 
-      jumpto_bed( snpinfo[ indices[isnp] ].offset, &files );
+      jumpto_bed( snpinfo[ indices[isnp] ].offset, files.bed_block_size, files.geno_ifstream);
       snp_data_blocks[isnp].resize(files.bed_block_size);
       files.geno_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
 

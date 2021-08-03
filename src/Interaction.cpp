@@ -60,8 +60,12 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
     else
       pheno_data->Hmat[thread].rightCols(nullHLM.Vlin.cols()) = (nullHLM.Vlin.array().colwise() * gblock->Gmat.col(isnp).array()).matrix();
 
-    // get G_E if specified (not re-scaled)
-    if(!params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov;
+    // add main effects for G_E if specified (not re-scaled)
+    if(!params->gwas_condtl) {
+      pheno_data->Hmat[thread].leftCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov;
+      if(params->add_homdev)
+        pheno_data->Hmat[thread].col(pheno_data->interaction_cov.cols()) = pheno_data->interaction_homdev;
+    }
 
     snp_data->fitHLM = true;
     return;
@@ -78,10 +82,10 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
   snp_data->skip_int = !residualize_matrix(iMat, pheno_data->scf_i[thread], params, pheno_data, sout);
   if(snp_data->skip_int) return;
 
-  // start filling matrix with C*G terms (for GxG, also add residual of G_E)
+  // start filling matrix with C*G terms (if not condtl, also add residual of G_E)
   pheno_data->Hmat[thread].resize(pheno_data->interaction_cov.rows(), params->ncov_interaction + params->interaction_istart + 1);
-  pheno_data->Hmat[thread].rightCols(params->ncov_interaction) = iMat;
-  if(!params->gwas_condtl) pheno_data->Hmat[thread].leftCols(params->interaction_istart) = pheno_data->interaction_cov_res;
+  pheno_data->Hmat[thread].rightCols(iMat.cols()) = iMat;
+  if(!params->gwas_condtl) pheno_data->Hmat[thread].leftCols(pheno_data->interaction_cov_res.cols()) = pheno_data->interaction_cov_res;
 
 }
 
@@ -107,7 +111,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
 
   // fill rest of matrix [ G, C*G ]
   pheno_data->Hmat[thread].col(beg) = gblock->Gmat.col(isnp);
-  //if(isnp==0) cerr << pheno_data->Hmat[thread].topRows(3) << endl; exit(-1);
+  //cerr << pheno_data->Hmat[thread].topRows(3) << endl; exit(-1);
 
   // pre-compute Z = (M^tM)^(-1) for all phenos 
   SelfAdjointEigenSolver<MatrixXd> esM(pheno_data->Hmat[thread].transpose() * pheno_data->Hmat[thread]);
@@ -173,26 +177,30 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
 
     ///////////////////////
     // print main effect of G_E
-    if(!params->gwas_condtl){
-      for(int j = 0; j < params->ncov_interaction; j++){ 
+    if(beg > 0){
+      for(int j = 0; j < beg; j++){ 
+        tstat = bhat(j) * bhat(j) / Vmat(j,j);
         sehat = sqrt(Vmat(j,j)) * cscale(j);
+        get_logp(logp, tstat);
         if(params->interaction_cat)
           stmp="-INT_" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
+        else if(params->add_homdev && (j != 0))
+          stmp="-INT_" + filters->interaction_cov + "-HOM"; // G_E>=1.5
         else
           stmp="-INT_" + filters->interaction_cov; // single cov
 
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j) * cscale(j), sehat, -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j) * cscale(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j) * cscale(j), sehat, -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j) * cscale(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
     }
 
     ///////////////////////
     //////  marginal test
     // T, beta, se & pv
-    tstat = fabs( bhat(beg) * bhat(beg) / Vmat(beg,beg) );
+    tstat = bhat(beg) * bhat(beg) / Vmat(beg,beg);
     sehat = sqrt(Vmat(beg,beg)) * gscale;
     get_logp(logp, tstat);
     stmp="-INT_SNP";
@@ -208,16 +216,17 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     //////  interaction tests
     if(params->ncov_interaction > 1){ 
 
-      // print effects for each interaction term (no p-values)
+      // print effects for each interaction term
       for(int j = 0; j < params->ncov_interaction; j++){ 
-        // se
+        tstat = bhat(beg+1+j) * bhat(beg+1+j) / Vmat(beg+1+j,beg+1+j);
         sehat = sqrt(Vmat(beg+1+j,beg+1+j)) * iscale(j);
+        get_logp(logp, tstat);
         stmp="-INT_SNPx" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j) * iscale(j), sehat, -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j) * iscale(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j) * iscale(j), sehat, -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j) * iscale(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
 
       // joint test for interaction terms
@@ -235,7 +244,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
 
     } else {
       // T, beta, se & pv
-      tstat = fabs( bhat(beg+1) * bhat(beg+1) / Vmat(beg+1,beg+1) );
+      tstat = bhat(beg+1) * bhat(beg+1) / Vmat(beg+1,beg+1);
       sehat = sqrt(Vmat(beg+1,beg+1)) * iscale(0);
       get_logp(logp, tstat);
       if(params->interaction_cat)
@@ -319,26 +328,30 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
 
     ///////////////////////
     // print main effect of G_E
-    if(!params->gwas_condtl){
-      for(int j = 0; j < params->ncov_interaction; j++){ 
+    if(beg > 0){
+      for(int j = 0; j < beg; j++){ 
+        tstat = bhat(j) * bhat(j) / Vmat(j,j);
         sehat = sqrt(Vmat(j,j));
+        get_logp(logp, tstat);
         if(params->interaction_cat)
           stmp="-INT_" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
+        else if(params->add_homdev && (j != 0))
+          stmp="-INT_" + filters->interaction_cov + "-HOM"; // G_E>=1.5
         else
           stmp="-INT_" + filters->interaction_cov; // single cov
 
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j), sehat, -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j), sehat, -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
     }
 
     ///////////////////////
     //////  marginal test
     // T, beta, se & pv
-    tstat = fabs( bhat(beg) * bhat(beg) / Vmat(beg,beg) );
+    tstat = bhat(beg) * bhat(beg) / Vmat(beg,beg);
     sehat = sqrt(Vmat(beg,beg));
     get_logp(logp, tstat);
     stmp="-INT_SNP";
@@ -354,16 +367,17 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
     //////  interaction tests
     if(params->ncov_interaction > 1){ 
 
-      // print effects for each interaction term (no p-values)
+      // print effects for each interaction term
       for(int j = 0; j < params->ncov_interaction; j++){ 
-        // se
+        tstat = bhat(beg+1+j) * bhat(beg+1+j) / Vmat(beg+1+j,beg+1+j);
         sehat = sqrt(Vmat(beg+1+j,beg+1+j));
+        get_logp(logp, tstat);
         stmp="-INT_SNPx" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j), sehat, -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j), sehat, -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j), sehat, tstat, logp, true, 1, params, (i+1));
       }
 
       // joint test for interaction terms
@@ -502,9 +516,9 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
         // print sum_stats
         if(params->htp_out) 
-          buffer_int << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer_int << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), -1, -1, true, 1, params, (i+1));
+          buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), tstat, logp, true, 1, params, (i+1));
       }
 
       // switch to firth
@@ -574,29 +588,32 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
     ///////////////////////
     // print main effect of G_E
-    if(!params->gwas_condtl){
+    if(beg > 0){
       for(int j = 0; j < beg; j++){ 
-        tstat = fabs( bhat(j) * bhat(j) / Vmat(j,j) );
+        tstat = bhat(j) * bhat(j) / Vmat(j,j);
         sehat = sqrt(Vmat(j,j));
+        get_logp(logp, tstat);
         if(params->interaction_cat)
           stmp="-INT_" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
         else if(params->int_add_esq && (j != 0))
           stmp="-INT_" + filters->interaction_cov + "^2"; // G_E^2
+        else if(params->add_homdev && (j != 0))
+          stmp="-INT_" + filters->interaction_cov + "-HOM"; // G_E>=1.5
         else
           stmp="-INT_" + filters->interaction_cov; // single cov
 
         // print sum_stats
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), -1, -1, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), -1, -1, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), tstat, logp, true, 1, params, (i+1));
       }
     }
 
     ///////////////////////
     //////  marginal test
     // T, beta, se & pv
-    tstat = fabs( bhat(beg) * bhat(beg) / Vmat(beg,beg) );
+    tstat = bhat(beg) * bhat(beg) / Vmat(beg,beg);
     sehat = sqrt(Vmat(beg,beg));
     get_logp(logp, tstat);
     stmp="-INT_SNP";
@@ -696,6 +713,8 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
         stmp="-INT_" + filters->interaction_cov + "=" + params->interaction_lvl_names[j];
       else if(params->int_add_esq && (j != 0))
         stmp="-INT_" + filters->interaction_cov + "^2"; // G_E^2
+      else if(params->add_homdev && (j != 0))
+        stmp="-INT_" + filters->interaction_cov + "-HOM"; // G_E>=1.5
       else
         stmp="-INT_" + filters->interaction_cov; // single cov
 

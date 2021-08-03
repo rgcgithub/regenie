@@ -134,9 +134,6 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   // check if should mask snps
   check_snps_include_exclude(files, params, filters, snpinfo, chr_map, sout);
 
-  // with OR
-  check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
-
   // get info on samples
   params->n_samples  = bgen_tmp.number_of_samples();
 
@@ -147,7 +144,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
     bgen_tmp.get_sample_ids(
         [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
     // assume all females
-    params->sex.resize(params->n_samples, false);
+    params->sex = ArrayXb::Constant(params->n_samples, false);
   }
 
   // check duplicates -- if not, store in map
@@ -297,11 +294,89 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
 }
 
+void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
+
+  uint32_t lineread = 0;
+  uint64 offset, variant_bgi_size, variant_bgen_size;
+  string bgi_file = files->condition_snps_info.file + ".bgi";
+  string sql_query, rsid;
+  map <string, uint64> tmp_map;
+  sqlite3* db;
+  sqlite3_stmt* stmt;
+
+  int nalleles;
+  uint32_t position ;
+  std::string tmp_str, chr;
+  std::vector< std::string > alleles ;
+  std::vector< std::vector< double > > probs ;
+
+  // sql statement to pass variants to keep
+  sql_query = "SELECT * FROM Variant WHERE rsid IN (" + bgi_rsidList(filters->condition_snp_names) + " )";
+
+  sout << "      -index bgi file [" << bgi_file<< "]" << endl;
+  if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) 
+    throw  sqlite3_errmsg(db);
+
+  // header: chromosome|position|rsid|number_of_alleles|allele1|allele2|file_start_position|size_in_bytes
+  if( sqlite3_prepare_v2( db, sql_query.c_str(), -1, &stmt, NULL ) != SQLITE_OK )
+    throw sqlite3_errmsg(db);
+
+  bool done = false;
+  while (!done) {
+    switch (sqlite3_step(stmt)) {
+      case SQLITE_ROW:
+
+        nalleles = atoi( (char *) sqlite3_column_text(stmt, 3) );
+        assert(nalleles == 2) ; // only bi-allelic allowed
+
+        rsid = std::string( (char *) sqlite3_column_text(stmt, 2) );
+        offset = strtoull( (char *) sqlite3_column_text(stmt, 6), NULL, 10);
+        // make list of variant IDs
+        tmp_map[ rsid ] = offset;
+
+        // check if matches with info from bgenparser for first read variant
+        if( lineread++ == 0 ){
+          bgen.jumpto(offset);
+          bgen.read_variant( &chr, &position, &tmp_str, &alleles );
+          bgen.read_probs( &probs ) ;
+          if( probs[0].size() != 3 ) // unphased only 
+            throw "only unphased bgen are supported.";
+          variant_bgen_size = bgen.get_position() - offset;
+          variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
+          assert( tmp_str == rsid );
+          assert( variant_bgi_size == variant_bgen_size );
+        }
+
+        break;
+
+      case SQLITE_DONE:
+        done = true;
+        break;
+
+      default:
+        throw "failed reading file (" + std::string( sqlite3_errmsg(db) ) + ").";
+    }
+  }
+
+  sqlite3_finalize(stmt);
+  sqlite3_close(db);
+
+  if(tmp_map.size() > params->max_condition_vars)
+    throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
+  else if(tmp_map.size() == 0)
+    throw "no variants for conditional analysis were found in BGEN file";
+
+  // replace with new map
+  filters->condition_snp_names = tmp_map;
+
+}
+
 
 void read_bgen_sample(const string& sample_file, struct param* params, std::vector<string> &ids, mstream& sout){
 
   int nline = 0;
   string FID, IID, line, tmp_str;
+  std::vector<bool> sex;
   std::vector<string> IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -341,11 +416,11 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
 
     // get sex into IID (if no sex column, set to 0)
     if( !(iss >> FID >> IID) ){
-      params->sex.push_back(false);
+      sex.push_back(false);
     } else {
       // save males as 1 (else assume all females=0)
-      if( IID == "1" ) params->sex.push_back(true);
-      else params->sex.push_back(false);
+      if( IID == "1" ) sex.push_back(true);
+      else sex.push_back(false);
     }
 
     nline++;
@@ -354,7 +429,46 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
   if( params->n_samples != ids.size() )
     throw "number of samples in BGEN file does not match that in the sample file.";
 
+  params->sex.resize(params->n_samples);
+  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+
   myfile.close();
+}
+
+void read_bgen_sample(const string& sample_file, std::vector<string> &ids, mstream& sout){
+
+  int nline = 0;
+  string FID, IID, line;
+  ifstream myfile;
+
+  sout << "      -sample file: " << sample_file << endl;
+  openStream(&myfile, sample_file, ios::in, sout);
+
+  // read fid/iid information
+  while (getline (myfile,line)) {
+    std::istringstream iss(line);
+
+    if( !(iss >> FID >> IID) )
+      throw "incorrectly formatted sample file at line" + to_string( nline + 1 );
+
+    // check first two lines for correct format
+    if(nline == 0){
+
+      if( (FID != "ID_1") || (IID != "ID_2") ) 
+        throw "header of the sample file must start with: ID_1 ID_2";
+
+    } else if(nline == 1){
+
+      if( (FID != "0") || (IID != "0") ) 
+        throw "second line of sample file must start with: 0 0.";
+
+    } else ids.push_back(FID + "_" + IID);
+
+    nline++;
+  }
+
+  myfile.close();
+
 }
 
 
@@ -362,10 +476,9 @@ void read_bed_bim_fam(struct in_files* files, struct param* params, struct filte
 
   uint32_t nsamples_bed;
   read_bim(files, params, filters, snpinfo, sout);
+
   // check if should mask snps
   check_snps_include_exclude(files, params, filters, snpinfo, chr_map, sout);
-  // with OR
-  check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
 
   read_fam(files, params, sout);
   nsamples_bed = params->n_samples;
@@ -467,11 +580,33 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
 }
 
+uint32_t read_bim(map<string, uint64>& index_map, struct in_files* files, mstream& sout) {
+
+  uint64 lineread = 0;
+  std::vector< string > tmp_str_vec ;
+  string line, fname;
+  ifstream myfile;
+
+  fname = files->condition_snps_info.file + ".bim";
+  openStream(&myfile, fname, ios::in, sout);
+
+  while (getline(myfile, line)) {
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 6 )
+      throw "incorrectly formatted bim file at line " + to_string( lineread+1 );
+    index_map[ tmp_str_vec[1] ] = lineread++;
+  }
+
+  myfile.close();
+  return index_map.size();
+}
+
 
 void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
   int lineread = 0;
   string line, tmp_id, fname;
+  std::vector<bool> sex;
   std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -500,8 +635,8 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
     }
 
     // save males as 1 (else assume all females=0)
-    if( tmp_str_vec[4] == "1" ) params->sex.push_back(true);
-    else params->sex.push_back(false);
+    if( tmp_str_vec[4] == "1" ) sex.push_back(true);
+    else sex.push_back(false);
 
     lineread++;
   }
@@ -509,7 +644,49 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
   myfile.close();
   params->n_samples = lineread;
 
+  params->sex.resize(params->n_samples);
+  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+
   sout << "n_samples = " << params->n_samples << endl;
+}
+
+uint32_t read_fam(struct cond_geno_info& ginfo, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+
+  uint32_t position;
+  string line, fname;
+  std::vector< string > tmp_str_vec, tmp_ids;
+  ifstream myfile;
+
+  fname = files->condition_snps_info.file + ".fam";
+  openStream(&myfile, fname, ios::in, sout);
+
+  while (getline(myfile, line)) {
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 6 )
+      throw "incorrectly formatted fam file at line " + to_string( tmp_ids.size() + 1 );
+    tmp_ids.push_back(tmp_str_vec[0] + "_" + tmp_str_vec[1]);
+  }
+
+  myfile.close();
+
+  // check if included in the analysis (if yes, store IDs)
+  ginfo.sample_keep.resize(tmp_ids.size());
+  ginfo.sample_index.resize(tmp_ids.size());
+  for(size_t i = 0; i < tmp_ids.size(); i++) {
+    ginfo.sample_keep(i) = in_map(tmp_ids[i], params->FID_IID_to_ind); 
+    if(ginfo.sample_keep(i)) {
+      position = params->FID_IID_to_ind[ tmp_ids[i] ];
+      if(mask(position)) // analyzed sample
+        ginfo.sample_index(i) = position;
+      else
+        ginfo.sample_keep(i) = false; 
+    }
+  }
+
+  if(ginfo.sample_keep.count() == 0)
+    throw "none of the analyzed samples are present in the file";
+
+  return tmp_ids.size();
 }
 
 
@@ -532,14 +709,12 @@ void prep_bed(const uint32_t& nsamples, struct in_files* files, mstream& sout) {
 }
 
 
-
 void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct filter* filters, struct geno_block* gblock, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout) {
 
-  gblock->nv = read_pvar(files, params, filters, snpinfo, sout);;
+  gblock->nv = read_pvar(files, params, filters, snpinfo, sout);
+
   // check if should mask snps
   check_snps_include_exclude(files, params, filters, snpinfo, chr_map, sout);
-  // with OR
-  check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
 
   read_psam(files, params, sout);
   sout << "n_samples = " << params->n_samples << endl;
@@ -550,7 +725,6 @@ void read_pgen_pvar_psam(struct in_files* files, struct param* params, struct fi
   prep_pgen(files, filters, gblock, params, sout);
 
 }
-
 
 uint64 read_pvar(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, mstream& sout) {
 
@@ -648,12 +822,48 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   return lineread;
 }
 
+uint32_t read_pvar(map<string, uint64>& index_map, struct in_files* files, mstream& sout) {
+
+  uint64 lineread = 0;
+  std::vector< string > tmp_str_vec ;
+  string line, fname;
+  ifstream myfile;
+
+  fname = files->condition_snps_info.file + ".pvar";
+  openStream(&myfile, fname, ios::in, sout);
+
+  while (getline(myfile, line)) { // skip to main header line
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 1 )
+      throw "no blank lines should be before the header line in pvar file.";
+    if( tmp_str_vec[0] == "#CHROM" ) break;
+  }
+
+  // check header
+  if( (tmp_str_vec.size() < 5) || 
+      (tmp_str_vec[1] != "POS") || 
+      (tmp_str_vec[2] != "ID") || 
+      (tmp_str_vec[3] != "REF") || 
+      (tmp_str_vec[4] != "ALT") )
+    throw "header of pvar file does not have correct format.";
+
+  while (getline(myfile, line)) {
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 5 )
+      throw "incorrectly formatted pvar file at line " + to_string( lineread+1 );
+    index_map[ tmp_str_vec[2] ] = lineread++;
+  }
+
+  myfile.close();
+  return index_map.size();
+}
 
 void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
   int lineread = 0, sex_col = 0;
   bool col_found = false;
   string line, tmp_id, fname;
+  std::vector<bool> sex;
   std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -701,14 +911,69 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     }
 
     // save males as 1 (else assume all females=0)
-    if( col_found && tmp_str_vec[sex_col] == "1" ) params->sex.push_back(true);
-    else params->sex.push_back(false);
+    if( col_found && tmp_str_vec[sex_col] == "1" ) sex.push_back(true);
+    else sex.push_back(false);
 
     lineread++;
   }
 
   myfile.close();
   params->n_samples = lineread;
+
+  params->sex.resize(params->n_samples);
+  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+
+}
+
+uint32_t read_psam(struct cond_geno_info& ginfo, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+
+  uint32_t position;
+  string line, fname;
+  std::vector< string > tmp_str_vec, tmp_ids;
+  ifstream myfile;
+
+  fname = files->condition_snps_info.file + ".psam";
+  openStream(&myfile, fname, ios::in, sout);
+
+  while (getline(myfile, line)) { // skip to main header line
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 1 )
+      throw "no blank lines should be before the header line in psam file.";
+    if( tmp_str_vec[0] == "#FID" ) 
+      break;
+  }
+
+  // check header
+  if( (tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID"))
+    throw "header does not have the correct format.";
+
+  while (getline(myfile, line)) {
+    tmp_str_vec = string_split(line,"\t ");
+    if( tmp_str_vec.size() < 2 )
+      throw "incorrectly formatted psam file at line " + to_string( tmp_ids.size() + 1 ) ;
+    tmp_ids.push_back(tmp_str_vec[0] + "_" + tmp_str_vec[1]);
+  }
+
+  myfile.close();
+
+  // check if included in the analysis (if yes, store IDs)
+  ginfo.sample_keep.resize(tmp_ids.size());
+  ginfo.sample_index.resize(tmp_ids.size());
+  for(size_t i = 0; i < tmp_ids.size(); i++) {
+    ginfo.sample_keep(i) = in_map(tmp_ids[i], params->FID_IID_to_ind); 
+    if(ginfo.sample_keep(i)) {
+      position = params->FID_IID_to_ind[ tmp_ids[i] ];
+      if(mask(position)) // analyzed sample
+        ginfo.sample_index(i) = position;
+      else
+        ginfo.sample_keep(i) = false; 
+    }
+  }
+
+  if(ginfo.sample_keep.count() == 0)
+    throw "none of the analyzed samples are present in the file";
+
+  return tmp_ids.size();
 }
 
 
@@ -746,6 +1011,28 @@ void prep_pgen(struct in_files const* files, struct filter const* filters, struc
 
 }
 
+void prep_pgen(uint32_t& nsamples, uint32_t& nvars, struct cond_geno_info& ginfo, struct in_files const* files){
+
+  vector<int> subset_indices_1based;
+  string fname = files->condition_snps_info.file + ".pgen";
+
+  // set subset when samples have been excluded from analysis
+  if( ginfo.sample_keep.count() < nsamples )
+    for(size_t i = 0; i < nsamples; i++)
+      if(ginfo.sample_keep(i))
+        subset_indices_1based.push_back(i+1);
+
+  ginfo.pgr.Load(fname, nsamples, subset_indices_1based, 1);
+  if(ginfo.pgr.GetRawSampleCt() != nsamples)
+    throw "number of samples in pgen file and psam file don't match.";
+  if(ginfo.pgr.GetVariantCt() != nvars)
+    throw "number of variants in pgen file and pvar file don't match.";
+  if(ginfo.pgr.GetMaxAlleleCt() != 2)
+    throw "only bi-allelic variants are accepted.";
+
+  ginfo.dosage_mode = ginfo.pgr.DosagePresent();
+}
+
 // determine if snps should be included/excluded for step 1
 void check_snps_include_exclude(struct in_files* files, struct param* params, struct filter* filters, vector<snp>& snpinfo, map<int,vector<int>>& chr_map, mstream& sout){
 
@@ -755,6 +1042,9 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
 
   params->n_variants = snpinfo.size(); // current variants count
 
+  if( params->condition_snps && !params->condition_file)
+    get_snps_offset(filters->condition_snp_names, filters->snpID_to_ind, snpinfo, sout);
+
   if(params->set_range)
     sout << "   -number of variants after filtering on range = " << params->n_variants << endl;
 
@@ -762,16 +1052,19 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   if(params->rm_snps || params->keep_snps) {
 
     assert( snpinfo.size() == filters->snpID_to_ind.size() ); // should be the same
-    ArrayXb geno_mask;// true = keep, false = rm
+    ArrayXb geno_mask, geno_mask_rm, geno_mask_keep;// true = keep, false = rm
+    geno_mask_keep = geno_mask_rm = ArrayXb::Constant(params->n_variants, true);
 
     // apply masking to snps
+   if( params->keep_snps ) {
+      sout << "   -keeping variants specified by --extract\n";
+      geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
+    }
     if( params->rm_snps ) {
       sout << "   -removing variants specified by --exclude\n";
-      geno_mask = !check_in_map_from_files(filters->snpID_to_ind, files->file_snps_exclude, sout);
-    } else {
-      sout << "   -keeping variants specified by --extract\n";
-      geno_mask = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
-    }
+      geno_mask_rm = !check_in_map_from_files(filters->snpID_to_ind, files->file_snps_exclude, sout);
+    } 
+    geno_mask = geno_mask_rm && geno_mask_keep;
 
     if(geno_mask.all()) // no snps to remove
       params->rm_snps = params->keep_snps = false;
@@ -811,7 +1104,7 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   if(params->n_variants == 0)
     throw "no variant left to include in analysis.";
   if(params->rm_snps || params->keep_snps)
-    sout << "     +number of variants remaining in the analysis = " << params->n_variants << endl;
+    sout << "   -number of variants remaining in the analysis = " << params->n_variants << endl;
 
   // go through each chromosome in order & save number of snps
   // and save how many are actually read
@@ -822,6 +1115,9 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
     tmp_v[0] = files->chr_counts[i-1];
     chr_map[ i ] = tmp_v;
   }
+
+  // with OR
+  check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
 
 }
 
@@ -874,6 +1170,15 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
   } else
     filters->ind_in_analysis = ArrayXb::Constant(params->n_samples, true);
 
+  // for sex-specific analyses
+  if(params->sex_specific > 0){
+    if(params->sex_specific == 1) // male-only
+      filters->ind_in_analysis = filters->ind_in_analysis && params->sex;
+    else if(params->sex_specific == 2) // female-only
+      filters->ind_in_analysis = filters->ind_in_analysis && !params->sex;
+    sout << "   -keeping only " << ( params->sex_specific == 1 ? "male" : "female" ) << " individuals in the analysis\n";
+  }
+
   // keep track of individual to exclude (i.e. not stored in memory)
   filters->ind_ignore = !filters->ind_in_analysis;
 
@@ -911,7 +1216,7 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
 
     // resize ind_in_analysis
     filters->ind_in_analysis = ArrayXb::Constant(cum_pos, true);
-    sout << "     +number of genotyped individuals remaining in the analysis = " << cum_pos << endl;
+    sout << "   -number of genotyped individuals remaining in the analysis = " << cum_pos << endl;
 
   }
 
@@ -1198,7 +1503,7 @@ void readChunkFromBedFileToG(const int& bs, const int& chrom, const uint32_t& sn
   // read in N/4 bytes from bed file for each snp
   for(int j = 0; j < bs; j++) {
     // set to correct position
-    jumpto_bed( snpinfo[snpcount + j].offset, files );
+    jumpto_bed( snpinfo[snpcount + j].offset, files->bed_block_size, files->geno_ifstream);
     files->geno_ifstream.read( reinterpret_cast<char *> (&files->bed_data_blocks[j][0]), files->bed_block_size);
   }
 
@@ -1480,7 +1785,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // sex is 1 for males and 0 o.w.
           lval = 0, mval = ds;
           if(params->test_mode && (chrom == params->nChrom)) {
-            lval = params->sex[i];
+            lval = params->sex(i);
             mval = ds * 0.5 * (2 - lval);
           }
           
@@ -1736,7 +2041,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // sex is 1 for males and 0 o.w.
       lval = 0, mval = Geno(index);
       if(params->test_mode && (chrom == params->nChrom)) {
-        lval = params->sex[i];
+        lval = params->sex(i);
         mval =  Geno(index) * 0.5 * (2 - lval);
       }
 
@@ -1875,7 +2180,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         // sex is 1 for males and 0 o.w.
         lval = 0, mval = hc;
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex[i];
+          lval = params->sex(i);
           mval = hc * 0.5 * (2 - lval);
         }
 
@@ -1988,7 +2293,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex[i];
+          lval = params->sex(i);
           mval *= 0.5 * (2 - lval);
         }
 
@@ -2119,6 +2424,17 @@ string bgi_chrList(const int& range_chr, const int& nChrom){// for range
   return print_csv(clist);
 }
 
+string bgi_rsidList(std::map <std::string, uint64>& rsids){// list of snp names
+
+  std::map <std::string, uint64>::iterator itr;
+  vector<string> clist;
+
+  for (itr = rsids.begin(); itr != rsids.end(); ++itr)
+    clist.push_back( "'" + itr->first + "'" );
+
+  return print_csv(clist);
+}
+
 bool in_range(int const& snp_chr, uint32_t const& snp_pos, struct param const* params){
 
   if( (snp_chr != params->range_chr) ||
@@ -2134,15 +2450,15 @@ void skip_snps(uint64 const& offset, struct param const* params, struct in_files
 
   // set to new position based on offset
   if(params->file_type == "bed") 
-    jumpto_bed(offset, files);
+    jumpto_bed(offset, files->bed_block_size, files->geno_ifstream);
   else if(params->file_type == "bgen") 
     gblock->bgen.jumpto(offset);
 
 }
 
 // jump to given snp index in bed file (+magic number)
-void jumpto_bed(uint64 const& offset, struct in_files* files){
-  files->geno_ifstream.seekg( 3 + offset * files->bed_block_size, ios_base::beg);
+void jumpto_bed(uint64 const& offset, uint64 const& bed_block_size, std::ifstream& bed_ifstream){
+  bed_ifstream.seekg( 3 + offset * bed_block_size, ios_base::beg);
 }
 
 // create table for all possible values in 1 PLINK byte
@@ -3067,7 +3383,7 @@ void read_snp(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct
   else if(params->file_type == "pgen")
     read_snp_pgen(offset, Geno, mask, gblock, params);
   else
-    read_snp_bgen(offset, Geno, mask, filters, files, params, 0);
+    read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 0);
 
   // mask missing
   mask = (Geno != -3).select(mask, false);
@@ -3082,7 +3398,7 @@ void read_snp_bed(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, st
   ArrayXd geno4; // genotype values for 4 samples at a time
 
   // set to correct position
-  jumpto_bed(offset, files);
+  jumpto_bed(offset, files->bed_block_size, files->geno_ifstream);
   files->geno_ifstream.read( reinterpret_cast<char *> (&files->inbed[0]), files->bed_block_size);
 
   for (size_t byte_start = 0; byte_start < files->bed_block_size; byte_start++) {
@@ -3123,7 +3439,7 @@ void read_snp_pgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, s
 
 // using bgen library API
 // ttype is 0: add, 1:dom, 2:rec
-void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, int const& ttype){
+void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, string const& bgen_file, struct param* params, int const& ttype){
 
   uint32_t index = 0;
   double ds;
@@ -3134,7 +3450,7 @@ void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, s
 
   // open file
   BgenParser bgen_tmp;
-  bgen_tmp.open( files->bgen_file ) ;
+  bgen_tmp.open( bgen_file ) ;
   bgen_tmp.jumpto( offset );
   bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles );
   bgen_tmp.read_probs( &probs ) ;
@@ -3172,8 +3488,10 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
 
   string const ttype = filters->interaction_cov_null_level;
 
-  if( (ttype == "add" ) || (ttype.size() == 0) ) { // additive
-    params->int_add_coding = true;
+  if( (ttype == "add" ) || (ttype == "add-homdev" ) || (ttype.size() == 0) ){ // additive
+    params->add_homdev = (ttype == "add-homdev");
+    if(params->gwas_condtl && params->add_homdev)
+      throw "'add-homdev' coding cannot be used with --force-condtl";
     return;
   }
 
@@ -3182,7 +3500,7 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
   if(ttype == "dom"){ // dominant
 
     if(params->file_type == "bgen")
-      read_snp_bgen(offset, Geno, mask, filters, files, params, 1);
+      read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 1);
     else {
 
       if((params->file_type == "pgen") && params->dosage_mode)
@@ -3195,7 +3513,7 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
   } else if(ttype == "rec"){ //recessive
 
     if(params->file_type == "bgen")
-      read_snp_bgen(offset, Geno, mask, filters, files, params, 2);
+      read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 2);
     else {
 
       if((params->file_type == "pgen") && params->dosage_mode)
@@ -3220,7 +3538,349 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
     vector<string> vecstr{ "1","2" };
     params->interaction_lvl_names = vecstr;
 
-  } else throw "unrecognized coding for GxG variant (can be either add/dom/rec/cat).";
+  } else throw "unrecognized coding for GxG variant (can be either add/dom/rec/cat/add-homdev).";
 
 }
 
+
+void get_conditional_vars(map<string, uint64>& snps, struct in_files* files, struct param const* params, mstream& sout) {
+
+  string line;
+  std::vector< string > tmp_str_vec ;
+  Files myfile;
+
+  myfile.openForRead (files->condition_snps_list, sout);
+
+  // get list of variants
+  while( myfile.readLine(line) ){
+    tmp_str_vec = string_split(line,"\t ");
+
+    if( tmp_str_vec.size() < 1 )
+      throw "incorrectly formatted file (" + files->condition_snps_list + ")";
+
+    snps[tmp_str_vec[0]] = 0;
+  }
+
+  myfile.closeFile();
+
+  if(snps.size() > params->max_condition_vars)
+    throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
+  else if(snps.size() == 0)
+    throw "no variants for conditional analysis given in file " + files->condition_snps_list;
+
+  // make sure variants will be ignored by adding to exclude list
+  files->file_snps_exclude.push_back(files->condition_snps_list);
+
+}
+
+void get_snps_offset(map<string, uint64>& snps, map<string, uint32_t>& index_map, vector<snp> const& snpinfo, mstream& sout){
+
+  uint32_t nstart = snps.size();
+  std::map <std::string, uint64> snps_found;
+  std::map <std::string, uint64>::iterator itr;
+
+  for (itr = snps.begin(); itr != snps.end(); ++itr) {
+    if (in_map(itr->first, index_map))
+      snps_found[ itr->first ] = snpinfo[ index_map[ itr->first ] ].offset;
+  }
+
+  snps = snps_found;
+
+  if(snps.size() == 0)
+    throw "none of the conditional variants were found in the genotype file";
+  else if(snps.size() != nstart)
+    sout << "   -WARNING: " << nstart - snps.size() << " of the variants for conditional analysis could not be found in the genotype file\n";
+
+}
+
+void get_snps_offset(map<string, uint64>& snps, map<string, uint64>& index_map, mstream& sout){
+
+  std::map <std::string, uint64> snps_found;
+  std::map <std::string, uint64>::iterator itr;
+
+  for (itr = snps.begin(); itr != snps.end(); ++itr) 
+    if (in_map(itr->first, index_map))
+      snps_found[ itr->first ] = index_map[ itr->first ];
+
+  snps = snps_found;
+
+  if(snps.size() == 0)
+    throw "none of the conditional variants were found in the genotype file";
+
+}
+
+MatrixXd extract_from_genofile(Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, mstream& sout){
+
+  cond_geno_info geno_info;
+  map <string, uint64> tmp_map;
+  uint32_t nstart = filters->condition_snp_names.size();
+
+  sout << "    +conditioning on variants in [" << files->condition_snps_list << "]\n";
+
+  if(files->condition_snps_info.format == "bgen")
+    setup_bgen(geno_info, tmp_map, mask, files, params, filters, sout);
+  else if(files->condition_snps_info.format == "pgen")
+    setup_pgen(geno_info, tmp_map, mask, files, params, sout);
+  else if(files->condition_snps_info.format == "bed")
+    setup_bed(geno_info, tmp_map, mask, files, params, sout);
+
+  //cerr << geno_info.sample_keep.count() << " " << tmp_map.size() << "\n\n" << geno_info.sample_index.head(10) << "\n\n";
+
+  
+  if(!files->condition_snps_info.with_bgi) // filter using map
+    get_snps_offset(filters->condition_snp_names, tmp_map, sout);
+
+  // check number of variants
+  if(filters->condition_snp_names.size() > params->max_condition_vars)
+    throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
+  else if(filters->condition_snp_names.size() != nstart)
+    sout << "      -WARNING: " << nstart - filters->condition_snp_names.size() << " of the variants for conditional analysis could not be found in the genotype file\n";
+
+  sout <<  "      -n_used = " << filters->condition_snp_names.size() << endl;
+  MatrixXd Gmat = MatrixXd::Constant(params->n_samples, filters->condition_snp_names.size(), -3); // set all to missing
+
+  // read in variants & impute is missing
+  if(files->condition_snps_info.format == "bgen")
+    read_snps_bgen(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file);
+  else if(files->condition_snps_info.format == "pgen")
+    read_snps_pgen(filters->condition_snp_names, Gmat, geno_info, mask);
+  else if(files->condition_snps_info.format == "bed")
+    read_snps_bed(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file, params, sout);
+
+  return Gmat;
+}
+
+// for conditional analyses
+void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
+
+ sout << "      -extracting variants from file [" << files->condition_snps_info.file << "]\n";
+
+  uint32_t lineread = 0;
+  uint64 offset;
+  std::vector< string > tmp_ids ;
+  BgenParser bgen_tmp;
+
+  uint32_t position ;
+  std::string chromosome, rsid, msg;
+  std::vector< std::string > alleles ;
+  std::vector< std::vector< double > > probs ;
+
+  // open file and print file info
+  bgen_tmp.open( files->condition_snps_info.file ) ;
+
+  // get info for variants
+  if( files->condition_snps_info.with_bgi ) read_bgi_file(bgen_tmp, files, params, filters, sout);
+  else {
+    offset = bgen_tmp.get_position();
+    while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
+
+      assert(alleles.size() == 2) ; // only bi-allelic allowed
+      // check phasing for first variant
+      if(lineread == 0){
+        bgen_tmp.read_probs( &probs ) ;
+        if( probs[0].size() != 3 ) // unphased only 
+          throw "only unphased bgen are supported.";
+      } else bgen_tmp.ignore_probs();
+
+      // make list of variant IDs
+      index_map[ rsid ] = offset;
+
+      offset = bgen_tmp.get_position();
+    }
+
+  }
+
+  // get sample IDs (from sample file or directly from bgen file)
+  if( files->condition_snps_info.with_sample ) {
+    read_bgen_sample(files->condition_snps_info.sample, tmp_ids, sout);
+  } else {
+    bgen_tmp.get_sample_ids(
+        [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
+  }
+
+  // check if included in the analysis (if yes, store IDs)
+  ginfo.sample_keep.resize(tmp_ids.size());
+  ginfo.sample_index.resize(tmp_ids.size());
+  for(size_t i = 0; i < tmp_ids.size(); i++) {
+    ginfo.sample_keep(i) = in_map(tmp_ids[i], params->FID_IID_to_ind); 
+    if(ginfo.sample_keep(i)) {
+      position = params->FID_IID_to_ind[ tmp_ids[i] ];
+      if(mask(position)) // analyzed sample
+        ginfo.sample_index(i) = position;
+      else
+        ginfo.sample_keep(i) = false; 
+    }
+  }
+
+  if(ginfo.sample_keep.count() == 0)
+    throw "none of the analyzed samples are present in the file";
+
+}
+
+void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file){
+
+  int index = 0, count = 0;
+  double ds, total, ns;
+  std::map <std::string, uint64>::iterator itr;
+
+  std::string chromosome, rsid;
+  uint32_t position ;
+  std::vector< std::string > alleles ;
+  std::vector< std::vector< double > > probs ;
+
+  // open file
+  BgenParser bgen_tmp;
+  bgen_tmp.open( bgen_file ) ;
+
+  for (itr = snp_map.begin(); itr != snp_map.end(); ++itr, count++) {
+
+    MapArXd Geno (Gmat.col(count).data(), Gmat.rows(), 1);
+
+    bgen_tmp.jumpto( itr->second );
+    bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles );
+    bgen_tmp.read_probs( &probs ) ;
+
+    total = 0, ns = 0;
+    for( std::size_t i = 0; i < probs.size(); ++i ) {
+      // skip samples that were ignored from the analysis
+      if( !ginfo.sample_keep(i) ) continue;
+      index = ginfo.sample_index(i);
+
+      // get dosage from file
+      ds = 0;
+      for( std::size_t j = 1; j < probs[i].size(); ++j ) ds += probs[i][j] * j;
+      // does not matter if ref-first/ref-last since used as covar
+
+      if(ds != -3) {total += ds; ns++;}
+      Geno(index) = ds;
+    }
+
+    if(ns==0) {Geno=-3; continue;} // mask all samples
+
+    // impute missing
+    mean_impute_g(total/ns, Geno, mask);
+
+  }
+
+}
+
+void setup_pgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+
+ sout << "      -extracting variants using PGEN file prefix [" << files->condition_snps_info.file << "]\n";
+
+  uint32_t nv = read_pvar(index_map, files, sout);
+  uint32_t ns = read_psam(ginfo, mask, files, params, sout);
+  //cerr << "Nsamples=" << ns << "\tNvariants=" << nv << endl;
+  prep_pgen(ns, nv, ginfo, files);
+
+}
+
+void read_snps_pgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask){
+
+  int index = 0, count = 0;
+  double total, ns;
+  std::map <std::string, uint64>::iterator itr;
+  ArrayXd Gread (ginfo.sample_keep.count()); // some analyzed samples may not be in file
+
+  for (itr = snp_map.begin(); itr != snp_map.end(); ++itr, count++) {
+
+    MapArXd Geno (Gmat.col(count).data(), Gmat.rows(), 1);
+
+    // read genotype data
+    if( ginfo.dosage_mode )
+      ginfo.pgr.Read(Gread.data(), Gread.size(), 0, itr->second, 1);
+    else
+      ginfo.pgr.ReadHardcalls(Gread.data(), Gread.size(), 0, itr->second, 1);
+
+    total = 0, ns = 0;
+    for(int i_raw = 0, i = 0; i_raw < ginfo.sample_keep.size(); ++i_raw ) {
+      // skip samples that were ignored from the analysis
+      if( !ginfo.sample_keep(i_raw) ) continue;
+      index = ginfo.sample_index(i_raw);
+
+      if(Gread(i) != -3) {total += Gread(i); ns++;}
+      Geno(index) = Gread(i++);
+    }
+
+    if(ns==0) {Geno=-3; continue;} // mask all samples
+
+    // impute missing
+    mean_impute_g(total/ns, Geno, mask);
+
+  }
+
+}
+
+
+void setup_bed(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+
+ sout << "      -extracting variants using BED file prefix [" << files->condition_snps_info.file << "]\n";
+
+  uint32_t nv = read_bim(index_map, files, sout);
+  uint32_t ns = read_fam(ginfo, mask, files, params, sout);
+  //cerr << "Nsamples=" << ns << "\tNvariants=" << nv << endl;
+
+  // check if need to make lookup table
+  if(params->bed_lookup_table.size() == 0)
+    buildLookupTable(params->bed_lookup_table);
+}
+
+
+void read_snps_bed(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bed_prefix, struct param* params, mstream& sout){
+
+  int index = 0, count = 0, hc;
+  uint32_t const nmax = ginfo.sample_keep.size();
+  uint64 bed_block_size;
+  double total, ns;
+  std::map <std::string, uint64>::iterator itr;
+  ArrayXd geno4; // genotype values for 4 samples at a time
+  ifstream bed_ifstream;
+  vector<uchar> inbed;
+
+  // open file and check header
+  uchar header[3];
+  string fname = bed_prefix + ".bed";
+  openStream(&bed_ifstream, fname, std::ios::in | std::ios::binary, sout);
+  bed_ifstream.read( reinterpret_cast<char *> (&header[0]), 3);
+  if ( (header[0] != 0x6c) || (header[1] != 0x1b) || (header[2] != 0x01) ) 
+    throw "incorrect magic number in bed file.";
+  // size of genotype block [(n+3)/4 = ceil(n/4.0)]
+  bed_block_size = (nmax+3)>>2;
+  inbed.resize( bed_block_size );
+
+
+  for (itr = snp_map.begin(); itr != snp_map.end(); ++itr, count++) {
+
+    MapArXd Geno (Gmat.col(count).data(), Gmat.rows(), 1);
+
+    // set to correct position
+    jumpto_bed(itr->second, bed_block_size, bed_ifstream);
+    bed_ifstream.read( reinterpret_cast<char *> (&inbed[0]), bed_block_size);
+    total = 0, ns = 0;
+
+    for (size_t byte_start = 0, i = 0; byte_start < bed_block_size; byte_start++) {
+
+      geno4 = params->bed_lookup_table[ inbed[byte_start] ];
+
+      for(int bit_start = 0; bit_start < 4; bit_start++, i++){
+
+        // skip remainder past N samples
+        if(i >= nmax) break;
+        // skip samples that were ignored from the analysis
+        if( !ginfo.sample_keep(i) ) continue;
+        index = ginfo.sample_index(i);
+
+        hc = geno4(bit_start);
+        if(hc != -3) {total += hc; ns++;}
+        Geno(index) = hc;
+      }
+    }
+
+    if(ns==0) {Geno=-3; continue;} // mask all samples
+
+    // impute missing
+    mean_impute_g(total/ns, Geno, mask);
+
+  }
+
+}

@@ -179,6 +179,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("chr", "specify chromosome to test in step 2 (use for each chromosome)", cxxopts::value< std::vector<std::string> >(),"STRING")
     ("chrList", "Comma separated list of chromosomes to test in step 2", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("range", "to specify a physical position window for variants to test in step 2", cxxopts::value<std::string>(),"CHR:MINPOS-MAXPOS")
+    ("sex-specific", "for sex-specific analyses (male/female)", cxxopts::value<std::string>(),"STRING")
     ("af-cc", "print effect allele frequencies among cases/controls for step 2")
     ("test", "'additive', 'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
     ("set-list", "file with sets definition", cxxopts::value<std::string>(files->set_file),"FILE")
@@ -249,12 +250,16 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for ACAT test statistic", cxxopts::value<std::string>(), "a,b(=1,1)")
+    ("condition-list", "file with list of variants to include as covariates", cxxopts::value<std::string>(files->condition_snps_list),"FILE")
+    ("condition-file", "optional genotype file which contains the variants to include as covariates", cxxopts::value<std::string>(),"FORMAT,FILE")
+    ("condition-file-sample", "sample file accompanying BGEN file with the conditional variants", cxxopts::value<std::string>(files->condition_snps_info.sample),"FILE")
     ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
     ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
     ("force-condtl", "to also condition on interacting SNP in the marginal GWAS test")
     ("no-condtl", "to print out all main effects in GxE interaction test")
     ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
+    ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ;
@@ -352,6 +357,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
+    if( vm.count("condition-list") ) { params->condition_snps = true;params->rm_snps = true;}
     if( vm.count("force-robust") ) params->force_robust = true;
     if( vm.count("force-hc4") ) params->force_robust = params->force_hc4 = true;
     if( vm.count("no-robust") ) params->no_robust = true;
@@ -498,6 +504,16 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(params->job_num < 1 )
         throw "invalid job number for --run-l0 (must be >=1).";
     }
+    if( vm.count("condition-file") ) {
+      tmp_str_vec = string_split(vm["condition-file"].as<string>(),",");
+      if(tmp_str_vec.size()<2)
+        throw "invalid option input for --condition-file";
+      if((tmp_str_vec[0] != "bgen") && (tmp_str_vec[0] != "bed") && (tmp_str_vec[0] != "pgen"))
+        throw "invalid file format for --condition-file (either bed/bge/pgen)";
+      files->condition_snps_info.format = tmp_str_vec[0];
+      files->condition_snps_info.file = tmp_str_vec[1];
+      params->condition_file = true;
+    }
     if( vm.count("test") ) {
       if( vm["test"].as<string>() == "additive") params->test_type = 0; 
       else if( vm["test"].as<string>() == "dominant") params->test_type = 1; 
@@ -518,6 +534,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->range_chr = chrStrToInt(tmpd, params->nChrom);
       params->range_min = min(p0,p1);
       params->range_max = max(p0,p1);
+    }
+    if(vm.count("sex-specific")){
+      if(vm["sex-specific"].as<string>() == "male")
+        params->sex_specific = 1;
+      else if(vm["sex-specific"].as<string>() == "female")
+        params->sex_specific = 2;
+      else throw "unrecognized argument for --sex-specific (should be either male/female)";
     }
 
     if( vm.count("build-mask") ) {
@@ -723,6 +746,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
       params->af_cc = false;
     }
+    if(params->rm_snps && params->keep_snps )
+      sout << "WARNING: only variants which satisfy both extract/exclude options will be kept.\n";
 
     if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) )
       throw "minimum info score must be in [0,1].";
@@ -748,7 +773,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: options --split-l0/--run-l0/--run-l1 cannot be used with --nb.\n";
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
     }
-    if( vm.count("run-l0") || vm.count("run-l1") ) check_file(files->split_file, "run-l0/l1");
+    if( vm.count("run-l0") || vm.count("run-l1") ) 
+      check_file(files->split_file, "run-l0/l1");
 
     // set Firth as default if both Firth and SPA are specified
     if(params->use_SPA && params->firth) {
@@ -779,10 +805,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "unrecognized chromosome in --range.";
     if(params->rm_indivs && params->keep_indivs )
       throw "cannot use both --keep and --remove.";
-    if(params->rm_snps && params->keep_snps )
-      throw "cannot use both --extract and --exclude.";
     if(params->rm_or && params->keep_or )
       throw "cannot use both --extract-or and --exclude-or.";
+    if(params->condition_file && !params->condition_snps )
+      throw "must use --condition-list if using --condition-file.";
 
     if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )
       throw "invalid chromosome specified by --chr/--chrList.";
@@ -828,25 +854,25 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       else if(params->start_block<1)
         throw "starting block must be >=1";
     }
+    if(vm.count("sex-specific") && (params->file_type == "bgen") && !params->bgenSample)
+      throw "must specifying sample file using --sample";
 
     if(params->test_mode && (params->file_type == "pgen") && !params->fastMode)
       throw "cannot use --nostream with PGEN format.";
     if(params->file_type == "bgen") {
       check_file (files->bgen_file, "bgen"); 
-      string bgifile = files->bgen_file + ".bgi";
-      params->with_bgi = file_exists (bgifile) ;
+      if(params->bgenSample) check_file (files->sample_file, "sample"); 
+      params->with_bgi = file_exists (files->bgen_file + ".bgi") ;
     }
     if(vm.count("covarFile")) check_file(files->cov_file,"covarFile");
     if(!params->getCorMat) check_file(files->pheno_file,"phenoFile"); 
     if(params->file_type == "bed"){
-      check_file(files->bed_prefix + ".bed", "bed");
-      check_file(files->bed_prefix + ".bim", "bed");
-      check_file(files->bed_prefix + ".fam", "bed");
+      vector<string> suffs = {".bed",".bim",".fam"};
+      check_file(files->bed_prefix, suffs, "bed");
     }
     if(params->file_type == "pgen"){
-      check_file(files->pgen_prefix + ".pgen", "pgen");
-      check_file(files->pgen_prefix + ".psam", "pgen");
-      check_file(files->pgen_prefix + ".pvar", "pgen");
+      vector<string> suffs = {".pgen",".pvar",".psam"};
+      check_file(files->pgen_prefix, suffs, "pgen");
     }
     if(params->keep_indivs)
       for(auto cn : files->file_ind_include)
@@ -881,6 +907,22 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(vm.count("anno-labels")) check_file(files->anno_labs_file, "anno-labels");
     }
     if(params->set_aaf) check_file(files->aaf_file, "aaf-file");
+    if(params->condition_snps) {
+      check_file(files->condition_snps_list, "condition-list");
+      if(params->condition_file && (files->condition_snps_info.format == "bgen")) {
+        check_file(files->condition_snps_info.file, "condition-file");
+        // optional sample file?
+        files->condition_snps_info.with_sample = files->condition_snps_info.sample != "";
+        if(files->condition_snps_info.with_sample) check_file(files->condition_snps_info.sample, "condition-file-sample");
+        files->condition_snps_info.with_bgi = file_exists (files->condition_snps_info.file + ".bgi") ;
+      } else if(params->condition_file && (files->condition_snps_info.format == "bed")) {
+        vector<string> suffs = {".bed",".bim",".fam"};
+        check_file(files->condition_snps_info.file, suffs, "condition-file");
+      } else if(params->condition_file && (files->condition_snps_info.format == "pgen")) {
+        vector<string> suffs = {".pgen",".pvar",".psam"};
+        check_file(files->condition_snps_info.file, suffs, "condition-file");
+      }
+    }
 
   } catch (const cxxopts::OptionException& e) {
     print_header(cerr);
@@ -904,6 +946,16 @@ void check_file(string const& infile, string const& option_name){
     throw "Invalid argument (=' ') specified for option --" + option_name;
   else if(!file_exists (infile))
     throw infile + " doesn't exist for option --" + option_name;
+
+}
+
+void check_file(string const& infile, vector<string> const& suffixes, string const& option_name){
+
+  if(infile == "") 
+    throw "Invalid file argument (=' ') specified for option --" + option_name;
+  for(auto suffix : suffixes)
+    if(!file_exists (infile + suffix))
+      throw infile + suffix + " doesn't exist for option --" + option_name;
 
 }
 
@@ -971,12 +1023,12 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
     int p_eff = ( params->write_l0_pred ? 1 : params->n_pheno );
     int b_eff = params->total_n_block;
 
-    total_ram = 4 * params->n_pheno + params->nChrom;
+    total_ram = 4 * params->n_pheno + params->nChrom + params->ncov;
     total_ram += std::max( params->block_size + params->n_pheno * params->n_ridge_l0 * t_eff, p_eff * params->n_ridge_l0 * b_eff );
   } else {
     // Step 2
     // 3P + B
-    total_ram = params->n_pheno * 3 + params->block_size; // y, mask, y_resid, g
+    total_ram = params->n_pheno * 3 + params->block_size + params->ncov; // y, mask, y_resid, g, X
     if(params->binary_mode) {
       total_ram += 2 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
@@ -1184,6 +1236,7 @@ void set_threads(struct param* params) {
 
 #if defined(_OPENMP)
   omp_set_num_threads(params->threads); // set threads in OpenMP
+  params->neff_threads = params->threads;
 #endif
   setNbThreads(params->threads);
 

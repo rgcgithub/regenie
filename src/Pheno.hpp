@@ -35,7 +35,7 @@ struct rank_pair {
 struct phenodt {
 
   Eigen::MatrixXd new_cov;
-  Eigen::MatrixXd interaction_cov, interaction_cov_res;
+  Eigen::MatrixXd interaction_cov, interaction_cov_res, interaction_homdev;
   Eigen::ArrayXd scl_inter_X;
   std::vector<Eigen::MatrixXd> Hmat;
   std::vector<Eigen::ArrayXd> scf_i;
@@ -56,6 +56,7 @@ void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt
 void setMasks(struct param*,struct filter*,struct phenodt*,mstream&);
 void print_cc_info(struct param*,struct in_files*,struct phenodt*,mstream&);
 void extract_interaction_snp(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);
+void extract_condition_snps(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);
 int check_categories(std::vector<std::string>&,std::vector<std::map<std::string,int>>&,struct param*,struct filter*,mstream&);
 Eigen::MatrixXd get_dummies(const Eigen::Ref<const Eigen::ArrayXd>&);
 bool add_square_term(const Eigen::Ref<const Eigen::MatrixXd>&);

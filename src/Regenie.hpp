@@ -148,6 +148,9 @@ struct param {
   bool gzOut = false; // to compress output files (.loco and .regenie files)
   bool transposedPheno = false, tpheno_iid_only = false;
   bool getCorMat = false, cor_out_txt = false;
+  bool condition_snps = false, condition_file = false;
+  uint32_t max_condition_vars = 10000;
+  int sex_specific = 0; // 0 = all; 1 = male-only; 2=female-only
 
   // filters 
   bool rm_indivs = false; // user specify to remove genotyped samples from analysis
@@ -172,7 +175,7 @@ struct param {
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-16;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
-  int threads = 0;
+  int threads = 0, neff_threads = 1;
   bool verbose = false;
   bool early_exit = false, rint = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
@@ -193,7 +196,7 @@ struct param {
   bool with_bgi = false, zlib_compress; // input bgi index file for BGEN format and compression format
   uint BGENbits = 0; // bit-encoding used in BGEN file
   bool ref_first = false; // ordering of REF/ALT alleles in input genotype file
-  std::vector<bool> sex; // 0 is female, 1 is male
+  ArrayXb sex; // 0 is female, 1 is male
   std::vector<Eigen::ArrayXd> bed_lookup_table; // plink bed lookup table
 
 
@@ -248,7 +251,7 @@ struct param {
   bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
-  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_coding = false, int_add_esq_term = false, int_add_esq = false; // interaction test
+  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
   int interaction_istart = 0, ltco_chr;
   uint64 interaction_snp_offset; // index in genotype file
   bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
@@ -311,6 +314,12 @@ struct param {
 
 };
 
+struct cond_info {
+  std::string file, format;
+  bool with_sample = false, with_bgi = false;
+  std::string sample;
+};
+
 // for input files
 struct in_files {
 
@@ -341,6 +350,8 @@ struct in_files {
   std::string anno_file, anno_labs_file, mask_file, aaf_file;
   std::vector<int> bstart, btot; // for parallel l0
   std::vector<std::string> mprefix; // for parallel l0
+  std::string condition_snps_list; // for conditional analyses
+  cond_info condition_snps_info; 
 
 };
 
@@ -351,12 +362,13 @@ struct filter {
   std::map<int, bool> tpheno_colrm;
   uint32_t tpheno_indexCol;
   std::string interaction_cov;
-  std::string interaction_cov_null_level;//if categorical
+  std::string interaction_cov_null_level;//if categorical for GxE / or coding for GxG
   std::map <int, bool> chrKeep_test;
   std::map <std::string, uint32_t> snpID_to_ind;
   ArrayXb ind_ignore, has_missing, ind_in_analysis;
   uint32_t step1_snp_count = 0;
   std::map <std::string, std::vector<int>> setID_to_ind;//chr,index,is_kept
+  std::map <std::string, uint64> condition_snp_names;
 
 };
 
@@ -366,6 +378,7 @@ void start_log(T,const std::string&,MeasureTime*,mstream&);
 void print_help(bool const&);
 void read_params_and_check(int& argc,char *argv[],struct param*,struct in_files*,struct filter*,MeasureTime*,mstream&);
 void check_file(std::string const&,std::string const&);
+void check_file(std::string const&,std::vector<std::string> const&,std::string const&);
 void print_header(std::ostream&);
 void set_ridge_params(int const&,std::vector<double>&,mstream&);
 void print_usage_info(struct param const*,struct in_files*,mstream&);
