@@ -56,16 +56,17 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
     MapArXb mask (pheno_data->masked_indivs.col(i).data(), pheno_data->masked_indivs.rows());
 
     if(params->test_mode) loco_offset = m_ests->blups.col(i).array() * mask.cast<double>();
+    else loco_offset = ArrayXd::Zero(Y.size(), 1);
 
     // starting values
     pivec = ( 0.5 + Y ) / 2;
     etavec = mask.select( log(pivec/ (1-pivec)), 0);
     betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
-    betaold(0) = etavec.mean() - (params->test_mode? loco_offset.mean() : 0);
+    betaold(0) = etavec.mean() - loco_offset.mean();
 
     if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout))
       throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
-    else if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).count() > 0 )
+    else if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (phenotype #" << files->pheno_names[i] <<").";
 
     if(params->test_mode){
@@ -95,45 +96,45 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
 
 bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout) {
 
-  bool use_offset = params->test_mode && (Y1.size() == offset.size());
   int niter_cur = 0;
   double dev_old, dev_new=0;
   ArrayXd score, betanew, wvec_sqrt, wvec, zvec;
   MatrixXd XtW, XtWX;
 
   dev_old = get_logist_dev(Y1, pivec, mask);
+  //cerr << dev_old << endl << pivec.head(5)<<"\n--\n";
 
   while(niter_cur++ < params->niter_max){
 
-    // p*(1-p)
-    wvec = mask.select(pivec * (1 - pivec), 0);
-
-    // check for zeroes
-    if( mask.select(wvec,1).minCoeff() == 0 ){
+    // p*(1-p) and check for zeroes
+    if( get_wvec(pivec, wvec, mask, params->numtol_eps) ){
       if(params->verbose) sout << "ERROR: Zeros occured in Var(Y) during logistic regression.\n";
       return false;
     }
 
-    wvec_sqrt = wvec.sqrt();
+    wvec_sqrt = mask.select(wvec.sqrt(), 0);
     XtW = X1.transpose() * wvec_sqrt.matrix().asDiagonal();
     XtWX = XtW * XtW.transpose();
 
     // working vector z = X*beta + (Y-p)/(p*(1-p))
-    zvec = mask.select(etavec + (Y1 - pivec) / wvec, 0);
-    if(use_offset) zvec -= offset;
+    // and multiply by sqrt(p*(1-p))
+    zvec = wvec_sqrt * mask.select(etavec - offset + (Y1 - pivec) / wvec, 0);
 
     // parameter estimate
-    betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * (wvec_sqrt * zvec).matrix()).array();
+    betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
 
     // start step-halving
     for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
-      etavec = ( X1 * betanew.matrix()).array();
-      if(use_offset) etavec += offset;
-      pivec = mask.select(1 - 1 / (etavec.exp() + 1), 0.5) ;
+      get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
       dev_new = get_logist_dev(Y1, pivec, mask);
 
-      if( (pivec.minCoeff() > 0) && (pivec.maxCoeff() < 1) && isfinite(dev_new) ) break;
+      /*
+      cerr << "\n\n" << std::boolalpha << ((pivec > 0) && (pivec < 1)).all()
+        << " " << pivec.minCoeff() << "-" << pivec.maxCoeff() 
+        << "-> " << betanew.head(3).matrix().transpose() << "--" << dev_new << " #" << niter_cur << "(" << niter_search  << ")\n";
+        */
+      if( ((pivec > 0) && (pivec < 1)).all() ) break;
 
       // adjust step size
       betanew = (betavec + betanew) / 2;
@@ -158,7 +159,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 
   betavec = betanew;
 
-  //cerr << endl << betavec << "\n\n" << score; exit(EXIT_FAILURE);
+  //cerr << endl << betavec.matrix().transpose() << "\n\n" << score.matrix().transpose() << "\n\n";
   return true;
 }
 
@@ -167,7 +168,7 @@ double get_logist_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi,
   double dev = 0;
 
   for( int i = 0; i < Y.size(); i++){
-    if(mask(i)) dev+= (Y(i) == 1) ? log(1/pi(i)) : log(1/(1-pi(i)));
+    if(mask(i)) dev -= (Y(i) == 1) ? log(pi(i)) : log(1-pi(i));
   }
 
   return 2 * dev; // -2 log.lik
@@ -691,7 +692,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               if( k != i) {
 
                 // get w=p*(1-p) and check none of the values are 0
-                get_pvec(etavec, pivec, betaold, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                get_pvec(etavec, pivec, betaold, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
                 if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
@@ -717,7 +718,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
               for(int k = 0; k < params->cv_folds; ++k ) {
                 if( k != i) {
                   // get w=p*(1-p) and check none of the values are 0
-                  get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                  get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
                   invalid_wvec = get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps);
                   if( invalid_wvec ) break; // do another halving
                 }
@@ -735,7 +736,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             for(int k = 0; k < params->cv_folds; ++k ) {
               if( k != i) {
                 // get w=p*(1-p) and check none of the values are 0
-                get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k]);
+                get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
                 if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
                   sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
@@ -930,7 +931,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   while(niter_cur++ < params->niter_max_ridge) {
 
     // get w=p*(1-p) and check none of the values are 0
-    get_pvec(etavec, pivec, betaold, offset, X);
+    get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
     if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
       sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
       return false;
@@ -956,7 +957,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     betanew = Hinv.solve(XtWZ).array();
 
     // get w=p*(1-p) and check none of the values are 0
-    get_pvec(etavec, pivec, betanew, offset, X);
+    get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
     if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
       sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
       return false;
@@ -1010,7 +1011,7 @@ void run_log_ridge_loocv_adam(const int& ph, const double& lambda, ArrayXd& beta
 
     } else {
 
-      get_pvec(etavec, pivec, betavec, offset, X);
+      get_pvec(etavec, pivec, betavec, offset, X, params->numtol_eps);
       gradient_f -= ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
 
     }
@@ -1051,13 +1052,19 @@ bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, con
   }
   //wvec = masks.col(ph).array().select(pivec * (1 - pivec), 1);
 
-  return wvec.minCoeff() == 0;
+  return (wvec == 0).any();
 }
 
-void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat){
+void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat, double const& eps){
 
   etavec = offset + (Xmat * beta.matrix()).array();
-  pivec = 1 - 1/(etavec.exp() + 1);
+  pivec.resize(etavec.size(),1);
+  // strategy used in glm
+  for (int i = 0; i < pivec.size(); i++){
+    if(etavec(i) > ETAMAXTHR) pivec(i) = 1 / (1 + eps);
+    else if(etavec(i) < ETAMINTHR) pivec(i) = eps / (1 + eps);
+    else pivec(i) = 1 - 1/(exp(etavec(i)) + 1);
+  }
 
 }
 

@@ -27,6 +27,9 @@
 #ifndef MODELS_H
 #define MODELS_H
 
+#define ETAMINTHR -30.0
+#define ETAMAXTHR 30.0
+
 struct ests {
 
   Eigen::MatrixXd offset_logreg;
@@ -85,7 +88,7 @@ bool run_log_ridge_loocv(const double&,const int&,const int&,Eigen::ArrayXd&,Eig
 void run_log_ridge_loocv_adam(const int&,const double&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
 
 bool get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&,const double&);
-void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&);
+void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
 double compute_log_lik(const double&,const double&);
 
 void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);
