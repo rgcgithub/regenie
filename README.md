@@ -39,6 +39,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 2.2.2 (Bug fix for binary traits for which null logistic regression gives 0/1 fitted probabilities [i.e. highly imbalanced or low case counts]; New option `--sex-specific` for sex-specific analyses)
+
 Version 2.2.1 (Bug fix for Step 2 with binary traits for which null logistic regression gives 0/1 fitted probabilities [i.e. highly imbalanced or low case counts])
 
 Version 2.2 (Faster implementation of Step 1 and 2 (see [here](https://rgcgithub.github.io/regenie/performance/#new-timings-improvements) for details); new options `--write-null-firth/--use-null-firth` to store the estimates from approximate Firth null model; new option `--minCaseCount` to filter out BTs with low number of cases from the analysis; new option `--no-split` to enforce output of summary stats to a single file for all traits; added support for tranposed phenotype file format with `--tphenoFile`)
