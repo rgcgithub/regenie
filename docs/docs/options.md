@@ -271,6 +271,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--range` | STRING | Optional | specify chromosome region for variants to test in step 2 [format=CHR:MINPOS-MAXPOS] |
 |`--minMAC`| FLOAT| Optional| flag to specify the minimum minor allele count (MAC) when testing variants [default is 5]. Variants with lower MAC are ignored.|
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
+|`--sex-specific` | STRING | Optional | to perform sex-specific analyses [either 'male'/'female']|
 |`--af-cc`| FLAG | Optional| to output A1FREQ in case/controls separately in the step 2 result file|
 |`-no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
 |`--starting-block`| INT| Optional| to start step 2 at a specific block/set number (useful if program crashes during a job)|
