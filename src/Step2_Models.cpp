@@ -443,7 +443,12 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
     get_beta_start_firth(chrom, firth_est, files, params, sout);
   //cerr << firth_est->beta_null_firth.topRows(3) << "\n\n\n";
 
-  for( int i = 0; i < params->n_pheno; ++i ) {
+  const auto n_pheno = params->n_pheno;
+#if defined(_OPENMP)
+  setNbThreads(1);
+#pragma omp parallel for schedule(dynamic) shared(m_ests, firth_est, sout)
+#endif
+  for( int i = 0; i < n_pheno; ++i ) {
     bool has_converged = fit_firth_logistic(chrom, i, true, params, pheno_data, m_ests, firth_est, sout);
     if(!has_converged) {
       string msg1 = to_string( (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth) );
