@@ -462,6 +462,9 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
       (*firth_est->firth_est_files[i]) << chrom << " " << firth_est->beta_null_firth.block(0,i,params->ncov,1).transpose().format(Fmt) << endl;
     //cerr << firth_est->beta_null_firth.topRows(3) << "\n\n\n";
   }
+#if defined(_OPENMP)
+  setNbThreads(params->threads);
+#endif
 
   if(silent) return;
 
