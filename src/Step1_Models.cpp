@@ -48,7 +48,7 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
   auto t1 = std::chrono::high_resolution_clock::now();
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
   MatrixXd XtW;
-  if(params->w_interaction) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
+  if(params->w_interaction || params->firth) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
 
   for(int i = 0; i < params->n_pheno; ++i ){
 
@@ -75,7 +75,7 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
       m_ests->Xt_Gamma_X_inv[i] = (m_ests->X_Gamma[i].transpose() * m_ests->X_Gamma[i]).colPivHouseholderQr().inverse();
-      if(params->w_interaction) m_ests->bhat_start.col(i) = betaold.matrix();
+      if(params->w_interaction || params->firth) m_ests->bhat_start.col(i) = betaold.matrix();
     } else m_ests->offset_logreg.col(i) = etavec;
 
     /*

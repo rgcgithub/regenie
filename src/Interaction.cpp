@@ -682,10 +682,10 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   // starting values
   bhat = ArrayXd::Zero(np+beg);
   if(beg!=0) {// fit null model with only G_E
-    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, se, beg, dev_s, false, tstat, params->maxstep_null, params->niter_max_firth_null, params, sout))
+    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, se, beg, dev_s, false, tstat, params->maxstep_null, params->niter_max_firth_null, params->numtol_firth, params))
       return "";
   }
-  if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, se, np+beg, dev, true, tstat, params->maxstep, params->niter_max_firth, params, sout))
+  if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, se, np+beg, dev, true, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params))
     return "";
   //if(isnp==0 & ipheno==0)cerr << bhat << "\n\n" << se << endl;exit(-1);
 
@@ -748,7 +748,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   bhat_s(beg) = bhat.tail(1)(0);
   bhat_s.tail(1)(0) = 0;
 
-  if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params, sout))
+  if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params))
     return "";
   // T, beta, se & pv
   tstat = dev_s - dev;
@@ -786,7 +786,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
     bhat_s.tail(params->ncov_interaction) = 0;
 
     // run firth
-    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params, sout))
+    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params))
       return "";
     // pv
     tstat = dev_s - dev;
@@ -807,7 +807,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
     bhat_s.tail(1) = 0;
 
     // run firth
-    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params, sout))
+    if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params))
       return "";
     // T, beta, se & pv
     tstat = dev_s - dev;

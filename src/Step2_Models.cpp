@@ -330,37 +330,23 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
 
 }
 
-// Firth
-bool fit_firth_logistic(int const& chrom, int const& ph, bool const& null_fit, struct param const* params, struct phenodt* pheno_data, struct ests const* m_ests, struct f_ests* fest, mstream& sout) {
-  // if firth is used, fit based on penalized log-likelihood
+// Firth (currently only used for null approximate firth)
+bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const* pheno_data, struct ests const* m_ests, Ref<ArrayXd> betavec, struct param const* params) {
 
   bool success, set_start = true;
   int col_incl;
-  int maxstep = null_fit ? params->maxstep_null : params->maxstep;
-  int niter = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
+  int maxstep = params->maxstep_null;
+  int niter = params->niter_max_firth_null;
+  double tol = params->numtol;
   double dev, lrt;
 
-  ArrayXd betaold, se, etavec, pivec, offset;
-  MatrixXd Xmat;
+  ArrayXd betaold, se, etavec, pivec;
 
-  MapArXd Y (pheno_data->phenotypes_raw.col(ph).data(), pheno_data->phenotypes_raw.rows());
-  MapArXb mask (pheno_data->masked_indivs.col(ph).data(), pheno_data->masked_indivs.rows());
-
-  if(params->firth_approx){
-    if(null_fit)
-      Xmat = pheno_data->new_cov; // only covariates
-    else 
-      Xmat = fest->covs_firth.rightCols(1); // only tested SNP
-    col_incl = Xmat.cols();
-  } else {
-    Xmat = fest->covs_firth; // covariates + tested SNP
-    col_incl = Xmat.cols();
-    if( null_fit ) col_incl--; // remove SNP column
-  }
-
-  offset = m_ests->blups.col(ph).array(); 
-  // covariate effects added as offset in firth approx. (last entry of beta_null_firth = 0)
-  if( params->firth_approx && !null_fit ) offset += (pheno_data->new_cov * fest->beta_null_firth.block(0,ph, pheno_data->new_cov.cols(),1)).array(); 
+  MapcArXd Y (pheno_data->phenotypes_raw.col(ph).data(), pheno_data->phenotypes_raw.rows());
+  MapcMatXd Xmat (pheno_data->new_cov.data(), pheno_data->new_cov.rows(), pheno_data->new_cov.cols());
+  MapcArXd offset (m_ests->blups.col(ph).data(), m_ests->blups.rows());
+  MapcArXb mask (pheno_data->masked_indivs.col(ph).data(), pheno_data->masked_indivs.rows());
+  col_incl = Xmat.cols();
 
   // with firth approx. => trial 1: use maxstep_null
   // trial 2 => use fallback options (increase maxstep & niter)
@@ -368,10 +354,8 @@ bool fit_firth_logistic(int const& chrom, int const& ph, bool const& null_fit, s
 
     // starting values
     if(set_start){
-      if(null_fit){
-
-        if(params->firth_approx && params->use_null_firth){
-          betaold = fest->beta_null_firth.col(ph).head(Xmat.cols()).array();
+        if(params->use_null_firth || (trial == 0) ){ // use saved est or those from unpenalized log. reg
+          betaold = betavec.head(Xmat.cols());
         } else {
           betaold = ArrayXd::Zero(Xmat.cols());
           betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
@@ -379,27 +363,18 @@ bool fit_firth_logistic(int const& chrom, int const& ph, bool const& null_fit, s
           // LOCO prediction is offset
           betaold(0) -= mask.select(offset,0).mean();
         }
-
-      } else {
-
-        if(params->firth_approx) betaold = ArrayXd::Zero(col_incl); // only estimating effect of tested SNP
-        else betaold = fest->beta_null_firth.array();
-
-      }
     }
 
-    success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter, params, sout);
+    success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params);
 
-    if(params->firth_approx && null_fit){ // only retry for firth approx null model
-      if(!params->fix_maxstep_null) { // don't retry with user-given settings
-        if( !success ){ // if failed to converge
-          sout << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").\n";
-          maxstep = params->retry_maxstep_firth;
-          niter = params->retry_niter_firth;
-          if(trial == 0) sout << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
-          if(params->use_adam) set_start = false;
-          continue;
-        }
+    if(!params->fix_maxstep_null) { // don't retry with user-given settings
+      if( !success ){ // if failed to converge
+        cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").\n";
+        maxstep = params->retry_maxstep_firth;
+        niter = params->retry_niter_firth;
+        if(params->debug && (trial == 0)) cerr << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
+        if(params->use_adam) set_start = false;
+        continue;
       }
     }
 
@@ -407,55 +382,61 @@ bool fit_firth_logistic(int const& chrom, int const& ph, bool const& null_fit, s
   }
 
   // If didn't converge
-  if(!success){
-    if(params->verbose && !params->firth_approx) sout << "WARNING: Logistic regression with Firth correction did not converge!\n";
+  if(!success)
     return false;
-  }
-  // sout << "\nNiter = " << niter_cur << " : " << mod_score.matrix().transpose() << endl;
-  //cerr << betaold << endl;
 
-  if(null_fit) {
-    if(params->firth_approx) fest->beta_null_firth.block(0,ph,betaold.size(),1) = betaold.matrix();
-    else fest->beta_null_firth = betaold.matrix();
-  } else {
-    // compute beta_hat
-    fest->bhat_firth = betaold.tail(1)(0);
-    // compute SE based on Hessian for unpenalized LL
-    if(!params->back_correct_se)
-      fest->se_b_firth = se.tail(1)(0);
-
-    // compute LRT test stat. 
-    fest->deviance_logistic = lrt;
-    if( fest->deviance_logistic < 0 ) return false;
-  }
-
+  betavec.head(betaold.size()) = betaold;
   return true;
+
 }
 
-
+// Approximate null firth model
 void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_est, struct phenodt* pheno_data, struct ests const* m_ests, struct in_files* files, struct param const* params, mstream& sout){
 
   auto t1 = std::chrono::high_resolution_clock::now();
+  ArrayXb has_converged = ArrayXb::Constant(params->n_pheno, true);
   IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
+
   if(!silent) sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
 
-  if(params->use_null_firth) // get starting values from file
+  // get starting values
+  if(params->use_null_firth) // saved in file
     get_beta_start_firth(chrom, firth_est, files, params, sout);
-  //cerr << firth_est->beta_null_firth.topRows(3) << "\n\n\n";
+  else // from null log. reg.
+    get_beta_start_firth(firth_est, m_ests);
 
+  // fit null firth (in parallel for MT mode)
+#if defined(_OPENMP)
+  if(params->n_pheno>2) setNbThreads(1); // for < 3, mt in eigen should be similar
+#pragma omp parallel for schedule(dynamic) if(params->n_pheno>2)
+#endif
   for( int i = 0; i < params->n_pheno; ++i ) {
-    bool has_converged = fit_firth_logistic(chrom, i, true, params, pheno_data, m_ests, firth_est, sout);
-    if(!has_converged) {
-      string msg1 = to_string( (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth) );
-      string msg2 = to_string( (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) );
-      throw "Firth penalized logistic regression failed to converge for phenotype: " + files->pheno_names[i] + "." +
-        " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") " +
-        "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
-    }
+
+    MapArXd bvec (firth_est->beta_null_firth.col(i).data(), firth_est->beta_null_firth.rows());
+    has_converged(i) = fit_approx_firth_null(chrom, i, pheno_data, m_ests, bvec, params);
+    if(!has_converged(i)) continue; // cannot use break
 
     if(params->write_null_firth)
-      (*firth_est->firth_est_files[i]) << chrom << " " << firth_est->beta_null_firth.block(0,i,params->ncov,1).transpose().format(Fmt) << endl;
-    //cerr << firth_est->beta_null_firth.topRows(3) << "\n\n\n";
+      (*firth_est->firth_est_files[i]) << chrom << " " << bvec.head(params->ncov).matrix().transpose().format(Fmt) << endl;
+
+  }
+#if defined(_OPENMP)
+  if(params->n_pheno>2) setNbThreads(params->threads);
+#endif
+
+
+  // check if some did not converge
+  if(!has_converged.all()) {
+    sout << "    + Firth did not converge for " << (!has_converged).count() << " traits\n";
+    for( int i = 0; i < params->n_pheno; ++i ) {
+      if(has_converged(i)) continue;
+      sout << "     - " << files->pheno_names[i] << endl;
+    }
+    string msg1 = to_string( (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth) );
+    string msg2 = to_string( (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) );
+    throw "Firth penalized logistic regression failed to converge."
+      " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") "
+      "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
   }
 
   if(silent) return;
@@ -476,6 +457,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
   int col_incl;
   int maxstep = null_fit ? params->maxstep_null : params->maxstep;
   int niter = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
+  double tol = null_fit ? params->numtol : params->numtol_firth;
   double dev, lrt;
 
   ArrayXd betaold, se, etavec, pivec, offset;
@@ -520,7 +502,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
     else betaold = dt_thr->beta_null_firth.col(0);
   }
 
-  success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter, params, sout);
+  success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter, tol, params);
 
   // If didn't converge
   if(!success){
@@ -551,24 +533,23 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
 }
 
 // use NR or ADAM for Firth
-bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, struct param const* params, mstream& sout) {
+bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
 
   double dev0 = 0;
 
   // get starting beta from ADAM ( compute and save null deviance )
   if(!comp_lrt && params->use_adam) 
-    fit_firth_adam(ph, dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, params, sout);
+    fit_firth_adam(ph, dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, params);
 
-  return fit_firth_nr(dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, maxstep_firth, niter_firth, params, sout);
+  return fit_firth_nr(dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, maxstep_firth, niter_firth, tol, params);
 
 }
 
 // fit based on penalized log-likelihood using NR
-bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, struct param const* params, mstream& sout) {
+bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
-  bool use_offset = Y1.size() == offset.size();
   int niter_cur = 0, nc = X1.cols();
   double dev_old=0, dev_new=0, denum, mx;
 
@@ -577,22 +558,24 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   MatrixXd XtW, XtWX;
   ColPivHouseholderQR<MatrixXd> qr, qrX;
 
+  if(params->debug) cerr << "Starting beta = " << betavec.matrix().transpose() << endl;
+
   // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
   betanew = betavec * 0;
   while(niter_cur++ < niter_firth){
 
     // update quantities
-    etavec = (X1 * betavec.matrix()).array();
-    if(use_offset) etavec += offset;
-    pivec = 1 - 1 / (etavec.exp() + 1) ;
-    wvec = mask.select( ( pivec * (1 - pivec) ).sqrt(), 0);
-    XtW = X1.transpose() * wvec.matrix().asDiagonal();
+    get_pvec(etavec, pivec, betavec, offset, X1);
+    get_wvec(pivec, wvec, mask);
+    XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
     XtWX = XtW * XtW.transpose();
     qr.compute(XtWX);
+
     // compute deviance
     dev_old = get_logist_dev(Y1, pivec, mask) - qr.logAbsDeterminant();
-    if(comp_lrt && (niter_cur == 1)) // at first iter (i.e. betaSNP=0) this is null deviance (if not using ADAM)
+    if(comp_lrt && (niter_cur == 1)) // at first iter (i.e. betaSNP=0)
       dev0 = dev_old;
+
     // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
     hvec = (qr.solve(XtW).array() * XtW.array() ).colwise().sum();
     // compute modified score & step size
@@ -606,7 +589,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     }
 
     // stopping criterion using modified score function
-    if( mod_score.abs().maxCoeff() < params->numtol_firth ) break;
+    if( mod_score.abs().maxCoeff() < tol ) break;
 
     // force absolute step size to be less than maxstep for each entry of beta
     mx = step_size.abs().maxCoeff() / maxstep_firth;
@@ -624,17 +607,15 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
         betanew.head(cols_incl) = betavec.head(cols_incl) + step_size;
       else 
         betanew = betavec + step_size;
-      etavec = (X1 * betanew.matrix()).array();
-      if(use_offset) etavec += offset;
 
-      pivec = 1 - 1 / (etavec.exp() + 1) ;
-      wvec = mask.select( ( pivec * (1 - pivec) ).sqrt(), 0);
-      XtW = X1.transpose() * wvec.matrix().asDiagonal();
+      get_pvec(etavec, pivec, betanew, offset, X1);
+      get_wvec(pivec, wvec, mask);
+      XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
       qr.compute(XtWX);
       dev_new = get_logist_dev(Y1, pivec, mask) - qr.logAbsDeterminant();
 
-      //sout << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << dev_new << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
+      //cerr << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << dev_new << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
       if( dev_new < dev_old + params->numtol ) break;
       denum *= 2;
     }
@@ -645,13 +626,13 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       betavec += step_size;
     dev_old = dev_new;
 
-    //if(niter_cur>1) sout << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << endl;
+    if(params->debug && (niter_cur%5==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << endl;
 
   }
+  if(params->debug) cerr << "Ending beta = " << betavec.matrix().transpose() << "\nScore = " << mod_score.matrix().transpose() << "\nNiter=" << niter_cur << endl;
 
   // If didn't converge
   if(niter_cur > niter_firth) return false;
-  // sout << "\nNiter = " << niter_cur << " : " << mod_score.matrix().transpose() << endl;
 
   dev = dev_new;
   if( comp_lrt ) {
@@ -666,7 +647,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 
 
 // fit based on penalized log-likelihood using ADAM
-bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, struct param const* params, mstream& sout) {
+bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, struct param const* params) {
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
@@ -738,7 +719,7 @@ bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, c
 
     }
 
-    //if(niter_cur>1 && (niter_cur%5000)==0) sout << "\nNiter = " << niter_cur << " (beta = " << betavec.matrix().transpose() << ") : " << gradient_f.matrix().transpose() << endl;
+    if(params->debug && (niter_cur>1) && (niter_cur%5000==0) ) cerr << "\nNiter = " << niter_cur << " (beta = " << betavec.matrix().transpose() << ") : " << gradient_f.matrix().transpose() << endl;
 
     mt = p_beta1 * mt + (1 - p_beta1) * gradient_f;
     vt = p_beta2 * vt + (1 - p_beta2) * gradient_f.square();
@@ -751,7 +732,7 @@ bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, c
     betavec.head(cols_incl) -= step_size;
 
   }
-  if(params->verbose) sout << "ADAM took "<< niter_cur << " iterations (score max = " << gradient_f.abs().maxCoeff() << ")...";
+  if(params->debug) cerr << "ADAM took "<< niter_cur << " iterations (score max = " << gradient_f.abs().maxCoeff() << ")...";
 
   return (niter_cur <= params->niter_max_firth_adam);
 }
@@ -892,6 +873,24 @@ void get_beta_start_firth(int const& chrom, struct f_ests* firth_est, struct in_
     fClass.closeFile();
   }
 
+}
+
+void get_beta_start_firth(struct f_ests* firth_est, struct ests const* m_ests){
+  // get b0 from null logistic regression
+  firth_est->beta_null_firth.topRows(m_ests->bhat_start.rows()) = m_ests->bhat_start;
+}
+
+// when using Firth (does not use mask info)
+void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat){
+
+  etavec = offset + (Xmat * beta.matrix()).array();
+  pivec = 1 - 1/(etavec.exp() + 1);
+
+}
+
+// when using Firth (set masked to 0)
+void get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask){
+  wvec = mask.select(pivec * (1-pivec), 0);
 }
 
 
