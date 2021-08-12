@@ -262,6 +262,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
+    ("debug", "more verbose screen output for debugging purposes")
     ;
 
 
@@ -327,6 +328,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("af-cc") ) params->af_cc = true;
     if( vm.count("tpheno-file") ) params->transposedPheno = true;
     if( vm.count("v") ) params->verbose = true;
+    if( vm.count("debug") ) params->verbose = params->debug = true;
     if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
     //if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;

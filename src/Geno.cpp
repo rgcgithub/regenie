@@ -113,8 +113,11 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
       }
 
       // make list of variant IDs if inclusion/exclusion file is given
-      if(params->mk_snp_map)
+      if(params->mk_snp_map){
+        if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
+          throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
         filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
+      }
 
       // keep track of how many included snps per chromosome there are
       files->chr_counts[tmp_snp.chrom-1]++;
@@ -265,8 +268,11 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         }
 
         // make list of variant IDs if inclusion/exclusion file is given
-        if(params->mk_snp_map)
+        if(params->mk_snp_map){
+          if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
+            throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
           filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
+        }
 
         // keep track of how many included snps per chromosome there are
         files->chr_counts[tmp_snp.chrom-1]++;
@@ -560,8 +566,11 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
       ) continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
-    if(params->mk_snp_map)
+    if(params->mk_snp_map){
+      if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
+        throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
       filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
+    }
 
     // keep track of how many included snps per chromosome there are
     files->chr_counts[tmp_snp.chrom-1]++;
@@ -801,8 +810,11 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
       continue;
 
     // make list of variant IDs if inclusion/exclusion file is given
-    if(params->mk_snp_map)
+    if(params->mk_snp_map){
+      if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
+        throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
       filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
+    }
 
     // keep track of how many included snps per chromosome there are
     files->chr_counts[tmp_snp.chrom-1]++;
@@ -3588,8 +3600,8 @@ void get_snps_offset(map<string, uint64>& snps, map<string, uint32_t>& index_map
 
   if(snps.size() == 0)
     throw "none of the conditional variants were found in the genotype file";
-  else if(snps.size() != nstart)
-    sout << "   -WARNING: " << nstart - snps.size() << " of the variants for conditional analysis could not be found in the genotype file\n";
+  else if(snps.size() != nstart) // enforce this
+    throw to_string( nstart - snps.size() ) + " of the variants for conditional analysis could not be found in the genotype file";
 
 }
 
@@ -3634,7 +3646,7 @@ MatrixXd extract_from_genofile(Ref<ArrayXb> mask, struct filter* filters, struct
   if(filters->condition_snp_names.size() > params->max_condition_vars)
     throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
   else if(filters->condition_snp_names.size() != nstart)
-    sout << "      -WARNING: " << nstart - filters->condition_snp_names.size() << " of the variants for conditional analysis could not be found in the genotype file\n";
+    throw to_string( nstart - filters->condition_snp_names.size() ) + " of the variants for conditional analysis could not be found in the genotype file";
 
   sout <<  "      -n_used = " << filters->condition_snp_names.size() << endl;
   MatrixXd Gmat = MatrixXd::Constant(params->n_samples, filters->condition_snp_names.size(), -3); // set all to missing

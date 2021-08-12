@@ -72,8 +72,11 @@ typedef unsigned long long uint64;
 typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
+typedef Eigen::Map<const Eigen::ArrayXd > MapcArXd;
 typedef Eigen::Map<Eigen::MatrixXd > MapMatXd;
+typedef Eigen::Map<const Eigen::MatrixXd > MapcMatXd;
 typedef Eigen::Map<ArrayXb> MapArXb;
+typedef Eigen::Map<const ArrayXb> MapcArXb;
 typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::SparseVector<double> SpVec;
@@ -176,7 +179,7 @@ struct param {
   double eigen_val_rel_tol = 1e-16;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0, neff_threads = 1;
-  bool verbose = false;
+  bool verbose = false, debug = false;
   bool early_exit = false, rint = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
   int njobs, job_num, parallel_nGeno, parallel_nBlocks, parallel_nSnps;
