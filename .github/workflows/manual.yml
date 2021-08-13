@@ -1,14 +1,13 @@
-name: build
+# This is a basic workflow that is manually triggered
 
-on: 
-  push:
-    tags:
-      - 'v*'
-  pull_request:
-  release:
-    types:
-      - created
+name: Manual workflow
 
+# Controls when the action will run. Workflow runs when manually triggered using the UI
+# or API.
+on:
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -36,7 +35,6 @@ jobs:
         if: steps.bgen-cache.outputs.cache-hit != 'true'
         run: |
           wget -O bgen.tgz "http://code.enkre.net/bgen/tarball/release/${BGEN_VERSION}"
-
       - name: Install Bgen
         run: |
           tar xzf bgen.tgz
@@ -44,7 +42,6 @@ jobs:
           python3 waf configure
           python3 waf
           popd
-
       - name: Build
         run: make BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC all
 

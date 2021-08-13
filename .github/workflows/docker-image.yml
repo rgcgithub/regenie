@@ -27,6 +27,7 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+          # need to switch to PAT for compatibility with gchr.io (save as secrets.GH_PAT)
     
     - 
       name: Read VERSION file
