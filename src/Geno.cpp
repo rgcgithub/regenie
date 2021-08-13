@@ -114,8 +114,10 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
       // make list of variant IDs if inclusion/exclusion file is given
       if(params->mk_snp_map){
-        if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
-          throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
+        if (in_map(tmp_snp.ID, filters->snpID_to_ind)) { // ignore duplicate
+          tmp_snp.offset = bgen_tmp.get_position();
+          continue;
+        }
         filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
       }
 
@@ -269,8 +271,8 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
         // make list of variant IDs if inclusion/exclusion file is given
         if(params->mk_snp_map){
-          if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
-            throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
+          if (in_map(tmp_snp.ID, filters->snpID_to_ind))
+            continue; // don't save it
           filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
         }
 
@@ -567,8 +569,8 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
     // make list of variant IDs if inclusion/exclusion file is given
     if(params->mk_snp_map){
-      if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
-        throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
+      if (in_map(tmp_snp.ID, filters->snpID_to_ind))
+        continue; // skip duplicate
       filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
     }
 
@@ -812,7 +814,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
     // make list of variant IDs if inclusion/exclusion file is given
     if(params->mk_snp_map){
       if (in_map(tmp_snp.ID, filters->snpID_to_ind)) 
-        throw "Duplicate variant was found in genotype file (ID=" + tmp_snp.ID + ")\n";
+        continue; // skip duplicate
       filters->snpID_to_ind[ tmp_snp.ID ] = snpinfo.size();
     }
 
