@@ -144,6 +144,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("covarColList", "comma separated list of covariate names to keep (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("catCovarList", "comma separated list of categorical covariates", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
+    ("qt", "analyze phenotypes as quantitative")
     ("bt", "analyze phenotypes as binary")
     ("1,cc12", "use control=1,case=2,missing=NA encoding for binary traits")
     ("b,bsize", "size of genotype blocks", cxxopts::value<int>(params->block_size),"INT")
@@ -1085,6 +1086,7 @@ int chrStrToInt(const string& chrom, const int& nChrom) {
     int chr = atoi(s_chr.c_str());
     if((chr >= 1) && (chr <= nChrom)) return chr;
   } else if ( (s_chr == "X") || (s_chr == "XY") || (s_chr == "PAR1") || (s_chr == "PAR2") ) return nChrom;
+  } else if ( (s_chr == "X") || (s_chr == "XY") || (s_chr == "Y") || (s_chr == "PAR1") || (s_chr == "PAR2") ) return nChrom;
 
   return -1;
 }
