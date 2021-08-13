@@ -1,6 +1,13 @@
 name: build
 
-on: [push, pull_request]
+on: 
+  push:
+    tags:
+      - 'v*'
+  pull_request:
+  release:
+    types:
+      - created
 
 jobs:
   build:
