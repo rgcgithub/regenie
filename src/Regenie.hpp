@@ -171,7 +171,7 @@ struct param {
   const double missing_value_double = -999;
   int nChrom = 23; // total number of chromosome numbers (sex chromosomes collapsed in chr23)
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
-  int mcc = 10; // minimum case count
+  int mcc = 50; // minimum case count, defaultly change 10 -> 50 to significant reduce 'non-converge' issue caused job failed, meanwhile 10 doesn't make sense for GWAS.
   double numtol = 1e-6, qr_tol = 1e-7;
   double numtol_firth = 1e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
