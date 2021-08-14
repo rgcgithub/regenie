@@ -206,7 +206,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
   // extended options
   AllOptions.add_options("Additional")
     ("v,verbose", "verbose screen output")
-    ("minCaseCount", "minimum number of cases per trait", cxxopts::value<int>(params->mcc),"INT=10")
+    ("minCaseCount", "minimum number of cases per trait", cxxopts::value<int>(params->mcc),"INT=50")
     ("tpheno-file", "transposed phenotype file (each row is a phenotype)", cxxopts::value<std::string>(files->pheno_file),"FILE")
     ("tpheno-indexCol", "index of column which contain phenotype name", cxxopts::value<uint32_t>(filters->tpheno_indexCol),"INT")
     ("tpheno-ignoreCols", "comma separated list of indexes for columns to ignore (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"INT,...,INT")
