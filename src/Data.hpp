@@ -90,6 +90,8 @@ class Data {
     void make_predictions_loocv(int const&,int const&);
     void make_predictions_binary(int const&,int const&);
     void make_predictions_binary_loocv(int const&,int const&);
+    void make_predictions_count(int const&,int const&);
+    void make_predictions_count_loocv(int const&,int const&);
     void write_predictions(int const&);
     std::string write_ID_header();
     std::string write_chr_row(int const&,int const&,const Eigen::Ref<const Eigen::MatrixXd>&);
@@ -99,9 +101,10 @@ class Data {
     void test_snps();
     void set_blocks_for_testing();
     void print_test_info();
-    void set_logreg_mat();
+    void set_nullreg_mat();
     void compute_res();
     void compute_res_bin(int const&);
+    void compute_res_count(int const&);
     void setup_output(Files*,std::string&,std::vector<std::shared_ptr<Files>>&,std::vector<std::string>&);
     void write_snplist(int const&,std::vector<variant_block> const&);
     void print_cor(Files*);

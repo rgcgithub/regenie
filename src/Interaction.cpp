@@ -51,7 +51,7 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
     Gdiag = gblock->Gmat.col(isnp).asDiagonal();
 
   // if rare, use HLM
-  if(!params->binary_mode && !params->no_robust && !params->force_robust && (snp_data->mac < params->rareMAC_inter).any()){
+  if((params->trait_mode==0) && !params->no_robust && !params->force_robust && (snp_data->mac < params->rareMAC_inter).any()){
 
     // get (G, G*E)
     allocate_mat(pheno_data->Hmat[thread], nullHLM.Vlin.rows(), params->interaction_istart + nullHLM.Vlin.cols());
@@ -95,11 +95,11 @@ void apply_interaction_tests(const int& index, const int& isnp, const int& threa
 
   if(snp_data->skip_int) return;
 
-  if(params->binary_mode)
+  if(params->trait_mode==1)
     apply_interaction_tests_bt(index, isnp, thread, model_type, test_string, pheno_data, filters, files, gblock, snp_data, snpinfo, m_ests, fest, params, sout);
   else if(snp_data->fitHLM)
     apply_interaction_tests_HLM(index, isnp, thread, res, sd_yres, model_type, test_string, pheno_data, nullHLM, filters, files, gblock, snp_data, snpinfo, params, sout);
-  else
+  else if(params->trait_mode==0)
     apply_interaction_tests_qt(index, isnp, thread, res, sd_yres, model_type, test_string, pheno_data, filters, files, gblock, snp_data, snpinfo, params, sout);
 
 }

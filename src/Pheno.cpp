@@ -57,8 +57,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
     else
       pheno_read(params, files, filters, pheno_data, ind_in_pheno_and_geno, sout);
 
-    if(params->binary_mode && !params->test_mode)
-      m_ests->offset_logreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
+    if(params->trait_mode && !params->test_mode)
+      m_ests->offset_nullreg = MatrixXd::Zero(params->n_samples, params->n_pheno); 
 
   }
 
@@ -93,7 +93,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   }
 
   // print case-control counts per trait
-  if(params->binary_mode)
+  if(params->trait_mode==1)
     print_cc_info(params, files, pheno_data, sout);
 
 }
@@ -146,13 +146,13 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   // how missingness is handles
   if( params->strict_mode ) sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
-  else if( !params->rm_missing_qt  && !params->binary_mode) sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
+  else if( !params->rm_missing_qt  && (params->trait_mode==0)) sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
 
 
   // allocate memory
   pheno_data->phenotypes = MatrixXd::Zero(params->n_samples, params->n_pheno);
   pheno_data->masked_indivs = MatrixXb::Constant(params->n_samples, params->n_pheno, true);
-  if(params->binary_mode)  
+  if(params->trait_mode)  
     pheno_data->phenotypes_raw = MatrixXd::Zero(params->n_samples, params->n_pheno);
 
   VectorXd total, ns;
@@ -185,15 +185,16 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
       pheno_data->phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j], params, sout);
 
-      // for BT, save raw data and check 0/1/NA values
-      if (params->binary_mode) {
+      // for non-QT, save raw data
+      if (params->trait_mode) {
 
-        if(!params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double)) 
-          pheno_data->phenotypes(indiv_index, i_pheno) -= 1; // if using 1/2/NA encoding
+        if((params->trait_mode==1) && !params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double)) 
+          pheno_data->phenotypes(indiv_index, i_pheno) -= 1; // if using 1/2/NA encoding for BTs
 
         pheno_data->phenotypes_raw(indiv_index, i_pheno) = pheno_data->phenotypes(indiv_index, i_pheno);
 
-        if( (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 0) && 
+        // for BTs check 0/1/NA values
+        if( (params->trait_mode==1) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 0) && 
             (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 1) ) {
 
           if(params->within_sample_l0)
@@ -204,7 +205,18 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
           }
 
           pheno_data->masked_indivs(indiv_index, i_pheno) = false;
+
+        } else if( (params->trait_mode==2) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)<0) ) { // CT check non-neg
+
+          if(params->within_sample_l0)
+            throw "no missing value allowed in phenotype file with option -within";
+          else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
+            throw "a phenotype value is <0 for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
+          }
+          pheno_data->masked_indivs(indiv_index, i_pheno) = false;
+
         }
+
       }
 
       if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double ) {
@@ -238,12 +250,12 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'." ;
 
   // ignore traits with fewer than the specified minimum case count
-  if(params->binary_mode)
+  if(params->trait_mode==1)
     rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
 
-  if(!params->binary_mode || !params->test_mode){
+  if((params->trait_mode==0) || !params->test_mode){
 
-    if(!params->binary_mode) // impute missing with mean
+    if(params->trait_mode==0) // impute missing with mean
       for(int j = 0; j < params->n_pheno; j++) 
         pheno_data->phenotypes.col(j).array() = ( pheno_data->phenotypes.col(j).array() != params->missing_value_double ).select( pheno_data->phenotypes.col(j).array(), total(j) / ns(j));
     else 
@@ -337,7 +349,7 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
     pheno_data->phenotypes.rightCols(1).array() = 0;
     pheno_data->masked_indivs.conservativeResize(params->n_samples, params->n_pheno);
     pheno_data->masked_indivs.rightCols(1).array() = true;
-    if(params->binary_mode) {
+    if(params->trait_mode) {
       pheno_data->phenotypes_raw.conservativeResize(params->n_samples, params->n_pheno);
       pheno_data->phenotypes_raw.rightCols(1).array() = 0;
     }
@@ -348,20 +360,30 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
       nid = itr->second;
       pheno_data->phenotypes(nid, icol) = convertDouble(tmp_str_vec[itr->first], params, sout);
       
-      if (params->binary_mode) { // for BT, save raw data and force 0/1 values
+      if (params->trait_mode) { // for nonQT, save raw data
 
-        if(!params->CC_ZeroOne && (pheno_data->phenotypes(nid, icol) != params->missing_value_double)) 
-          pheno_data->phenotypes(nid, icol) -= 1; // if using 1/2/NA encoding
+        if((params->trait_mode==1) && !params->CC_ZeroOne && (pheno_data->phenotypes(nid, icol) != params->missing_value_double)) 
+          pheno_data->phenotypes(nid, icol) -= 1; // if using 1/2/NA encoding for BTs
+
         pheno_data->phenotypes_raw(nid, icol) = pheno_data->phenotypes(nid, icol);
 
-        if( (pheno_data->phenotypes_raw(nid, icol)!= 0) && 
-            (pheno_data->phenotypes_raw(nid, icol)!= 1) ) {
+        if((params->trait_mode==1) &&  (pheno_data->phenotypes_raw(nid, icol)!= 0) && 
+            (pheno_data->phenotypes_raw(nid, icol)!= 1) ) { // force 0/1/NA for BTs
 
           if(params->within_sample_l0)
             throw "no missing value allowed in phenotype file with option -within";
           else if( pheno_data->phenotypes_raw(nid, icol) != params->missing_value_double ){
             std::string msg = (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA");
             throw "a phenotype value is not " + msg + " for individual: ID=" + header[itr->first] + " Y=" + tmp_str_vec[itr->first];
+          }
+
+          pheno_data->masked_indivs(nid, icol) = false;
+        } else if((params->trait_mode==2) && (pheno_data->phenotypes_raw(nid, icol)<0) ) { // force non-neg for CTs
+
+          if(params->within_sample_l0)
+            throw "no missing value allowed in phenotype file with option -within";
+          else if( pheno_data->phenotypes_raw(nid, icol) != params->missing_value_double ){
+            throw "a phenotype value is <0 for individual: ID=" + header[itr->first] + " Y=" + tmp_str_vec[itr->first];
           }
 
           pheno_data->masked_indivs(nid, icol) = false;
@@ -386,7 +408,7 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
   if( params->strict_mode ) {
     sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
     pheno_data->masked_indivs.array().colwise() *= pheno_data->masked_indivs.array().rowwise().all();
-  } else if( !params->rm_missing_qt  && !params->binary_mode) 
+  } else if( !params->rm_missing_qt  && (params->trait_mode==0)) 
     sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
   
   ind_in_pheno_and_geno = pheno_data->masked_indivs.array().rowwise().any(); // if individual has no phenotype data at all
@@ -403,15 +425,15 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
     throw "all individuals have missing/invalid values for phenotype '" + files->pheno_names[mInd] + "'." ;
 
   // ignore traits with fewer than the specified minimum case count
-  if(params->binary_mode)
+  if(params->trait_mode==1)
     rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
 
-  if(!params->binary_mode || !params->test_mode){
+  if((params->trait_mode==0) || !params->test_mode){
     double mean;
 
     for(int j = 0; j < params->n_pheno; j++) {
 
-      if(!params->binary_mode){
+      if(params->trait_mode==0){
         // impute missing with mean
         mean = ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).select( pheno_data->phenotypes.col(j).array(), 0).sum();
         mean /= ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).count();
@@ -473,7 +495,7 @@ void rm_phenoCols(Ref<ArrayXb> sample_keep, struct in_files* files, struct param
 
   files->pheno_names = tmp_str_vec;
   pheno_data->phenotypes = ynew;
-  if(params->binary_mode) pheno_data->phenotypes_raw = ynew;
+  if(params->trait_mode) pheno_data->phenotypes_raw = ynew;
   pheno_data->masked_indivs = mnew;
   params->n_pheno = pheno_data->masked_indivs.cols();
 
@@ -675,7 +697,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       << (params->interaction_snp? "variant " : "")
       << "'" << filters->interaction_cov << "'\n";
 
-    if(!params->binary_mode && !params->no_robust) {
+    if((params->trait_mode==0) && !params->no_robust) {
       sout <<  "    +using " << 
         (params->force_robust && params->force_hc4? "HC4 robust SE" : "" ) << 
         (params->force_robust && !params->force_hc4? "HC3 robust SE" : "" ) << 
@@ -704,7 +726,7 @@ void setMasks(struct param* params, struct filter* filters, struct phenodt* phen
 
   // mask Y and X matrices
   pheno_data->phenotypes.array().colwise() *= filters->ind_in_analysis.cast<double>();
-  if(params->binary_mode) 
+  if(params->trait_mode) 
     pheno_data->phenotypes_raw.array().colwise() *= filters->ind_in_analysis.cast<double>();
   pheno_data->new_cov.array().colwise() *= filters->ind_in_analysis.cast<double>();
   if( params->w_interaction ) 
@@ -875,7 +897,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   setMasks(params, filters, pheno_data, sout);
 
   // for interaction test with BTs, add E^2 to covs
-  if( params->binary_mode && params->w_interaction && params->gwas_condtl ) {
+  if( (params->trait_mode==1) && params->w_interaction && params->gwas_condtl ) {
     pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
     pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov.array().square().matrix();
   }
@@ -883,8 +905,9 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   // orthonormal basis (save number of lin. indep. covars.)
   params->ncov = getBasis(pheno_data->new_cov, params);
 
-  // compute offset for BT (only in step 1)
-  if(params->binary_mode && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, files, sout);
+  // compute offset for nonQT (only in step 1)
+  if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, files, sout);
+  else if((params->trait_mode==2) && !params->test_mode) fit_null_poisson(0, params, pheno_data, m_ests, files, sout);
 
   // with interaction test, remove colinear columns
   if( params->w_interaction ) {
@@ -898,7 +921,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
 
     if(!params->gwas_condtl) { // include main effects of Xinter
 
-      params->int_add_esq = params->binary_mode && !params->add_homdev && params->int_add_extra_term;
+      params->int_add_esq = (params->trait_mode==1) && !params->add_homdev && params->int_add_extra_term;
       if(params->int_add_esq){ // use G_E and G_E^2
         params->interaction_istart = 2 * params->ncov_interaction;
         pheno_data->interaction_cov_res.resize(pheno_data->interaction_cov.rows(), pheno_data->interaction_cov.cols() * 2);
@@ -923,7 +946,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
 
     // for interaction tests with QTs using HLM - keep raw Y
-    if(!params->binary_mode)
+    if(params->trait_mode==0)
       pheno_data->phenotypes_raw = pheno_data->phenotypes;
 
     // allocate per thread if using OpenMP
@@ -932,8 +955,8 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     
   }
 
-  // residualize phenotypes (skipped for BTs when testing)
-  if( !params->getCorMat && (!params->test_mode || !params->binary_mode) ) 
+  // residualize phenotypes (skipped for nonQTs when testing)
+  if( !params->getCorMat && (!params->test_mode || (params->trait_mode==0)) ) 
     residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
   // store indices for ADAM
@@ -999,7 +1022,11 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   // skip reading if specified by user
   if( params->skip_blups ) {
-    sout << " * no step 1 predictions given. Simple " << ( params->binary_mode ? "logistic":"linear" ) << " regression will be performed" <<endl;
+    string mode;
+    if(params->trait_mode==0) mode = "linear";
+    else if(params->trait_mode==1) mode = "logistic";
+    else if(params->trait_mode==2) mode = "poisson";
+      sout << " * no step 1 predictions given. Simple " << mode << " regression will be performed" <<endl;
     return;
   }
 

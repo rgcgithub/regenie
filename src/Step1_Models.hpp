@@ -32,7 +32,7 @@
 
 struct ests {
 
-  Eigen::MatrixXd offset_logreg;
+  Eigen::MatrixXd offset_nullreg;
   Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> blups;
   Eigen::MatrixXd ltco_prs;
   Eigen::MatrixXd Gamma_sqrt;
@@ -73,6 +73,10 @@ void fit_null_logistic(const int&,struct param*,struct phenodt*,struct ests*,str
 bool fit_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&);
 double get_logist_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
 
+void fit_null_poisson(const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
+bool fit_poisson(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&);
+double get_poisson_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
+
 void ridge_level_0(const int&,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
 void write_l0_file(std::ofstream*,Eigen::MatrixXd&,mstream&);
@@ -83,13 +87,18 @@ void ridge_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct r
 
 void ridge_logistic_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_logistic_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ests*,struct ridgel1*,mstream&);
-
 bool run_log_ridge_loocv(const double&,const int&,const int&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
 void run_log_ridge_loocv_adam(const int&,const double&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
 
+void ridge_poisson_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
+void ridge_poisson_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ests*,struct ridgel1*,mstream&);
+bool run_ct_ridge_loocv(const double&,const int&,const int&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
+
 bool get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&,const double&);
 void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
-double compute_log_lik(const double&,const double&);
+void get_pvec_poisson(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
+double compute_log_lik_bern(const double&,const double&);
+double compute_log_lik_poisson(const double&,const double&);
 
 void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);
 void read_l0_chunk(int const&,int const&,int const&,int const&,const std::string&,struct param*,struct ridgel1*,mstream&);

@@ -1382,9 +1382,9 @@ void readChunkFromBGENFileToG_fast(const int& bs, const int& chrom, const uint32
   vector<uint64> indices(bs);
 
   snp_data_blocks.resize( bs );
-  std::iota(indices.begin(), indices.end(), start);
+  for (int i = 0; i < bs; i++) indices[i] = snpinfo[start + i].offset;
 
-  readChunkFromBGEN(&files->geno_ifstream, insize, outsize, snp_data_blocks, indices, snpinfo);
+  readChunkFromBGEN(&files->geno_ifstream, insize, outsize, snp_data_blocks, indices);
 
   // unpack data for each variant
 #if defined(_OPENMP)
@@ -1619,17 +1619,17 @@ void readChunkFromPGENFileToG(const int& bs, const uint32_t& snpcount, vector<sn
 
 
 // check if uses Layout 2 (v1.2/1.3) & check for first SNP if precision for probabilities is 8 bits
-void check_bgen(const string& bgen_file, struct param* params){
+void check_bgen(const string& bgen_file, string const& file_type, bool& zlib_compress, bool& streamBGEN, uint& BGENbits, int const& nChrom){
 
   // for non-bgen file input, skip check
-  if(params->file_type != "bgen") return;
+  if(file_type != "bgen") return;
 
   BgenParser bgen_ck;
   bgen_ck.open( bgen_file ) ;
   bool layoutV2 = bgen_ck.get_layout();
-  params->zlib_compress = bgen_ck.get_compression();
+  zlib_compress = bgen_ck.get_compression();
   if( !layoutV2 ){
-    params->streamBGEN = false;
+    streamBGEN = false;
     return;
   }
   uint64 first_snp = bgen_ck.get_position();
@@ -1657,7 +1657,7 @@ void check_bgen(const string& bgen_file, struct param* params){
   bfile.read( reinterpret_cast<char *> (&chromosome_size), 2 );
   tmp_buffer.resize(chromosome_size);
   bfile.read( reinterpret_cast<char *> (&tmp_buffer[0]), chromosome_size );
-  assert( chrStrToInt(tmp_buffer , params->nChrom) > 0 );
+  assert( chrStrToInt(tmp_buffer , nChrom) > 0 );
   //cout << ",CHR:" << tmp_buffer ;
   // position
   bfile.read( reinterpret_cast<char *> (&position), 4 );
@@ -1688,17 +1688,17 @@ void check_bgen(const string& bgen_file, struct param* params){
 
   // uncompress the block
   //cout << "zlib:"<< std::boolalpha << zlib_compress ;
-  if(params->zlib_compress){ // using zlib
+  if(zlib_compress){ // using zlib
     uLongf dest_size = size_block_post_compression;
     if( (uncompress( &(geno_block_uncompressed[0]), &dest_size, &geno_block[0], size_block - 4) != Z_OK) || (dest_size != size_block_post_compression) ){
-      params->streamBGEN = false;
+      streamBGEN = false;
       return;
     }
   } else { // using zstd
     size_t const dest_size = ZSTD_decompress(&(geno_block_uncompressed[0]), size_block_post_compression, &geno_block[0], size_block - 4) ;
     //cerr << size_block_post_compression << " " << dest_size << " " << size_block - 4 <<endl;
     if( dest_size != size_block_post_compression ){
-      params->streamBGEN = false;
+      streamBGEN = false;
       return;
     }
   }
@@ -1741,9 +1741,9 @@ void check_bgen(const string& bgen_file, struct param* params){
   // bits per probability
   std::memcpy(&bits_prob, &(buffer[0]), 1);
   //cout << ",bits:"<< bits_prob ;
-  params->BGENbits = bits_prob;;
+  BGENbits = bits_prob;;
   if( bits_prob != 8 ){
-    params->streamBGEN = false;
+    streamBGEN = false;
     return;
   }
 
@@ -1827,7 +1827,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
               hc_val = (ds < 1 ? 0 : 2);
             else
               hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
-            update_genocounts(params->binary_mode, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
+            update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
           } else if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, phenotypes_raw);
         }
@@ -1890,12 +1890,11 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 }
 
 // for step 2 (read in raw data)
-void readChunkFromBGEN(std::istream* bfile, vector<uint32_t>& insize, vector<uint32_t>& outsize, vector<vector<uchar>>& snp_data_blocks, vector<uint64>& indices, vector<snp> const& snpinfo){
+void readChunkFromBGEN(std::istream* bfile, vector<uint32_t>& insize, vector<uint32_t>& outsize, vector<vector<uchar>>& snp_data_blocks, vector<uint64>& indices){
 
   uint16_t SNPID_size = 0, RSID_size = 0, chromosome_size = 0 , numberOfAlleles = 0 ;
   uint32_t position = 0, allele_size = 0;
   int n_snps = indices.size();
-  uint64 pos_skip;
   string tmp_buffer;
 
   for(int isnp = 0; isnp < n_snps; isnp++) {
@@ -1905,8 +1904,7 @@ void readChunkFromBGEN(std::istream* bfile, vector<uint32_t>& insize, vector<uin
     uint32_t* size2 = &outsize[isnp];
 
     // extract genotype data blocks single-threaded
-    pos_skip = snpinfo[ indices[isnp] ].offset;
-    bfile->seekg( pos_skip );
+    bfile->seekg( indices[isnp] );
 
     // snpid
     bfile->read( reinterpret_cast<char *> (&SNPID_size), 2 );
@@ -2083,7 +2081,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
           hc_val = (Geno(index) < 1 ? 0 : 2);
         else
           hc_val = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
-        update_genocounts(params->binary_mode, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
+        update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
       } else if( params->af_cc )
         update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
@@ -2211,7 +2209,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 
         // get genotype counts
         if( params->htp_out ) 
-          update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
+          update_genocounts(params->trait_mode==1, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
         else if( params->af_cc )
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
@@ -2327,7 +2325,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
             hc = (Geno(index) < 1 ? 0 : 2);
           else
             hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
-          update_genocounts(params->binary_mode, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
+          update_genocounts(params->trait_mode==1, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
         } else if( params->af_cc )
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
@@ -2532,7 +2530,7 @@ void initialize_thread_data(vector<data_thread>& all_snp_data, struct param cons
     snp_data->pval_log = ArrayXd::Zero(params.n_pheno);
     snp_data->bhat = ArrayXd::Zero(params.n_pheno);
     snp_data->se_b = ArrayXd::Zero(params.n_pheno);
-    if(params.binary_mode){
+    if(params.trait_mode){
       snp_data->stats = ArrayXd::Zero(params.n_pheno);
       snp_data->denum = ArrayXd::Zero(params.n_pheno);
     }
@@ -2545,7 +2543,7 @@ void reset_thread(data_thread* snp_data, struct param const& params){
     snp_data->pval_log = 0;
     snp_data->bhat = 0;
     snp_data->se_b = 0;
-    if(params.binary_mode){
+    if(params.trait_mode){
       snp_data->stats = 0;
       snp_data->denum = 0;
     }
@@ -2722,7 +2720,7 @@ void residualize_geno(int const& isnp, int const& thread_num, variant_block* snp
 
   if(snp_data->ignored) return;
 
-  if(!params->binary_mode || force){
+  if((params->trait_mode==0) || force){
     MatrixXd beta;
     data_thread* dt_thr = &(gblock->thread_data[thread_num]);
 
@@ -3654,7 +3652,10 @@ MatrixXd extract_from_genofile(Ref<ArrayXb> mask, struct filter* filters, struct
   MatrixXd Gmat = MatrixXd::Constant(params->n_samples, filters->condition_snp_names.size(), -3); // set all to missing
 
   // read in variants & impute is missing
-  if(files->condition_snps_info.format == "bgen")
+  // note variant with all missing will be captured in intercept
+  if((files->condition_snps_info.format == "bgen") && geno_info.streamBGEN)
+    read_snps_bgen(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file, params);
+  else if(files->condition_snps_info.format == "bgen")
     read_snps_bgen(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file);
   else if(files->condition_snps_info.format == "pgen")
     read_snps_pgen(filters->condition_snp_names, Gmat, geno_info, mask);
@@ -3670,6 +3671,7 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
  sout << "      -extracting variants from file [" << files->condition_snps_info.file << "]\n";
 
   uint32_t lineread = 0;
+  uint BGENbits;
   uint64 offset;
   std::vector< string > tmp_ids ;
   BgenParser bgen_tmp;
@@ -3678,6 +3680,9 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
   std::string chromosome, rsid, msg;
   std::vector< std::string > alleles ;
   std::vector< std::vector< double > > probs ;
+
+  // check if can use faster file stream
+  check_bgen(files->condition_snps_info.file, files->condition_snps_info.format, ginfo.zlib_compress, ginfo.streamBGEN, BGENbits, params->nChrom);
 
   // open file and print file info
   bgen_tmp.open( files->condition_snps_info.file ) ;
@@ -3690,7 +3695,7 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
 
       assert(alleles.size() == 2) ; // only bi-allelic allowed
       // check phasing for first variant
-      if(lineread == 0){
+      if(lineread++ == 0){
         bgen_tmp.read_probs( &probs ) ;
         if( probs[0].size() != 3 ) // unphased only 
           throw "only unphased bgen are supported.";
@@ -3728,6 +3733,134 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
 
   if(ginfo.sample_keep.count() == 0)
     throw "none of the analyzed samples are present in the file";
+
+}
+
+// fast streaming
+void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file, struct param* params){
+
+  int bs = snp_map.size();
+  vector< vector < uchar > > snp_data_blocks;
+  vector< uint32_t > insize(bs), outsize(bs);
+  vector<uint64> indices;
+  ArrayXb read_error = ArrayXb::Constant(bs, false);
+  std::map <std::string, uint64>::iterator itr;
+  std::ifstream bgen_ifstream;
+
+  snp_data_blocks.resize( bs );
+  indices.reserve( bs );
+  for (itr = snp_map.begin(); itr != snp_map.end(); ++itr)
+    indices.push_back(itr->second);
+  std::sort(indices.begin(), indices.end());// sort indices to read in order
+
+  bgen_ifstream.open( bgen_file, ios::in | ios::binary);
+  readChunkFromBGEN(&bgen_ifstream, insize, outsize, snp_data_blocks, indices);
+
+
+  // unpack data for each variant
+#if defined(_OPENMP)
+  setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for(int isnp = 0; isnp < bs; isnp++) {
+
+    uint minploidy = 0, maxploidy = 0, phasing = 0, bits_prob = 0;
+    uint16_t numberOfAlleles = 0 ;
+    uint32_t nindivs = 0, index;
+    string tmp_buffer;
+    vector<uchar>* geno_block = &snp_data_blocks[isnp];
+
+    // set genotype data block
+    vector < uchar > geno_block_uncompressed;
+    geno_block_uncompressed.resize(outsize[isnp]);
+
+    // uncompress the block
+    bool compress_fail;
+    if(ginfo.zlib_compress){ // using zlib
+      uLongf dest_size = outsize[isnp];
+      compress_fail = (uncompress( &(geno_block_uncompressed[0]), &dest_size, &((*geno_block)[0]), insize[isnp] - 4) != Z_OK) || (dest_size != outsize[isnp]);
+    } else { // using zstd
+      size_t const dest_size = ZSTD_decompress(&(geno_block_uncompressed[0]), outsize[isnp], &((*geno_block)[0]), insize[isnp] - 4) ;
+      compress_fail = (dest_size != outsize[isnp]);
+    }
+    // check it was successful
+    if( compress_fail ){
+      read_error(isnp) = true;
+      continue; // don't use throw as not thread-safe
+    }
+
+    // stream to uncompressed block
+    uchar *buffer = &geno_block_uncompressed[0];
+    // sample size in file
+    std::memcpy(&nindivs, &(buffer[0]), 4);
+    buffer += 4;
+    // num alleles
+    std::memcpy(&numberOfAlleles, &(buffer[0]), 2);
+    assert( numberOfAlleles == 2 );
+    buffer += 2;
+    // ploidy
+    std::memcpy(&minploidy, &(buffer[0]), 1);
+    assert( minploidy == 2 );
+    buffer ++;
+    std::memcpy(&maxploidy, &(buffer[0]), 1);
+    assert( maxploidy == 2 );
+    buffer ++;
+    //to identify missing when getting dosages
+    vector < uchar > ploidy_n;
+    ploidy_n.resize( nindivs );
+    std::memcpy(&(ploidy_n[0]), &(buffer[0]), nindivs);
+    buffer += nindivs;
+    // phasing
+    std::memcpy(&phasing, &(buffer[0]), 1);
+    assert( phasing == 0 );
+    buffer++;
+    // bits per probability
+    std::memcpy(&bits_prob, &(buffer[0]), 1);
+    assert( bits_prob == 8 );
+    buffer++;
+
+    // get dosages 
+    int ns = 0;
+    double prob0, prob1, total = 0;
+    MapArXd Geno (Gmat.col(isnp).data(), Gmat.rows(), 1);
+
+    // parse genotype probabilities block
+    for(size_t i = 0; i < nindivs; i++) {
+
+      // skip samples that were ignored from the analysis
+      if( !ginfo.sample_keep(i) ) {
+        buffer+=2;
+        continue;
+      }
+      index = ginfo.sample_index(i);
+
+      if(ploidy_n[i] & 0x80) {
+        Geno(index) = -3;
+        buffer+=2;
+        continue;
+      }
+
+      prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
+      prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
+      Geno(index) = prob1 + 2 * prob0;
+
+      if( Geno(index) != -3 ){
+          total += Geno(index);
+          ns++;
+      }
+    }
+
+    if(ns==0) {Geno=-3; continue;} // mask all samples
+    mean_impute_g(total/ns, Geno, mask);
+
+  }
+#if defined(_OPENMP)
+  setNbThreads(params->threads);
+#endif
+
+  bgen_ifstream.close();
+  if(read_error.any())
+    throw "failed to decompress genotype data block.";
 
 }
 

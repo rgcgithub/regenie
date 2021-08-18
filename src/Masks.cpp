@@ -713,7 +713,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
             hc_val = (ds < 1 ? 0 : 2);
           else
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
-          update_genocounts(params->binary_mode, index, hc_val, snp_data->genocounts, masked_indivs, ymat);
+          update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, ymat);
         } else if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, ymat);
 

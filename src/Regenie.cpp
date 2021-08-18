@@ -146,6 +146,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
     ("qt", "analyze phenotypes as quantitative")
     ("bt", "analyze phenotypes as binary")
+    ("ct", "analyze phenotypes as counts")
     ("1,cc12", "use control=1,case=2,missing=NA encoding for binary traits")
     ("b,bsize", "size of genotype blocks", cxxopts::value<int>(params->block_size),"INT")
     ("cv", "number of cross validation (CV) folds", cxxopts::value<int>(params->cv_folds),"INT(=5)")
@@ -183,6 +184,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("sex-specific", "for sex-specific analyses (male/female)", cxxopts::value<std::string>(),"STRING")
     ("af-cc", "print effect allele frequencies among cases/controls for step 2")
     ("test", "'additive', 'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
+    ("condition-list", "file with list of variants to include as covariates", cxxopts::value<std::string>(files->condition_snps_list),"FILE")
+    ("condition-file", "optional genotype file which contains the variants to include as covariates", cxxopts::value<std::string>(),"FORMAT,FILE")
+    ("condition-file-sample", "sample file accompanying BGEN file with the conditional variants", cxxopts::value<std::string>(files->condition_snps_info.sample),"FILE")
+    ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
+    ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
+    ("force-condtl", "to also condition on interacting SNP in the marginal GWAS test")
+    ("no-condtl", "to print out all main effects in GxE interaction test")
+    ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
     ("set-list", "file with sets definition", cxxopts::value<std::string>(files->set_file),"FILE")
     ("extract-sets", "comma-separated list of files with IDs of sets to retain in the analysis", cxxopts::value<std::string>(),"FILE")
     ("exclude-sets", "comma-separated list of files with IDs of sets to remove from the analysis", cxxopts::value<std::string>(),"FILE")
@@ -219,6 +228,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("use-relative-path", "use relative paths for Step 1 pred.list file")
     ("nauto", "number of autosomal chromosomes", cxxopts::value<int>(),"INT")
     ("maxCatLevels", "maximum number of levels for categorical covariates", cxxopts::value<int>(params->max_cat_levels),"INT(=10)")
+    ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("nb", "number of blocks to use", cxxopts::value<int>(params->n_block),"INT")
     ("starting-block", "start run at a specific block/set number for step 2", cxxopts::value<int>(params->start_block),"INT")
     ("force-step1", "run step 1 for more than 1M variants (not recommended)")
@@ -251,16 +261,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for ACAT test statistic", cxxopts::value<std::string>(), "a,b(=1,1)")
-    ("condition-list", "file with list of variants to include as covariates", cxxopts::value<std::string>(files->condition_snps_list),"FILE")
-    ("condition-file", "optional genotype file which contains the variants to include as covariates", cxxopts::value<std::string>(),"FORMAT,FILE")
-    ("condition-file-sample", "sample file accompanying BGEN file with the conditional variants", cxxopts::value<std::string>(files->condition_snps_info.sample),"FILE")
-    ("interaction", "perform interaction testing with a quantitative/categorical covariate", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
-    ("interaction-snp", "perform interaction testing with a variant", cxxopts::value<std::string>(filters->interaction_cov),"STRING")
-    ("force-condtl", "to also condition on interacting SNP in the marginal GWAS test")
-    ("no-condtl", "to print out all main effects in GxE interaction test")
-    ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
-    ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("debug", "more verbose screen output for debugging purposes")
@@ -304,7 +305,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("pgen") ) params->file_type = "pgen";
     if( vm.count("sample") ) params->bgenSample = true;
     if( vm.count("ref-first") ) params->ref_first = true;
-    if( vm.count("bt") ) params->binary_mode = true;
+    if( vm.count("bt") ) params->trait_mode = 1;
+    if( vm.count("ct") ) params->trait_mode = 2;
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
     if( vm.count("apply-rint") && !vm.count("bt")) params->rint = true;
@@ -370,7 +372,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->getCorMat = true;
       params->run_mode = 2;
       params->skip_blups = params->strict_mode = true;
-      params->binary_mode = false;
+      params->trait_mode = 0;
       params->min_MAC = 0.5;
       if(vm.count("output-corr-text")) params->cor_out_txt = true;
     }
@@ -581,28 +583,18 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if( vm.count("setl0") ) {
         params->user_ridge_params_l0 = true;
         tmp_str_vec = string_split(vm["setl0"].as<string>(),",");
-        for( size_t val = 0; val < tmp_str_vec.size(); val++)
-          params->lambda.push_back(convertDouble( tmp_str_vec[val], params, sout));
-        std::sort(params->lambda.begin(), params->lambda.end());
-        params->lambda.erase( unique( params->lambda.begin(), params->lambda.end() ), params->lambda.end() );
+        params->lambda = get_ridge_params(0, tmp_str_vec, params, sout);
         params->n_ridge_l0 = params->lambda.size();
-        // parameters must be less in (0, 1)
-        if( std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l0 || std::count_if(params->lambda.begin(), params->lambda.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l0 )
-          throw "must specify values for --l0 in (0,1).";
       } else set_ridge_params(params->n_ridge_l0, params->lambda, sout);
 
       // user specified ridge parameters to use at l1
+      params->tau.resize(1);
       if( vm.count("setl1") ) {
         params->user_ridge_params_l1 = true;
         tmp_str_vec = string_split(vm["setl1"].as<string>(),",");
-        for( size_t val = 0; val < tmp_str_vec.size(); val++)
-          params->tau.push_back(convertDouble( tmp_str_vec[val], params, sout));
-        std::sort(params->tau.begin(), params->tau.end());
-        params->tau.erase( unique( params->tau.begin(), params->tau.end() ), params->tau.end() );
-        params->n_ridge_l1 = params->tau.size();
-        if( std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::greater<double>(), 0)) != params->n_ridge_l1 || std::count_if(params->tau.begin(), params->tau.end(), std::bind2nd(std::less<double>(), 1)) != params->n_ridge_l1 || (params->n_ridge_l1 == 0) )
-          throw "must specify values for --l1 in (0,1).";
-      } else set_ridge_params(params->n_ridge_l1, params->tau, sout);
+        params->tau[0] = get_ridge_params(1, tmp_str_vec, params, sout);
+        params->n_ridge_l1 = params->tau[0].size();
+      } else set_ridge_params(params->n_ridge_l1, params->tau[0], sout);
 
       // firth only done in test mode
       if(params->firth) params->firth = false;
@@ -617,11 +609,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->rm_or = params->keep_or = false;
       }
 
-    } else if(params->firth && !params->binary_mode) {
+    } else if(params->firth && (params->trait_mode!=1)) {
       // firth correction is only applied to binary traits
       sout << "WARNING: option --firth will not be applied (it is only run with binary traits).\n";
       params->firth = false;
-    } else if(params->use_SPA && !params->binary_mode) {
+    } else if(params->use_SPA && (params->trait_mode!=1)) {
       // SPA is only applied to binary traits
       sout << "WARNING: option --spa will not be applied (it is only run with binary traits).\n";
       params->use_SPA = false;
@@ -745,7 +737,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: option --no-split does not work with --nnls-verbose.\n";
       params->split_by_pheno = true;
     }
-    if( (!params->test_mode || !params->binary_mode || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
+    if( (!params->test_mode || (params->trait_mode!=1) || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
       params->af_cc = false;
     }
@@ -754,7 +746,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if(params->test_mode && (params->min_INFO < 0 || params->min_INFO > 1) )
       throw "minimum info score must be in [0,1].";
-    if( params->rm_missing_qt && (params->strict_mode || params->binary_mode || !params->test_mode) ) params->rm_missing_qt = false;
+    if( params->rm_missing_qt && (params->strict_mode || params->trait_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
     if( !vm.count("bsize") && !params->snp_set && !params->getCorMat ) 
       throw "must specify the block size using '--bsize'.";
@@ -796,7 +788,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(params->firth_approx && !params->firth) params->firth_approx = false;
 
     // check arguments for logistic regression 
-    if(params->binary_mode && (params->niter_max < 1))
+    if(params->trait_mode && (params->niter_max < 1))
       throw "invalid argument for --niter (must be positive integer).";
     if(params->firth && (params->maxstep_null < 1))
       throw "invalid argument for --maxstep-null (must be a positive integer).";
@@ -832,13 +824,15 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->firth_approx = true;
       }
     }
+    if( (params->trait_mode==2) && params->w_interaction)
+      throw "cannot use interaction tests with count phenotypes.";
 
     if(vm.count("force-ltco") && vm.count("use-prs"))
       throw "cannot use LTCO with full PRS.";
     if(vm.count("use-null-firth") && !params->firth_approx) 
       throw "option --use-null-firth only wors with approximate Firth test.";
     if(vm.count("write-null-firth") && 
-        ((params->test_mode && !params->firth_approx) || !(params->test_mode || params->binary_mode)) ) {
+        ( (params->test_mode && !params->firth_approx) || (!params->test_mode && (params->trait_mode!=1)) ) ) {
       sout << "WARNING: option --write-null-firth only works for BTs with approximate Firth test.\n";
       params->write_null_firth = false;
     }
@@ -997,19 +991,34 @@ void start_log(T arguments, const string& out_file, MeasureTime* mt, mstream& so
 
 }
 
-void set_ridge_params(int const& nparams, vector<double>& in_param, mstream& sout){
+ArrayXd get_ridge_params(int const& level, vector<string> const& str_vec, struct param const* params, mstream& sout){
+
+  std::vector<double> vals;
+
+  for( size_t val = 0; val < str_vec.size(); val++)
+    vals.push_back(convertDouble( str_vec[val], params, sout));
+  std::sort(vals.begin(), vals.end());
+  vals.erase( unique( vals.begin(), vals.end() ), vals.end() );
+
+  ArrayXd vvals = MapArXd( vals.data(), vals.size() ); 
+  // parameters must be less in (0, 1)
+  if( !((vvals>0) && (vvals<1)).all() )
+    throw "must specify values for --l" + to_string(level) + " in (0,1).";
+
+  return vvals;
+
+}
+
+void set_ridge_params(int const& nparams, ArrayXd& vec, mstream& sout){
 
   if(nparams < 2)
     throw "number of ridge parameters must be at least 2 (=" + to_string( nparams ) + ")";
 
   // endpoints are 0.01 and 0.99 
   double step = 1.0 / ( nparams - 1 );
-  double val = step;
-  in_param.resize( nparams);
-
-  for( int index_p = 1; index_p < (nparams - 1); index_p++, val += step) in_param[index_p] = val;
-  in_param[0] = 0.01;
-  in_param[nparams-1] = 0.99;
+  vec = ArrayXd::LinSpaced(nparams, 0, nparams-1) * step;
+  vec.head(1) = 0.01;
+  vec.tail(1) = 0.99;
 
 }
 
@@ -1032,7 +1041,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
     // Step 2
     // 3P + B
     total_ram = params->n_pheno * 3 + params->block_size + params->ncov; // y, mask, y_resid, g, X
-    if(params->binary_mode) {
+    if(params->trait_mode) {
       total_ram += 2 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
       if(params->start_block > params->total_n_block)
@@ -1085,7 +1094,6 @@ int chrStrToInt(const string& chrom, const int& nChrom) {
   if (isdigit(s_chr[0])) {
     int chr = atoi(s_chr.c_str());
     if((chr >= 1) && (chr <= nChrom)) return chr;
-  } else if ( (s_chr == "X") || (s_chr == "XY") || (s_chr == "PAR1") || (s_chr == "PAR2") ) return nChrom;
   } else if ( (s_chr == "X") || (s_chr == "XY") || (s_chr == "Y") || (s_chr == "PAR1") || (s_chr == "PAR2") ) return nChrom;
 
   return -1;

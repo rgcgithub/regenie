@@ -83,7 +83,7 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
         break;
 
       case 1:
-        if(params->binary_mode) sout << "WARNING: Joint F-test only for QTs.\n";
+        if(params->trait_mode) sout << "WARNING: Joint F-test only for QTs.\n";
         else BIT_SET(test_list, 1);
         break;
 
@@ -92,7 +92,7 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
         break;
 
       case 3:
-        if(params->binary_mode) sout << "WARNING: Joint NNLS test only for QTs.\n";
+        if(params->trait_mode) sout << "WARNING: Joint NNLS test only for QTs.\n";
         else { 
           BIT_SET(test_list, 3); 
           nnls_napprox = params->nnls_napprox; 
