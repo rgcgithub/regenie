@@ -99,7 +99,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 
   int niter_cur = 0;
   double dev_old, dev_new=0;
-  ArrayXd score, betanew, wvec_sqrt, wvec, zvec;
+  ArrayXd score, betanew, wvec, zvec;
   MatrixXd XtW, XtWX;
 
   dev_old = get_logist_dev(Y1, pivec, mask);
@@ -113,13 +113,11 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
       return false;
     }
 
-    wvec_sqrt = mask.select(wvec.sqrt(), 0);
-    XtW = X1.transpose() * wvec_sqrt.matrix().asDiagonal();
-    XtWX = XtW * XtW.transpose();
+    XtW = X1.transpose() * mask.select(wvec,0).matrix().asDiagonal();
+    XtWX = XtW * X1;
 
     // working vector z = X*beta + (Y-p)/(p*(1-p))
-    // and multiply by sqrt(p*(1-p))
-    zvec = wvec_sqrt * mask.select(etavec - offset + (Y1 - pivec) / wvec, 0);
+    zvec = mask.select(etavec - offset + (Y1 - pivec) / wvec, 0);
 
     // parameter estimate
     betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
@@ -829,7 +827,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
 
                 zvec = masked_in_folds[k].col(ph).array().select((etavec - l1->test_offset[ph][k].array()) + (l1->test_pheno_raw[ph][k].array() - pivec) / wvec, 0);
 
-                XtW = l1->test_mat[ph_eff][k].transpose() * wvec.matrix().asDiagonal();
+                XtW = l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(wvec,0).matrix().asDiagonal();
                 XtWX += XtW * l1->test_mat[ph_eff][k];
                 XtWZ += XtW * zvec.matrix();
               }
@@ -997,8 +995,9 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
         Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
         Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
+        Ref<MatrixXb> mask_chunk = mask.matrix().block(j_start, 0, size_chunk,1);
 
-        XtWX += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
+        XtWX += Xmat_chunk.transpose() * mask_chunk.array().select(w_chunk.array(),0).matrix().asDiagonal() * Xmat_chunk;
       }
       Hinv.compute( XtWX + params->tau[0](j) * ident_l1 );
 
@@ -1076,8 +1075,9 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
       Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
       Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
       Ref<MatrixXd> z_chunk = zvec.matrix().block(j_start, 0, size_chunk,1);
+      Ref<const MatrixXb> mask_chunk = mask.matrix().block(j_start, 0, size_chunk,1);
 
-      V1 = Xmat_chunk.transpose() * w_chunk.asDiagonal();
+      V1 = Xmat_chunk.transpose() * mask_chunk.array().select(w_chunk.array(),0).matrix().asDiagonal();
       XtWX += V1 * Xmat_chunk;
       XtWZ += V1 * z_chunk;
     }

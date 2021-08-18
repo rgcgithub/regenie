@@ -146,7 +146,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("o,out", "prefix for output files", cxxopts::value<std::string>(files->out_file),"PREFIX")
     ("qt", "analyze phenotypes as quantitative")
     ("bt", "analyze phenotypes as binary")
-    ("ct", "analyze phenotypes as counts")
     ("1,cc12", "use control=1,case=2,missing=NA encoding for binary traits")
     ("b,bsize", "size of genotype blocks", cxxopts::value<int>(params->block_size),"INT")
     ("cv", "number of cross validation (CV) folds", cxxopts::value<int>(params->cv_folds),"INT(=5)")
@@ -248,6 +247,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
   // extra options
   AllOptions.add_options("Extra")
     ("print", "print estimated effect sizes from level 0 and level 1 models")
+    ("ct", "analyze phenotypes as counts")
     ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
