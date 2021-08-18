@@ -293,15 +293,18 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     if( block_info->ignored_trait(i) ) 
       continue;
     MapArXb mask (pheno_data.masked_indivs.col(i).data(), params.n_samples, 1);
+    MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(i).data(), params.n_samples, 1);
+    MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, params.ncov);
+    MapcMatXd XWXinv (m_ests.Xt_Gamma_X_inv[i].data(), params.ncov, params.ncov);
 
     // project out covariates from G
     if(dt_thr->is_sparse) {
-      GWs = dt_thr->Gsparse.cwiseProduct((m_ests.Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix());
-      dt_thr->Gres = -m_ests.X_Gamma[i] * (m_ests.Xt_Gamma_X_inv[i] * (m_ests.X_Gamma[i].transpose() * GWs));
+      GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
+      dt_thr->Gres = -XWsqrt * (XWXinv * (XWsqrt.transpose() * GWs));
       dt_thr->Gres += GWs;
     } else {
-      GW = (Geno * m_ests.Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix();
-      dt_thr->Gres = GW - m_ests.X_Gamma[i] * (m_ests.Xt_Gamma_X_inv[i] * (m_ests.X_Gamma[i].transpose() * GW));
+      GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
+      dt_thr->Gres = GW - XWsqrt * (XWXinv * (XWsqrt.transpose() * GW));
     }
 
     // denominator
@@ -310,12 +313,18 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
       block_info->ignored_trait(i) = true;
       continue;
     }
-
     // score test stat for BT
     if(dt_thr->is_sparse) 
-      dt_thr->stats(i) = GWs.cwiseProduct(yres.col(i)).sum() / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
     else
-      dt_thr->stats(i) = dt_thr->Gres.cwiseProduct(yres.col(i)).sum() / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+
+    if(params.debug) {
+      cerr << endl << yres.col(i).topRows(4) << endl;
+      cerr << endl << dt_thr->Gres.topRows(4) << endl;
+      if(dt_thr->is_sparse) cerr << endl << GWs.sum() << endl;
+      cerr << "\nnum=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " denum=" << dt_thr->Gres.squaredNorm() << endl;
+    }
 
     // use firth/spa
     check_pval_snp(block_info, dt_thr, chrom, i, isnp, pheno_data, gblock, m_ests, fest, params, sout);

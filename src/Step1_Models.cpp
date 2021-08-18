@@ -133,7 +133,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
         << " " << pivec.minCoeff() << "-" << pivec.maxCoeff() 
         << "-> " << betanew.head(3).matrix().transpose() << "--" << dev_new << " #" << niter_cur << "(" << niter_search  << ")\n";
         */
-      if( ((pivec > 0) && (pivec < 1)).all() ) break;
+      if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
 
       // adjust step size
       betanew = (betavec + betanew) / 2;
@@ -721,11 +721,13 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
         l1->cumsum_values[4].row(ph).array() += pred.array() * Yvec_chunk(i,0); // Sxy
       }
     }
+
     sout << "done";
     auto ts2 = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
+
   l1->cumsum_values[3].array().colwise() += pheno_data->Neff - params->ncov; // Sy2
 
   sout << endl;

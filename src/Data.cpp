@@ -903,8 +903,9 @@ void Data::output() {
       if(params.trait_mode) ll_avg = l1_ests.cumsum_values[5](ph, j) / pheno_data.Neff(ph);
 
       sout << " : " 
-        << "Rsq = " << rsq 
-        << ", MSE = " << sse/pheno_data.Neff(ph);
+        << "Rsq = " << rsq;
+      if(params.trait_mode!=2) 
+        sout  << ", MSE = " << sse/pheno_data.Neff(ph);
       if(params.trait_mode) 
         sout << ", -logLik/N = " << ll_avg;
       if(j == min_index) 
@@ -2196,6 +2197,7 @@ void Data::compute_res_bin(int const& chrom){
   res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
   res.array() /= m_ests.Gamma_sqrt.array();
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
+  if(params.debug) cerr << endl << res.topRows(4) << endl;
 
   // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
   if(params.firth_approx) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
