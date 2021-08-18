@@ -2056,7 +2056,7 @@ void Data::test_snps_fast() {
 
       // compute phenotype residual (adjusting for BLUP [and covariates for non-QTs])
       if(params.trait_mode == 1) compute_res_bin(chrom);
-      if(params.trait_mode == 2) compute_res_count(chrom);
+      else if(params.trait_mode == 2) compute_res_count(chrom);
       else compute_res();
     }
 
@@ -2411,7 +2411,7 @@ void Data::test_joint() {
 
     // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
     if(params.trait_mode == 1) compute_res_bin(chrom);
-    if(params.trait_mode == 2) compute_res_count(chrom);
+    else if(params.trait_mode == 2) compute_res_count(chrom);
     else compute_res();
 
 
