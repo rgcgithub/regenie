@@ -1,6 +1,9 @@
 name: Docker Image CI
 
 on:
+  push:
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 env:
