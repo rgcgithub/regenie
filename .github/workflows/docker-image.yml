@@ -7,8 +7,8 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: docker.pkg.github.com
+  REPO_NAME: ${{ github.repository }}
 
 jobs:
   build-and-push-image:
@@ -19,16 +19,13 @@ jobs:
       contents: read
       packages: write
       
-    steps:
-    - name: Checkout repository
-      uses: actions/checkout@v2
-    
+    steps:    
     - 
-      name: Login to Docker Hub
+      name: Login to Docker
       uses: docker/login-action@v1
       with:
           registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.GH_USER }}
+          username: $GITHUB_ACTOR
           password: ${{ secrets.GH_PAT }}
 
     - 
@@ -48,4 +45,6 @@ jobs:
             LIB_INSTALL=libboost-iostreams-dev
             LIB_INSTALL2=libboost-iostreams-dev
             STATIC=1
-          tags: rgcgithub/regenie:v${{ steps.getversion.outputs.version }}.gz
+          tags: ${{ env.REPO_NAME }}:v${{ steps.getversion.outputs.version }}.gz
+          secrets: |
+            GIT_AUTH_TOKEN=${{ secrets.GH_PAT }}
