@@ -15,40 +15,24 @@ jobs:
   
     runs-on: ubuntu-latest
     
-    permissions:
-      contents: read
-      packages: write
-      
     steps:      
     - 
       name: Checkout repository
       uses: actions/checkout@v2
 
     - 
-      name: Login to Docker
-      uses: docker/login-action@v1
-      with:
-          registry: ${{ env.REGISTRY }}
-          username: $GITHUB_ACTOR
-          password: ${{ secrets.GH_PAT }}
-
-    - 
       name: Read VERSION file
       id: getversion
       run: echo "::set-output name=version::$(cat VERSION)"
     
-    - 
-      name: Build & Push Docker image
-      uses: docker/build-push-action@v2
-      with:
-          context: .
-          push: true
-          file: Dockerfile_mkl
-          build-args: |
-            BOOST_IO=1
-            LIB_INSTALL=libboost-iostreams-dev
-            LIB_INSTALL2=libboost-iostreams-dev
-            STATIC=1
-          tags: ${{ env.REPO_NAME }}:v${{ steps.getversion.outputs.version }}.gz
-          secrets: |
-            GIT_AUTH_TOKEN=${{ secrets.GH_PAT }}
+    - name: Build and push image
+      run: |
+        IMAGE_NAME="docker.pkg.github.com/${{ env.REPO_NAME }}/regenie:v${{ steps.getversion.outputs.version }}.gz"
+        echo "${{ secrets.GH_PAT }}" | docker login https://docker.pkg.github.com -u ${GITHUB_ACTOR} --password-stdin
+        docker build -f Dockerfile_mkl \
+          --build-arg BOOST_IO=1 \
+          --build-arg LIB_INSTALL=libboost-iostreams-dev \
+          --build-arg LIB_INSTALL2=libboost-iostreams-dev \
+          --build-arg STATIC=1 \
+          -t $IMAGE_NAME . 
+        docker push $IMAGE_NAME
