@@ -145,7 +145,7 @@ struct param {
   // global options
   int run_mode; // running in null model fitting (=1) or association testing (=2)
   bool test_mode = false; // step 1: false; step 2 = true
-  bool binary_mode = false; // QT = false, BT = true
+  int trait_mode = 0; // 0=QT,1=BT,2=CT
   bool strict_mode = false; // remove individuals with any NA
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
@@ -230,8 +230,8 @@ struct param {
   double l1_ridge_eps = 1e-5; // epsilon used to set weights for 0/1 probabilities
   uint32_t print_snpcount = 0; 
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >  beta_print_out;
-  std::vector<double> lambda; // ridge parameters at level 0
-  std::vector<double> tau; // ridge parameters at level 1
+  Eigen::ArrayXd lambda; // ridge parameters at level 0
+  std::vector<Eigen::ArrayXd> tau; // ridge parameters at level 1
   // TO REMOVE
   bool within_sample_l0 = false; // specify to use within-sample predictions as features at level 1 (default is to use out-of-sample predictions)
   Eigen::ArrayXi cv_sizes;
@@ -383,7 +383,8 @@ void read_params_and_check(int& argc,char *argv[],struct param*,struct in_files*
 void check_file(std::string const&,std::string const&);
 void check_file(std::string const&,std::vector<std::string> const&,std::string const&);
 void print_header(std::ostream&);
-void set_ridge_params(int const&,std::vector<double>&,mstream&);
+Eigen::ArrayXd get_ridge_params(int const&,std::vector<std::string> const&,struct param const*,mstream&);
+void set_ridge_params(int const&,Eigen::ArrayXd&,mstream&);
 void print_usage_info(struct param const*,struct in_files*,mstream&);
 int chrStrToInt(const std::string&, const int&);
 std::vector<std::string> check_name(std::string const&,mstream&);

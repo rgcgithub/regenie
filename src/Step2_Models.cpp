@@ -143,8 +143,8 @@ void blup_read_chr(bool const& silent, int const& chrom, struct ests& m_ests, st
 // marginal score test done for all variants/traits
 void compute_score(vector<uint64> const& indices, int const& chrom, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, vector<variant_block>& all_snps_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
 
-  if(params.binary_mode)
-    throw "not for BT";//compute_score_bt();
+  if(params.trait_mode)
+    throw "not for nonQTs";//compute_score_bt();
   else
     compute_score_qt(indices, chrom, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, all_snps_info, snpinfo, files);
 
@@ -211,9 +211,12 @@ void compute_score_qt(vector<uint64> const& indices, int const& chrom, string co
 // marginal score test for each snp
 void compute_score(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
 
-  if(params.binary_mode)
+  if(params.trait_mode==1)
     compute_score_bt(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
-  else
+  else if(params.trait_mode==2)
+    //compute_score_ct(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
+    throw "not yet implemented";
+  else if(params.trait_mode==0)
     compute_score_qt(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
 
 }
@@ -290,15 +293,18 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     if( block_info->ignored_trait(i) ) 
       continue;
     MapArXb mask (pheno_data.masked_indivs.col(i).data(), params.n_samples, 1);
+    MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(i).data(), params.n_samples, 1);
+    MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, params.ncov);
+    MapcMatXd XWXinv (m_ests.Xt_Gamma_X_inv[i].data(), params.ncov, params.ncov);
 
     // project out covariates from G
     if(dt_thr->is_sparse) {
-      GWs = dt_thr->Gsparse.cwiseProduct((m_ests.Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix());
-      dt_thr->Gres = -m_ests.X_Gamma[i] * (m_ests.Xt_Gamma_X_inv[i] * (m_ests.X_Gamma[i].transpose() * GWs));
+      GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
+      dt_thr->Gres = -XWsqrt * (XWXinv * (XWsqrt.transpose() * GWs));
       dt_thr->Gres += GWs;
     } else {
-      GW = (Geno * m_ests.Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix();
-      dt_thr->Gres = GW - m_ests.X_Gamma[i] * (m_ests.Xt_Gamma_X_inv[i] * (m_ests.X_Gamma[i].transpose() * GW));
+      GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
+      dt_thr->Gres = GW - XWsqrt * (XWXinv * (XWsqrt.transpose() * GW));
     }
 
     // denominator
@@ -307,12 +313,18 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
       block_info->ignored_trait(i) = true;
       continue;
     }
-
     // score test stat for BT
     if(dt_thr->is_sparse) 
-      dt_thr->stats(i) = GWs.cwiseProduct(yres.col(i)).sum() / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
     else
-      dt_thr->stats(i) = dt_thr->Gres.cwiseProduct(yres.col(i)).sum() / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+
+    if(params.debug) {
+      cerr << endl << yres.col(i).topRows(4) << endl;
+      cerr << endl << dt_thr->Gres.topRows(4) << endl;
+      if(dt_thr->is_sparse) cerr << endl << GWs.sum() << endl;
+      cerr << "\nnum=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " denum=" << dt_thr->Gres.squaredNorm() << endl;
+    }
 
     // use firth/spa
     check_pval_snp(block_info, dt_thr, chrom, i, isnp, pheno_data, gblock, m_ests, fest, params, sout);
@@ -1339,11 +1351,11 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // Effect / CI bounds / Pvalue columns
   if(print_pv && !print_beta)
     buffer << "NA\tNA\tNA\t" << outp_val << "\t";
-  else if(!params->binary_mode || (params->firth && test_pass) ){ // qt or firth
+  else if((params->trait_mode!=1) || ((params->trait_mode==1) && params->firth && test_pass) ){ // non-bt or firth
 
-    if(!params->binary_mode) // QT
+    if(params->trait_mode==0) // QT
       buffer << beta << "\t" << (beta - params->zcrit * se) << "\t" << (beta + params->zcrit * se) << "\t";
-    else // BT (on OR scale)
+    else // BT (on OR scale) or CT
       buffer << exp(beta) << "\t" << exp(beta - params->zcrit * se) << "\t" << exp(beta + params->zcrit * se) << "\t"; 
 
     if(print_pv) buffer << outp_val << "\t";
@@ -1370,23 +1382,23 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // print counts in cases
   buffer << (int) genocounts.block(0,ph,3,1).sum() << "\t" << (int) genocounts(0,ph) << "\t" << (int) genocounts(1,ph) << "\t" << (int) genocounts(2,ph) << "\t";
   // print counts in controls
-  if(params->binary_mode){
+  if(params->trait_mode==1){
     buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
   } else buffer << "NA\tNA\tNA\tNA";
 
   // info column
   vector<string> infoCol;
   if(print_beta){
-    if(params->binary_mode && test_pass){
+    if(params->trait_mode && test_pass){
       infoCol.push_back( "REGENIE_BETA=" + to_string(beta) );
       infoCol.push_back( "REGENIE_SE=" + to_string(se) );
       // SPA/uncorrected logistic => also print SE from allelic OR
-      if(print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
-    } else if(params->binary_mode){
+      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
+    } else if(params->trait_mode){
       infoCol.push_back( "REGENIE_BETA=NA" );
       infoCol.push_back( "REGENIE_SE=NA");
       // SPA/uncorrected logistic => also print SE from allelic OR
-      if(print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
+      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
     } else infoCol.push_back( "REGENIE_SE=" + to_string(se) );// fot QTs
   }
   // info score

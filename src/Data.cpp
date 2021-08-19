@@ -61,7 +61,7 @@ void Data::run() {
   // set number of threads
   set_threads(&params);
 
-  if(params.streamBGEN) check_bgen(files.bgen_file, &params);
+  if(params.streamBGEN) check_bgen(files.bgen_file, params.file_type, params.zlib_compress, params.streamBGEN, params.BGENbits, params.nChrom);
 
   if(params.test_mode)  // step 2
     run_step2();
@@ -89,12 +89,16 @@ void Data::run_step1(){
   // level 0
   level_0_calculations();
   // level 1 ridge
-  if(!params.binary_mode) // QT
+  if(params.trait_mode == 0){ // QT
     if(params.use_loocv) ridge_level_1_loocv(&files, &params, &pheno_data, &l1_ests, sout);
     else ridge_level_1(&files, &params, &l1_ests, sout);
-  else // BT
+  } else if(params.trait_mode == 1){ // BT
     if(params.use_loocv) ridge_logistic_level_1_loocv(&files, &params, &pheno_data, &m_ests, &l1_ests, sout);
     else ridge_logistic_level_1(&files, &params, &pheno_data, &l1_ests, masked_in_folds, sout);
+  } else if(params.trait_mode == 2){ // CT
+    if(params.use_loocv) ridge_poisson_level_1_loocv(&files, &params, &pheno_data, &m_ests, &l1_ests, sout);
+    else ridge_poisson_level_1(&files, &params, &pheno_data, &l1_ests, masked_in_folds, sout);
+  }
   // output results
   output();
 
@@ -314,17 +318,23 @@ void Data::set_blocks() {
   } else if(params.run_l1_only) prep_parallel_l1();
 
   // set ridge params
-  for(auto &lbd : params.lambda )
-    lbd = (params.run_l0_only ? params.parallel_nGeno : params.n_variants) * (1 - lbd) / lbd;
-
-  for(auto &tau : params.tau ){
-    tau =  (params.total_n_block *  params.n_ridge_l0) * (1 - tau) / tau;
-    // Assuming input tau[i] is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
-    if(params.binary_mode) tau *= 3 / (M_PI * M_PI);
+  params.lambda = (params.run_l0_only ? params.parallel_nGeno : params.n_variants) * (1 - params.lambda) / params.lambda;
+  if(params.trait_mode == 2){
+    ArrayXd base_tau = params.tau[0];
+    params.tau.assign(params.n_pheno, base_tau);
+    for(int i = 0; i < params.n_pheno; i++){
+      double rate = pheno_data.phenotypes_raw.col(i).sum() / pheno_data.Neff(i); // masked entries are 0
+      params.tau[i] = (params.total_n_block * params.n_ridge_l0) / (1 + params.tau[i] / (rate * (1 - params.tau[i]))).log();
+      //cerr << endl << params.tau[i].matrix().transpose() << endl;
+    }
+  } else {
+    params.tau[0] = (params.total_n_block * params.n_ridge_l0) * (1 - params.tau[0]) / params.tau[0];
+    // Assuming input tau is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
+    if(params.trait_mode == 1) params.tau[0] *= 3 / (M_PI * M_PI);
   }
 
   // for BTs: check if the sample size is lower than 5K (if so, force loocv)
-  if( params.binary_mode && !params.use_loocv && ( params.n_analyzed < 5000) ) {
+  if( (params.trait_mode == 1) && !params.use_loocv && ( params.n_analyzed < 5000) ) {
     sout << "   -WARNING: Sample size is less than 5,000 so using LOOCV instead of " << params.cv_folds << "-fold CV.\n";
     params.use_loocv = true;
   }
@@ -347,15 +357,20 @@ void Data::set_blocks() {
   if(!params.run_l1_only){
     int nv_tot = (params.run_l0_only ? params.parallel_nGeno : params.n_variants);
     sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : ";
-    for(auto const& lbd : params.lambda )
-      sout << nv_tot / ( nv_tot + lbd) << " ";
+    for(int i = 0; i < params.lambda.size(); i++)
+      sout << nv_tot / ( nv_tot + params.lambda(i)) << " ";
     sout << "]\n";
   }
 
   if(!params.run_l0_only){
     sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : ";
-    for(auto const& tau : params.tau )
-      sout << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block * params.n_ridge_l0 + (params.binary_mode? (M_PI * M_PI / 3) : 1) * tau) << " ";
+    for(int i = 0; i < params.tau[0].size(); i++)
+      if(params.trait_mode == 2){
+        double rate = pheno_data.phenotypes_raw.col(0).sum() / pheno_data.Neff(0); // only use trait 1
+        double zv = exp(params.total_n_block * params.n_ridge_l0 / params.tau[0](i)) - 1; 
+        sout <<  rate * zv / (1 + rate * zv) << " ";
+      } else 
+        sout << (params.total_n_block * params.n_ridge_l0) / (params.total_n_block * params.n_ridge_l0 + (params.trait_mode == 1 ? (M_PI * M_PI / 3) : 1) * params.tau[0](i)) << " ";
     sout << "]\n";
   }
 
@@ -412,20 +427,30 @@ void Data::set_folds() {
 
 
   // check sd(Y) in folds
-  if(!params.use_loocv && params.binary_mode){
+  if(!params.use_loocv && params.trait_mode){
 
     int minIndex;
     uint32_t cum_size_folds = 0;
+    ArrayXd sum, n_cv, sd_phenos;
     MatrixXd phenos = ( pheno_data.phenotypes_raw.array() * pheno_data.masked_indivs.array().cast<double>()).matrix();
 
     for(int i = 0; i < params.cv_folds; i++) {
-      ArrayXd sum = phenos.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).colwise().sum();
-      ArrayXd n_cv = pheno_data.masked_indivs.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).cast<double>().colwise().sum();
-      ArrayXd sd_phenos = (sum/n_cv) * (1 - sum/n_cv);
+      sum = phenos.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).colwise().sum();
 
-      if( sd_phenos.minCoeff(&minIndex) < params.numtol )
-        throw "one of the folds has only cases/controls for phenotype '" + files.pheno_names[minIndex] 
-          + "'. Either use smaller #folds (option --cv) or use LOOCV (option --loocv).";
+      // BTs
+      if(params.trait_mode == 1){
+        n_cv = pheno_data.masked_indivs.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).cast<double>().colwise().sum();
+        sd_phenos = (sum/n_cv) * (1 - sum/n_cv);
+
+        if( sd_phenos.minCoeff(&minIndex) < params.numtol )
+          throw "one of the folds has only cases/controls for phenotype '" + files.pheno_names[minIndex] 
+            + "'. Either use smaller #folds (option --cv) or use LOOCV (option --loocv).";
+      } else if(params.trait_mode == 2){
+
+        if( sum.maxCoeff(&minIndex) <= 0 )
+          throw "one of the folds has only zero counts for phenotype '" + files.pheno_names[minIndex] 
+            + "'. Either use smaller #folds (option --cv) or use LOOCV (option --loocv).";
+      }
 
       cum_size_folds += params.cv_sizes(i);
     }
@@ -459,7 +484,7 @@ void Data::setmem() {
     l1_ests.test_mat.resize(params.n_pheno);
   } else l1_ests.test_mat_conc.resize(params.n_pheno);
 
-  if(params.binary_mode){
+  if(params.trait_mode){ // non-QT
     if (params.within_sample_l0) {
       l1_ests.pred_pheno_raw.resize(params.n_pheno);
       l1_ests.pred_offset.resize(params.n_pheno);
@@ -482,7 +507,7 @@ void Data::setmem() {
       l1_ests.test_mat[i].resize(params.cv_folds);
     } else l1_ests.test_mat_conc[i] = MatrixXd::Zero(params.n_samples, params.n_ridge_l0 * ( params.write_l0_pred ? 1 : params.total_n_block) );
 
-    if(params.binary_mode) {
+    if(params.trait_mode) {
       if (params.within_sample_l0) {
         l1_ests.pred_pheno_raw[i].resize(params.cv_folds);
         l1_ests.pred_offset[i].resize(params.cv_folds);
@@ -503,7 +528,7 @@ void Data::setmem() {
         l1_ests.test_mat[i][j] = MatrixXd::Zero(params.cv_sizes(j), params.n_ridge_l0 * ( params.write_l0_pred ? 1 : params.total_n_block));
       }
 
-      if(params.binary_mode) {
+      if(params.trait_mode) {
         if (params.within_sample_l0) {
           l1_ests.pred_pheno_raw[i][j] = MatrixXd::Zero(params.n_samples - params.cv_sizes(j), 1);
           l1_ests.pred_offset[i][j] = MatrixXd::Zero(params.n_samples - params.cv_sizes(j), 1);
@@ -784,13 +809,14 @@ void Data::output() {
 
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
+  double rate, zv;
   string pfile, out_blup_list, out_prs_list, out_firth_list, loco_filename, prs_filename, firth_filename;
   string fullpath_str, path_prs, path_firth;
   Files outb, outp, outf;
 
   sout << "Output\n------\n";
 
-  if(params.make_loco || params.binary_mode){
+  if(params.make_loco || params.trait_mode){
     out_blup_list = files.out_file + "_pred.list";
     outb.openForWrite(out_blup_list, sout);
   }
@@ -812,12 +838,12 @@ void Data::output() {
     prs_filename = files.out_file + "_" + to_string(ph + 1) + ".prs" + (params.gzOut ? ".gz" : "");
     firth_filename = files.out_file + "_" + to_string(ph + 1) + ".firth" + (params.gzOut ? ".gz" : "");
 
-    if( params.make_loco || params.binary_mode || params.print_prs ) {
+    if( params.make_loco || params.trait_mode || params.print_prs ) {
 
       fullpath_str = (params.use_rel_path ? loco_filename : get_fullpath(loco_filename));
       if(params.print_prs) path_prs = (params.use_rel_path ? prs_filename : get_fullpath(prs_filename));
 
-      if( !params.binary_mode ) { // for quantitative traits
+      if(params.trait_mode == 0) { // for quantitative traits
 
         outb << files.pheno_names[ph]  << " " <<  fullpath_str << endl;
         if(params.print_prs) 
@@ -834,7 +860,7 @@ void Data::output() {
 
           if(params.write_l0_pred && params.rm_l0_pred) 
             rm_l0_files(ph); // cleanup level 0 predictions
-          sout << "Level 1 logistic did not converge. LOCO predictions calculations are skipped.\n\n";
+          sout << "Level 1 model did not converge. LOCO predictions calculations are skipped.\n\n";
           continue;
 
         }
@@ -845,9 +871,9 @@ void Data::output() {
     min_index = 0;
     min_val = 1e10;
 
-    // determine optimal parameter by cv using: QT: MSE, BT: -loglik
+    // determine optimal parameter by cv using: QT: MSE, nonQT: -loglik
     for(int j = 0; j < params.n_ridge_l1; ++j ) {
-      if(!params.binary_mode)
+      if(params.trait_mode == 0)
         performance_measure = l1_ests.cumsum_values[2](ph, j) + l1_ests.cumsum_values[3](ph,j) - 2 * l1_ests.cumsum_values[4](ph,j);
       else
         performance_measure = l1_ests.cumsum_values[5](ph, j);
@@ -860,20 +886,27 @@ void Data::output() {
       }
     }
 
+    if(params.trait_mode == 2)
+      rate = pheno_data.phenotypes_raw.col(ph).sum() / pheno_data.Neff(ph); // separate for each trait
+
     for(int j = 0; j < params.n_ridge_l1; ++j ) {
 
-      sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block * params.n_ridge_l0 + (params.binary_mode? (M_PI * M_PI / 3) : 1) * params.tau[j] );
+      if(params.trait_mode == 2){
+        zv = exp(params.total_n_block * params.n_ridge_l0 / params.tau[ph](j)) - 1; 
+        sout << "  " << setw(5) << rate * zv / (1 + rate * zv);
+      } else sout << "  " << setw(5) << (params.total_n_block *  params.n_ridge_l0) / (params.total_n_block * params.n_ridge_l0 + (params.trait_mode == 1? (M_PI * M_PI / 3) : 1) * params.tau[0](j) );
 
       // output Rsq and MSE
       rsq = l1_ests.cumsum_values[4](ph,j) - l1_ests.cumsum_values[0](ph,j) * l1_ests.cumsum_values[1](ph,j) / pheno_data.Neff(ph); // num = Sxy - SxSy/n
       rsq = (rsq * rsq) / ((l1_ests.cumsum_values[2](ph,j) - l1_ests.cumsum_values[0](ph,j) * l1_ests.cumsum_values[0](ph,j) / pheno_data.Neff(ph)) * (l1_ests.cumsum_values[3](ph,j) - l1_ests.cumsum_values[1](ph,j) * l1_ests.cumsum_values[1](ph,j) / pheno_data.Neff(ph))); // num^2 / ( (Sx2 - Sx^2/n)* (Sy2 - Sy^2/n) )
       sse = l1_ests.cumsum_values[2](ph, j) + l1_ests.cumsum_values[3](ph,j) - 2 * l1_ests.cumsum_values[4](ph,j); // Sx2 + Sy2 - SxSy
-      if(params.binary_mode) ll_avg = l1_ests.cumsum_values[5](ph, j) / pheno_data.Neff(ph);
+      if(params.trait_mode) ll_avg = l1_ests.cumsum_values[5](ph, j) / pheno_data.Neff(ph);
 
       sout << " : " 
-        << "Rsq = " << rsq 
-        << ", MSE = " << sse/pheno_data.Neff(ph);
-      if(params.binary_mode) 
+        << "Rsq = " << rsq;
+      if(params.trait_mode!=2) 
+        sout  << ", MSE = " << sse/pheno_data.Neff(ph);
+      if(params.trait_mode) 
         sout << ", -logLik/N = " << ll_avg;
       if(j == min_index) 
         sout << "<- min value";
@@ -881,15 +914,22 @@ void Data::output() {
 
     }
 
-    if(!params.binary_mode){
+    if(params.trait_mode == 0){
       if(params.use_loocv) 
         make_predictions_loocv(ph, min_index);
       else 
         make_predictions(ph, min_index);
-    } else if(params.use_loocv) 
-      make_predictions_binary_loocv(ph, min_index);
-    else 
-      make_predictions_binary(ph, min_index);
+    } else if(params.trait_mode == 1){
+      if(params.use_loocv) 
+        make_predictions_binary_loocv(ph, min_index);
+      else 
+        make_predictions_binary(ph, min_index);
+    } else if(params.trait_mode == 2){
+      if(params.use_loocv) 
+        make_predictions_count_loocv(ph, min_index);
+      else 
+        make_predictions_count(ph, min_index);
+    }
 
     // check if firth estimates converged (should have been written to file)
     if(params.write_null_firth && file_exists(firth_filename)){
@@ -903,7 +943,7 @@ void Data::output() {
 
   }
 
-  if(params.make_loco || params.binary_mode){
+  if(params.make_loco || (params.trait_mode!=0)){
     outb.closeFile();
     sout << "List of blup files written to: [" 
       << out_blup_list << "]\n";
@@ -1013,7 +1053,7 @@ void Data::make_predictions(int const& ph, int const& val) {
       X1 += l1_ests.test_mat[ph_eff][i].transpose() * l1_ests.test_mat[ph_eff][i];
       X2 += l1_ests.test_mat[ph_eff][i].transpose() * l1_ests.test_pheno[ph][i];
     }
-    beta_l1 = (X1 + params.tau[val] * ident_l1).llt().solve(X2);
+    beta_l1 = (X1 + params.tau[0](val) * ident_l1).llt().solve(X2);
   } else if(params.print_block_betas) {
     beta_avg = MatrixXd::Zero(bs_l1, 1);
     for(int i = 0; i < params.cv_folds; ++i ) {
@@ -1031,7 +1071,7 @@ void Data::make_predictions(int const& ph, int const& val) {
     ofile.close();
   }
 
-  // sout << "\nFor tau[" << val <<"] = " << params.tau[val] << endl <<  beta_l1 << endl ;
+  // sout << "\nFor tau[" << val <<"] = " << params.tau[0](val) << endl <<  beta_l1 << endl ;
   int ctr = 0, chr_ctr = 0;
   int nn, cum_size_folds;
 
@@ -1091,7 +1131,7 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
   SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
   zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
   w1 = eigX.eigenvectors().transpose() * zvec;
-  dl_inv = (eigX.eigenvalues().array() + params.tau[val]).inverse();
+  dl_inv = (eigX.eigenvalues().array() + params.tau[0](val)).inverse();
   w2 = (w1.array() * dl_inv).matrix();
   Vw2 = eigX.eigenvectors() * w2;
 
@@ -1143,7 +1183,7 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
   int ph_eff = params.write_l0_pred ? 0 : ph;
   string in_pheno;
   ArrayXd etavec, pivec, wvec, zvec, score;
-  MatrixXd betaold, betanew, XtW, XtWX, XtWZ, Xconc;
+  MatrixXd betaold, betanew, XtW, XtWX, XtWZ;
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
   // read in level 0 predictions from file
@@ -1170,7 +1210,7 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
         XtWX += XtW * l1_ests.test_mat[ph_eff][i];
         XtWZ += XtW * zvec.matrix();
       }
-      betanew = (XtWX + params.tau[val] * ident_l1).llt().solve(XtWZ);
+      betanew = (XtWX + params.tau[0](val) * ident_l1).llt().solve(XtWZ);
       // compute score
       score = ArrayXd::Zero(betanew.rows());
       for(int i = 0; i < params.cv_folds; ++i ) {
@@ -1178,7 +1218,7 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
         pivec = 1 - 1/(etavec.exp() + 1);
         score += (l1_ests.test_mat[ph_eff][i].transpose() * (l1_ests.test_pheno_raw[ph][i].array() - pivec).matrix()).array();
       }
-      score -= params.tau[val] * betanew.array();
+      score -= params.tau[0](val) * betanew.array();
 
       // stopping criterion
       if( score.abs().maxCoeff() < params.l1_ridge_eps) break;
@@ -1244,15 +1284,15 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 
   MapArXd Y (pheno_data.phenotypes_raw.col(ph).data(), pheno_data.phenotypes_raw.rows());
   MapMatXd X (l1_ests.test_mat_conc[ph_eff].data(), pheno_data.phenotypes_raw.rows(), bs_l1);
-  MapArXd offset (m_ests.offset_logreg.col(ph).data(), pheno_data.phenotypes_raw.rows());
+  MapArXd offset (m_ests.offset_nullreg.col(ph).data(), pheno_data.phenotypes_raw.rows());
   MapArXb mask (pheno_data.masked_indivs.col(ph).data(), pheno_data.phenotypes_raw.rows());
 
   // fit logistic on whole data again for optimal ridge param
   beta = ArrayXd::Zero(bs_l1);
-  run_log_ridge_loocv(params.tau[val], target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
+  run_log_ridge_loocv(params.tau[0](val), target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
 
   // compute Hinv
-  //zvec = (etavec - m_ests.offset_logreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
+  //zvec = (etavec - m_ests.offset_nullreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
   XtWX = MatrixXd::Zero(bs_l1, bs_l1);
   for(chunk = 0; chunk < nchunk; ++chunk){
     size_chunk = ( chunk == nchunk - 1 ? params.cv_folds - target_size * chunk : target_size );
@@ -1263,7 +1303,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 
     XtWX += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
   }
-  Hinv.compute( XtWX + params.tau[val] * ident_l1 );
+  Hinv.compute( XtWX + params.tau[0](val) * ident_l1 );
 
   // loo estimates
   for(chunk = 0; chunk < nchunk; ++chunk ) {
@@ -1308,6 +1348,148 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 }
 
 
+// predictions for count phenotypes
+void Data::make_predictions_count(int const& ph, int const& val) {
+
+  sout << "  * making predictions..." << flush;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  int bs_l1 = params.total_n_block * params.n_ridge_l0;
+  int ph_eff = params.write_l0_pred ? 0 : ph;
+  string in_pheno;
+  ArrayXd etavec, pivec, zvec, score;
+  MatrixXd betaold, betanew, XtW, XtWX, XtWZ;
+  MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
+
+  // read in level 0 predictions from file
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
+
+  // fit model using out-of-sample level 0 predictions from whole data
+  if(params.within_sample_l0)
+    throw "--within is not supported for count phenotypes";
+
+  // compute predictor for each chr
+  int ctr = 0, chr_ctr = 0;
+  int nn, cum_size_folds;
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    int chrom = files.chr_read[itr];
+    if( !in_map(chrom, chr_map) ) continue;
+
+    nn = chr_map[chrom][1] * params.n_ridge_l0;
+    if(nn > 0) {
+      cum_size_folds = 0;
+      for(int i = 0; i < params.cv_folds; ++i ) {
+        betanew = l1_ests.beta_hat_level_1[ph][i].col(val);
+        predictions[0].block(cum_size_folds, chr_ctr, params.cv_sizes(i), 1) = l1_ests.test_mat[ph_eff][i].block(0, ctr, params.cv_sizes(i), nn) * betanew.block(ctr, 0, nn, 1);
+        cum_size_folds += params.cv_sizes(i);
+      }
+      chr_ctr++;
+      ctr += nn;
+    }
+  }
+
+  write_predictions(ph);
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl << endl;
+}
+
+
+void Data::make_predictions_count_loocv(int const& ph, int const& val) {
+
+  sout << "  * making predictions..." << flush;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  int bs_l1 = params.total_n_block * params.n_ridge_l0;
+  int ph_eff = params.write_l0_pred ? 0 : ph;
+  double v2;
+  string in_pheno;
+
+  ArrayXd beta, pivec;
+  MatrixXd XtWX, V1, beta_final;
+  LLT<MatrixXd> Hinv;
+  MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
+
+  uint64 max_bytes = params.chunk_mb * 1e6;
+  // amount of RAM used < max_mb [ creating (bs_l1 * target_size) matrix ]
+  int nchunk = ceil( params.cv_folds * bs_l1 * sizeof(double) * 1.0 / max_bytes );
+  int chunk, size_chunk, target_size = params.cv_folds / nchunk;
+  int j_start;
+
+  // read in level 0 predictions from file
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
+
+  MapArXd Y (pheno_data.phenotypes_raw.col(ph).data(), pheno_data.phenotypes_raw.rows());
+  MapMatXd X (l1_ests.test_mat_conc[ph_eff].data(), pheno_data.phenotypes_raw.rows(), bs_l1);
+  MapArXd offset (m_ests.offset_nullreg.col(ph).data(), pheno_data.phenotypes_raw.rows());
+  MapArXb mask (pheno_data.masked_indivs.col(ph).data(), pheno_data.phenotypes_raw.rows());
+
+  // fit logistic on whole data again for optimal ridge param
+  beta = ArrayXd::Zero(bs_l1);
+  run_ct_ridge_loocv(params.tau[ph](val), target_size, nchunk, beta, pivec, Y, X, offset, mask, &params, sout);
+
+  // compute Hinv
+  //zvec = (etavec - m_ests.offset_nullreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
+  XtWX = MatrixXd::Zero(bs_l1, bs_l1);
+  for(chunk = 0; chunk < nchunk; ++chunk){
+    size_chunk = ( chunk == nchunk - 1 ? params.cv_folds - target_size * chunk : target_size );
+    j_start = chunk * target_size;
+
+    Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
+    Ref<MatrixXd> w_chunk = pivec.matrix().block(j_start, 0, size_chunk,1);
+
+    XtWX += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
+  }
+  Hinv.compute( XtWX + params.tau[ph](val) * ident_l1 );
+
+  // loo estimates
+  for(chunk = 0; chunk < nchunk; ++chunk ) {
+    size_chunk = chunk == nchunk - 1? params.cv_folds - target_size * chunk : target_size;
+    j_start = chunk * target_size;
+    if( (chunk == 0) || (chunk == nchunk - 1) ) beta_final = MatrixXd::Zero(bs_l1, size_chunk);
+
+    Ref<MatrixXd> Xmat_chunk = l1_ests.test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
+    Ref<MatrixXd> Yvec_chunk = pheno_data.phenotypes_raw.block(j_start, ph, size_chunk, 1);
+
+    V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
+    for(int i = 0; i < size_chunk; ++i ) {
+      v2 = Xmat_chunk.row(i) * V1.col(i);
+      v2 *= pivec(j_start + i);
+      beta_final.col(i) = (beta - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
+    }
+
+    // compute predictor for each chr
+    int ctr = 0, chr_ctr = 0;
+    int nn;
+
+    for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+      int chrom = files.chr_read[itr];
+      if( !in_map(chrom, chr_map) ) continue;
+
+      nn = chr_map[chrom][1] * params.n_ridge_l0;
+
+      if(nn > 0) {
+        predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * beta_final.block(ctr, 0, nn, size_chunk).transpose().array() ).matrix().rowwise().sum();
+        chr_ctr++;
+        ctr += nn;
+      }
+    }
+  }
+
+  write_predictions(ph);
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl << endl;
+}
+
+
 void Data::write_predictions(int const& ph){
   // output predictions to file
   string out, header;
@@ -1315,7 +1497,7 @@ void Data::write_predictions(int const& ph){
   MatrixXd pred, prs;
 
   // get header line once
-  if(params.write_blups || params.make_loco || params.binary_mode || params.print_prs)
+  if(params.write_blups || params.make_loco || params.trait_mode || params.print_prs)
     header = write_ID_header();
 
   // for the per chromosome predictions (not used)
@@ -1353,7 +1535,7 @@ void Data::write_predictions(int const& ph){
   }
 
   // output LOCO predictions G_loco * beta_loco for each autosomal chr
-  if(params.make_loco || params.binary_mode){
+  if(params.make_loco || params.trait_mode){
 
     out = files.out_file + "_" + to_string(ph+1) + ".loco" + (params.gzOut ? ".gz" : "");
     sout << "writing LOCO predictions..." << flush;
@@ -1604,9 +1786,10 @@ void Data::print_test_info(){
 
 
   if(params.htp_out){
-    if(params.binary_mode & params.firth) correction_type = "-FIRTH";
-    else if(params.binary_mode & params.use_SPA) correction_type = "-SPA";
-    else if(params.binary_mode) correction_type = "-LOG";
+    if((params.trait_mode==1) & params.firth) correction_type = "-FIRTH";
+    else if((params.trait_mode==1) & params.use_SPA) correction_type = "-SPA";
+    else if(params.trait_mode==1) correction_type = "-LOG";
+    else if(params.trait_mode==2) correction_type = "-POISSON";
     else correction_type = "-LR";
 
     if(params.skip_blups) model_type = test_string + correction_type;
@@ -1616,7 +1799,7 @@ void Data::print_test_info(){
   if(params.gwas_condtl) // specify main sum stats is conditional gwas
     params.condtl_suff = "-CONDTL";
 
-  params.with_flip = params.with_flip && !params.build_mask && params.binary_mode && (params.test_type == 0);
+  params.with_flip = params.with_flip && !params.build_mask && params.trait_mode && (params.test_type == 0);
 
   if( params.joint_test ) {
     params.with_flip = jt.get_test_info(&params, test_string, sout) && params.with_flip;
@@ -1770,7 +1953,7 @@ void Data::set_blocks_for_testing() {
 
 }
 
-void Data::set_logreg_mat(){
+void Data::set_nullreg_mat(){
 
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
   m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
@@ -1836,9 +2019,9 @@ void Data::test_snps_fast() {
   print_usage_info(&params, &files, sout);
   print_test_info();
   setup_output(&ofile, out, ofile_split, out_split); // result file
-  if(params.w_interaction && !params.binary_mode && !params.no_robust && !params.force_robust) 
+  if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 
     nullHLM.prep_run(&pheno_data, &params);
-  if(params.binary_mode) set_logreg_mat();
+  if(params.trait_mode) set_nullreg_mat();
   sout << endl;
 
 
@@ -1871,8 +2054,9 @@ void Data::test_snps_fast() {
       // read polygenic effect predictions from step 1
       blup_read_chr(false, chrom, m_ests, files, in_filters, pheno_data, params, sout);
 
-      // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-      if(params.binary_mode) compute_res_bin(chrom);
+      // compute phenotype residual (adjusting for BLUP [and covariates for non-QTs])
+      if(params.trait_mode == 1) compute_res_bin(chrom);
+      else if(params.trait_mode == 2) compute_res_count(chrom);
       else compute_res();
     }
 
@@ -1959,8 +2143,10 @@ void Data::analyze_block(int const& chrom, int const& n_snps, tally* snp_tally, 
   if((params.file_type == "bgen") && params.streamBGEN){
     snp_data_blocks.resize( n_snps );
     insize.resize(n_snps); outsize.resize(n_snps);
+    vector<uint64> offsets(n_snps);
+    for (int i = 0; i < n_snps; i++) offsets[i] = snpinfo[indices[i]].offset;
 
-    readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, indices, snpinfo);
+    readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, offsets);
 
   } else if((params.file_type == "bgen") && !params.streamBGEN) 
     readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
@@ -1999,7 +2185,7 @@ void Data::compute_res(){
   p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov);
   res.array().rowwise() /= p_sd_yres.array();
 
-  if(params.w_interaction && !params.binary_mode && !params.no_robust && !params.force_robust) 
+  if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 
     HLM_fitNull(nullHLM, m_ests, pheno_data, files, params, sout);
 
 }
@@ -2011,9 +2197,20 @@ void Data::compute_res_bin(int const& chrom){
   res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
   res.array() /= m_ests.Gamma_sqrt.array();
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
+  if(params.debug) cerr << endl << res.topRows(4) << endl;
 
   // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
   if(params.firth_approx) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+
+}
+
+void Data::compute_res_count(int const& chrom){
+
+  fit_null_poisson(chrom, &params, &pheno_data, &m_ests, &files, sout); // for all phenotypes
+
+  res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
+  res.array() /= m_ests.Gamma_sqrt.array();
+  res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
 }
 
@@ -2042,7 +2239,7 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
       parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
 
     // check if g is sparse (not for QT without strict mode)
-    if(params.binary_mode||params.strict_mode)
+    if(params.trait_mode || params.strict_mode)
       check_sparse_G(isnp, thread_num, &Gblock, params.n_samples, in_filters.ind_in_analysis);
 
     if(params.w_interaction) {
@@ -2175,10 +2372,10 @@ void Data::test_joint() {
   set_groups_for_testing();   // set groups of snps to test jointly
   print_usage_info(&params, &files, sout);
   print_test_info();
-  if(params.w_interaction && !params.binary_mode && !params.no_robust && !params.force_robust) 
+  if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 
     nullHLM.prep_run(&pheno_data, &params);
   if(!params.skip_test) setup_output(&ofile, out, ofile_split, out_split); // result file
-  if(params.binary_mode) set_logreg_mat();
+  if(params.trait_mode) set_nullreg_mat();
   sout << endl;
 
 
@@ -2213,7 +2410,8 @@ void Data::test_joint() {
     blup_read_chr(false, chrom, m_ests, files, in_filters, pheno_data, params, sout);
 
     // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
-    if(params.binary_mode) compute_res_bin(chrom);
+    if(params.trait_mode == 1) compute_res_bin(chrom);
+    else if(params.trait_mode == 2) compute_res_count(chrom);
     else compute_res();
 
 
@@ -2404,8 +2602,10 @@ void Data::readChunk(vector<uint64>& indices, int const& chrom, vector< vector <
   if((params.file_type == "bgen") && params.streamBGEN){
     snp_data_blocks.resize( n_snps );
     insize.resize(n_snps); outsize.resize(n_snps);
+    vector<uint64> offsets(n_snps);
+    for (int i = 0; i < n_snps; i++) offsets[i] = snpinfo[indices[i]].offset;
 
-    readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, indices, snpinfo);
+    readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, offsets);
 
   } else if((params.file_type == "bgen") && !params.streamBGEN) 
     readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);

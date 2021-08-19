@@ -39,6 +39,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+Version 2.2.4 (Bug fix for multi-trait step 1 run with binary traits of different missingness patterns)
+
 Version 2.2.3 (Bug fix for binary traits for which null logistic regression gives 0/1 fitted probabilities; enabled multi-threaded null model fitting for approximate Firth null models)
 
 Version 2.2.2 (Bug fix for binary traits for which null logistic regression gives 0/1 fitted probabilities [i.e. highly imbalanced or low case counts]; New option `--sex-specific` for sex-specific analyses)
