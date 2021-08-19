@@ -25,14 +25,12 @@ jobs:
       id: getversion
       run: echo "::set-output name=version::$(cat VERSION)"
     
-    - name: Build and push image
+    - name: Build and push image to Docker
       run: |
         IMAGE_NAME="docker.pkg.github.com/${{ env.REPO_NAME }}/regenie:v${{ steps.getversion.outputs.version }}.gz"
         echo "${{ secrets.GH_PAT }}" | docker login https://docker.pkg.github.com -u ${GITHUB_ACTOR} --password-stdin
         docker build -f Dockerfile_mkl \
           --build-arg BOOST_IO=1 \
           --build-arg LIB_INSTALL=libboost-iostreams-dev \
-          --build-arg LIB_INSTALL2=libboost-iostreams-dev \
-          --build-arg STATIC=1 \
           -t $IMAGE_NAME . 
         docker push $IMAGE_NAME
