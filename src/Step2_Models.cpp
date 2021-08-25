@@ -1311,7 +1311,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 
   // AF N INFO TEST
   buffer << af << " " ;
-  if( params->af_cc ) buffer << " " << af_case << " " << af_control;
+  if( params->af_cc ) buffer << af_case << " " << af_control << " " ;
   if(!params->build_mask && params->dosage_mode) buffer << info << " ";
   buffer << n << " " << model << " " ;
 
