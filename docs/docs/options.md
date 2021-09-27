@@ -107,9 +107,8 @@ option `--export bgen-1.2 'bits=8'`) as well as having an accompanying .bgi inde
 (a useful tool to create such file is bgenix which is part of the BGEN library).
 
 To include X chromosome genotypes in step 1 and/or step 2, males should be coded as diploid 
-so that their genotypes are 0/2. This can be done in PLINK by setting the sex of all 
-individuals to female before generating the genotype file.
-Chromosome values of 23 (for human analyses), X, XY, PAR1 and PAR2 are all acceptable and 
+so that their genotypes are 0/2 (this is done automatically for BED and PGEN file formats with haploid genotypes).
+Chromosome values of 23 (for human analyses), X, Y, XY, PAR1 and PAR2 are all acceptable and 
 will be collapsed into a single chromosome.
 
 
