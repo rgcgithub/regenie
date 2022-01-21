@@ -351,7 +351,7 @@ Each file has one line per
 SNP along with a header line.
 If option `--gz` was used, the files will be compressed in gzip format and have extension `.regenie.gz`.
 
-The entries of each row specify chromosome, posistion, ID, reference allele (allele 0), 
+The entries of each row specify chromosome, position, ID, reference allele (allele 0), 
 alternative allele (allele 1), frequency of the alternative allele, sample size and the test performed 
 (additive/dominant/recessive).
 With BGEN/PGEN files with dosages, the imputation INFO score is provided 
