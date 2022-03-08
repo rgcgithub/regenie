@@ -141,9 +141,9 @@ For binary traits, we fit a null model with only covariates, and use
 predictions from that model as an offset when fitting the logistic
 regression model.
 
-### Step 2 : Association testing
+### Step 2 : Single-variant association testing
 
-In Step 2 a larger set of markers are tested for association with the
+In Step 2, a larger set of markers are tested for association with the
 trait (or traits). As with Step 1, these markers are also read in
 blocks of \(B\) markers, and tested for association. This avoids having
 to have all markers stored in memory at once.
@@ -220,6 +220,132 @@ is obtained by using a root-finding algorithm for \(K'(\delta)=t_{\text{obs}}\).
 has been found not to work very well for ultra-rare variants, a minimum minor 
 allele count (MAC) is used to filter out these variants before testing (option `--minMAC`).
 
+### Step 2 : Gene-based tests
+
+Instead of performing single-variant association tests, multiple variants can be aggregated
+in a given region, such as a gene, using the following model
+
+$$g(\mu) = w_1G_1\beta_1 + \dots + w_mG_m\beta_m$$
+
+where \(G_i\)'s represent the single variants included in the test,
+\(w_i\)'s and \(\beta_i\)'s are weights and effect sizes, respectively, for each variant,
+and \(g(.)\) is a link function for the phenotypic mean \(\mu\). 
+We also denote by \(S_i\) the score statistics obtained from the 
+[single-variant tests](#step-2-single-variant-association-testing).
+This can be especially helpful when testing rare variants as single-variant 
+tests usually have lower power performance.
+
+#### Burden tests
+Burden tests assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is assumed to be fixed,
+which leads to the test statistic
+$$Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2$$
+Hence, these tests are more powerful when variants have effects in the same direction. 
+In REGENIE, multiple options are available to aggregate variants together into a burden mask
+beyond the linear combination above ([see here](../options/#options_1)). 
+
+#### Variance component tests
+Unlike burden tests, SKAT [5] assume the effect sizes $\beta_i$ come from an arbitrary
+distribution with mean 0 and variance $\tau^2$ which leads to the test statistic
+$$Q_{SKAT} = \sum_i w_i^2S_i^2$$
+Hence, SKAT can remain powerful when variant effects are in opposite directions.
+
+The omnibus test SKATO [6] combines the SKAT and burden tests as 
+$$Q_{SKATO} = \rho Q_{BURDEN} + (1-\rho) Q_{SKAT}$$
+So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
+In practice, the parameter $\rho$ is chosen to maximize the power 
+[REGENIE uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
+and set the weights $w_i = Beta(MAF_i,1,25)$].
+
+
+#### Cauchy combination tests
+The ACATV test relies on the Cauchy combination method [7] to combine the single variant p-values $p_i$ as
+$$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
+where $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
+This test is highly computationally tractable and is robust to correlation between the single variant tests.
+
+The omnibus test ACATO [7] combines the ACATV with the SKAT and burden tests as 
+$$
+Q_{ACATO} = 
+\frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
+\frac{1}{3}\tan{\{\pi(0.5 - p_{Burden})\}}+
+\frac{1}{3}\tan{\{\pi(0.5 - p_{SKAT})\}}
+$$
+
+where unlike the original ACATO test we only use one set of the weights $w_i$.
+We also augment the test to include an extended set of SKATO models beyond SKAT and Burden
+(which correspond to $\rho$ of 0 and 1 in SKATO respectively) and by default 
+use the same grid of 8 values for $\rho$ as in the SKATO test.
+
+
+#### Non-negative Least Square test
+REGENIE can generate burden masks which are obtained by aggregating single variants
+using various annotation classes as well as allele frequency
+thresholds. The Non-negative Least Square (NNLS) test [8] combines these burden masks
+in a joint model imposing constraints of same direction of effects
+$$
+\mu = \sum_i M_i\gamma_i
+$$
+where $M_i$ represent a burden mask and we solve
+$$
+\underset{\gamma}{\min} || Y - \sum_i M_i\gamma_i||^2 
+\text{ subject to } \gamma_i \ge 0 \text{ for all } i
+$$
+
+The NNLS method tests the hypothesis $H_0: \gamma_i=0$ for all $i$ vs.
+$H_1: \gamma_i > 0$ for some $i$.
+By using this joint model, the NNLS test accounts for the correlation structure between the burden masks 
+and with the non-negative constraints,
+it can lead to boost in power performance when multiple burden masks are causal and have concordant effects.
+
+### Step 2 : Interaction tests
+
+The GxE tests are of the form
+$$
+g(\mu) = E\alpha + G\beta + (G\odot E)\gamma
+$$
+where $E$ is an environmental risk factor and $G$ is a marker of interest,
+and $\odot$ represents the Haddamard (entry-wise) product of the two.
+The last term in the model allows for the variant to have different effects across values of the risk factor. *Note: if $E$ is categorical, we use a dummy variable for each level of $E$ in the model above.*
+
+We can look at the following hypotheses:
+
+0. $H_0: \beta = 0$ given $\gamma = 0$, which is a marginal test for the SNP
+1. $H_0: \beta = 0$, which is a test for the main effect of the SNP in the full model
+2. $H_0: \gamma = 0$, which is a test for interaction
+3. $H_0: \beta = \gamma = 0$, which tests both main and interaction effects for the SNP
+
+Misspecification of the model above, 
+such as in the presence of hetero-scedasticity, or 
+the presence of high case-control imbalance can lead to inflation in the tests.
+Robust (sandwich) standard error (SE) estimators [9] can be used to adress model misspecification however, they can suffer from inflation when testing rare variants
+or in the presence of high case-control imbalance.
+
+In REGENIE, we use a hybrid approach which combines:
+
+* Wald tests with sandwich estimators
+* Wald tests with heteroscedastic linear models (for quantitative traits)
+* LRT with penalized Firth regression (for binary traits)
+
+For quantitative traits,
+we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 by default. For the remaining variants, we fit a heteroskedastic linear model (HLM) [10]
+$$
+Y = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma + \epsilon
+$$
+
+where we assume $\epsilon \sim N(0, \sigma^2\exp{[1 + E\theta_1 + E^2\theta_2]})$
+to allow for the phenotypic variance to also depend on the risk factor $E$.
+By incorporating both the linear and quadratic effect of $E$ on the mean and variance of $Y$, this model is robust to heteroskedasticity 
+(*Note: the $E^2$ terms are only added when $E$ is quantitative*). 
+Wald tests are then performed for the null hypotheses listed above.
+
+
+For binary traits, 
+we use penalized Firth logistic regression where the model is
+$$
+\text{logit}(\mu) = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma
+$$
+so the added $E^2$ term (only if $E$ is quantitative) as well as the use of the Firth penalty help with case-control imbalance and model misspecification for the effects of $E$ on the phenotype. LRT is applied to test each of the hypotheses above.
+
 ### Missing Phenotype data
 
 With QTs, missing values are mean-imputed in Step 1 and they are 
@@ -247,5 +373,18 @@ Note: imputation is only applied to phenotypes; covariates are not allowed to ha
 [3] R. Butler (2007) Saddlepoint Approximations with Applications. Cambridge University Press.
 
 [4] R. Dey et al. (2017) A Fast and Accurate Algorithm to Test for Binary
-Phenotypes and Its Application to PheWAS.The American Journal of Human
-Genetics 101, 37–49.
+Phenotypes and Its Application to PheWAS.
+The American Journal of Human Genetics 101, 37–49.
+
+[5] Wu, M.C. et al. (2011) Rare-variant association testing for sequencing data with the sequence kernel association test. 
+The American Journal of Human Genetics 89, 82-93.
+
+[6] Lee, S., Wu, M.C. & Lin, X. (2012) Optimal tests for rare variant effects in sequencing association studies. Biostatistics 13, 762-75.
+
+[7] Liu, Y. & Xie, J. (2019) Cauchy Combination Test: A Powerful Test With Analytic p-Value Calculation Under Arbitrary Dependency Structures. American Journal of Human Genetics 104, 410-421.
+
+[8] Ziyatdinov, A., Barber, M. & Marchini, J. (2020) Pooling information across burden tests in the UK Biobank exome sequencing study. ASHG Conference. 
+
+[9] MacKinnon, J.G. & White, H. (1985). Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. Journal of Econometrics 29, 305-325.
+
+[10] Young, A.I., Wauthier, F.L. & Donnelly, P. (2018). Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. Nat Genet 50, 1608-1614.

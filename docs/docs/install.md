@@ -7,7 +7,8 @@ The **regenie** source code is hosted on
 
 Note: **regenie** requires compilation with 
 [GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) 
-or Clang version >=3.3 (on Mac OSX)
+or Clang version >=3.3 (on Mac OSX). 
+It also requires having GFortran library installed.
 
 ### Pre-compiled binaries
 
@@ -24,7 +25,7 @@ will provide speedups for many of the operations done in **regenie**.
 1. **regenie** requires the
   [BGEN library](https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk) so
   you will need to download and install that library.
-2. In the source code edit the BGEN_PATH variable in the `Makefile`
+2. Edit the BGEN_PATH variable in the `Makefile`
    to the BGEN library path.
 3. On the command line type `make` while in the main source code directory.
 4. This should produce the executable called `regenie`.

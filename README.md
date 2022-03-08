@@ -11,6 +11,7 @@ It is developed and supported by a team of scientists at the Regeneron Genetics 
 The method has the following properties
 
 - It works on quantitative and binary traits, including binary traits with unbalanced case-control ratios
+- It can handle population structure and relatedness
 - It can process multiple phenotypes at once
 - It is fast and memory efficient 🔥
 - For binary traits it supports Firth logistic regression and an SPA test

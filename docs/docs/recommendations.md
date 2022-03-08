@@ -141,7 +141,8 @@ grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample > fid_iid_step2.kee
 ```
 --->
 
-Running **regenie** tesing on a single chromosome (here chromosome 1) and using the fast Firth correction as fallback,
+Running **regenie** tesing on a single chromosome (here chromosome 1) 
+and using the fast Firth correction as fallback for p-values below 0.01
 
 ```
 ./regenie \
@@ -152,7 +153,7 @@ Running **regenie** tesing on a single chromosome (here chromosome 1) and using 
   --phenoFile ukb_phenotypes_BT.txt \
   --covarFile ukb_covariates.txt \
   --bt \
-  --firth 0.01 --approx \
+  --firth --approx --pThresh 0.01 \
   --pred ukb_step1_BT_pred.list \
   --bsize 400 \
   --split \
