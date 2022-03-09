@@ -48,13 +48,7 @@ Firth logistic regression model
   --out test_bin_out_firth
 ```
 
-One of the output files from these two commands is included in the `example/` directory and 
-you can check they are the same using  the following command (the message should be printed out)
-
-```
-cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie \
-  && echo "Files are identical"
-```
+One of the output files from these two commands is included in `example/test_bin_out_firth_Y1.regenie`.
 
 ## Basic options
 
@@ -75,10 +69,12 @@ cmp test_bin_out_firth_Y1.regenie example/example.test_bin_out_firth_Y1.regenie 
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
+|`--phenoExcludeList` | STRING | Optional | Comma separated list of phenotypes to ignore from the analysis|
 |`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
 |`--covarColList` | STRING | Optional | Comma separated list of covariates to include in the analysis|
 |`--catCovarList` | STRING | Optional | Comma separated list of categorical covariates to include in the analysis|
+|`--covarExcludeList` | STRING | Optional | Comma separated list of covariates to ignore|
 |`--pred`  | FILE | Optional  | File containing predictions from Step 1 (see Overview). **This is required for `--step 2`**|
 |`--tpheno-file`| STRING| Optional| to use a phenotype file in transposed format (e.g. BED format)|
 |`--tpheno-indexCol`| INT| Optional| index of phenotype name column in transposed phenotype file|
@@ -272,7 +268,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--minINFO`| FLOAT| Optional| flag to specify the minimum imputation info score (IMPUTE/MACH R^2) when testing variants. Variants with lower info score are ignored.|
 |`--sex-specific` | STRING | Optional | to perform sex-specific analyses [either 'male'/'female']|
 |`--af-cc`| FLAG | Optional| to output A1FREQ in case/controls separately in the step 2 result file|
-|`-no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
+|`--no-split`|FLAG| Optional| flag to have summary statistics for all traits output in the same file|
 |`--starting-block`| INT| Optional| to start step 2 at a specific block/set number (useful if program crashes during a job)|
 |`--nauto`| INT| Optional| number of autosomal chromosomes (for non-human studies) [default is 22]|
 |`--maxCatLevels`| INT| Optional| maximum number of levels for categorical covariates (for non-human studies) [default is 10]|
@@ -294,20 +290,6 @@ was not successful in which case the user would need to delete the files)
 
 See the [Wiki page](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for more details on how to run the level 0 models for Step 1 
 of **regenie** in parallel.
-
-<!---
-|`--interaction`| STRING| Optional| to perform GxE interaction test|
-|`--interaction-snp`| STRING| Optional| to perform GxG interaction test|
-|`--force-ltco`| INT| Optional| to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1|
-
-Interaction testing
-To perform GxE interaction tests, you can use option `--interaction covariate_name`. If the covariate 
-is categorical and you want a specific baseline level, you can use `--interaction covariate_name[baseline_level]`.
-To perform GxG interaction test, you can use option `--interaction-snp snpID`, where the variant must be present 
-in the genotype file. By default, additive encoding is used but you can use dominant (dom), recessive (rec),
-or categorical (cat) coding for the interacting variant.
-For example, to specify dominant coding for the variant, use `--interaction-snp snpID[dom]`
---->
 
 ### Output
 
@@ -370,10 +352,13 @@ If option `--write-samples` was used, IDs of samples used for each trait will be
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
 
 
-## Burden testing
+## Gene-based testing
 
-Starting from version 2.0, Step 2 of **regenie** now provides burden testing functionality.
-More specifically, a user can combine genetic variants within a gene (or region), using functional annotations, into a single combined 'mask' genotype, that can be tested for association using the [same testing options](https://rgcgithub.github.io/regenie/options/#options) as with single variants. 
+Starting from version 3.0, Step 2 of **regenie** provides a complimentary set of gene-based test 
+in addition to the burden testing functionality introduced in version 2.0.
+More specifically, for a given set of variants (eg within a gene) which can be defined using functional annotations,
+**regenie** can apply various set-based tests on the variants as well as collapse them into a single combined 'mask' genotype 
+that can be tested for association just like a single variant. 
 
 ### Input
 
@@ -493,15 +478,60 @@ Mask2 LoF,missense
 ```
 
 ##### AAF cutoffs
-Option `--aaf-bins` specifies the AAF upper bounds used to generate masks.
+Option `--aaf-bins` specifies the AAF upper bounds used to generate burden masks 
+(**AAF and not MAF [minor allele frequency] is used when deciding which variants go into a mask)**.
 By default, a mask based on singleton sites are always included.
 
-For example, `--aaf-bins 0.01,0.05` will generate 3 masks for AAFs in 
+For example, `--aaf-bins 0.01,0.05` will generate 3 burden masks for AAFs in 
 [0,0.01], [0,0.05] and singletons.
+
+
+#### SKAT/ACAT tests
+
+The option `--vc-tests` is used to specify the gene-based tests to run. 
+By default, these tests use all variants in each mask category. 
+If you'd like to only include variants whose AAF is below a given threshold 
+,e.g. only including rare variants, you can use `--vc-maxAAF`.
+
+| Test  | Name in **regenie**    | Description |
+| :----- |:-------------- | :--|
+| SKAT    | skat | Variance component test |
+| SKATO    | skato | Omnibus test combining features of SKAT and Burden|
+| SKATO-ACAT   | skato-acat | Same as SKATO but using Cauchy combination method to maximize power across SKATO models|
+| ACATV   | acatv | Test using Cauchy combination method to combine single-variant p-values|
+| ACATO   | acato | Omnibus test combining features of ACATV, SKAT and Burden|
+| ACATO-FULL   | acato-full | Same as ACATO but using the larger set of SKATO models used in the SKATO test|
+
+
+For example, `--vc-tests skato,acato-full` will run SKATO and ACATO 
+(both using the default grid of 8 `rho` values for the SKATO models) and 
+the p-values for SKAT, SKATO, ACATV and ACATO will be output.
+
+Ultra-rare variants (defined by default as MAC$\le$10, see `--vc-MACthr`) are collapsed into
+a burden mask which is then included in the tests instead of the individual variants.
+
+For additional details, [see here](../overview/#step-2-gene-based-testing).
+
+
+#### Joint test for burden masks
+
+The following tests can be used to combine different burden masks 
+generated using different annotation classes as well as AAF thresholds.
+
+| Test  | Name in **regenie**    | QT | BT | Robust to LD | Assumes same effect direction |
+| :----- |:--------------: |:---: |:---: | :---: |:---: |
+| Minimum P-value    | minp | $\checkmark$ | $\checkmark$ | $\times$ | $\times$       |
+| ACAT |acat  | $\checkmark$|$\checkmark$|$\checkmark$|$\times$        |
+| NNLS |nnls  | $\checkmark$|$\times$|$\checkmark$|$\checkmark$        |
+
+The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
+(see ref. [8] [here](../overview/#references)).
+The NNLS test is described into more detail [here](../overview/#non-negative-least-square-test).
+
 
 #### LOVO/LODO schemes
 
-The leave-one-variant-out (LOVO) scheme takes all sites goint into a mask,
+The leave-one-variant-out (LOVO) scheme takes all sites going into a mask,
 and builds LOVO masks 
 by leaving out one variant at a time from the full set of sites. 
 The mask including all sites will also be computed.
@@ -520,14 +550,14 @@ and the AAF cutoff.
 So the LOVO masks will be generated for a specific gene domain.
 
 The leave-one-domain-out (LODO) scheme (specified by `--mask-lodo`) 
-takes all sites goint into a mask and builds a LODO mask for each domain specified for the gene
+takes all sites going into a mask and builds a LODO mask for each domain specified for the gene
 by excluding all variants in the domain. 
 The full mask including all sites will also be computed. 
 The argument for `--mask-lodo` should have the gene name, the mask name and the AAF cutoff.
 
 
 #### Writing mask files 
-Masks built in **regenie** can be written to PLINK bed format. 
+Burden masks built in **regenie** can be written to PLINK bed format. 
 If the input genetic data contains dosages, 
 the masks dosages will be converted to hard-calls prior to being written to file 
 and these hard-calls will be used for the association testing.
@@ -544,6 +574,12 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--build-mask`| STRING| Optional| build masks using the maximum number of ALT alleles across sites (`'max'`; the default), or the sum of ALT alleles (`'sum'`), or thresholding the sum to 2 (`'comphet'`)|
 |`--singleton-carrier`| FLAG| Optional| to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)|
 |`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
+|`--vc-tests`| STRING| Optional| comma-separated list of SKAT/ACAT-type tests to run|
+|`--vc-maxAAF`| FLOAT| Optional| AAF upper bound to use for SKAT/ACAT-type tests [default is 100%]|
+|`--skat-params`| FLOAT,FLAT| Optional| a1,a2 values for the single variant weights computed from Beta(MAF,a1,a2) used in SKAT/ACAT-type tests [default is (1,25)]|
+|`--skat-rho`| FLOAT,...,FLOAT| Optional| comma-separated list of $\rho$ values used for SKATO models|
+|`--vc-MACthr`| FLOAT| Optional| MAC threshold below which to collapse variants in SKAT/ACAT-type tests [default is 10]|
+|`--joint`| STRING| Optional| comma-separated list of joint tests to apply on the generated burden masks|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
 |`--mask-lodo`| FLAG| Optional| to perform LODO scheme|
@@ -578,24 +614,6 @@ AAF across sites included in the mask.
 If using `--write-mask`, the masks will be saved to 
 `file_masks.{bed,bim,fam}` and if using `--write-mask-snplist`, 
 the list of variants included in each mask will be saved to `file_masks.snplist`. 
-
-<!---
-|`--write-setlist`| FILE| Optional| to create set list files from built-in masks (use with `--write-mask`; see format below)|
-With `--write-setlist`, new set list files will be written which contain list of sets
-based on the written masks. 
-The option takes in a file with 2 columns containing 
-a file suffix for the new set list file, as well as a list of the masks
-which will constitute the sets (set names/chr/pos are obtained from the input set list file).
-
-```bash
-onlyLoFs Mask1
-LoFs+Splice Mask1,Mask3
-```
-This creates two set list files, one called `file_onlyLoFs.setlist` with sets consisting of  
-Mask1 masks (across all AAF cutoffs) 
-and another one called `file_LoFs+Splice.setlist` 
-with sets consisting of Mask1 and Mask3 masks.
--->
 
 ### Example run
 Using Step 1 results from the [Step 1 command above](https://rgcgithub.github.io/regenie/options/#getting-started), we use the following command to build and test masks in Step 2
@@ -639,3 +657,64 @@ enforce full agreement between the three files
 1. all genotyped variants in the set list file must be in the annotation file (for the corresponding set)
 
 2. all annotations in the mask definition file must be present in the annotation file
+
+## Interaction testing
+Starting from **regenie** v3.0, you can perform scans for interactions (either GxE or GxG). 
+For GxE tests, the interacting variable should be part of the covariate file 
+(if it is categorical, specify it in `--catCovarList`).
+For GxG tests, the interacting variant can be part of the input genetic file 
+or it can be present in an external file (see `--interaction-snp-file`)
+
+### Options
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--interaction`| STRING| Optional| to run GxE test specifying the interacting covariate (see below)|
+|`--interaction-snp`| STRING| Optional| to run GxG test specifying the interacting variant (see below)|
+|`--interaction-file`| FORMAT,FILE| Optional| external genotype file containing the interacting variant [FORMAT can be bed/bgen/pgen and FILE is the file name (bgen) or file prefix (bed/pgen)]|
+|`--interaction-file-sample`| FILE| Optional| accompagnying sample file for BGEN format|
+|`--interaction-file-reffirst`| FLAG| Optional| use the first allele as the reference for BGEN or PLINK BED formats|
+|`--no-condtl`| FLAG| Optional| to print out all the main effects from the interaction model (see Output section below)|
+|`--force-condtl`| FLAG| Optional| to include the interacting SNP as a covariate in the marginal test (see Output section below)|
+|`--rare-mac`| FLOAT| Optional| minor allele count (MAC) threshold below which to use HLM method for QTs[default is 1000]|
+
+For GxE tests where the interacting variable is categorical, you can specify the baseline level using `--interaction VARNAME[BASE_LEVEL]` (e.g. `--interaction BMI[<25]`). Otherwise, the first value found in the covariate file will be used as the baseline level.
+
+For GxG tests, the default coding for the interacting variant is additive. If you would like to use dominant/recessive/categorical coding, use `--interaction-snp SNP_NAME[dom/rec/cat]` (for example with dominant coding, `--interaction-snp SNPNAME[dom]` will allow for separate effects between carriers vs non-carriers of the interacting variant). The allowed values in the brackets are `add/dom/rec/cat`.
+<!---
+force-ltco : to use a Leave-Two-Chromosome-Out (LTCO) scheme specifying the chromosome to remove from the LOCO PRS of Step 1
+--->
+
+
+### Output
+The result files will contain multiple lines for the same variant corresponding to the
+different null hypotheses being tested in the [interaction model](../overview/#step-2-interaction-testing)
+$$
+g(\mu) = E\alpha + G\beta + (G\odot E)\gamma
+$$
+
+The suffix in the "TEST" column indicates which hypothesis is being tested:
+
+* "ADD": marginal test where the interacting variable has **not** been added as a covariate $-$ this corresponds to $H_0: \beta = 0$ given $\alpha=\gamma = 0$
+    * this is only printed for GxG tests by default, or GxE using `--no-condtl`
+* "ADD-CONDTL": marginal test where the interacting variable has been added as a covariate (default for GxE tests) $-$ this corresponds to $H_0: \beta = 0$ given $\gamma = 0$
+    * this is only printed for GxE tests by default, or GxG using `--force-condtl`
+* "ADD-INT_VAR": test for the main effect of the interaction variable ("VAR" will be replaced by the name of the interacting variable) $-$ this corresponds to $H_0: \alpha = 0$
+    * this is only printed for GxG tests by default, or GxE using `--no-condtl`
+    * If the interacting variable is categorical, you will have separate lines for each level aside from the baseline level (e.g. "ADD-INT_BMI=25-30" and "ADD-INT_BMI=30+" where baseline level is "$<$25")
+    * will also output the effect of $E^2$ in "ADD-INT_VAR^2" if the trait is binary (see [here](../overview/#step-2-interaction-testing))
+* "ADD-INT_SNP": test for main effect of tested SNP in the interaction model $-$ this corresponds to $H_0: \beta = 0$
+* "ADD-INT_SNPxVAR": test for interaction effect ("VAR" will be replaced by the name of the interacting variable) $-$ this corresponds to $H_0: \gamma = 0$
+    * If the interacting variable is categorical, you will have separate lines for each level aside from the baseline level (e.g. "ADD-INT_SNPxBMI=25-30" and "ADD-INT_SNPxBMI=30+" where baseline level is "$<$25")
+* "ADD-INT_$k$DF": joint test for main and interaction effect of tested variant ($k\ge2$ for categorical interacting variables) $-$ this corresponds to $H_0: \beta = \gamma = 0$
+
+
+## Conditional analyses
+Starting from **regenie** v3.0, you can specify genetic variants to add to the set of covariates when performing association testing. 
+This works in both step 1 and 2, and can be used in conjunction with the gene-based tests or the interactiong testing feature.
+The conditioning variants will automatically be ignored from the analysis.
+
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--condition-list`| FILE| Required| file with list of variants to condition on|
+|`--condition-file `| FORMAT,FILE| Optional| get conditioning variants from external file (same argument format as `--interaction-file`)|
+|`--max-condition-vars `| INT| Optional| maximum number of conditioning variants [default is 10,000]|

@@ -220,7 +220,7 @@ is obtained by using a root-finding algorithm for \(K'(\delta)=t_{\text{obs}}\).
 has been found not to work very well for ultra-rare variants, a minimum minor 
 allele count (MAC) is used to filter out these variants before testing (option `--minMAC`).
 
-### Step 2 : Gene-based tests
+### Step 2 : Gene-based testing
 
 Instead of performing single-variant association tests, multiple variants can be aggregated
 in a given region, such as a gene, using the following model
@@ -240,7 +240,7 @@ Burden tests assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is assumed to
 which leads to the test statistic
 $$Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2$$
 Hence, these tests are more powerful when variants have effects in the same direction. 
-In REGENIE, multiple options are available to aggregate variants together into a burden mask
+In **regenie**, multiple options are available to aggregate variants together into a burden mask
 beyond the linear combination above ([see here](../options/#options_1)). 
 
 #### Variance component tests
@@ -253,12 +253,17 @@ The omnibus test SKATO [6] combines the SKAT and burden tests as
 $$Q_{SKATO} = \rho Q_{BURDEN} + (1-\rho) Q_{SKAT}$$
 So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
 In practice, the parameter $\rho$ is chosen to maximize the power 
-[REGENIE uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
+[**regenie** uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
 and set the weights $w_i = Beta(MAF_i,1,25)$].
+
+The original SKATO method uses numerical integration when maximizing power across the 
+various SKATO models that use different values for $\rho$. We implement a modification of
+SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method [7] 
+to combine the p-values for the different SKATO models.
 
 
 #### Cauchy combination tests
-The ACATV test relies on the Cauchy combination method [7] to combine the single variant p-values $p_i$ as
+The ACATV [7] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
@@ -271,23 +276,22 @@ Q_{ACATO} =
 \frac{1}{3}\tan{\{\pi(0.5 - p_{SKAT})\}}
 $$
 
-where unlike the original ACATO test we only use one set of the weights $w_i$.
-We also augment the test to include an extended set of SKATO models beyond SKAT and Burden
-(which correspond to $\rho$ of 0 and 1 in SKATO respectively) and by default 
-use the same grid of 8 values for $\rho$ as in the SKATO test.
+where unlike the original ACATO test, we only use one set of the weights $w_i$.
+Alternatively, we augment the test to include an extended set of SKATO models beyond SKAT and Burden
+(which correspond to $\rho$ of 0 and 1 in SKATO respectively) and use the default SKATO grid of 8 values for $\rho$.
 
 
-#### Non-negative Least Square test
-REGENIE can generate burden masks which are obtained by aggregating single variants
+#### Non-Negative Least Square test
+**regenie** can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Non-negative Least Square (NNLS) test [8] combines these burden masks
+thresholds. The Non-Negative Least Square (NNLS) test [8] combines these burden masks
 in a joint model imposing constraints of same direction of effects
 $$
-\mu = \sum_i M_i\gamma_i
+\mu = \sum_{\text{mask }i} M_i\gamma_i
 $$
 where $M_i$ represent a burden mask and we solve
 $$
-\underset{\gamma}{\min} || Y - \sum_i M_i\gamma_i||^2 
+\underset{\boldsymbol\gamma}{\min} || Y - \sum_i M_i\gamma_i||^2 
 \text{ subject to } \gamma_i \ge 0 \text{ for all } i
 $$
 
@@ -297,7 +301,7 @@ By using this joint model, the NNLS test accounts for the correlation structure 
 and with the non-negative constraints,
 it can lead to boost in power performance when multiple burden masks are causal and have concordant effects.
 
-### Step 2 : Interaction tests
+### Step 2 : Interaction testing
 
 The GxE tests are of the form
 $$
@@ -305,7 +309,8 @@ g(\mu) = E\alpha + G\beta + (G\odot E)\gamma
 $$
 where $E$ is an environmental risk factor and $G$ is a marker of interest,
 and $\odot$ represents the Haddamard (entry-wise) product of the two.
-The last term in the model allows for the variant to have different effects across values of the risk factor. *Note: if $E$ is categorical, we use a dummy variable for each level of $E$ in the model above.*
+The last term in the model allows for the variant to have different effects across values of the risk factor. 
+*Note: if $E$ is categorical, we use a dummy variable for each level of $E$ in the model above.*
 
 We can look at the following hypotheses:
 
@@ -315,36 +320,41 @@ We can look at the following hypotheses:
 3. $H_0: \beta = \gamma = 0$, which tests both main and interaction effects for the SNP
 
 Misspecification of the model above, 
-such as in the presence of hetero-scedasticity, or 
+such as in the presence of heteroskedasticity, or 
 the presence of high case-control imbalance can lead to inflation in the tests.
-Robust (sandwich) standard error (SE) estimators [9] can be used to adress model misspecification however, they can suffer from inflation when testing rare variants
+Robust (sandwich) standard error (SE) estimators [9] can be used to adress model misspecification however, 
+they can suffer from inflation when testing rare variants
 or in the presence of high case-control imbalance.
 
-In REGENIE, we use a hybrid approach which combines:
+In **regenie**, we use a hybrid approach which combines:
 
-* Wald tests with sandwich estimators
-* Wald tests with heteroscedastic linear models (for quantitative traits)
+* Wald test with sandwich estimators
+* Wald test with heteroskedastic linear models (for quantitative traits)
 * LRT with penalized Firth regression (for binary traits)
 
 For quantitative traits,
-we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 by default. For the remaining variants, we fit a heteroskedastic linear model (HLM) [10]
+we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 (see `--rare-mac`). 
+For the remaining variants, we fit a heteroskedastic linear model (HLM) [10]
 $$
 Y = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma + \epsilon
 $$
 
-where we assume $\epsilon \sim N(0, \sigma^2\exp{[1 + E\theta_1 + E^2\theta_2]})$
-to allow for the phenotypic variance to also depend on the risk factor $E$.
-By incorporating both the linear and quadratic effect of $E$ on the mean and variance of $Y$, this model is robust to heteroskedasticity 
+where we assume $\epsilon \sim N(0, D)$ where $D$ is a diagonal matrix with entries $\sigma^2\exp{(1 + E\theta_1 + E^2\theta_2)}$.
+This formulation allows for the phenotypic variance to also depend on the risk factor $E$.
+By incorporating both the linear and quadratic effect of $E$ in the mean and variance of $Y$, 
+this model provides robustnss to heteroskedasticity 
 (*Note: the $E^2$ terms are only added when $E$ is quantitative*). 
 Wald tests are then performed for the null hypotheses listed above.
 
 
-For binary traits, 
-we use penalized Firth logistic regression where the model is
+For binary traits, we consider the following interaction model
 $$
 \text{logit}(\mu) = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma
 $$
-so the added $E^2$ term (only if $E$ is quantitative) as well as the use of the Firth penalty help with case-control imbalance and model misspecification for the effects of $E$ on the phenotype. LRT is applied to test each of the hypotheses above.
+where we also include a non-linear effect for $E$ (not if categorical).
+The sandwich estimator HC3 is used in a Wald test for variants whose MAC is above 1000 (see `--rare-mac`) otherwise the model-based standard errors are used.
+When Firth is specified, we only apply the Firth correction using LRT if the p-value for the interaction term $\gamma$ from the Wald test is below a specified threshold (see `--pThresh`). So the added $E^2$ term as well as the use of the Firth penalty 
+help with case-control imbalance and model misspecification for the effects of $E$ on the phenotype. 
 
 ### Missing Phenotype data
 
