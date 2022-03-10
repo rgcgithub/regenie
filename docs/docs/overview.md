@@ -236,20 +236,21 @@ This can be especially helpful when testing rare variants as single-variant
 tests usually have lower power performance.
 
 #### Burden tests
-Burden tests assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is assumed to be fixed,
-which leads to the test statistic
+Burden tests, as defined in [5], assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is a fixed coefficient, which then leads to the test statistic
 $$Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2$$
-Hence, these tests are more powerful when variants have effects in the same direction. 
-In **regenie**, multiple options are available to aggregate variants together into a burden mask
-beyond the linear combination above ([see here](../options/#options_1)). 
+These tests collapse variants into a single variable which is then tested for association with the phenotype. Hence, they are more powerful when variants have effects in the same direction and of similar magnitude. 
+In **regenie**, multiple options are available to aggregate variants together into a burden mask beyond the linear combination above ([see here](../options/#options_1)). 
+For example, the burden tests that were employed in Backman et al. (2021)
+use the default strategy in **regenie** of collapsing variants by taking
+the maximum number of rare alleles across the sites.
 
 #### Variance component tests
-Unlike burden tests, SKAT [5] assume the effect sizes $\beta_i$ come from an arbitrary
+Unlike burden tests, SKAT [6] assume the effect sizes $\beta_i$ come from an arbitrary
 distribution with mean 0 and variance $\tau^2$ which leads to the test statistic
 $$Q_{SKAT} = \sum_i w_i^2S_i^2$$
 Hence, SKAT can remain powerful when variant effects are in opposite directions.
 
-The omnibus test SKATO [6] combines the SKAT and burden tests as 
+The omnibus test SKATO [7] combines the SKAT and burden tests as 
 $$Q_{SKATO} = \rho Q_{BURDEN} + (1-\rho) Q_{SKAT}$$
 So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
 In practice, the parameter $\rho$ is chosen to maximize the power 
@@ -258,17 +259,17 @@ and set the weights $w_i = Beta(MAF_i,1,25)$].
 
 The original SKATO method uses numerical integration when maximizing power across the 
 various SKATO models that use different values for $\rho$. We implement a modification of
-SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method [7] 
+SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method [8] 
 to combine the p-values for the different SKATO models.
 
 
 #### Cauchy combination tests
-The ACATV [7] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
+The ACATV [8] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
 
-The omnibus test ACATO [7] combines the ACATV with the SKAT and burden tests as 
+The omnibus test ACATO [8] combines the ACATV with the SKAT and burden tests as 
 $$
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -284,7 +285,7 @@ Alternatively, we augment the test to include an extended set of SKATO models be
 #### Non-Negative Least Square test
 **regenie** can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Non-Negative Least Square (NNLS) test [8] combines these burden masks
+thresholds. The Non-Negative Least Square (NNLS) test [9] combines these burden masks
 in a joint model imposing constraints of same direction of effects
 $$
 \mu = \sum_{\text{mask }i} M_i\gamma_i
@@ -300,6 +301,9 @@ $H_1: \gamma_i > 0$ for some $i$.
 By using this joint model, the NNLS test accounts for the correlation structure between the burden masks 
 and with the non-negative constraints,
 it can lead to boost in power performance when multiple burden masks are causal and have concordant effects.
+This test has the nice property that it combines 
+model selection of the masks (via the sparsity induced by the non-negative assumption) 
+with model inference (it is well calibrated and powerful).
 
 ### Step 2 : Interaction testing
 
@@ -322,9 +326,9 @@ We can look at the following hypotheses:
 Misspecification of the model above, 
 such as in the presence of heteroskedasticity, or 
 the presence of high case-control imbalance can lead to inflation in the tests.
-Robust (sandwich) standard error (SE) estimators [9] can be used to adress model misspecification however, 
+Robust (sandwich) standard error (SE) estimators [10] can be used to adress model misspecification however, 
 they can suffer from inflation when testing rare variants
-or in the presence of high case-control imbalance.
+or in the presence of high case-control imbalance [11-12].
 
 In **regenie**, we use a hybrid approach which combines:
 
@@ -334,7 +338,7 @@ In **regenie**, we use a hybrid approach which combines:
 
 For quantitative traits,
 we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 (see `--rare-mac`). 
-For the remaining variants, we fit a heteroskedastic linear model (HLM) [10]
+For the remaining variants, we fit a heteroskedastic linear model (HLM) [13]
 $$
 Y = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma + \epsilon
 $$
@@ -386,15 +390,22 @@ Note: imputation is only applied to phenotypes; covariates are not allowed to ha
 Phenotypes and Its Application to PheWAS.
 The American Journal of Human Genetics 101, 37–49.
 
-[5] Wu, M.C. et al. (2011) Rare-variant association testing for sequencing data with the sequence kernel association test. 
+[5] Lee, S., Abecasis, G.R., Boehnke, M. & Lin, X. (2014) Rare-variant association analysis: study designs and statistical tests. 
+The American Journal of Human Genetics 95, 5-23.
+
+[6] Wu, M.C. et al. (2011) Rare-variant association testing for sequencing data with the sequence kernel association test. 
 The American Journal of Human Genetics 89, 82-93.
 
-[6] Lee, S., Wu, M.C. & Lin, X. (2012) Optimal tests for rare variant effects in sequencing association studies. Biostatistics 13, 762-75.
+[7] Lee, S., Wu, M.C. & Lin, X. (2012) Optimal tests for rare variant effects in sequencing association studies. Biostatistics 13, 762-75.
 
-[7] Liu, Y. & Xie, J. (2019) Cauchy Combination Test: A Powerful Test With Analytic p-Value Calculation Under Arbitrary Dependency Structures. American Journal of Human Genetics 104, 410-421.
+[8] Liu, Y. & Xie, J. (2019) Cauchy Combination Test: A Powerful Test With Analytic p-Value Calculation Under Arbitrary Dependency Structures. American Journal of Human Genetics 104, 410-421.
 
-[8] Ziyatdinov, A., Barber, M. & Marchini, J. (2020) Pooling information across burden tests in the UK Biobank exome sequencing study. ASHG Conference. 
+[9] Ziyatdinov, A., Barber, M. & Marchini, J. (2020) Pooling information across burden tests in the UK Biobank exome sequencing study. ASHG Conference. 
 
-[9] MacKinnon, J.G. & White, H. (1985). Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. Journal of Econometrics 29, 305-325.
+[10] MacKinnon, J.G. & White, H. (1985). Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. Journal of Econometrics 29, 305-325.
 
-[10] Young, A.I., Wauthier, F.L. & Donnelly, P. (2018). Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. Nat Genet 50, 1608-1614.
+[11] Tchetgen Tchetgen, E.J. & Kraft, P. (2011) On the robustness of tests of genetic associations incorporating gene-environment interaction when the environmental exposure is misspecified. Epidemiology 22, 257-61.
+
+[12] Voorman, A., Lumley, T., McKnight, B. & Rice, K. (2011) Behavior of QQ-plots and genomic control in studies of gene-environment interaction. PLoS One 6.
+
+[13] Young, A.I., Wauthier, F.L. & Donnelly, P. (2018). Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. Nat Genet 50, 1608-1614.

@@ -2,6 +2,7 @@ site_name: regenie
 theme:
   name: null
   custom_dir: 'cinder'
+copyright: "REGENIE is licensed under the <a href='https://github.com/rgcgithub/regenie/blob/master/LICENSE'>MIT license"
 
 nav:
   - Home: index.md
@@ -15,7 +16,7 @@ nav:
 markdown_extensions:
   - mdx_math
   - attr_list
-  
+
 google_analytics:
   - UA-166859683-2
   - auto
