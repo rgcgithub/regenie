@@ -75,7 +75,7 @@ regression model.
 
 When analyzing a quantitative trait we use a second level of ridge
 regression on the full set of \(JM/B\) predictors in \(W\). This
-approach is inspired by the method of stacked regressions [1].
+approach is inspired by the method of stacked regressions[@RN293].
 
 We fit the ridge regression for a range of shrinkage parameters (`--l1` option) and choose a single
 best value using K-fold cross validation scheme. This assesses the
@@ -176,7 +176,7 @@ has two options to handle this
 ##### Firth logistic regression
 
 Standard maximum likelihood estimates are generally biased. The Firth
-correction [2]
+correction[@RN248]
 removes much of the bias, and results in better calibrated test
 statistics. The correction involves adding a penalty term to the
 log-likelihood,
@@ -201,7 +201,7 @@ Hence, we added an option `--firth-se` to report a SE computed instead from the 
 The SPA test approximates the null distribution of the test statistic
 by approximating the cumulant generating function of the
 test  statistic,  which  involves  all  of  the  higher  order
-moments [3,4]. This provides a better estimation of the tail probabilities compared to using
+moments[@RN488]$^,$[@RN245]. This provides a better estimation of the tail probabilities compared to using
 standard asymptotic theory which relies on the normal approximation and uses only the
 first two moments of the dsitribution. A tail probability is obtained as 
 
@@ -236,21 +236,21 @@ This can be especially helpful when testing rare variants as single-variant
 tests usually have lower power performance.
 
 #### Burden tests
-Burden tests, as defined in [5], assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is a fixed coefficient, which then leads to the test statistic
+Burden tests, as defined in Lee et al. (2014)[@RN487], assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is a fixed coefficient, which then leads to the test statistic
 $$Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2$$
 These tests collapse variants into a single variable which is then tested for association with the phenotype. Hence, they are more powerful when variants have effects in the same direction and of similar magnitude. 
 In **regenie**, multiple options are available to aggregate variants together into a burden mask beyond the linear combination above ([see here](../options/#options_1)). 
-For example, the burden tests that were employed in Backman et al. (2021)
+For example, the burden tests that were employed in Backman et al. (2021)[@RN457]
 use the default strategy in **regenie** of collapsing variants by taking
 the maximum number of rare alleles across the sites.
 
 #### Variance component tests
-Unlike burden tests, SKAT [6] assume the effect sizes $\beta_i$ come from an arbitrary
+Unlike burden tests, SKAT[@RN386] assume the effect sizes $\beta_i$ come from an arbitrary
 distribution with mean 0 and variance $\tau^2$ which leads to the test statistic
 $$Q_{SKAT} = \sum_i w_i^2S_i^2$$
 Hence, SKAT can remain powerful when variant effects are in opposite directions.
 
-The omnibus test SKATO [7] combines the SKAT and burden tests as 
+The omnibus test SKATO[@RN454] combines the SKAT and burden tests as 
 $$Q_{SKATO} = \rho Q_{BURDEN} + (1-\rho) Q_{SKAT}$$
 So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
 In practice, the parameter $\rho$ is chosen to maximize the power 
@@ -259,17 +259,17 @@ and set the weights $w_i = Beta(MAF_i,1,25)$].
 
 The original SKATO method uses numerical integration when maximizing power across the 
 various SKATO models that use different values for $\rho$. We implement a modification of
-SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method [8] 
+SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method[@RN482] 
 to combine the p-values for the different SKATO models.
 
 
 #### Cauchy combination tests
-The ACATV [8] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
+The ACATV[@RN339] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
 
-The omnibus test ACATO [8] combines the ACATV with the SKAT and burden tests as 
+The omnibus test ACATO[$^{10}$](#fn:10) combines the ACATV with the SKAT and burden tests as 
 $$
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -285,7 +285,7 @@ Alternatively, we augment the test to include an extended set of SKATO models be
 #### Non-Negative Least Square test
 **regenie** can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Non-Negative Least Square (NNLS) test [9] combines these burden masks
+thresholds. The Non-Negative Least Square (NNLS) test[@RN491] combines these burden masks
 in a joint model imposing constraints of same direction of effects
 $$
 \mu = \sum_{\text{mask }i} M_i\gamma_i
@@ -326,9 +326,9 @@ We can look at the following hypotheses:
 Misspecification of the model above, 
 such as in the presence of heteroskedasticity, or 
 the presence of high case-control imbalance can lead to inflation in the tests.
-Robust (sandwich) standard error (SE) estimators [10] can be used to adress model misspecification however, 
+Robust (sandwich) standard error (SE) estimators[@RN490] can be used to adress model misspecification however, 
 they can suffer from inflation when testing rare variants
-or in the presence of high case-control imbalance [11-12].
+or in the presence of high case-control imbalance[@RN373]$^,$[@RN320].
 
 In **regenie**, we use a hybrid approach which combines:
 
@@ -338,7 +338,7 @@ In **regenie**, we use a hybrid approach which combines:
 
 For quantitative traits,
 we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 (see `--rare-mac`). 
-For the remaining variants, we fit a heteroskedastic linear model (HLM) [13]
+For the remaining variants, we fit a heteroskedastic linear model (HLM)[@RN417]
 $$
 Y = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma + \epsilon
 $$
@@ -379,33 +379,4 @@ Note: imputation is only applied to phenotypes; covariates are not allowed to ha
 
 ### References
 
-[1] L. Breiman (1996) Stacked Regressions. Machine Learning, 24,
-49-64.
-
-[2] D. Firth (1993) Bias reduction of maximum likelihood estimates. Biometrika 80,  27–38.
-
-[3] R. Butler (2007) Saddlepoint Approximations with Applications. Cambridge University Press.
-
-[4] R. Dey et al. (2017) A Fast and Accurate Algorithm to Test for Binary
-Phenotypes and Its Application to PheWAS.
-The American Journal of Human Genetics 101, 37–49.
-
-[5] Lee, S., Abecasis, G.R., Boehnke, M. & Lin, X. (2014) Rare-variant association analysis: study designs and statistical tests. 
-The American Journal of Human Genetics 95, 5-23.
-
-[6] Wu, M.C. et al. (2011) Rare-variant association testing for sequencing data with the sequence kernel association test. 
-The American Journal of Human Genetics 89, 82-93.
-
-[7] Lee, S., Wu, M.C. & Lin, X. (2012) Optimal tests for rare variant effects in sequencing association studies. Biostatistics 13, 762-75.
-
-[8] Liu, Y. & Xie, J. (2019) Cauchy Combination Test: A Powerful Test With Analytic p-Value Calculation Under Arbitrary Dependency Structures. American Journal of Human Genetics 104, 410-421.
-
-[9] Ziyatdinov, A., Barber, M. & Marchini, J. (2020) Pooling information across burden tests in the UK Biobank exome sequencing study. ASHG Conference. 
-
-[10] MacKinnon, J.G. & White, H. (1985). Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. Journal of Econometrics 29, 305-325.
-
-[11] Tchetgen Tchetgen, E.J. & Kraft, P. (2011) On the robustness of tests of genetic associations incorporating gene-environment interaction when the environmental exposure is misspecified. Epidemiology 22, 257-61.
-
-[12] Voorman, A., Lumley, T., McKnight, B. & Rice, K. (2011) Behavior of QQ-plots and genomic control in studies of gene-environment interaction. PLoS One 6.
-
-[13] Young, A.I., Wauthier, F.L. & Donnelly, P. (2018). Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. Nat Genet 50, 1608-1614.
+\bibliography

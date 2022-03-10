@@ -16,6 +16,13 @@ nav:
 markdown_extensions:
   - mdx_math
   - attr_list
+  - footnotes
+
+plugins:
+  - search
+  - bibtex:
+      bib_file: "refs.bib"
+      csl_file: "nature.csl"
 
 google_analytics:
   - UA-166859683-2
