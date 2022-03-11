@@ -26,7 +26,7 @@ upon* the prediction from the regression model in Step 1, using a
 leave one chromosome out (LOCO) scheme, that avoids proximal
 contamination.
 
-![Rflow](img/regenie_overview.png){ style="text-align:center;padding: 10px;width:70%;border: 1px solid #ddd;display: block;margin-left: auto;margin-right: auto"}
+![Rflow](img/regenie_overview2.png){ style="text-align:center;padding: 10px;width:70%;border: 1px solid #ddd;display: block;margin-left: auto;margin-right: auto"}
 <br>
 
 ### Step 1 : Whole genome model
