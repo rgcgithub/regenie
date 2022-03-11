@@ -675,7 +675,7 @@ or it can be present in an external file (see `--interaction-snp-file`)
 |`--interaction-file-reffirst`| FLAG| Optional| use the first allele as the reference for BGEN or PLINK BED formats|
 |`--no-condtl`| FLAG| Optional| to print out all the main effects from the interaction model (see Output section below)|
 |`--force-condtl`| FLAG| Optional| to include the interacting SNP as a covariate in the marginal test (see Output section below)|
-|`--rare-mac`| FLOAT| Optional| minor allele count (MAC) threshold below which to use HLM method for QTs[default is 1000]|
+|`--rare-mac`| FLOAT| Optional| minor allele count (MAC) threshold below which to use HLM method for QTs [default is 1000]|
 
 For GxE tests where the interacting variable is categorical, you can specify the baseline level using `--interaction VARNAME[BASE_LEVEL]` (e.g. `--interaction BMI[<25]`). Otherwise, the first value found in the covariate file will be used as the baseline level.
 
