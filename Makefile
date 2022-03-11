@@ -25,11 +25,10 @@ OPENBLAS_ROOT =
 STATIC       := 0
 
 ############
+
 # Use only if not set
 CXX          ?= g++
-CXXFLAGS     ?= -O3 
-# required flags
-CXXFLAGS     += -std=c++11 -pedantic -ffast-math -Wall -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
+CXXFLAGS      = -O3 -Wall -pedantic -ffast-math -std=c++11 -Wno-unused-local-typedefs -Wno-deprecated-declarations -Wno-long-long -Wno-c11-extensions -fPIC
 
 EFILE         = regenie
 CFLAGS       ?=
@@ -105,10 +104,9 @@ else ifneq ($(strip $(OPENBLAS_ROOT)),)
   # static linking
   ifeq ($(strip $(STATIC)),1)
    SLIBS     += -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas
-   DLIBS     += -lgfortran
   # dynamic linking
   else
-   DLIBS     += -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas -lgfortran
+   DLIBS     += -Wl,-rpath=${OPENBLAS_ROOT}/lib/ -llapack -llapacke -lopenblas
   endif
  endif
 endif
@@ -126,7 +124,7 @@ INC          += -I${PGEN_PATH} -I${PGEN_PATH}/simde/ -I${PGEN_PATH}/include/ -I.
 LPATHS       += ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 
 LIBS         += ${SLIBS} -lbgen -lzstd -ldb  -lsqlite3 -lboost
-LIBS         += -lz ${DLIBS} -lm -ldl
+LIBS         += -lz ${DLIBS} -lm -ldl -lgfortran
 
 
 
@@ -134,14 +132,20 @@ LIBS         += -lz ${DLIBS} -lm -ldl
 
 all: ${EFILE}
 
-${EFILE}: libMvtnorm pgenlib ${OBJECTS}
-	${CXX} ${CXXFLAGS} ${RGFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ./external_libs/mvtnorm/libMvtnorm.a ./external_libs/pgenlib/pgenlib.a ${LPATHS} ${LIBS}
+${EFILE}: libMvtnorm libqf libquad pgenlib ${OBJECTS}
+	${CXX} ${CXXFLAGS} ${RGFLAGS} ${CFLAGS} -o ${EFILE} ${OBJECTS} ./external_libs/mvtnorm/libMvtnorm.a ./external_libs/qf/qf.a ./external_libs/quadpack/libquad.a ./external_libs/pgenlib/pgenlib.a ${LPATHS} ${LIBS}
 
 %.o: %.cpp
 	${CXX} ${CXXFLAGS} ${RGFLAGS} -o $@ -c $< ${INC} ${CFLAGS}
 
 libMvtnorm: 
 		(cd ./external_libs/mvtnorm/;$(MAKE))
+
+libqf: 
+		(cd ./external_libs/qf/;$(MAKE))
+
+libquad: 
+		(cd ./external_libs/quadpack/;$(MAKE))
 
 pgenlib: 
 		(cd ./external_libs/pgenlib/;$(MAKE))
@@ -182,4 +186,6 @@ debug: ${EFILE}
 clean:
 	rm -f ${EFILE} ./src/*.o
 	(cd ./external_libs/mvtnorm/;$(MAKE) clean)
+	(cd ./external_libs/qf/;$(MAKE) clean)
+	(cd ./external_libs/quadpack/;$(MAKE) clean)
 	(cd ./external_libs/pgenlib/;$(MAKE) clean)
