@@ -258,18 +258,19 @@ In practice, the parameter $\rho$ is chosen to maximize the power
 and set the weights $w_i = Beta(MAF_i,1,25)$].
 
 The original SKATO method uses numerical integration when maximizing power across the 
-various SKATO models that use different values for $\rho$. We implement a modification of
-SKATO, named SKATO-ACAT, which instead uses the Cauchy combination method[@RN482] 
+various SKATO models that use different values for $\rho$. 
+We also implement a modification of SKATO, named SKATO-ACAT, 
+which instead uses the Cauchy combination method[@RN482] 
 to combine the p-values for the different SKATO models.
 
 
 #### Cauchy combination tests
 The ACATV[@RN339] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
-where $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
+where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
 
-The omnibus test ACATO[$^{10}$](#fn:10) combines the ACATV with the SKAT and burden tests as 
+The omnibus test ACATO[$^{10}$](#fn:10) combines ACATV with the SKAT and burden tests as 
 $$
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -346,7 +347,7 @@ $$
 where we assume $\epsilon \sim N(0, D)$ where $D$ is a diagonal matrix with entries $\sigma^2\exp{(1 + E\theta_1 + E^2\theta_2)}$.
 This formulation allows for the phenotypic variance to also depend on the risk factor $E$.
 By incorporating both the linear and quadratic effect of $E$ in the mean and variance of $Y$, 
-this model provides robustnss to heteroskedasticity 
+this model provides robustness to heteroskedasticity 
 (*Note: the $E^2$ terms are only added when $E$ is quantitative*). 
 Wald tests are then performed for the null hypotheses listed above.
 
@@ -358,7 +359,7 @@ $$
 where we also include a non-linear effect for $E$ (not if categorical).
 The sandwich estimator HC3 is used in a Wald test for variants whose MAC is above 1000 (see `--rare-mac`) otherwise the model-based standard errors are used.
 When Firth is specified, we only apply the Firth correction using LRT if the p-value for the interaction term $\gamma$ from the Wald test is below a specified threshold (see `--pThresh`). So the added $E^2$ term as well as the use of the Firth penalty 
-help with case-control imbalance and model misspecification for the effects of $E$ on the phenotype. 
+help with case-control imbalance and model misspecification for the effect of $E$ on the phenotype. 
 
 ### Missing Phenotype data
 
