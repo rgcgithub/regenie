@@ -169,6 +169,55 @@ fi
 
 
 (( i++ ))
+echo -e "\n==>Running test #$i\n"
+# interaction tests
+rgcmd="--step 2 \
+  --bed ${mntpt}example/example \
+  --covarFile ${mntpt}example/covariates_wBin.txt \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --bsize 200 \
+  --ignore-pred \
+  --covarColList V1,V5 \
+  --catCovarList V5 \
+  --interaction V5 \
+  --out ${mntpt}test/test_bin_out_inter"
+
+# run regenie
+./$regenie_bin $rgcmd
+
+if [ `grep "^1 1 .*ADD-INT" ${REGENIE_PATH}test/test_bin_out_inter_Y1.regenie | wc -l` != 5 ]; then
+  print_err
+fi
+
+
+(( i++ ))
+echo -e "\n==>Running test #$i\n"
+# interaction tests
+rgcmd="--step 2 \
+  --bed ${mntpt}example/example --ref-first \
+  --covarFile ${mntpt}example/covariates.txt \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --bsize 200 \
+  --ignore-pred \
+  --interaction-snp 1 \
+  --out ${mntpt}test/test_bin_out_inter"
+
+# run regenie
+./$regenie_bin $rgcmd
+
+rgcmd+="2 --interaction-file bgen,example/example.bgen --interaction-file-reffirst"
+# run regenie
+./$regenie_bin $rgcmd
+
+if ! cmp --silent \
+  ${REGENIE_PATH}test/test_bin_out_inter_Y1.regenie \
+  ${REGENIE_PATH}test/test_bin_out_inter2_Y1.regenie 
+then
+  print_err
+fi
+
+
+(( i++ ))
 echo -e "==>Running test #$i"
 # Next test
 basecmd="--step 2 \
@@ -350,8 +399,63 @@ then
   print_err
 fi
 
+(( i++ ))
+echo -e "==>Running test #$i"
+# conditional analyses
+rgcmd="${basecmd/_3chr/} \
+  --condition-list ${mntpt}example/snplist_rm.txt \
+  --sex-specific female \
+  --out ${mntpt}test/test_out_cond"
 
+# run regenie
+./$regenie_bin $rgcmd
+
+rgcmd="${basecmd/_3chr/} \
+  --condition-list ${mntpt}example/snplist_rm.txt \
+  --condition-file pgen,${mntpt}example/example \
+  --out ${mntpt}test/test_out_cond2"
+
+# run regenie
+./$regenie_bin $rgcmd
+
+if ! cmp --silent \
+  ${REGENIE_PATH}test/test_out_cond_Y2.regenie \
+  ${REGENIE_PATH}test/test_out_cond2_Y2.regenie 
+then
+  print_err
+elif [ `grep "n_used = 6" ${REGENIE_PATH}test/test_out_cond*log | wc -l` != "2" ]; then
+  print_err
+fi
+
+
+# with skat
+(( i++ ))
+echo -e "==>Running test #$i"
+rgcmd="--step 2 \
+  --ignore-pred \
+  --bed ${mntpt}example/example_3chr \
+  --covarFile ${mntpt}example/covariates.txt${fsuf} \
+  --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
+  --phenoCol Y1 \
+  --set-list ${mntpt}example/example_3chr.setlist \
+  --anno-file ${mntpt}example/example_3chr.annotations \
+  --mask-def ${mntpt}example/example_3chr.masks \
+  --vc-tests skat \
+  --bsize 15 \
+  --aaf-bins 0.2 \
+  --write-mask-snplist \
+  --out ${mntpt}test/test_out_vc"
+
+# run regenie
+./$regenie_bin $rgcmd 
+
+if ! grep -q "all.*SKAT" ${REGENIE_PATH}test/test_out_vc_Y1.regenie  
+then
+  print_err
+fi
+
+##############
 echo "SUCCESS: REGENIE build passed the tests!"
 # file cleanup
-rm ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
+rm -f ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
 
