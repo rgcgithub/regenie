@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -42,9 +42,9 @@ using namespace boost;
 
 
 // null models
-void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
+void fit_null_logistic(bool const& silent, const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
 
-  sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
+  if(!silent) sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
 
   auto t1 = std::chrono::high_resolution_clock::now();
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
@@ -67,15 +67,15 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
 
     if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout))
       throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
-    else if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
-      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (phenotype #" << files->pheno_names[i] <<").";
+    else if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
+      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype #" << files->pheno_names[i] <<").";
 
     if(params->test_mode){
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
-      m_ests->Xt_Gamma_X_inv[i] = (m_ests->X_Gamma[i].transpose() * m_ests->X_Gamma[i]).colPivHouseholderQr().inverse();
+      getBasis(m_ests->X_Gamma[i], params);
       if(params->w_interaction || params->firth) m_ests->bhat_start.col(i) = betaold.matrix();
     } else m_ests->offset_nullreg.col(i) = etavec;
 
@@ -88,10 +88,9 @@ void fit_null_logistic(const int& chrom, struct param* params, struct phenodt* p
 
   }
 
-  sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
-  sout << " (" << duration.count() << "ms) "<< endl;
+  if(!silent) sout << "done (" << duration.count() << "ms) "<< endl;
 
 }
 
@@ -109,7 +108,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 
     // p*(1-p) and check for zeroes
     if( get_wvec(pivec, wvec, mask, params->numtol_eps) ){
-      if(params->verbose) sout << "ERROR: Zeros occured in Var(Y) during logistic regression.\n";
+      if(params->verbose) sout << "ERROR: Zeros occurred in Var(Y) during logistic regression.\n";
       return false;
     }
 
@@ -198,13 +197,13 @@ void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* ph
     if(!fit_poisson(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout))
       throw "poisson regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
     else if( (mask && pivec < params->numtol_eps).any() )
-      sout << "\n     WARNING: Fitted rates numerically 0 occured (phenotype #" << files->pheno_names[i] <<").";
+      sout << "\n     WARNING: Fitted rates numerically 0 occurred (phenotype #" << files->pheno_names[i] <<").";
 
     if(params->test_mode){
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       m_ests->Gamma_sqrt.col(i) = pivec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
-      m_ests->Xt_Gamma_X_inv[i] = (m_ests->X_Gamma[i].transpose() * m_ests->X_Gamma[i]).colPivHouseholderQr().inverse();
+      getBasis(m_ests->X_Gamma[i], params);
       if(params->w_interaction) m_ests->bhat_start.col(i) = betaold.matrix();
     } else m_ests->offset_nullreg.col(i) = etavec;
 
@@ -238,7 +237,7 @@ bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, co
 
     // check for zeroes
     if( (mask && (pivec == 0)).any() ){
-      if(params->verbose) sout << "ERROR: Zeros occured in Var(Y) during poisson regression.\n";
+      if(params->verbose) sout << "ERROR: Zeros occurred in Var(Y) during poisson regression.\n";
       return false;
     }
 
@@ -799,7 +798,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             wvec = pivec * (1 - pivec);
             // check none of the values are 0
             if( ( wvec == 0 ).count() > 0 ){
-              sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
+              sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
               l1->pheno_l1_not_converged(ph) = true;
               break;
             }
@@ -822,7 +821,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
                 // get w=p*(1-p) and check none of the values are 0
                 get_pvec(etavec, pivec, betaold, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
                 if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
-                  sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
+                  sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
                 }
@@ -866,7 +865,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
                 // get w=p*(1-p) and check none of the values are 0
                 get_pvec(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
                 if( get_wvec(pivec, wvec, masked_in_folds[k].col(ph).array(), params->l1_ridge_eps) ){
-                  sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
+                  sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                   l1->pheno_l1_not_converged(ph) = true;
                   break;
                 }
@@ -1062,7 +1061,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     // get w=p*(1-p) and check none of the values are 0
     get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
     if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
-      sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
+      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
       return false;
     }
 
@@ -1089,7 +1088,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     // get w=p*(1-p) and check none of the values are 0
     get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
     if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
-      sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
+      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
       return false;
     }
 
@@ -1224,7 +1223,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
               // get w=p*(1-p) and check none of the values are 0
               get_pvec_poisson(etavec, pivec, betaold, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
               if( (masked_in_folds[k].col(ph).array() && (pivec == 0) ).any() ){
-                sout << "ERROR: Zeros occured in Var(Y) during ridge poisson regression! (Try with --loocv)" << endl;
+                sout << "ERROR: Zeros occurred in Var(Y) during ridge poisson regression! (Try with --loocv)" << endl;
                 l1->pheno_l1_not_converged(ph) = true;
                 break;
               }
@@ -1268,7 +1267,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
               // get w=p*(1-p) and check none of the values are 0
               get_pvec_poisson(etavec, pivec, betanew, l1->test_offset[ph][k].array(), l1->test_mat[ph_eff][k], params->numtol_eps);
               if( (masked_in_folds[k].col(ph).array() && (pivec == 0) ).any() ){
-                sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
+                sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression! (Try with --loocv)" << endl;
                 l1->pheno_l1_not_converged(ph) = true;
                 break;
               }
@@ -1453,7 +1452,7 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
     // get p and check none of the values are 0
     get_pvec_poisson(etavec, pivec, betaold, offset, X, params->numtol_eps);
     if( (mask && (pivec == 0)).any() ){
-      sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
+      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
       return false;
     }
     zvec = mask.select( (etavec - offset) + (Y - pivec) / pivec, 0);
@@ -1478,7 +1477,7 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
 
     get_pvec_poisson(etavec, pivec, betanew, offset, X, params->numtol_eps);
     if( (mask && (pivec == 0)).any() ){
-      sout << "ERROR: Zeros occured in Var(Y) during ridge logistic regression.\n";
+      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
       return false;
     }
 

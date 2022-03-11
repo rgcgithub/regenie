@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -122,16 +122,18 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     throw "header of phenotype file must start with: FID IID.";
 
   // check pheno with preds 
-  map<string, bool> with_blup;
-  if(params->test_mode && !params->getCorMat) check_blup(with_blup, files, params, sout);
+  if(params->test_mode && !params->getCorMat) check_blup(files, params, sout);
 
   // get phenotype names 
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
   for(int i = 0; i < keep_cols.size(); i++ ) {
+    if(params->select_phenos_rm) // check if should skip phenotypes
+      keep_cols(i) = !in_map(tmp_str_vec[i+2], filters->pheno_colRm_names);
+    if(!keep_cols(i)) continue;
     if(params->select_phenos) // check if keeping pheno
       keep_cols(i) = in_map(tmp_str_vec[i+2], filters->pheno_colKeep_names);
     if(params->test_mode && !params->skip_blups && keep_cols(i)) // check phenotype had prs from step 1
-      keep_cols(i) = has_blup(tmp_str_vec[i+2], with_blup, params, sout);
+      keep_cols(i) = has_blup(tmp_str_vec[i+2], files->blup_files, params, sout);
 
     if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
   }
@@ -294,7 +296,7 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
   check_str(line); // remove carriage returns at the end of line if any
   header = string_split(line,"\t ");
 
-  // identify phenotype column
+  // parse first line
   size_t ncols_file = header.size();
   for(size_t i=0; i < ncols_file; i++ ){
     if(in_map((int)(i+1), filters->tpheno_colrm)) continue;
@@ -324,8 +326,7 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
     throw "no individuals in phenotype file have genetic data.";
 
   // check pheno with preds 
-  map<string, bool> with_blup;
-  if(params->test_mode && !params->getCorMat) check_blup(with_blup, files, params, sout);
+  if(params->test_mode && !params->getCorMat) check_blup(files, params, sout);
 
   params->n_pheno = 0;
   int icol = 0;
@@ -338,8 +339,9 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
 
     // check trait name
     yname = tmp_str_vec[ filters->tpheno_indexCol - 1 ]; 
+    if(params->select_phenos_rm && in_map(yname, filters->pheno_colRm_names)) continue;
     if(params->select_phenos && !in_map(yname, filters->pheno_colKeep_names)) continue;
-    if(params->test_mode && !params->getCorMat && !has_blup(yname, with_blup, params, sout)) continue;
+    if(params->test_mode && !params->getCorMat && !has_blup(yname, files->blup_files, params, sout)) continue;
     files->pheno_names.push_back( yname );
     //cerr << params->n_pheno << " " << yname << endl;
 
@@ -532,6 +534,10 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   keep_cols = ArrayXb::Constant(tmp_str_vec.size() - 2, true);
   for(int i = 0; i < keep_cols.size(); i++) {
 
+    if(params->select_covs_rm) // check if should skip covariates
+      keep_cols(i) = !in_map(tmp_str_vec[i+2], filters->cov_colRm_names);
+    if(!keep_cols(i)) continue;
+
     if(!params->select_covs && !in_map(tmp_str_vec[i+2], filters->cov_colKeep_names)) // in case specified as categorical
       filters->cov_colKeep_names[tmp_str_vec[i+2]] = true;
     else keep_cols(i) = in_map(tmp_str_vec[i+2], filters->cov_colKeep_names);
@@ -663,6 +669,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
           if( np_inter == 0 ) // too few categories
             throw "interacting covariate '" + covar_names[i] + "' only has a single category.";
+          else if((inter_cov_column>0).all())
+            throw "no individual has baseline level specified for the interacting covariate (=" + filters->interaction_cov_null_level + ")";
 
           inter_cov_matrix = get_dummies(inter_cov_column);
           extract_names(params->interaction_lvl_names, categories[icat]); // save levels
@@ -743,6 +751,8 @@ void setMasks(struct param* params, struct filter* filters, struct phenodt* phen
   pheno_data->Neff = pheno_data->masked_indivs.colwise().count().cast<double>();
   //sout << pheno_data->Neff << endl;
 
+  pheno_data->pheno_pass = ArrayXb::Constant(pheno_data->phenotypes.cols(), true); // used for step 2 if using firth
+
 }
 
 
@@ -767,37 +777,48 @@ void print_cc_info(struct param* params, struct in_files* files, struct phenodt*
 
 void extract_interaction_snp(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, struct geno_block* gblock, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
 
-  // read snp
+  bool mean_impute = false;
   pheno_data->interaction_cov.resize(params->n_samples, 1);
-  read_snp(params->interaction_snp_offset, pheno_data->interaction_cov.col(0).array(), ind_in_cov_and_geno, filters, files, gblock, params);
-  /*
-  cerr << params->interaction_snp_offset << " " << ind_in_cov_and_geno.count() <<  "\n\n"
-    << endl << pheno_data->interaction_cov.topRows(5)
-    << endl; exit(-1);
-    */
+  MapArXd Gcov (pheno_data->interaction_cov.col(0).data(), params->n_samples, 1);
+
+  // read snp
+  if(params->interaction_file) {// from external file
+    Gcov = extract_from_genofile("interaction", mean_impute, ind_in_cov_and_geno, filters, files, params, sout).col(0).array();
+  } else { // from input file
+    read_snp(mean_impute, params->interaction_snp_offset, Gcov, ind_in_cov_and_geno, filters, files, gblock, params);
+    /*
+       cerr << params->interaction_snp_offset << " " << ind_in_cov_and_geno.count() <<  "\n\n"
+       << endl << pheno_data->interaction_cov.topRows(5)
+       << endl; exit(-1);
+       */
+  }
 
   // apply coding
   code_snp(pheno_data->interaction_cov, ind_in_cov_and_geno, params->interaction_snp_offset, filters, files, params, sout);
-  //cerr << pheno_data->interaction_cov.topRows(5) << endl; exit(-1);
+  if(params->debug) cerr << pheno_data->interaction_cov.topRows(5) << endl;
 
 }
 
 
 void extract_condition_snps(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, struct geno_block* gblock, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
 
+  bool mean_impute = true;
   int count = 0;
   std::map <std::string, uint64>::iterator itr;
   MatrixXd Gcov;
 
-  if(params->condition_file) 
-    Gcov = extract_from_genofile(ind_in_cov_and_geno, filters, files, params, sout);
-  else { // just read the snps
+  if(params->condition_file) {
+
+    sout << "    +conditioning on variants in [" << files->condition_snps_list << "]\n";
+    Gcov = extract_from_genofile("conditional", mean_impute, ind_in_cov_and_geno, filters, files, params, sout);
+
+  } else { // just read the snps
 
     sout << "    +conditioning on variants in [" << files->condition_snps_list << "] n_used = " << filters->condition_snp_names.size() << endl;
 
     Gcov.resize(params->n_samples, filters->condition_snp_names.size());
     for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr, count++) 
-      read_snp(itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters, files, gblock, params);
+      read_snp(mean_impute, itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters, files, gblock, params);
 
   }
   
@@ -906,7 +927,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   params->ncov = getBasis(pheno_data->new_cov, params);
 
   // compute offset for nonQT (only in step 1)
-  if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(0, params, pheno_data, m_ests, files, sout);
+  if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(false, 0, params, pheno_data, m_ests, files, sout);
   else if((params->trait_mode==2) && !params->test_mode) fit_null_poisson(0, params, pheno_data, m_ests, files, sout);
 
   // with interaction test, remove colinear columns
@@ -971,7 +992,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
 }
 
 // get list of phenotypes in pred file
-void check_blup(map<string,bool>& y_read, struct in_files* files, struct param* params, mstream& sout) {
+void check_blup(struct in_files* files, struct param* params, mstream& sout) {
 
   string line, tmp_pheno;
   std::vector< string > tmp_str_vec;
@@ -980,26 +1001,29 @@ void check_blup(map<string,bool>& y_read, struct in_files* files, struct param* 
   // skip reading if specified by user
   if( params->skip_blups ) return;
 
-  fClass.openForRead(files->blup_file, sout);
+  fClass.openForRead(files->blup_list_file, sout);
 
   while (fClass.readLine(line)){
     tmp_str_vec = string_split(line,"\t ");
 
     // each line contains a phenotype name and the corresponding blup file name
     if( tmp_str_vec.size() != 2 )
-      throw "could not check blup list file : " + files->blup_file;
+      throw "step 1 list file is not in the right format : " + files->blup_list_file;
 
-    y_read[ tmp_str_vec[0] ] = true;
+    if(in_map(tmp_str_vec[0], files->blup_files))
+      throw "phenotype \'" + tmp_str_vec[0] + "\' appears more than once in step 1 list file.";
+
+    files->blup_files[ tmp_str_vec[0] ] = tmp_str_vec[1];
   }
 
   fClass.closeFile();
 }
 
-bool has_blup(string const& yname, map<string,bool> const& y_read, struct param const* params, mstream& sout) {
+bool has_blup(string const& yname, map<string,string> const& y_read, struct param const* params, mstream& sout) {
 
   if( params->skip_blups || in_map(yname, y_read)) return true;
 
-  sout << "WARNING: No blup file provided for phenotype '" << yname << "' so it will be ignored.\n";
+  sout << "WARNING: No step 1 file provided for phenotype '" << yname << "' so it will be ignored.\n";
   return false;
 
 }
@@ -1007,14 +1031,13 @@ bool has_blup(string const& yname, map<string,bool> const& y_read, struct param 
 // get list of blup files
 void blup_read(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
 
-  int n_files = 0, tmp_index, n_masked_prior, n_masked_post;
+  int n_masked_prior, n_masked_post;
   uint32_t indiv_index;
   double blup_val;
-  string line, tmp_pheno;
+  string yfile, line;
   std::vector< string > tmp_str_vec, tmp_prs_vec;
-  vector<bool> read_pheno(params->n_pheno, false);
   ArrayXd full_prs;
-  ArrayXb blupf_mask;
+  ArrayXb blupf_mask, all_miss_pheno;
   Files fClass;
 
   // allocate memory
@@ -1030,54 +1053,24 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     return;
   }
 
-  sout << " * " << (params->use_prs ? "PRS" : "LOCO") << " predictions : [" << files->blup_file << "] ";
-  fClass.openForRead(files->blup_file, sout);
-
-  // get list of files containing blups
-  while (fClass.readLine(line)){
-    tmp_str_vec = string_split(line,"\t ");
-
-    // each line contains a phenotype name and the corresponding blup file name
-    if( tmp_str_vec.size() != 2 )
-      throw "incorrectly formatted blup list file : " + files->blup_file;
-
-    // get index of phenotype in phenotype matrix
-    vector<string>::iterator it = std::find(files->pheno_names.begin(), files->pheno_names.end(), tmp_str_vec[0]);
-    if (it == files->pheno_names.end()) continue; // ignore unrecognized phenotypes
-
-    tmp_index = std::distance(files->pheno_names.begin(), it);
-    files->pheno_index.push_back(tmp_index);
-
-    // check that phenotype only has one file
-    if(read_pheno[tmp_index])
-      throw "phenotype \'" + tmp_pheno + "\' appears more than once in blup list file.";
-
-    n_files++;
-    read_pheno[tmp_index] = true;
-    files->blup_files.push_back(tmp_str_vec[1]);
-  }
-
-  // force all phenotypes in phenotype file to be used
-  if(n_files != params->n_pheno) 
-    throw "number of files (" + to_string( n_files ) + ")  is not equal to the number of phenotypes." ;
-
-  sout << "n_files = " << n_files << endl;
-  fClass.closeFile();
+  sout << " * " << (params->use_prs ? "PRS" : "LOCO") << " predictions : [" << files->blup_list_file << "]\n";
+  all_miss_pheno = ArrayXb::Constant(params->n_pheno, false);
 
   // allocate memory for LTCO 
   if(params->w_ltco) m_ests->ltco_prs = MatrixXd::Zero(params->n_samples, params->n_pheno);
 
   // read blup file for each phenotype
   for(int ph = 0; ph < params->n_pheno; ph++) {
-    int i_pheno = files->pheno_index[ph];
 
-    sout << "   -file [" <<  files->blup_files[ph];
-    sout << "] for phenotype \'" << files->pheno_names[i_pheno] << "\'\n";
-    fClass.openForRead(files->blup_files[ph], sout);
+    yfile = files->blup_files[ files->pheno_names[ph] ];
+    sout << "   -file [" << yfile  << "] for phenotype '" << files->pheno_names[ph] << "'\n";
+
+    fClass.openForRead(yfile, sout);
 
     // to mask all individuals not present in .loco file
     blupf_mask = ArrayXb::Constant(params->n_samples, false);
-    n_masked_prior = pheno_data->masked_indivs.col(ph).cast<int>().sum();
+    n_masked_prior = pheno_data->masked_indivs.col(ph).count();
+
     // read first line which has FID_IID
     fClass.readLine(line);
     tmp_str_vec = string_split(line,"\t ");
@@ -1111,15 +1104,17 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     pheno_data->masked_indivs.col(ph).array() = pheno_data->masked_indivs.col(ph).array() && blupf_mask;
     n_masked_post = pheno_data->masked_indivs.col(ph).count();
 
+    // check not everyone is masked
+    all_miss_pheno(ph) = n_masked_post < 1;
+    if( all_miss_pheno(ph) ) {
+      fClass.closeFile();
+      continue;
+    }
+
     if( n_masked_post < n_masked_prior ){
       sout << "    + " << n_masked_prior - n_masked_post <<
         " individuals with missing LOCO predictions will be ignored for the trait\n";
     }
-
-    // check not everyone is masked
-    if( n_masked_post < 1 )
-      throw "none of the individuals remaining in the analysis are in the LOCO predictions file from step 1.\n"
-        "Either re-run step 1 including individuals in current genotype file or use option '--ignore-pred'.";
 
     if(params->w_ltco){ // go through each line and sum up the loco prs
 
@@ -1130,7 +1125,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
       // Re-open file (since skipped 2nd row)
       fClass.closeFile();
-      fClass.openForRead(files->blup_files[ph], sout);
+      fClass.openForRead(yfile, sout);
       fClass.ignoreLines(1); // skip first row
 
       while( fClass.readLine(line) ){
@@ -1168,6 +1163,26 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
     fClass.closeFile();
   }
+
+    check_phenos(all_miss_pheno, files->pheno_names, files->out_file + "_" + "pheno_all_miss.txt", sout);
+
+}
+
+void check_phenos(Ref<ArrayXb> pheno_ind, vector<string> const& pheno_names, string const& fname, mstream& sout){
+
+  // print phenotype names where ind is true and exit
+  if(!pheno_ind.any()) return;
+
+  Files fout;
+  fout.openForWrite(fname, sout);
+
+  for(int i = 0; i < pheno_ind.size(); i++)
+    if(pheno_ind(i))
+      fout << pheno_names[i] << "\n";
+  fout.closeFile();
+
+  throw "Problematic phenotypes found (all individuals have missing step 1 predictions); names written to [" + fname + "].\n" +
+    "You can use `--phenoExcludeList` to ignore these traits.";
 
 }
 

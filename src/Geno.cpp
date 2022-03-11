@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -93,9 +93,11 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
 
       // if using GxG interaction test
       if(params->interaction_snp && (tmp_snp.ID == filters->interaction_cov)){
-        params->interaction_snp_offset = tmp_snp.offset;
-        params->ltco_chr = tmp_snp.chrom;
-        interaction_snp_found = true;
+        if(!params->interaction_file) {
+          params->interaction_snp_offset = tmp_snp.offset;
+          params->ltco_chr = tmp_snp.chrom;
+          interaction_snp_found = true;
+        }
         // go to next variant (get its offset first)
         tmp_snp.offset = bgen_tmp.get_position();
         continue;
@@ -129,7 +131,7 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
       tmp_snp.offset = bgen_tmp.get_position();
     }
 
-    if(params->interaction_snp && !interaction_snp_found)
+    if(params->interaction_snp && !params->interaction_file && !interaction_snp_found)
       throw "SNP specified for GxG interaction test was not found.";
 
     if (!params->test_mode && (nOutofOrder > 0)) 
@@ -148,8 +150,8 @@ void prep_bgen(struct in_files* files, struct param* params, struct filter* filt
   } else {
     bgen_tmp.get_sample_ids(
         [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
-    // assume all females
-    params->sex = ArrayXb::Constant(params->n_samples, false);
+    // set to unknown
+    params->sex = ArrayXi::Constant(params->n_samples, 0);
   }
 
   // check duplicates -- if not, store in map
@@ -200,9 +202,8 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
     cnd1 = " WHERE ( chromosome IN (" + bgi_chrList(filters, params->nChrom) + " ) )";
   }
   // with GxG tests
-  if(params->interaction_snp){
-    string pfx = (cnd1.size() == 0 ? " WHERE " : " OR ");
-    cnd1.append( pfx + "( rsid = '" + filters->interaction_cov + "' )" );
+  if(params->interaction_snp && (cnd1.size() > 0)){ // bug fix - only use this if querying on chrs/range
+    cnd1.append(" OR ( rsid = '" + filters->interaction_cov + "' )" );
   }
   sql_query.append( cnd1 );
 
@@ -263,9 +264,11 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
         // if using GxG interaction test
         if(params->interaction_snp && (tmp_snp.ID == filters->interaction_cov)){
-          params->interaction_snp_offset = tmp_snp.offset;
-          params->ltco_chr = tmp_snp.chrom;
-          interaction_snp_found = true;
+          if(!params->interaction_file) {
+            params->interaction_snp_offset = tmp_snp.offset;
+            params->ltco_chr = tmp_snp.chrom;
+            interaction_snp_found = true;
+          }
           continue; // don't save it
         }
 
@@ -294,7 +297,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   sqlite3_finalize(stmt);
   sqlite3_close(db);
 
-  if(params->interaction_snp && !interaction_snp_found)
+  if(params->interaction_snp && !params->interaction_file && !interaction_snp_found)
     throw "SNP specified for GxG interaction test was not found.";
 
   if( !params->set_range && !params->select_chrs) assert( lineread == n_variants );
@@ -302,24 +305,24 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
 }
 
-void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
+void read_bgi_file(string const& setting, BgenParser& bgen, geno_file_info* ext_file_info, map <string, uint64>* variant_names, struct param* params, mstream& sout){
 
   uint32_t lineread = 0;
   uint64 offset, variant_bgi_size, variant_bgen_size;
-  string bgi_file = files->condition_snps_info.file + ".bgi";
+  string bgi_file = ext_file_info->file + ".bgi";
   string sql_query, rsid;
   map <string, uint64> tmp_map;
   sqlite3* db;
   sqlite3_stmt* stmt;
 
-  int nalleles;
+  int nalleles, chrom;
   uint32_t position ;
   std::string tmp_str, chr;
   std::vector< std::string > alleles ;
   std::vector< std::vector< double > > probs ;
 
   // sql statement to pass variants to keep
-  sql_query = "SELECT * FROM Variant WHERE rsid IN (" + bgi_rsidList(filters->condition_snp_names) + " )";
+  sql_query = "SELECT * FROM Variant WHERE rsid IN (" + bgi_rsidList((*variant_names)) + " )";
 
   sout << "      -index bgi file [" << bgi_file<< "]" << endl;
   if( sqlite3_open( bgi_file.c_str(), &db ) != SQLITE_OK ) 
@@ -353,6 +356,12 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
           variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
           assert( tmp_str == rsid );
           assert( variant_bgi_size == variant_bgen_size );
+          if(setting == "interaction") {
+            chrom = chrStrToInt(chr, params->nChrom);
+            if (chrom <= 0) 
+              throw "unknown chromosome code in bgen file.";
+            params->ltco_chr = chrom;
+          }
         }
 
         break;
@@ -369,13 +378,13 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   sqlite3_finalize(stmt);
   sqlite3_close(db);
 
-  if(tmp_map.size() > params->max_condition_vars)
+  if(tmp_map.size() > params->max_condition_vars) // not relevant for gxg(=1)
     throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
   else if(tmp_map.size() == 0)
-    throw "no variants for conditional analysis were found in BGEN file";
+    throw "no variants were found in the BGEN file";
 
   // replace with new map
-  filters->condition_snp_names = tmp_map;
+  (*variant_names) = tmp_map;
 
 }
 
@@ -384,7 +393,7 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
 
   int nline = 0;
   string FID, IID, line, tmp_str;
-  std::vector<bool> sex;
+  std::vector<int> sex;
   std::vector<string> IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -420,15 +429,13 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
         params->FIDvec.push_back(IDvec);
       }
 
-    }
+      // get sex into IID (if no sex column, set to 0)
+      if( !(iss >> FID >> IID) ) sex.push_back(0);
+      else if( (IID == "0") || (IID == "NA") ) sex.push_back(0);
+      else if( IID == "1" ) sex.push_back(1);
+      else if( IID == "2" ) sex.push_back(2);
+      else throw "unrecognized sex code in file : '" + IID + "'";
 
-    // get sex into IID (if no sex column, set to 0)
-    if( !(iss >> FID >> IID) ){
-      sex.push_back(false);
-    } else {
-      // save males as 1 (else assume all females=0)
-      if( IID == "1" ) sex.push_back(true);
-      else sex.push_back(false);
     }
 
     nline++;
@@ -437,8 +444,7 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
   if( params->n_samples != ids.size() )
     throw "number of samples in BGEN file does not match that in the sample file.";
 
-  params->sex.resize(params->n_samples);
-  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+  params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
   myfile.close();
 }
@@ -554,9 +560,11 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
     // if using GxG interaction test
     if(params->interaction_snp && (tmp_snp.ID == filters->interaction_cov)){
-      params->interaction_snp_offset = tmp_snp.offset;
-      params->ltco_chr = tmp_snp.chrom;
-      interaction_snp_found = true;
+      if(!params->interaction_file) {
+        params->interaction_snp_offset = tmp_snp.offset;
+        params->ltco_chr = tmp_snp.chrom;
+        interaction_snp_found = true;
+      }
       continue;
     }
 
@@ -582,7 +590,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
   sout << "n_snps = " << lineread << endl;
 
-  if(params->interaction_snp && !interaction_snp_found)
+  if(params->interaction_snp && !params->interaction_file && !interaction_snp_found)
     throw "SNP specified for GxG interaction test was not found.";
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
@@ -591,21 +599,27 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
 }
 
-uint32_t read_bim(map<string, uint64>& index_map, struct in_files* files, mstream& sout) {
+uint32_t read_bim(map<string, vector<uint64>>& index_map, geno_file_info* ext_file_info, struct param* params, mstream& sout) {
 
+  int chrom;
   uint64 lineread = 0;
   std::vector< string > tmp_str_vec ;
+  std::vector< uint64 > tmp_v = std::vector< uint64 >(2);
   string line, fname;
   ifstream myfile;
 
-  fname = files->condition_snps_info.file + ".bim";
+  fname = ext_file_info->file + ".bim";
   openStream(&myfile, fname, ios::in, sout);
 
   while (getline(myfile, line)) {
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 6 )
       throw "incorrectly formatted bim file at line " + to_string( lineread+1 );
-    index_map[ tmp_str_vec[1] ] = lineread++;
+    chrom = chrStrToInt(tmp_str_vec[0], params->nChrom);
+    if (chrom <= 0) 
+      throw "unknown chromosome code in bgen file.";
+    tmp_v[0] = lineread++, tmp_v[1] = chrom;
+    index_map[ tmp_str_vec[1] ] = tmp_v;
   }
 
   myfile.close();
@@ -617,7 +631,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
 
   int lineread = 0;
   string line, tmp_id, fname;
-  std::vector<bool> sex;
+  std::vector<int> sex;
   std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -645,30 +659,30 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
       params->FIDvec.push_back(IDvec);
     }
 
-    // save males as 1 (else assume all females=0)
-    if( tmp_str_vec[4] == "1" ) sex.push_back(true);
-    else sex.push_back(false);
+    // store sex
+    if( tmp_str_vec[4] == "0" ) sex.push_back(0);
+    else if( tmp_str_vec[4] == "1" ) sex.push_back(1);
+    else if( tmp_str_vec[4] == "2" ) sex.push_back(2);
+    else throw "unrecognized sex code in file : '" + tmp_str_vec[4] + "'";
 
     lineread++;
   }
 
   myfile.close();
   params->n_samples = lineread;
-
-  params->sex.resize(params->n_samples);
-  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+  params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
   sout << "n_samples = " << params->n_samples << endl;
 }
 
-uint32_t read_fam(struct cond_geno_info& ginfo, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+uint32_t read_fam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, Ref<ArrayXb> mask, struct param* params, mstream& sout) {
 
   uint32_t position;
   string line, fname;
   std::vector< string > tmp_str_vec, tmp_ids;
   ifstream myfile;
 
-  fname = files->condition_snps_info.file + ".fam";
+  fname = ext_file_info->file + ".fam";
   openStream(&myfile, fname, ios::in, sout);
 
   while (getline(myfile, line)) {
@@ -694,7 +708,7 @@ uint32_t read_fam(struct cond_geno_info& ginfo, Ref<ArrayXb> mask, struct in_fil
     }
   }
 
-  if(ginfo.sample_keep.count() == 0)
+  if(!ginfo.sample_keep.any())
     throw "none of the analyzed samples are present in the file";
 
   return tmp_ids.size();
@@ -800,9 +814,11 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
 
     // if using GxG interaction test
     if(params->interaction_snp && (tmp_snp.ID == filters->interaction_cov)){
-      params->interaction_snp_offset = tmp_snp.offset;
-      params->ltco_chr = tmp_snp.chrom;
-      interaction_snp_found = true;
+        if(!params->interaction_file) {
+          params->interaction_snp_offset = tmp_snp.offset;
+          params->ltco_chr = tmp_snp.chrom;
+          interaction_snp_found = true;
+        }
       continue;
     }
 
@@ -826,7 +842,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
 
   sout << "n_snps = " <<  lineread << endl;
 
-  if(params->interaction_snp && !interaction_snp_found)
+  if(params->interaction_snp && !params->interaction_file && !interaction_snp_found)
     throw "SNP specified for GxG interaction test was not found.";
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
@@ -836,14 +852,16 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   return lineread;
 }
 
-uint32_t read_pvar(map<string, uint64>& index_map, struct in_files* files, mstream& sout) {
+uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_file_info, struct param* params, mstream& sout) {
 
+  int chrom;
   uint64 lineread = 0;
   std::vector< string > tmp_str_vec ;
+  std::vector< uint64 > tmp_v = std::vector< uint64 >(2);
   string line, fname;
   ifstream myfile;
 
-  fname = files->condition_snps_info.file + ".pvar";
+  fname = ext_file_info->file + ".pvar";
   openStream(&myfile, fname, ios::in, sout);
 
   while (getline(myfile, line)) { // skip to main header line
@@ -865,7 +883,11 @@ uint32_t read_pvar(map<string, uint64>& index_map, struct in_files* files, mstre
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 5 )
       throw "incorrectly formatted pvar file at line " + to_string( lineread+1 );
-    index_map[ tmp_str_vec[2] ] = lineread++;
+    chrom = chrStrToInt(tmp_str_vec[0], params->nChrom);
+    if (chrom <= 0) 
+      throw "unknown chromosome code in bgen file.";
+    tmp_v[0] = lineread++, tmp_v[1] = chrom;
+    index_map[ tmp_str_vec[2] ] = tmp_v;
   }
 
   myfile.close();
@@ -877,7 +899,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   int lineread = 0, sex_col = 0;
   bool col_found = false;
   string line, tmp_id, fname;
-  std::vector<bool> sex;
+  std::vector<int> sex;
   std::vector< string > tmp_str_vec, IDvec;
   ifstream myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
@@ -924,29 +946,31 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
       params->FIDvec.push_back(IDvec);
     }
 
-    // save males as 1 (else assume all females=0)
-    if( col_found && tmp_str_vec[sex_col] == "1" ) sex.push_back(true);
-    else sex.push_back(false);
+    // store sex
+    if( col_found ){
+      if(( tmp_str_vec[sex_col] == "0") || (tmp_str_vec[sex_col] == "NA") ) sex.push_back(0);
+      else if( tmp_str_vec[sex_col] == "1" ) sex.push_back(1);
+      else if( tmp_str_vec[sex_col] == "2" ) sex.push_back(2);
+      else throw "unrecognized sex code in file : '" + tmp_str_vec[sex_col] + "'";
+    } else sex.push_back(0);
 
     lineread++;
   }
 
   myfile.close();
   params->n_samples = lineread;
-
-  params->sex.resize(params->n_samples);
-  for(size_t i = 0; i < params->n_samples; i++) params->sex(i) = sex[i];
+  params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
 }
 
-uint32_t read_psam(struct cond_geno_info& ginfo, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, Ref<ArrayXb> mask, struct param* params, mstream& sout) {
 
   uint32_t position;
   string line, fname;
   std::vector< string > tmp_str_vec, tmp_ids;
   ifstream myfile;
 
-  fname = files->condition_snps_info.file + ".psam";
+  fname = ext_file_info->file + ".psam";
   openStream(&myfile, fname, ios::in, sout);
 
   while (getline(myfile, line)) { // skip to main header line
@@ -1025,10 +1049,10 @@ void prep_pgen(struct in_files const* files, struct filter const* filters, struc
 
 }
 
-void prep_pgen(uint32_t& nsamples, uint32_t& nvars, struct cond_geno_info& ginfo, struct in_files const* files){
+void prep_pgen(uint32_t& nsamples, uint32_t& nvars, struct ext_geno_info& ginfo, geno_file_info* ext_file_info){
 
   vector<int> subset_indices_1based;
-  string fname = files->condition_snps_info.file + ".pgen";
+  string fname = ext_file_info->file + ".pgen";
 
   // set subset when samples have been excluded from analysis
   if( ginfo.sample_keep.count() < nsamples )
@@ -1187,9 +1211,9 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
   // for sex-specific analyses
   if(params->sex_specific > 0){
     if(params->sex_specific == 1) // male-only
-      filters->ind_in_analysis = filters->ind_in_analysis && params->sex;
+      filters->ind_in_analysis = filters->ind_in_analysis && (params->sex == 1);
     else if(params->sex_specific == 2) // female-only
-      filters->ind_in_analysis = filters->ind_in_analysis && !params->sex;
+      filters->ind_in_analysis = filters->ind_in_analysis && (params->sex == 2);
     sout << "   -keeping only " << ( params->sex_specific == 1 ? "male" : "female" ) << " individuals in the analysis\n";
   }
 
@@ -1576,6 +1600,8 @@ void readChunkFromBedFileToG(const int& bs, const int& chrom, const uint32_t& sn
 // only for step 1
 void readChunkFromPGENFileToG(const int& bs, const uint32_t& snpcount, vector<snp> const& snpinfo, struct param const* params, struct geno_block* gblock, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, mstream& sout) {
 
+  ArrayXb oob_err = ArrayXb::Constant(bs, false);
+
 #if defined(_OPENMP)
   setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
@@ -1599,6 +1625,9 @@ void readChunkFromPGENFileToG(const int& bs, const uint32_t& snpcount, vector<sn
     } else
       gblock->pgr.ReadHardcalls(g.data(), params->n_samples, thread_num, snpinfo[snpcount+j].offset, 1);
 
+    oob_err(j) = ((g < -3) || (g > 2)).any();
+    if(oob_err(j)) continue;
+
     gblock->Gmat.row(j) = g.matrix().transpose();
 
     keep_indices = filters->ind_in_analysis && (g != -3.0);
@@ -1614,6 +1643,9 @@ void readChunkFromPGENFileToG(const int& bs, const uint32_t& snpcount, vector<sn
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
+
+  if(oob_err.any()) 
+    throw "there is a variant in the block that has a value not in [0,2] or missing";
 
 }
 
@@ -1747,6 +1779,7 @@ void check_bgen(const string& bgen_file, string const& file_type, bool& zlib_com
     return;
   }
 
+  streamBGEN = true;
   bfile.close();
 }
 
@@ -1757,7 +1790,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
   int const bs = indices.size();
   int hc_val, lval, ncarriers, nmales;
   uint32_t index ;
-  double ds, total, mac, mval, ival, info_num;
+  double ds, total, mac, mval, ival, info_num, sum_pos;
   std::string chromosome, rsid;
   uint32_t position ;
   std::vector< std::string > alleles ;
@@ -1799,7 +1832,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // sex is 1 for males and 0 o.w.
           lval = 0, mval = ds;
           if(params->test_mode && (chrom == params->nChrom)) {
-            lval = params->sex(i);
+            lval = (params->sex(i) == 1);
             mval = ds * 0.5 * (2 - lval);
           }
           
@@ -1875,7 +1908,13 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
         index++;
       }
 
-      total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / snp_data->ns1;
+      sum_pos = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum();
+      if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
+        snp_data->ignored = true;
+        continue;
+      }
+
+      total = sum_pos / snp_data->ns1;
       if(total < params->numtol) {
         snp_data->ignored = true;
         continue;
@@ -1897,13 +1936,14 @@ void readChunkFromBGEN(std::istream* bfile, vector<uint32_t>& insize, vector<uin
   int n_snps = indices.size();
   string tmp_buffer;
 
+  // extract genotype data blocks single-threaded
   for(int isnp = 0; isnp < n_snps; isnp++) {
+    //if(isnp % 100 == 0) cerr << "At #" << isnp+1 << endl;
 
     vector<uchar>* geno_block = &(snp_data_blocks[isnp]);
     uint32_t* size1 = &insize[isnp];
     uint32_t* size2 = &outsize[isnp];
 
-    // extract genotype data blocks single-threaded
     bfile->seekg( indices[isnp] );
 
     // snpid
@@ -2019,7 +2059,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
   int hc_val, lval, ncarriers = 0, nmales = 0;
-  double prob0, prob1, prob2, total = 0, mac = 0, mval, ival, info_num = 0;
+  double prob0, prob1, prob2, total = 0, mac = 0, mval, ival, info_num = 0, sum_pos;
 
   // parse genotype probabilities block
   index = 0;
@@ -2053,7 +2093,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // sex is 1 for males and 0 o.w.
       lval = 0, mval = Geno(index);
       if(params->test_mode && (chrom == params->nChrom)) {
-        lval = params->sex(i);
+        lval = (params->sex(i) == 1);
         mval =  Geno(index) * 0.5 * (2 - lval);
       }
 
@@ -2142,7 +2182,13 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       }
       index++;
     }
-    total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / snp_data->ns1;
+    sum_pos = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum();
+    if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
+      snp_data->ignored = true;
+      return;
+    }
+    
+    total = sum_pos / snp_data->ns1;
     if(total < params->numtol) {
       snp_data->ignored = true;
       return;
@@ -2162,7 +2208,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
   int hc, lval, ncarriers = 0, nmales;
   uint32_t const nmax = filters->ind_ignore.size();
   uint32_t i, index ;
-  double total, mac, mval;
+  double total, mac, mval, sum_pos;
   ArrayXd geno4; // genotype values for 4 samples at a time
 
   MapArXd Geno (gblock->Gmat.col(isnp).data(), params->n_samples, 1);
@@ -2192,7 +2238,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         // sex is 1 for males and 0 o.w.
         lval = 0, mval = hc;
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex(i);
+          lval = (params->sex(i) == 1);
           mval = hc * 0.5 * (2 - lval);
         }
 
@@ -2241,7 +2287,14 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
     } else if(params->test_type == 2){ //recessive
       Geno = (Geno >= 1).select(Geno - 1, Geno);
     }
-    total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / snp_data->ns1;
+
+    sum_pos = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum();
+    if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
+      snp_data->ignored = true;
+      return;
+    }
+
+    total = sum_pos / snp_data->ns1;
     if(total < params->numtol) {
       snp_data->ignored = true;
       return;
@@ -2259,6 +2312,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, struct param const* params, struct filter const* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<snp> const& snpinfo, vector<variant_block> &all_snps_info){
 
   int const bs = indices.size();
+  ArrayXb oob_err = ArrayXb::Constant(bs, false);
 
 #if defined(_OPENMP)
   setNbThreads(1);
@@ -2272,7 +2326,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 #endif
 
     int hc, cur_index, index, lval, nmales;
-    double total, mac, mval, ival, eij2 = 0;
+    double total, mac, mval, ival, eij2 = 0, sum_pos;
     ArrayXb keep_index;
 
     variant_block* snp_data = &(all_snps_info[j]);
@@ -2291,9 +2345,14 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     else
       gblock->pgr.ReadHardcalls(Geno.data(), Geno.size(), thread_num, cur_index, 1);
 
+    oob_err(j) = ((Geno < -3) || (Geno > 2)).any();
+    if(oob_err(j)) continue;
+
     keep_index = filters->ind_in_analysis && (Geno != -3.0);
     total = keep_index.select(Geno,0).sum();
     snp_data->ns1 = keep_index.count();
+    //cerr << "ID: " << snpinfo[ indices[j] ].ID << "\nG bounds: " << 
+    //  (Geno * keep_index.cast<double>()).minCoeff() << " - " << (Geno * keep_index.cast<double>()).maxCoeff() << "\n\n";
 
     for (int i = 0; i < filters->ind_ignore.size(); i++) {
 
@@ -2305,7 +2364,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex(i);
+          lval = (params->sex(i) == 1);
           mval *= 0.5 * (2 - lval);
         }
 
@@ -2369,7 +2428,14 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
           Geno(i) = (hc >= 1 ? hc - 1 : hc);
         }
       }
-      total = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum() / snp_data->ns1;
+
+      sum_pos = ((Geno != -3) && filters->ind_in_analysis).select(Geno, 0).sum();
+      if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
+        snp_data->ignored = true;
+        continue;
+      }
+
+      total = sum_pos / snp_data->ns1;
       if( params->test_mode && (total < params->numtol) ) {
         snp_data->ignored = true;
         continue;
@@ -2384,6 +2450,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
+
+  if(oob_err.any()) 
+    throw "there is a variant in the block that has a value not in [0,2] or missing";
 
 }
 
@@ -2601,6 +2670,7 @@ void compute_mac(bool const& auto_chrom, double& mac, double const& total, int c
 
   if(auto_chrom) mac = total; // use MAC assuming diploid coding
   //cerr << snp_data->mac << endl << endl; 
+  snp_data->mac1 = mac; // across all traits
 
   // for masks, identify singletons
   if(params->build_mask && !params->singleton_carriers) snp_data->singleton = ( ((int)(mac+0.5)) == 1 ); // use AAC (round for dosages)
@@ -2636,6 +2706,7 @@ void compute_aaf_info(double& total, double const& info_num, variant_block* snp_
     snp_data->af_control /= 2 * (snp_data->ns - snp_data->ns_case).cast<double>();
   }
 
+  if(params->vc_test) snp_data->ac1 = total; // for skat
   total /= snp_data->ns1;
   snp_data->af1 = total / 2; // all traits
   snp_data->af /= 2 * snp_data->ns.cast<double>(); // single trait
@@ -2788,7 +2859,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
   setinfo.resize( params->nChrom );
 
   // check block size
-  if(params->mask_loo) bsize_set = false;
+  if(params->use_max_bsize) bsize_set = false;
   else bsize_set = params->block_size >= 2;
 
   if(!bsize_set) params->block_size = 0;
@@ -3243,9 +3314,9 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
 void read_aafs(const double tol, const struct in_files* files, struct filter* filters, vector<snp>& snpinfo, mstream& sout) {
 
-  int lineread = 0;
+  int lineread = 0, id_col = 0, aaf_col = 1;
   float aaf;
-  uint32_t snp_pos;
+  uint32_t snp_pos, ncols_min = 2;
   std::vector< string > tmp_str_vec ;
   string line, sname;
   Files myfile;
@@ -3253,15 +3324,36 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
   sout << left << std::setw(20) << " * user-given AAFs " << ": [" << files->aaf_file << "] " << endl;
   myfile.openForRead (files->aaf_file, sout);
 
+  // check if there is a header line
+  myfile.readLine(line);
+  tmp_str_vec = string_split(line,"\t ,");
+  if( tmp_str_vec.size() < 2 ) 
+    throw "incorrectly formatted file at line " + to_string( lineread+1 );
+  if( startswith(tmp_str_vec[0].c_str(), "#") ){
+    // find ID column
+    id_col = find_col(tmp_str_vec, "ID");
+    // find AAF column
+    aaf_col = find_col(tmp_str_vec, "ALT_FREQS");
+    // check if columns were found
+    if( (id_col < 0) || (aaf_col < 0) ) throw "could not find 'ID' or 'ALT_FREQS' in header";
+    ncols_min = max(id_col, aaf_col) + 1;
+  } else if (in_map(tmp_str_vec[id_col], filters->snpID_to_ind)){ // read in AAF for variant
+    snp_pos = filters->snpID_to_ind[ tmp_str_vec[id_col] ];
+    aaf = stof( tmp_str_vec[aaf_col] );
+    snpinfo[ snp_pos ].aaf = aaf;
+  }
+  lineread++;
+
+
   while (myfile.readLine(line)) {
 
     tmp_str_vec = string_split(line,"\t ,");
 
-    if( tmp_str_vec.size() != 2 ) 
+    if( tmp_str_vec.size() < ncols_min ) 
       throw "incorrectly formatted file at line " + to_string( lineread+1 );
 
     // name of variant
-    sname = tmp_str_vec[0];
+    sname = tmp_str_vec[id_col];
 
     // check it is in genotype file
     if (!in_map(sname, filters->snpID_to_ind)) {
@@ -3270,7 +3362,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     }
     snp_pos = filters->snpID_to_ind[ sname ];
 
-    aaf = stof( tmp_str_vec[1] );
+    aaf = stof( tmp_str_vec[aaf_col] );
 
     /* // not necessary (other checks to remove monomorphic masks)
     if( (aaf < tol) || (aaf > (1-tol)) )
@@ -3386,8 +3478,8 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
 }
 
 
-// read a single variant - for GxG testing
-void read_snp(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct geno_block* gblock, struct param* params){
+// read a single variant
+void read_snp(bool const& mean_impute,uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct geno_block* gblock, struct param* params){
 
   Geno = 0;
   if(params->file_type == "bed")
@@ -3397,8 +3489,11 @@ void read_snp(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct
   else
     read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 0);
 
-  // mask missing
-  mask = (Geno != -3).select(mask, false);
+  // mask missing or impute with mean
+  if(mean_impute) {
+    double meanG = (mask && (Geno != -3)).select(Geno,0).sum() / (mask && (Geno != -3)).count();
+    Geno = (mask && (Geno == -3)).select(meanG, Geno); 
+  } else  mask = (Geno != -3).select(mask, false);
 
 }
 
@@ -3599,20 +3694,20 @@ void get_snps_offset(map<string, uint64>& snps, map<string, uint32_t>& index_map
   snps = snps_found;
 
   if(snps.size() == 0)
-    throw "none of the conditional variants were found in the genotype file";
+    throw "none of the variants were found in the genotype file";
   else if(snps.size() != nstart) // enforce this
-    throw to_string( nstart - snps.size() ) + " of the variants for conditional analysis could not be found in the genotype file";
+    throw to_string( nstart - snps.size() ) + " of the variants could not be found in the genotype file";
 
 }
 
-void get_snps_offset(map<string, uint64>& snps, map<string, uint64>& index_map, mstream& sout){
+void get_snps_offset(map<string, uint64>& snps, map<string, vector<uint64>>& index_map, mstream& sout){
 
   std::map <std::string, uint64> snps_found;
   std::map <std::string, uint64>::iterator itr;
 
   for (itr = snps.begin(); itr != snps.end(); ++itr) 
     if (in_map(itr->first, index_map))
-      snps_found[ itr->first ] = index_map[ itr->first ];
+      snps_found[ itr->first ] = index_map[ itr->first ][0];
 
   snps = snps_found;
 
@@ -3621,59 +3716,89 @@ void get_snps_offset(map<string, uint64>& snps, map<string, uint64>& index_map, 
 
 }
 
-MatrixXd extract_from_genofile(Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, mstream& sout){
+MatrixXd extract_from_genofile(string const& setting, bool const& mean_impute, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, mstream& sout){
 
-  cond_geno_info geno_info;
-  map <string, uint64> tmp_map;
-  uint32_t nstart = filters->condition_snp_names.size();
+  ext_geno_info geno_info;
+  map <string, vector<uint64>> tmp_map;
+  map <string, uint64> tmp_map_inter;
+  uint32_t nstart;
+  // pointers to various information
+  geno_file_info* ext_file_info;
+  map <string, uint64>* variant_names;
+  
+  if(setting == "interaction") {
+    nstart = 1;
+    ext_file_info = &(files->interaction_snp_info);
+    tmp_map_inter[filters->interaction_cov] = 0;
+    variant_names = &(tmp_map_inter);
+  } else if(setting == "conditional") {
+    nstart = filters->condition_snp_names.size();
+    ext_file_info = &(files->condition_snps_info);
+    variant_names = &(filters->condition_snp_names);
+  } else throw "unrecognized input to extract from external genotype file";
 
-  sout << "    +conditioning on variants in [" << files->condition_snps_list << "]\n";
 
-  if(files->condition_snps_info.format == "bgen")
-    setup_bgen(geno_info, tmp_map, mask, files, params, filters, sout);
-  else if(files->condition_snps_info.format == "pgen")
-    setup_pgen(geno_info, tmp_map, mask, files, params, sout);
-  else if(files->condition_snps_info.format == "bed")
-    setup_bed(geno_info, tmp_map, mask, files, params, sout);
+  if(ext_file_info->format == "bgen")
+    setup_bgen(setting, geno_info, ext_file_info, variant_names, tmp_map, mask, files, params, filters, sout);
+  else if(ext_file_info->format == "pgen")
+    setup_pgen(geno_info, ext_file_info, tmp_map, mask, params, sout);
+  else if(ext_file_info->format == "bed")
+    setup_bed(geno_info, ext_file_info, tmp_map, mask, params, sout);
 
-  //cerr << geno_info.sample_keep.count() << " " << tmp_map.size() << "\n\n" << geno_info.sample_index.head(10) << "\n\n";
+  if(params->debug) cerr << geno_info.sample_keep.count() << " " << tmp_map.size() << "\n\n" << geno_info.sample_index.head(10) << "\n\n";
 
   
-  if(!files->condition_snps_info.with_bgi) // filter using map
-    get_snps_offset(filters->condition_snp_names, tmp_map, sout);
+  if(!ext_file_info->with_bgi) { // filter using map
+    get_snps_offset((*variant_names), tmp_map, sout);
+    if(setting == "interaction") params->ltco_chr = tmp_map[filters->interaction_cov][1];
+  }
 
   // check number of variants
-  if(filters->condition_snp_names.size() > params->max_condition_vars)
+  if(variant_names->size() > params->max_condition_vars)
     throw "number of variants used for conditional analysis is greater than maximum of " + to_string(params->max_condition_vars) + " (otherwise use --max-condition-vars)";
-  else if(filters->condition_snp_names.size() != nstart)
-    throw to_string( nstart - filters->condition_snp_names.size() ) + " of the variants for conditional analysis could not be found in the genotype file";
+  else if(variant_names->size() != nstart)
+    throw to_string( nstart - variant_names->size() ) + " of the variants could not be found in the genotype file";
 
-  sout <<  "      -n_used = " << filters->condition_snp_names.size() << endl;
-  MatrixXd Gmat = MatrixXd::Constant(params->n_samples, filters->condition_snp_names.size(), -3); // set all to missing
+  if(setting == "conditional") 
+    sout <<  "      -n_used = " << variant_names->size() << endl;
+  MatrixXd Gmat = MatrixXd::Constant(params->n_samples, variant_names->size(), -3); // set all to missing
 
-  // read in variants & impute is missing
+  // read in variants & impute if missing
   // note variant with all missing will be captured in intercept
-  if((files->condition_snps_info.format == "bgen") && geno_info.streamBGEN)
-    read_snps_bgen(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file, params);
-  else if(files->condition_snps_info.format == "bgen")
-    read_snps_bgen(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file);
-  else if(files->condition_snps_info.format == "pgen")
-    read_snps_pgen(filters->condition_snp_names, Gmat, geno_info, mask);
-  else if(files->condition_snps_info.format == "bed")
-    read_snps_bed(filters->condition_snp_names, Gmat, geno_info, mask, files->condition_snps_info.file, params, sout);
+  if((ext_file_info->format == "bgen") && geno_info.streamBGEN)
+    read_snps_bgen(mean_impute, (*variant_names), Gmat, geno_info, mask, ext_file_info->file, params);
+  else if(ext_file_info->format == "bgen")
+    read_snps_bgen(mean_impute, (*variant_names), Gmat, geno_info, mask, ext_file_info->file);
+  else if(ext_file_info->format == "pgen")
+    read_snps_pgen(mean_impute, (*variant_names), Gmat, geno_info, mask);
+  else if(ext_file_info->format == "bed")
+    read_snps_bed(mean_impute, (*variant_names), Gmat, geno_info, mask, ext_file_info->file, params, sout);
+
+  // if did not impute missing with mean, mask samples
+  if(!mean_impute){
+    mask = ((Gmat.array() == -3).rowwise().any()).select(false, mask);
+    Gmat.array().colwise() *= mask.cast<double>();
+  }
+
+  // if ref-first for GxG (inactive for pgen)
+  // bug fix: bgen api already assumes ref-first
+  if((setting == "interaction") && files->interaction_snp_info.ref_first && !((ext_file_info->format == "bgen") && !geno_info.streamBGEN))
+    Gmat.array() = (2 - Gmat.array()).colwise() * mask.cast<double>();
 
   return Gmat;
 }
 
 // for conditional analyses
-void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
+void setup_bgen(string const& setting, struct ext_geno_info& ginfo, geno_file_info* ext_file_info, map <string, uint64>* variant_names, map<string, vector<uint64>>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, struct filter* filters, mstream& sout){
 
- sout << "      -extracting variants from file [" << files->condition_snps_info.file << "]\n";
+  sout << "      -extracting variants from file [" << ext_file_info->file << "]\n";
 
+  int chrom;
   uint32_t lineread = 0;
   uint BGENbits;
   uint64 offset;
   std::vector< string > tmp_ids ;
+  std::vector< uint64 > tmp_v = std::vector< uint64 >(2);
   BgenParser bgen_tmp;
 
   uint32_t position ;
@@ -3682,13 +3807,13 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
   std::vector< std::vector< double > > probs ;
 
   // check if can use faster file stream
-  check_bgen(files->condition_snps_info.file, files->condition_snps_info.format, ginfo.zlib_compress, ginfo.streamBGEN, BGENbits, params->nChrom);
+  check_bgen(ext_file_info->file, ext_file_info->format, ginfo.zlib_compress, ginfo.streamBGEN, BGENbits, params->nChrom);
 
   // open file and print file info
-  bgen_tmp.open( files->condition_snps_info.file ) ;
+  bgen_tmp.open( ext_file_info->file ) ;
 
   // get info for variants
-  if( files->condition_snps_info.with_bgi ) read_bgi_file(bgen_tmp, files, params, filters, sout);
+  if( ext_file_info->with_bgi ) read_bgi_file(setting, bgen_tmp, ext_file_info, variant_names, params, sout);
   else {
     offset = bgen_tmp.get_position();
     while(bgen_tmp.read_variant( &chromosome, &position, &rsid, &alleles )) {
@@ -3701,8 +3826,13 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
           throw "only unphased bgen are supported.";
       } else bgen_tmp.ignore_probs();
 
+      chrom = chrStrToInt(chromosome, params->nChrom);
+      if (chrom <= 0) 
+        throw "unknown chromosome code in bgen file.";
+
       // make list of variant IDs
-      index_map[ rsid ] = offset;
+      tmp_v[0] = offset, tmp_v[1] = chrom;
+      index_map[ rsid ] = tmp_v;
 
       offset = bgen_tmp.get_position();
     }
@@ -3710,8 +3840,8 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
   }
 
   // get sample IDs (from sample file or directly from bgen file)
-  if( files->condition_snps_info.with_sample ) {
-    read_bgen_sample(files->condition_snps_info.sample, tmp_ids, sout);
+  if( ext_file_info->with_sample ) {
+    read_bgen_sample(ext_file_info->sample, tmp_ids, sout);
   } else {
     bgen_tmp.get_sample_ids(
         [&tmp_ids]( std::string const& id ) { tmp_ids.push_back( id ) ; } );
@@ -3737,17 +3867,19 @@ void setup_bgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Re
 }
 
 // fast streaming
-void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file, struct param* params){
+void read_snps_bgen(bool const& mean_impute, map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct ext_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file, struct param* params){
 
   int bs = snp_map.size();
   vector< vector < uchar > > snp_data_blocks;
-  vector< uint32_t > insize(bs), outsize(bs);
+  vector< uint32_t > insize, outsize;
   vector<uint64> indices;
   ArrayXb read_error = ArrayXb::Constant(bs, false);
   std::map <std::string, uint64>::iterator itr;
   std::ifstream bgen_ifstream;
 
   snp_data_blocks.resize( bs );
+  insize.resize( bs );
+  outsize.resize( bs );
   indices.reserve( bs );
   for (itr = snp_map.begin(); itr != snp_map.end(); ++itr)
     indices.push_back(itr->second);
@@ -3851,7 +3983,7 @@ void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct con
     }
 
     if(ns==0) {Geno=-3; continue;} // mask all samples
-    mean_impute_g(total/ns, Geno, mask);
+    if(mean_impute) mean_impute_g(total/ns, Geno, mask);
 
   }
 #if defined(_OPENMP)
@@ -3864,7 +3996,7 @@ void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct con
 
 }
 
-void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file){
+void read_snps_bgen(bool const& mean_impute, map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct ext_geno_info& ginfo, Ref<ArrayXb> mask, string const& bgen_file){
 
   int index = 0, count = 0;
   double ds, total, ns;
@@ -3905,24 +4037,24 @@ void read_snps_bgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct con
     if(ns==0) {Geno=-3; continue;} // mask all samples
 
     // impute missing
-    mean_impute_g(total/ns, Geno, mask);
+    if(mean_impute) mean_impute_g(total/ns, Geno, mask);
 
   }
 
 }
 
-void setup_pgen(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+void setup_pgen(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, map<string, vector<uint64>>& index_map, Ref<ArrayXb> mask, struct param* params, mstream& sout) {
 
- sout << "      -extracting variants using PGEN file prefix [" << files->condition_snps_info.file << "]\n";
+ sout << "      -extracting variants using PGEN file prefix [" << ext_file_info->file << "]\n";
 
-  uint32_t nv = read_pvar(index_map, files, sout);
-  uint32_t ns = read_psam(ginfo, mask, files, params, sout);
+  uint32_t nv = read_pvar(index_map, ext_file_info, params, sout);
+  uint32_t ns = read_psam(ginfo, ext_file_info, mask, params, sout);
   //cerr << "Nsamples=" << ns << "\tNvariants=" << nv << endl;
-  prep_pgen(ns, nv, ginfo, files);
+  prep_pgen(ns, nv, ginfo, ext_file_info);
 
 }
 
-void read_snps_pgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask){
+void read_snps_pgen(bool const& mean_impute, map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct ext_geno_info& ginfo, Ref<ArrayXb> mask){
 
   int index = 0, count = 0;
   double total, ns;
@@ -3952,20 +4084,20 @@ void read_snps_pgen(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct con
     if(ns==0) {Geno=-3; continue;} // mask all samples
 
     // impute missing
-    mean_impute_g(total/ns, Geno, mask);
+    if(mean_impute) mean_impute_g(total/ns, Geno, mask);
 
   }
 
 }
 
 
-void setup_bed(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref<ArrayXb> mask, struct in_files* files, struct param* params, mstream& sout) {
+void setup_bed(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, map<string, vector<uint64>>& index_map, Ref<ArrayXb> mask, struct param* params, mstream& sout) {
 
- sout << "      -extracting variants using BED file prefix [" << files->condition_snps_info.file << "]\n";
+ sout << "      -extracting variants using BED file prefix [" << ext_file_info->file << "]\n";
 
-  uint32_t nv = read_bim(index_map, files, sout);
-  uint32_t ns = read_fam(ginfo, mask, files, params, sout);
-  //cerr << "Nsamples=" << ns << "\tNvariants=" << nv << endl;
+  uint32_t nv = read_bim(index_map, ext_file_info, params, sout);
+  uint32_t ns = read_fam(ginfo, ext_file_info, mask, params, sout);
+  if(params->debug) cerr << "Nsamples=" << ns << "\tNvariants=" << nv << endl;
 
   // check if need to make lookup table
   if(params->bed_lookup_table.size() == 0)
@@ -3973,7 +4105,7 @@ void setup_bed(struct cond_geno_info& ginfo, map<string, uint64>& index_map, Ref
 }
 
 
-void read_snps_bed(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond_geno_info& ginfo, Ref<ArrayXb> mask, string const& bed_prefix, struct param* params, mstream& sout){
+void read_snps_bed(bool const& mean_impute, map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct ext_geno_info& ginfo, Ref<ArrayXb> mask, string const& bed_prefix, struct param* params, mstream& sout){
 
   int index = 0, count = 0, hc;
   uint32_t const nmax = ginfo.sample_keep.size();
@@ -4026,7 +4158,7 @@ void read_snps_bed(map<string, uint64>& snp_map, Ref<MatrixXd> Gmat, struct cond
     if(ns==0) {Geno=-3; continue;} // mask all samples
 
     // impute missing
-    mean_impute_g(total/ns, Geno, mask);
+    if(mean_impute) mean_impute_g(total/ns, Geno, mask);
 
   }
 

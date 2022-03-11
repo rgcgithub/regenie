@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -54,17 +54,31 @@
 #include "mkl_lapacke.h"
 #endif
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#pragma GCC diagnostic ignored "-Wparentheses"
+#endif
 #include <boost/math/distributions.hpp>
 
 #include "Eigen/Dense"
 #include "Eigen/StdVector"
 #include <Eigen/SparseCore>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #ifdef __linux__
 #include <omp.h>
 #endif
 
 #define MAXFILELEN 2001
+
+#define BIT_SET(a,b) ((a) |= (1ULL<<(b)))
+#define BIT_UNSET(a,b) ((a) &= ~(1ULL << (b)))
+#define CHECK_BIT(a,b) ((a) & (1ULL<<(b)))
 
 typedef unsigned char uchar;
 typedef unsigned int uint;
@@ -79,6 +93,7 @@ typedef Eigen::Map<ArrayXb> MapArXb;
 typedef Eigen::Map<const ArrayXb> MapcArXb;
 typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
 typedef Eigen::SparseMatrix<double> SpMat;
+typedef Eigen::SparseMatrix<bool> SpMatb;
 typedef Eigen::SparseVector<double> SpVec;
 
 inline bool file_exists (const std::string& name) {
@@ -161,8 +176,8 @@ struct param {
   bool keep_snps = false, keep_or = false; // user specify to keep select snps in analysis
   bool rm_snps = false, rm_or = false; // user specify to remove snps from analysis
   bool mk_snp_map = false, keep_snp_map = false;
-  bool select_phenos = false; // user specify which phenotype columns to use
-  bool select_covs = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
+  bool select_phenos = false, select_phenos_rm = false; // user specify which phenotype columns to use
+  bool select_covs = false, select_covs_rm = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
   int max_cat_levels = 10; // maximum number of categories of categorical covars
   bool select_chrs = false; // user specify which chromosomes to test
 
@@ -199,7 +214,7 @@ struct param {
   bool with_bgi = false, zlib_compress; // input bgi index file for BGEN format and compression format
   uint BGENbits = 0; // bit-encoding used in BGEN file
   bool ref_first = false; // ordering of REF/ALT alleles in input genotype file
-  ArrayXb sex; // 0 is female, 1 is male
+  Eigen::ArrayXi sex; // 0=unknown, 1=male, 2=female
   std::vector<Eigen::ArrayXd> bed_lookup_table; // plink bed lookup table
 
 
@@ -247,14 +262,14 @@ struct param {
   bool skip_blups = false;
   bool with_flip = true; // can flip to minor allele for all variants
   bool use_prs = false; // adjust for whole genome PRS (no LOCO)
-  double min_MAC = 5, min_MAC_mask; // minimum MAC of SNPs in testing mode
+  double min_MAC = 5, min_MAC_mask, minHOMs = 0; // minimum MAC of SNPs in testing mode
   bool setMinMAC = false;
   double min_INFO = 0; // minimum INFO score of SNPs (dosages) in testing mode
   bool setMinINFO = false;
   bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
-  bool w_interaction = false, interaction_cat = false, interaction_snp = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
+  bool w_interaction = false, interaction_cat = false, interaction_snp = false, interaction_file = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
   int interaction_istart = 0, ltco_chr;
   uint64 interaction_snp_offset; // index in genotype file
   bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
@@ -271,7 +286,7 @@ struct param {
   bool firth = false;// firth correction using LRT
   bool firth_approx = false; // approx. to Firth LRT
   bool write_null_firth = false, use_null_firth = false, compute_all_chr = false; // write/use null coefficients from approx. Firth
-  int niter_max = 30; // max number of iterations for logistic reg.
+  int niter_max = 50; // max number of iterations for logistic reg.
   int niter_max_firth = 250, niter_max_firth_adam = 25; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
@@ -290,6 +305,10 @@ struct param {
   // snp sets (masks/joint tests)
   bool snp_set = false; 
   bool build_mask = false; 
+  std::map<std::string, uint> vc_tests_map = { {"acatv", 0}, {"skat", 1}, {"skato", 2}, {"skato-acat", 3}, {"acato", 4} };
+  uint vc_test = 0;
+  bool apply_gene_pval_strategy = false;
+  double vc_maxAAF = 1; // max AAF for variants in SKAT/ACAT gene-based tests
   bool w_anno_lab = false;
   bool check_mask_files = false, strict_check_burden = false, fail_check = false;
   bool skip_test = false; // skip computing tests
@@ -297,8 +316,7 @@ struct param {
   std::string burden = ""; // type of burden test;
   uint max_set_size = 1000; // maximum number of predictors in joint test
   bool set_select_list = false; // comma separated list of sets given
-  bool keep_sets = false; // user specify to keep select sets in analysis
-  bool rm_sets = false; // user specify to remove sets from analysis
+  bool keep_sets = false, rm_sets = false; // user specify to filter sets in analysis
   bool w_regions = false; // categorize by set regions 
   uint max_cat = 64, nmax_regions = 16; // maximum number of annotations (to fit in uint64)
   std::vector<std::string> mbins; // temporary object to store aaf bins
@@ -308,18 +326,21 @@ struct param {
   bool singleton_carriers = false; // carrier count used to define singletons
   bool write_masks = false, write_setlist = false, write_mask_snplist = false; //write masks to bed file
   bool mask_loo = false, mask_lodo = false;
+  bool use_max_bsize = false; // set bsize to max set size
   bool p_joint_only = false;
   std::string mask_loo_name, mask_loo_set, mask_loo_region; // for LOO with masks
   double mask_loo_aaf;
   bool nnls_out_all = false;
   int nnls_napprox = 10;
-  double acat_a1 = 1, acat_a2 = 1; // for ACAT test
+  double acat_a1 = 1, acat_a2 = 25, skat_a1 = 1, skat_a2 = 25, skat_tol = 1e-5; // for ACAT & SKAT test
+  int skat_collapse_MAC = 10;
+  Eigen::ArrayXd skato_rho; // rho parameter from skat-o
 
 };
 
-struct cond_info {
+struct geno_file_info {
   std::string file, format;
-  bool with_sample = false, with_bgi = false;
+  bool with_sample = false, with_bgi = false, ref_first = false;
   std::string sample;
 };
 
@@ -338,12 +359,12 @@ struct in_files {
   std::string loco_tmp_prefix = "";
   std::string split_file;
   std::string out_file;
-  std::string blup_file;
+  std::string blup_list_file;
   std::string null_firth_file;
   std::vector<std::shared_ptr<std::ofstream>> write_preds_files;
-  std::vector<std::string> blup_files, null_firth_files;
+  std::map<std::string, std::string> blup_files;
+  std::vector<std::string> null_firth_files;
   std::vector<std::string> pheno_names;
-  std::vector<int> pheno_index;
   std::vector<int> chr_counts, chr_read;
   uint64 bed_block_size; // prevent overflow
   std::ifstream geno_ifstream;
@@ -354,14 +375,15 @@ struct in_files {
   std::vector<int> bstart, btot; // for parallel l0
   std::vector<std::string> mprefix; // for parallel l0
   std::string condition_snps_list; // for conditional analyses
-  cond_info condition_snps_info; 
+  geno_file_info condition_snps_info; 
+  geno_file_info interaction_snp_info; 
 
 };
 
 struct filter {
 
   // to filter phenotype/covariates/genotype
-  std::map<std::string, bool> pheno_colKeep_names, cov_colKeep_names; // true for qVar, false for catVar
+  std::map<std::string, bool> pheno_colKeep_names, pheno_colRm_names, cov_colKeep_names, cov_colRm_names; //cov keep map: true for qVar, false for catVar
   std::map<int, bool> tpheno_colrm;
   uint32_t tpheno_indexCol;
   std::string interaction_cov;
@@ -383,7 +405,7 @@ void read_params_and_check(int& argc,char *argv[],struct param*,struct in_files*
 void check_file(std::string const&,std::string const&);
 void check_file(std::string const&,std::vector<std::string> const&,std::string const&);
 void print_header(std::ostream&);
-Eigen::ArrayXd get_ridge_params(int const&,std::vector<std::string> const&,struct param const*,mstream&);
+Eigen::ArrayXd get_unit_params(bool const&,std::string const&,std::vector<std::string> const&,struct param const*,mstream&);
 void set_ridge_params(int const&,Eigen::ArrayXd&,mstream&);
 void print_usage_info(struct param const*,struct in_files*,mstream&);
 int chrStrToInt(const std::string&, const int&);
@@ -394,6 +416,7 @@ void check_inter_var(std::string&,std::string&,mstream&);
 std::string print_csv(const std::vector<std::string>&);
 std::string print_scsv(const std::vector<std::string>&);
 void get_logp(double&,const double&);
+void get_logp(const double&,double&,double&,const double&);
 void allocate_mat(Eigen::MatrixXd&,int const&,int const&);
 std::string print_mat_dims(Eigen::MatrixXd const&);
 void set_threads(struct param*);

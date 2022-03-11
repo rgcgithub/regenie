@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -26,7 +26,19 @@
 
 #include <limits.h> /* for PATH_MAX */
 #include <chrono>
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#pragma GCC diagnostic ignored "-Wparentheses"
+#endif
 #include <boost/filesystem.hpp>
+#include <boost/exception/all.hpp>
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
+
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
@@ -35,6 +47,7 @@
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
 #include "HLM.hpp"
+#include "SKAT.hpp"
 #include "Interaction.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
@@ -809,7 +822,7 @@ void Data::output() {
 
   int min_index;
   double performance_measure, rsq, sse, ll_avg, min_val;
-  double rate, zv;
+  double rate=0, zv;
   string pfile, out_blup_list, out_prs_list, out_firth_list, loco_filename, prs_filename, firth_filename;
   string fullpath_str, path_prs, path_firth;
   Files outb, outp, outf;
@@ -1754,6 +1767,8 @@ void Data::print_test_info(){
     " (" << (params.build_mask ? "masks" : "variants") << " with lower MAC are ignored)\n";
   if(params.setMinINFO) 
     sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
+  if((params.test_type == 2) && (params.minHOMs > 0))
+    sout << " * ignoring variants (masks for gene-based tests) with fewer than " << params.minHOMs << " homALT carriers\n";
 
   if(params.firth || params.use_SPA) {
 
@@ -1783,6 +1798,7 @@ void Data::print_test_info(){
     default:
       throw "unrecognized test value";
   }
+  wgr_string = ( params.skip_blups ?  "" : "-WGR" );
 
 
   if(params.htp_out){
@@ -1792,8 +1808,7 @@ void Data::print_test_info(){
     else if(params.trait_mode==2) correction_type = "-POISSON";
     else correction_type = "-LR";
 
-    if(params.skip_blups) model_type = test_string + correction_type;
-    else model_type = test_string + "-WGR" + correction_type;
+    model_type = test_string + wgr_string + correction_type;
   }
 
   if(params.gwas_condtl) // specify main sum stats is conditional gwas
@@ -1957,7 +1972,6 @@ void Data::set_nullreg_mat(){
 
   m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
   m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
-  m_ests.Xt_Gamma_X_inv.resize(params.n_pheno);
   m_ests.X_Gamma.resize(params.n_pheno);
 
   // for firth  approx
@@ -1965,6 +1979,7 @@ void Data::set_nullreg_mat(){
     firth_est.covs_firth = MatrixXd::Zero(params.n_samples, pheno_data.new_cov.cols() + 1);
     firth_est.covs_firth.leftCols(pheno_data.new_cov.cols()) = pheno_data.new_cov;
     firth_est.beta_null_firth = MatrixXd::Zero(firth_est.covs_firth.cols(), params.n_pheno);
+    if(params.test_mode) firth_est.cov_blup_offset = MatrixXd::Zero(params.n_samples, params.n_pheno);
 
     // open streams to write firth null estimates
     if(params.write_null_firth){
@@ -2106,8 +2121,12 @@ void Data::test_snps_fast() {
 
         for(int j = 0; j < params.n_pheno; ++j) {
 
-          if( snp_data.ignored_trait(j) ) 
+          if( snp_data.ignored_trait(j) ) {
+            if(!params.split_by_pheno) // if using single file, print NAs for snp/trait sum stats
+              ofile << snp_data.sum_stats[j];
+
             continue;
+          }
 
           if(params.split_by_pheno)
             (*ofile_split[j]) << snp_data.sum_stats[j]; // add test info
@@ -2192,12 +2211,11 @@ void Data::compute_res(){
 
 void Data::compute_res_bin(int const& chrom){
 
-  fit_null_logistic(chrom, &params, &pheno_data, &m_ests, &files, sout); // for all phenotypes
+  fit_null_logistic(false, chrom, &params, &pheno_data, &m_ests, &files, sout); // for all phenotypes
 
   res = pheno_data.phenotypes_raw - m_ests.Y_hat_p;
   res.array() /= m_ests.Gamma_sqrt.array();
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
-  if(params.debug) cerr << endl << res.topRows(4) << endl;
 
   // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
   if(params.firth_approx) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
@@ -2217,6 +2235,7 @@ void Data::compute_res_count(int const& chrom){
 void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vector < uchar > >& snp_data_blocks, vector< uint32_t > insize, vector< uint32_t >& outsize, vector<variant_block> &all_snps_info){
   
   size_t const bs = indices.size();
+  ArrayXb err_caught = ArrayXb::Constant(bs, false);
 
   // start openmp for loop
 #if defined(_OPENMP)
@@ -2256,18 +2275,33 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
     
     reset_stats(block_info, params);
 
-    compute_score(isnp, snp_index, chrom, thread_num, test_string + params.condtl_suff, model_type + params.condtl_suff, res, p_sd_yres, params, pheno_data, Gblock, block_info, snpinfo, m_ests, firth_est, files, sout);
+    try {
+      // if ran vc tests, print out results before mask test
+      if((block_info->sum_stats_vc.size() > 0) && !params.p_joint_only)
+        print_vc_sumstats(snp_index, "ADD", wgr_string, block_info, snpinfo, files, &params);
 
-    // for joint test, store logp
-    if( params.joint_test ) block_info->pval_log = Gblock.thread_data[thread_num].pval_log;
+      compute_score(isnp, snp_index, chrom, thread_num, test_string + params.condtl_suff, model_type + params.condtl_suff, res, p_sd_yres, params, pheno_data, Gblock, block_info, snpinfo, m_ests, firth_est, files, sout);
 
-    if(params.w_interaction) 
-      apply_interaction_tests(snp_index, isnp, thread_num, res, p_sd_yres, model_type, test_string, &pheno_data, nullHLM, &in_filters, &files, &Gblock, block_info, snpinfo, &m_ests, &firth_est, &params, sout);
+      // for joint test, store logp
+      if( params.joint_test ) block_info->pval_log = Gblock.thread_data[thread_num].pval_log;
+
+      if(params.w_interaction) 
+        apply_interaction_tests(snp_index, isnp, thread_num, res, p_sd_yres, model_type, test_string, &pheno_data, nullHLM, &in_filters, &files, &Gblock, block_info, snpinfo, &m_ests, &firth_est, &params, sout);
+    } catch (...) {
+      err_caught(isnp) = true;
+      block_info->sum_stats[0] = boost::current_exception_diagnostic_information();
+      continue;
+    }
   }
 
 #if defined(_OPENMP)
   setNbThreads(params.threads);
 #endif
+
+  // check no errors
+  if(err_caught.any())
+    for(int i = 0; i < err_caught.size(); i++)
+      if(err_caught(i)) throw all_snps_info[i].sum_stats[0];
 
 }
 
@@ -2466,8 +2500,12 @@ void Data::test_joint() {
 
         for(int j = 0; j < params.n_pheno; ++j) {
 
-          if( snp_data.ignored_trait(j) ) 
+          if( snp_data.ignored_trait(j) ) {
+            if(!params.split_by_pheno) // if using single file, print NAs for snp/trait sum stats
+              ofile << snp_data.sum_stats[j];
+
             continue;
+          }
 
           if(params.split_by_pheno)
             (*ofile_split[j]) << snp_data.sum_stats[j]; // add test info
@@ -2559,6 +2597,30 @@ void Data::set_groups_for_testing() {
   sout << left << std::setw(20) << " * max block size" << ": [" << params.block_size << "]\n";
 
   if(params.build_mask) sout << " * rule used to build masks : " << params.mask_rule << endl;
+  if(params.vc_test) {
+
+    if(params.skato_rho.size() == 0){
+      params.skato_rho = ArrayXd::Zero(1); // assume rho=0
+      sout << " * computing gene-based tests for each set of variants included in a mask\n";
+    } else {
+      if(CHECK_BIT(params.vc_test,1) && (params.skato_rho(0) != 0) ){
+        ArrayXd tmp_rho (params.skato_rho.size()+1); tmp_rho(0) = 0; tmp_rho.tail(params.skato_rho.size()) = params.skato_rho; // insert rho=0 for skat
+        params.skato_rho = tmp_rho;
+      }
+      IOFormat Fmt(StreamPrecision, DontAlignCols, ",", "", "", "","","");
+      sout << " * computing gene-based tests for each set of variants included in a mask (rho=[" << params.skato_rho.matrix().transpose().format(Fmt) << "])\n";
+    }
+
+    sout << "  -variants with MAC <= " << params.skat_collapse_MAC << " are collapsed into a mask\n";
+    sout << "  -weights are obtained from Beta(MAF,"<< params.skat_a1 <<","<< params.skat_a2 <<")\n";
+
+    // set max rho to 0.999 as it will o.w. cause issue with skat-o p-value calculation
+    if(params.skato_rho.size() > 1) params.skato_rho = params.skato_rho.min(0.999); 
+
+    // single p per gene
+    if(params.apply_gene_pval_strategy) 
+      sout << " * applying ACAT to output overall gene p-value\n";
+  }
 
 }
 
@@ -2630,26 +2692,42 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // do it in chunks to reduce memory usage
-  int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
-  int nchunks = ceil( n_snps * 1.0 / params.block_size );
-  int bsize = params.block_size; // default number of SNPs to read at a time
-  int nvar_read = 0;
-  if(params.mask_loo) {
-    bm.nmasks_total = n_snps;
+  bool last_chunk = false;
+  int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size(), nvar_read = 0;
+  int nchunks, bsize; 
+  ArrayXd vc_weights, vc_weights_acat;
+  SpMat vc_sparse_gmat;
+  if(params.use_max_bsize) { // process all variants at once
     nchunks = 1;
     bsize = n_snps; 
+  } else { // process variants in blocks
+    nchunks = ceil( n_snps * 1.0 / params.block_size );
+    bsize = params.block_size; // default number of SNPs to read at a time
   }
+  if(params.mask_loo) bm.nmasks_total = n_snps;
 
   if(params.verbose) sout << nchunks << " chunks";
-  sout << "\n     -reading in genotypes and building masks..." << flush;
+  sout << "\n     -reading in genotypes" << ( params.vc_test ? ", computing gene-based tests" : "" ) << " and building masks..." << flush;
 
   bm.prepMasks(params.n_samples, jt.setinfo[chrom - 1][varset].ID);  
   allocate_mat(Gblock.Gmat, params.n_samples, bsize);
+  if(params.vc_test) {
+    jt.setinfo[chrom - 1][varset].Jmat = MatrixXb::Constant(n_snps + bm.nmasks_total, bm.nmasks_total, false); // MxKm (last S rows are for ultra-rare masks)
+    jt.setinfo[chrom - 1][varset].ultra_rare_ind = ArrayXb::Constant(n_snps, false); // identify which vars are rare
+    jt.setinfo[chrom - 1][varset].vc_rare_mask.resize(params.n_samples, bm.nmasks_total); // identify which vars are rare
+    jt.setinfo[chrom - 1][varset].vc_rare_mask.setZero();
+    jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing = MatrixXb::Constant(params.n_samples, bm.nmasks_total, false); // distinguish 0 from missing
+    vc_sparse_gmat.resize(params.n_samples, n_snps + bm.nmasks_total); // store wG
+    vc_sparse_gmat.setZero();
+    vc_weights = ArrayXd::Zero(n_snps + bm.nmasks_total, 1);
+    vc_weights_acat = ArrayXd::Zero(n_snps + bm.nmasks_total, 1);
+  }
 
 
   for(int i = 0; i < nchunks; i++){
 
-    if( i == (nchunks-1) ) {
+    last_chunk = ( i == (nchunks-1) );
+    if( last_chunk ) {
       bsize = n_snps - i * bsize;// use remainder number of variants
       allocate_mat(Gblock.Gmat, params.n_samples, bsize);
     }
@@ -2682,6 +2760,9 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
     else
       bm.updateMasks(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
 
+    if(params.vc_test) // get w*G
+      update_vc_gmat(vc_sparse_gmat, vc_weights, vc_weights_acat, jt.setinfo[chrom - 1][varset].ultra_rare_ind, nvar_read, bsize, params, in_filters.ind_in_analysis, Gblock.Gmat, all_snps_info, jt.setinfo[chrom - 1][varset].Jmat);
+
     nvar_read += bsize;
   }
 
@@ -2690,6 +2771,15 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
     bm.computeMasks_loo(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
   else
     bm.computeMasks(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+
+  if(params.vc_test) {
+    compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, jt.setinfo[chrom - 1][varset].vc_rare_mask, jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, jt.setinfo[chrom - 1][varset].Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
+
+    jt.setinfo[chrom - 1][varset].Jmat.resize(0,0);
+    jt.setinfo[chrom - 1][varset].ultra_rare_ind.resize(0);
+    jt.setinfo[chrom - 1][varset].vc_rare_mask.resize(0,0); // identify which vars are rare
+    jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing.resize(0,0); // distinguish 0 from missing
+  }
 
 
   sout << "done";

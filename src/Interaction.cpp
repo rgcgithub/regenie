@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -97,7 +97,7 @@ void apply_interaction_tests(const int& index, const int& isnp, const int& threa
 
   if(params->trait_mode==1)
     apply_interaction_tests_bt(index, isnp, thread, model_type, test_string, pheno_data, filters, files, gblock, snp_data, snpinfo, m_ests, fest, params, sout);
-  else if(snp_data->fitHLM)
+  else if((params->trait_mode==0) && snp_data->fitHLM)
     apply_interaction_tests_HLM(index, isnp, thread, res, sd_yres, model_type, test_string, pheno_data, nullHLM, filters, files, gblock, snp_data, snpinfo, params, sout);
   else if(params->trait_mode==0)
     apply_interaction_tests_qt(index, isnp, thread, res, sd_yres, model_type, test_string, pheno_data, filters, files, gblock, snp_data, snpinfo, params, sout);
@@ -463,6 +463,8 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
   for(int i = 0; i < params->n_pheno; ++i ){
 
     if( snp_data->ignored_trait(i) ) continue;
+    else if( !pheno_data->pheno_pass(i) ) // if failed null firth
+      continue;
     std::ostringstream buffer, buffer_int;
 
     MapArXd Y (pheno_data->phenotypes_raw.col(i).data(), pheno_data->phenotypes_raw.rows());
@@ -477,7 +479,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     if(!fit_logistic(Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, params, sout))
       continue; // no results for trait
     /*else if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).count() > 0 )
-      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occured (phenotype #" << files->pheno_names[i] <<").";*/
+      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype #" << files->pheno_names[i] <<").";*/
     //cerr << bhat << endl;
 
     // get cov(beta)
@@ -492,9 +494,10 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
       hvec = ((WX * XWX_inv).array() * WX.array()).rowwise().sum();
       V_robust = pheno_data->Hmat[thread].transpose() * mask.select((Y - pivec)/(1-hvec), 0).square().matrix().asDiagonal() * pheno_data->Hmat[thread];
       Vmat = XWX_inv * V_robust * XWX_inv;
+      if(params->debug) cerr << "h:\n" << hvec.minCoeff() << " - " << hvec.maxCoeff() << "\n\nb:\n" << bhat << "\n\nV:\n" << Vmat << "\n\nXWXinv:\n" << XWX_inv << "\n\nVh:\n"<< V_robust << "\n\n";
     }
+    if( Vmat.diagonal().minCoeff() < 0 ) continue; // if robust SE computation fails
     if(snp_data->flipped) bhat *= -1;
-    //cerr << bhat << "\n\n" << Vmat << "\n\n";
 
     ///////////////////////
     //////  interaction tests

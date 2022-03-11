@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -75,46 +75,32 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
 
   // activate tests chosen by user
   tmp_str_vec = string_split(params->burden,",");
-  for( size_t i = 0; i < tmp_str_vec.size(); i++){
-    switch ( test_ind(tmp_str_vec[i]) ){
+  for( auto const& input_test: tmp_str_vec ){
 
-      case 0:
-        BIT_SET(test_list, 0);
-        break;
+    if( input_test == "minp" || input_test == "gates" )
+      BIT_SET(test_list, joint_tests_map[input_test]);
+    else if( input_test == "ftest" ){
+      if(params->trait_mode) sout << "WARNING: Joint F-test only for QTs.\n";
+      else BIT_SET(test_list, joint_tests_map[input_test]);
+    } else if( input_test == "nnls" ){
+      if(params->trait_mode) sout << "WARNING: Joint NNLS test only for QTs.\n";
+      else { 
+        BIT_SET(test_list, joint_tests_map[input_test]); 
+        nnls_napprox = params->nnls_napprox; 
+        nnls_verbose_out = params->nnls_out_all;
+      }
+      with_flip = false;
+    } else if( input_test == "acat" ){
+      BIT_SET(test_list, joint_tests_map[input_test]);
+      valid_snp_mode = !params->build_mask || (params->build_mask && params->mask_rule_max) ;
+      acat_a1 = params->acat_a1;
+      acat_a2 = params->acat_a2;
+    } else throw "unrecognized joint test (='" + input_test + "').";
 
-      case 1:
-        if(params->trait_mode) sout << "WARNING: Joint F-test only for QTs.\n";
-        else BIT_SET(test_list, 1);
-        break;
-
-      case 2:
-        BIT_SET(test_list, 2);
-        break;
-
-      case 3:
-        if(params->trait_mode) sout << "WARNING: Joint NNLS test only for QTs.\n";
-        else { 
-          BIT_SET(test_list, 3); 
-          nnls_napprox = params->nnls_napprox; 
-          nnls_verbose_out = params->nnls_out_all;
-        }
-        with_flip = false;
-        break;
-
-      case 4:
-        BIT_SET(test_list, 4);
-        valid_snp_mode = !params->build_mask || (params->build_mask && params->mask_rule_max) ;
-        acat_a1 = params->acat_a1;
-        acat_a2 = params->acat_a2;
-        break;
-
-      default:
-        throw "unrecognized joint test (=" + tmp_str_vec[i] + ").";
-
-    }
   }
 
   ncovars = params->ncov;
+  apply_single_p = params->apply_gene_pval_strategy;
 
   return with_flip;
 }
@@ -122,52 +108,67 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
 string JTests::apply_joint_test(const int& chrom, const int& block, const int& ph, struct phenodt const* pheno_data, const Eigen::Ref<const Eigen::MatrixXd>& yres, struct geno_block const* gblock, std::vector<variant_block>& block_info, const string& pheno_name, struct param const* params){
 
   int bs = setinfo[chrom - 1][block].snp_indices.size();
+  std::map<std::string, double> overall_p;
   std::ostringstream buffer;
   reset_vals();
 
   if(nvars == 0 || set_vars(bs, ph, block_info)) 
     return ""; // if no variants in set passed filters
   
-  if( CHECK_BIT(test_list,0) ) { // minP
-    compute_minp(bs, ph, block_info);
-    buffer << print_output(0, ph+1, chrom, block, pheno_name, params);
+  if( CHECK_BIT(test_list,joint_tests_map["minp"]) ) { // minP
+    compute_minp();
+    buffer << print_output(joint_tests_map["minp"], ph+1, chrom, block, pheno_name, params);
   } 
-  if( CHECK_BIT(test_list,4) ) { // ACAT
+  if( CHECK_BIT(test_list,joint_tests_map["acat"]) ) { // ACAT
     compute_acat(bs, ph, block_info);
-    buffer << print_output(4, ph+1, chrom, block, pheno_name, params);
+    if(apply_single_p && (plog >= 0)) overall_p["BURDEN-ACAT"] = plog;
+    buffer << print_output(joint_tests_map["acat"], ph+1, chrom, block, pheno_name, params);
   } 
 
   // check other test
-  if( ((int) (test_list&qr_tests)) > 0 ) {
+  if( test_list & qr_tests ) {
 
     compute_qr_G(pheno_data->masked_indivs.col(ph), gblock);
 
-    if( CHECK_BIT(test_list,1) ) { // F-test
+    if( CHECK_BIT(test_list,joint_tests_map["ftest"]) ) { // F-test
       compute_ftest(pheno_data->masked_indivs.col(ph), yres); 
-      buffer << print_output(1, ph+1, chrom, block, pheno_name, params);
+      buffer << print_output(joint_tests_map["ftest"], ph+1, chrom, block, pheno_name, params);
     } 
-    if( CHECK_BIT(test_list,2) ) { // GATES
+    if( CHECK_BIT(test_list,joint_tests_map["gates"]) ) { // GATES
       compute_gates(ph, block_info);
-      buffer << print_output(2, ph+1, chrom, block, pheno_name, params);
+      buffer << print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
     } 
-    if( CHECK_BIT(test_list,3) ) { // NNLS
+    if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
       compute_nnls(pheno_data->masked_indivs.col(ph), yres); 
+
       if(!nnls_verbose_out) { 
         // default output
-        buffer << print_output(3, ph+1, chrom, block, pheno_name, params);
+        buffer << print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
       } else {
         // verbose output with NNLS pos & neg split into two 
         // 1. NNLS pos (test code 5)
-        if((pval_nnls_pos >= 0) & (pval_nnls_pos <= 1)) get_pv(pval_nnls_pos);
+        if((pval_nnls_pos >= 0) && (pval_nnls_pos <= 1)) get_pv(pval_nnls_pos);
         else reset_vals();
-        buffer << print_output(5, ph+1, chrom, block, pheno_name, params);
+        buffer << print_output(joint_tests_map["nnls_pos"], ph+1, chrom, block, pheno_name, params);
         // 2. NNLS neg (test code 6)
-        if((pval_nnls_neg >= 0) & (pval_nnls_neg <= 1)) get_pv(pval_nnls_neg);
+        if((pval_nnls_neg >= 0) && (pval_nnls_neg <= 1)) get_pv(pval_nnls_neg);
         else reset_vals();
-        buffer << print_output(6, ph+1, chrom, block, pheno_name, params);
+        buffer << print_output(joint_tests_map["nnls_neg"], ph+1, chrom, block, pheno_name, params);
       }
+
+      if( apply_single_p &&
+          (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
+          (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) 
+        ) {
+        get_pv(pval_nnls_pos);overall_p["NNLS_POS"] = plog;
+        get_pv(pval_nnls_neg);overall_p["NNLS_NEG"] = plog;
+      }
+
     }
   }
+
+  // should at least have burden-acat p-value
+  if(apply_single_p) buffer << run_single_p_acat(bs, chrom, block, ph, pheno_name, block_info, overall_p, gblock, yres, pheno_data->masked_indivs.col(ph), params);
 
   return buffer.str();
 }
@@ -176,78 +177,91 @@ string JTests::apply_joint_test(const int& chrom, const int& block, const int& p
 // determine if marginal test failed 
 bool JTests::set_vars(const int& bs, const int& ph, std::vector<variant_block> const& block_info){
 
-  int ngood = 0;
+  log10pv.resize(bs);
   good_vars.resize(bs);
 
-  for(int isnp = 0; isnp < bs; isnp++) {
-    good_vars[isnp] = !block_info[isnp].ignored && !block_info[isnp].ignored_trait(ph) && !block_info[isnp].test_fail(ph);
-    if( good_vars[isnp] ) ngood++;
+  for(int isnp = 0; isnp < bs; isnp++){
+    log10pv(isnp) = block_info[isnp].pval_log(ph);
+    good_vars(isnp) = !block_info[isnp].ignored && !block_info[isnp].ignored_trait(ph) && !block_info[isnp].test_fail(ph);
   }
-  nvars = ngood;
+  nvars = good_vars.count();
 
-  return (ngood == 0);
+  return (nvars == 0);
 }
 
 
-void JTests::compute_minp(const int& bs, const int& ph, const std::vector<variant_block>& block_info){
+void JTests::compute_minp(){
 
-  df_test = 0; 
+  df_test = good_vars.count();
+  if( df_test == 0 ) {reset_vals(); return;}
 
-  // get minimum p-value
-  for(int isnp = 0; isnp < bs; isnp++) {
-    if( !good_vars[isnp] ) continue;
-
-    if(block_info[isnp].pval_log(ph) > plog) 
-      plog = block_info[isnp].pval_log(ph);
-
-    df_test++;
-  }
-
-  if( df_test == 0 ) reset_vals();
-  else get_pv( pow(10, -plog) );
+  // get minimum p-value (on log scale)
+  double logpmax = good_vars.select(log10pv, 0).maxCoeff();
+  get_pv( pow(10, -logpmax) );
 
 }
 
 
 void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_block>& block_info){
 
-  double acat = 0, tval, v_p, wt, wsum = 0, v_maf, tmpd;
-  df_test = 0;
+  double v_maf, tmpd;
   boost::math::beta_distribution<>  dist(acat_a1, acat_a2);
-  cauchy dc(0,1);
-    
 
-  // get ACAT test stat
-  for(int isnp = 0; isnp < bs; isnp++) {
-    if( !good_vars[isnp] ) continue;
+  df_test = good_vars.count();
+  if( df_test == 0 ) {reset_vals(); return;}
 
+  // make array of weights
+  ArrayXd wts = ArrayXd::Zero(bs);
+  for(int isnp = 0, j = 0; isnp < bs; isnp++) {
+    if( !good_vars(isnp) ) continue;
     // compute weights
     if( valid_snp_mode ) {// sqrt(w)=dbeta(maf,a1,a2)*sqrt(maf*(1-maf))
       v_maf = min( block_info[isnp].af(ph), 1 - block_info[isnp].af(ph) );
       //cerr << v_maf << endl;
       tmpd = pdf( dist, v_maf );
-      wt = v_maf * (1-v_maf) * tmpd * tmpd;
-    } else wt = 1; // assume weight=1
-
-    // use approx for small p-values (from ACAT R package)
-    v_p = max(nl_dbl_dmin, pow(10, -block_info[isnp].pval_log(ph))); // to prevent underflow
-    if(v_p > acat_pv_thr)
-      tval = wt * tan( (0.5 - v_p) * M_PI );
-    else 
-      tval = (wt / v_p) / M_PI ;
-    //cerr << "m:" << v_maf << ";p:" << v_p << ";w:" << wt << ";t:" << tval << endl;
-
-    acat += tval;
-    wsum += wt;
-
-    df_test++;
+      wts(j++) = v_maf * (1-v_maf) * tmpd * tmpd;
+    } else wts(j++) = 1; // assume weight=1
   }
 
-  if( df_test == 0 ) reset_vals();
-  else get_pv( cdf(complement(dc, acat/wsum )) );
+  // get ACAT test stat
+  get_pv( get_acat(log10pv, wts) );
 
 }
 
+double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<const ArrayXd>& weights){
+
+  cauchy dc(0,1);
+  double tol = 10.0 * std::numeric_limits<double>::min(), pv_thr = 1e-15;
+
+  // if single pval, return pval
+  if(logpvals.size() == 1) return pow(10, -logpvals(0));
+
+  // use approx for small p-values (from ACAT R package)
+  ArrayXd pvals = (weights!=0).select( pow(10, -logpvals) , 0.5).max(tol); // to prevent underflow
+  //cerr << "log10pv=" << logpvals.matrix().transpose() << "\npv=" << pvals.matrix().transpose() << "\nw=" << weights.matrix().transpose() << "\n";
+  double acat = (pvals > pv_thr).select( weights * tan( M_PI * (0.5 - pvals)), (weights / pvals) / M_PI).sum();
+  double wsum = weights.sum();
+  //cerr << std::setprecision(10) << "acat num=" << acat << " denum=" << wsum << endl;
+
+  return cdf(complement(dc, acat/wsum ));
+}
+
+double get_acat(const Eigen::Ref<const ArrayXd>& logpvals){ // uniform weights
+
+  cauchy dc(0,1);
+  double tol = 10.0 * std::numeric_limits<double>::min(), pv_thr = 1e-15;
+
+  // if single pval, return pval
+  if(logpvals.size() == 1) return pow(10, -logpvals(0));
+
+  // use approx for small p-values (from ACAT R package)
+  ArrayXd pvals = pow(10, -logpvals).max(tol); // to prevent underflow
+  double acat = (pvals > pv_thr).select( tan( M_PI * (0.5 - pvals)), (1.0 / pvals) / M_PI).sum();
+  double wsum = logpvals.size();
+  //cerr << std::setprecision(10) << "acat num=" << acat << " denum=" << wsum << endl;
+
+  return cdf(complement(dc, acat/wsum ));
+}
 
 void JTests::compute_qr_G(const Eigen::Ref<const MatrixXb>& mask, struct geno_block const* gblock){
 
@@ -258,7 +272,7 @@ void JTests::compute_qr_G(const Eigen::Ref<const MatrixXb>& mask, struct geno_bl
   // filter out bad variants
   Gnew = MatrixXd::Zero( gblock->Gmat.rows(), nvars );
   for(int i = 0, j = 0; i < gblock->Gmat.cols(); i++){
-    if(!good_vars[i]) continue;
+    if(!good_vars(i)) continue;
     Gnew.col(j++) = gblock->Gmat.col(i);
     indices_vars.push_back(i);
   }
@@ -413,7 +427,7 @@ void JTests::compute_gates(const int& ph, const std::vector<variant_block>& bloc
     reset_vals();
     return;
   } else if( df_test == 1 ){
-    p_gates = pow(10, -block_info[ indices_vars[0] ].pval_log(ph));
+    p_gates = pow(10, -log10pv(indices_vars[0]));
     if( p_gates >= 0) get_pv( p_gates );
     else reset_vals();
     return;
@@ -425,8 +439,8 @@ void JTests::compute_gates(const int& ph, const std::vector<variant_block>& bloc
 
   pvals.resize(df_test);
   for(int i = 0; i < df_test; i++) {
-    //cerr << block_info[ indices_vars[i] ].pval_log(ph) ;
-    pvals[i] = pow(10, -block_info[ indices_vars[i] ].pval_log(ph));
+    //cerr << log10pv(indices_vars[i]) ;
+    pvals[i] = pow(10, -log10pv(indices_vars[i]));
     //cerr << "\t" << pvals[i] << endl;
   }
 
@@ -488,13 +502,90 @@ double JTests::get_me(const Ref<const MatrixXd>& ldmat){
   return m_e;
 }
 
+std::string JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block, int const& ph, const string& pheno_name, std::vector<variant_block>& block_info, std::map<std::string, double>& overall_p, struct geno_block const* gblock, const Eigen::Ref<const Eigen::MatrixXd>& yres, const Eigen::Ref<const MatrixXb>& mask, struct param const* params){
+
+  int ip;
+  double max_logp = -1, pv; 
+  string mname, max_logp_mask = "NA";
+  vector<string> keep_tests = { "ACATV", "SKATO-ACAT" };
+  ArrayXd pvals_gene;
+  std::map <std::string, double> overall_p_m1;
+  std::map <std::string, double>::iterator itr;
+  std::ostringstream buffer;
+
+  // overall
+  good_vars = false;
+  for(int isnp = 0; isnp < bs; isnp++){
+
+    if(block_info[isnp].skip_for_vc) continue; 
+    mname = block_info[isnp].mask_name;
+
+    // identify M1 masks
+    good_vars(isnp) = (mname == "M1") || (mname == "pLoF");
+
+    for(auto const& extract_test : keep_tests)
+      if(in_map(extract_test, block_info[isnp].sum_stats_vc)){
+        pv = block_info[isnp].sum_stats_vc[extract_test](ph,1); 
+        if(pv>=0){
+          overall_p[extract_test + "." + mname] = pv;
+          if(pv>max_logp){
+            max_logp_mask = mname;
+            max_logp = pv;
+          }
+          if(good_vars(isnp)) overall_p_m1[extract_test + "." + mname] = pv; // have m1 signal
+        }
+      }
+
+  }
+
+  // combine all p-values and pass through acat
+  if(overall_p.size()>0){
+    df_test = overall_p.size();
+    pvals_gene.resize( df_test );
+    ip = 0;
+    for (itr = overall_p.begin(); itr !=  overall_p.end(); ++itr) 
+      pvals_gene(ip++) = itr->second;
+    get_pv( get_acat(pvals_gene) );
+    buffer << print_gene_output("GENE_P", max_logp_mask, ph+1, chrom, block, pheno_name, params);
+  }
+
+  // for M1 masks
+  if(good_vars.any()){
+    // run acat only on M1 signals
+    compute_acat(bs, ph, block_info);
+    if(plog >= 0) overall_p_m1["BURDEN-ACAT"] = plog;
+    // run nnls only on M1 signals
+    if( CHECK_BIT(test_list, joint_tests_map["nnls"]) ) {
+      compute_qr_G(mask, gblock);
+      pval_nnls_pos = -1; pval_nnls_neg = -1;
+      compute_nnls(mask, yres); 
+      if((pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
+          (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) ) {
+        get_pv(pval_nnls_pos);overall_p_m1["NNLS_POS"] = plog;
+        get_pv(pval_nnls_neg);overall_p_m1["NNLS_NEG"] = plog;
+      }; 
+    }
+    // apply acat to all p for M1
+    if(overall_p_m1.size()>0){
+      df_test = overall_p_m1.size();
+      pvals_gene.resize( df_test );
+      ip = 0;
+      for (itr = overall_p_m1.begin(); itr !=  overall_p_m1.end(); ++itr) 
+        pvals_gene(ip++) = itr->second;
+      get_pv( get_acat(pvals_gene) );
+      buffer << print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+    }
+  }
+
+  return buffer.str();
+}
+
 string JTests::print_output(const int& ttype, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
 
   if(!params->htp_out) return print_sum_stats(ttype, ipheno, chrom, block, params);
   else return print_sum_stats_htp(ttype, chrom, block, pheno_name, params);
 
 }
-
 
 // normal regenie format
 std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const int& chrom, const int& block, struct param const* params){
@@ -560,8 +651,95 @@ std::string JTests::print_sum_stats_htp(const int& ttype, const int& chrom, cons
   if(test_pass) buffer << "DF=" << df_test;
   else buffer << "DF=0";
 
-  buffer << endl;
+  buffer << ";NO_BETA\n";
 
+  reset_vals();
+  return buffer.str();
+
+}
+
+// single gene p
+string JTests::print_gene_output(const string& mname, const string& max_name, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
+
+  if(!params->htp_out) return print_sum_stats_gene(mname, max_name, ipheno, chrom, block, params);
+  else return print_sum_stats_htp_gene(mname, max_name, chrom, block, pheno_name, params);
+
+}
+
+// normal regenie format
+std::string JTests::print_sum_stats_gene(const string& mname, const string& max_name, const int& ipheno, const int& chrom, const int& block, struct param const* params){
+
+  std::ostringstream buffer;
+
+  // chr pos id a0 a1 af
+  if(params->split_by_pheno || ipheno == 1) {
+    buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
+    if( params->af_cc ) buffer << " NA NA ";
+    // info
+    if(params->dosage_mode) buffer << "NA ";
+    // n test
+    buffer << "NA " << mname;
+  }
+
+  //beta se
+  buffer << " NA NA ";
+
+  // chisq
+  if( zval != -9 ) buffer << zval << " ";
+  else buffer << "NA ";
+
+  // pval
+  if( plog != -9 )  buffer << plog << " ";
+  else buffer << "NA ";
+
+  //df (print it out only if split by pheno)
+  if(params->split_by_pheno || (ipheno == params->n_pheno)) {
+    if(params->split_by_pheno && (plog != -9))  buffer << " DF=" << df_test;
+    else buffer << "DF=NA";
+
+    // top signal (only if split files)
+    if( params->split_by_pheno && (max_name != "") )
+      buffer << ";STRONGEST_MASK=" << max_name;
+
+    buffer << endl;
+  }
+
+  reset_vals();
+  return buffer.str();
+}
+
+
+// htpv4 format
+std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& max_name, const int& chrom, const int& block, const string& yname, struct param const* params){
+
+  std::ostringstream buffer;
+  bool test_pass = (pval != -9);
+  const string cohort = params->cohort_name;
+
+  if( pval == 1) pval = 1 - 1e-7;
+
+  // SNP info
+  buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tNA\tNA\t";
+  // trait, cohort, test name
+  buffer << yname << "\t" << params->cohort_name << "\t" << mname;
+
+  // bhat & 95 CI
+  buffer << "\tNA\tNA\tNA\t" ;
+  // Pvalue
+  if(test_pass) buffer << pval << "\t";
+  else buffer << "NA\t";
+
+  // print out AF, counts in cases, counts in controls
+  buffer << "NA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t";
+
+  // info column
+  if(test_pass) buffer << "DF=" << df_test;
+  else buffer << "DF=0";
+
+  // top signal
+  if(max_name != "") buffer << ";STRONGEST_MASK=" << max_name;
+
+  buffer << ";NO_BETA\n";
   reset_vals();
   return buffer.str();
 
@@ -595,16 +773,5 @@ void JTests::get_pv(const double& pv){
   zval = quantile(complement(chisq, pval)); // chisq stat
   plog = -log10(pval); // -log10p
 
-}
-
-int JTests::test_ind(const string& test_str){
-
-  if(test_str == "minp") return 0;
-  else if(test_str == "ftest") return 1;
-  else if(test_str == "gates") return 2;
-  else if(test_str == "nnls") return 3;
-  else if(test_str == "acat") return 4;
-
-  return -1;
 }
 

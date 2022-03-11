@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -35,7 +35,7 @@ class GenoMask {
     std::map <std::string, std::map <std::string, uint16_t>> regions; // store identifier as 1 byte vector
     std::vector <maskinfo> masks, base_masks;
     std::vector <std::vector <std::string>> mask_out, list_masks;//contains mask info
-    std::vector<double> aafs;
+    Eigen::VectorXd aafs;
     Eigen::ArrayXi nsites;
     ArrayXb colset;
     MatrixXb keepaaf, keepmask, non_missing;
@@ -51,11 +51,11 @@ class GenoMask {
     int n_aaf_bins, max_aaf_bins = 12, nmasks_total;
     uint32_t n_mask_pass = 0; // number of masks generated
     bool write_setlist = false, write_masks = false, write_snplist = false, verbose = false;
-    bool w_regions = false, w_loo = false, w_lodo = false;
+    bool w_regions = false, w_loo = false, w_lodo = false, w_vc_tests = false;
     bool take_max = true, take_comphet = false; // either max comphet or sum
     std::string gfile_prefix;
     uint64 gblock_size; // number of bytes to use for bed file format
-    double max_aaf = -1; // maximum AAF to consider
+    double max_aaf = -1, vc_aaf, vc_collapse_MAC; // maximum AAF to consider
     uint64 all_masks = 0ULL; // keep track of all annotations considered in analysis
     std::vector<std::vector<uchar>> gvec;
     uchar last_byte_correction_factor = 0u;
@@ -68,7 +68,7 @@ class GenoMask {
     void set_snp_aafs(const int&,const int&,const bool&,std::vector<variant_block> const&,vset&,std::vector<snp> const&,mstream&);
     void updateMasks(const int&,const int&,struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
     void updateMasks_loo(const int&,const int&,struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
-    void tally_masks(struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&);
+    void tally_masks(struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,SpMat&,MatrixXb&);
     void computeMasks(struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
     void computeMasks_loo(struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
     void buildMask(const int&,const int&,struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,variant_block*);

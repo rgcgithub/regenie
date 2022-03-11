@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -27,12 +27,17 @@
 #ifndef GENO_H
 #define GENO_H
 
+#if defined(__GNUC__)
+// turn off the specific warning
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wsign-compare"
+#endif
 #include "bgen_to_vcf.hpp"
-#include "pgenlibr.h"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
-#define BIT_SET(a,b) ((a) |= (1ULL<<(b)))
-#define BIT_UNSET(a,b) ((a) &= ~(1ULL << (b)))
-#define CHECK_BIT(a,b) ((a) & (1ULL<<(b)))
+#include "pgenlibr.h"
 
 struct annoinfo {
   uint16_t regionid = 0ULL;
@@ -94,7 +99,7 @@ struct geno_block {
 
 struct variant_block {
   bool ignored, flipped;
-  double scale_fac, af1, info1, ns1;
+  double scale_fac, ac1, mac1, af1, info1, ns1;
   Eigen::ArrayXi ns, ns_case, nmales;
   Eigen::ArrayXd af, af_case, af_control, mac, info;
   Eigen::MatrixXd genocounts;
@@ -103,6 +108,10 @@ struct variant_block {
   ArrayXb is_corrected; // for firth/spa
   // for masks
   bool singleton;
+  int col_jmat_skat = -1;
+  bool skip_for_vc = true;
+  std::map <std::string, Eigen::MatrixXd> sum_stats_vc; // log10p & chisq for each vc test
+  std::string mask_name = "";
   // for joint test
   Eigen::ArrayXd pval_log;
   // interaction test
@@ -114,7 +123,7 @@ struct variant_block {
 };
 
 // for conditional analyses
-struct cond_geno_info {
+struct ext_geno_info {
   bool dosage_mode, zlib_compress, streamBGEN;
   PgenReader pgr;
   ArrayXb sample_keep; // keep track of samples in analysis
@@ -133,7 +142,7 @@ void prep_bgen(struct in_files*,struct param*,struct filter*,std::vector<snp>&,s
 void read_bgen_sample(const std::string&,struct param*,std::vector<std::string> &,mstream&);
 void read_bgen_sample(const std::string&,std::vector<std::string> &,mstream&);
 void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
-void read_bgi_file(BgenParser&,struct in_files*,struct param*,struct filter*,mstream&);
+void read_bgi_file(std::string const&,BgenParser&,geno_file_info*,std::map<std::string,uint64>*,struct param*,mstream&);
 
 void read_bed_bim_fam(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void read_bim(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
@@ -198,6 +207,10 @@ struct vset {
   uint32_t physpos;
   std::string ID;
   std::vector<uint64> snp_indices;
+  MatrixXb Jmat; // MxKm for SKAT
+  ArrayXb  ultra_rare_ind; // Mx1 for SKAT
+  SpMat vc_rare_mask;// NxKm for SKAT
+  MatrixXb vc_rare_mask_non_missing;// NxKm for SKAT
 } ;
 struct anno_name {
   std::string name;
@@ -219,7 +232,7 @@ void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std:
 void read_aafs(const double,const struct in_files*,struct filter*,std::vector<snp>&,mstream& sout);
 void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
 
-void read_snp(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct geno_block*,struct param*);
+void read_snp(bool const&,uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct geno_block*,struct param*);
 void read_snp_bed(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*);
 void read_snp_pgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct geno_block*,struct param*);
 void read_snp_bgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,std::string const&,struct param*,int const&);
@@ -228,20 +241,20 @@ void code_snp(Eigen::MatrixXd&,Eigen::Ref<ArrayXb>,uint64 const&,struct filter*,
 // for conditional analyses
 void get_conditional_vars(std::map<std::string,uint64>&,struct in_files*,struct param const*,mstream&);
 void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,uint32_t>&,std::vector<snp> const&,mstream&);
-void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,uint64>&,mstream&);
-Eigen::MatrixXd extract_from_genofile(Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,mstream&);
-void setup_bgen(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,struct filter*,mstream&);
-void read_snps_bgen(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*);
-void read_snps_bgen(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>,std::string const&);
-void setup_pgen(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,mstream&);
-uint32_t read_pvar(std::map<std::string,uint64>&,struct in_files*);
-uint32_t read_psam(struct cond_geno_info&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*);
-void prep_pgen(uint32_t&,uint32_t&,struct cond_geno_info&,struct in_files const*);
-void read_snps_pgen(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>);
-void setup_bed(struct cond_geno_info&,std::map<std::string,uint64>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,mstream&);
-uint32_t read_bim(std::map<std::string,uint64>&,struct in_files*);
-uint32_t read_fam(struct cond_geno_info&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*);
-void prep_bed(uint32_t&,struct cond_geno_info&,struct in_files const*);
-void read_snps_bed(std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct cond_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*,mstream&);
+void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,std::vector<uint64>>&,mstream&);
+Eigen::MatrixXd extract_from_genofile(std::string const&,bool const&,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,mstream&);
+void setup_bgen(std::string const&,struct ext_geno_info&,geno_file_info*,std::map<std::string,uint64>*,std::map<std::string,std::vector<uint64>>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,struct filter*,mstream&);
+void read_snps_bgen(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*);
+void read_snps_bgen(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&);
+void setup_pgen(struct ext_geno_info&,geno_file_info*,std::map<std::string,std::vector<uint64>>&,Eigen::Ref<ArrayXb>,struct param*,mstream&);
+uint32_t read_pvar(std::map<std::string,std::vector<uint64>>&,geno_file_info*,mstream&);
+uint32_t read_psam(struct ext_geno_info&,geno_file_info*,Eigen::Ref<ArrayXb>,struct param*,mstream&);
+void prep_pgen(uint32_t&,uint32_t&,struct ext_geno_info&,geno_file_info*);
+void read_snps_pgen(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>);
+void setup_bed(struct ext_geno_info&,geno_file_info*,std::map<std::string,std::vector<uint64>>&,Eigen::Ref<ArrayXb>,struct param*,mstream&);
+uint32_t read_bim(std::map<std::string,std::vector<uint64>>&,geno_file_info*,mstream&);
+uint32_t read_fam(struct ext_geno_info&,geno_file_info*,Eigen::Ref<ArrayXb>,struct param*,mstream&);
+void prep_bed(uint32_t&,struct ext_geno_info&,struct in_files const*);
+void read_snps_bed(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*,mstream&);
 
 #endif

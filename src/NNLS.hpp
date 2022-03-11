@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -70,7 +70,7 @@ double jburden_pnorm(const Eigen::MatrixXd& A,
 // the active set algorithm for fitting NNLS
 int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, 
   Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
-  double tol = 1e-6, bool neg = false, int maxit = 1000, int verbose = 0);
+  double tol = 1e-6, bool neg = false, int maxit = 1000, int maxit_inner = 500, int verbose = 0);
 // the number of all set of k out of n
 int jburden_choose(int n, int k);
 // enumerate all sets of k out of n numbers
@@ -87,7 +87,7 @@ struct FitNNLS
   VectorXd bhat;
   vector<bool> selected;
   double stat;
-  double pval;
+  double pval = -1;
 };
 
 /*

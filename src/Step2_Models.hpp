@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -29,7 +29,7 @@
 
 struct f_ests {
 
-  Eigen::MatrixXd covs_firth;
+  Eigen::MatrixXd covs_firth, cov_blup_offset;
   Eigen::MatrixXd beta_null_firth;
   std::vector<std::shared_ptr<Files>> firth_est_files;
   double deviance_logistic;
@@ -37,12 +37,11 @@ struct f_ests {
 
 };
 
-struct spa_ests {
+struct spa_data {
 
-  Eigen::MatrixXd SPA_pvals;
   Eigen::ArrayXd Gmod;
   double val_a, val_b, val_c, val_d;
-  bool pos_score;
+  bool pos_score, fastSPA;
 
 };
 
@@ -57,6 +56,7 @@ void compute_score_qt(std::vector<uint64> const& indices, int const& chrom, std:
 void compute_score(int const&,int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::RowVectorXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct ests const&,struct f_ests&,struct in_files const&,mstream&);
 void compute_score_qt(int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::RowVectorXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct in_files const&,mstream&);
 void compute_score_bt(int const&,int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct ests const&,struct f_ests&,struct in_files const&,mstream&);
+void compute_score_ct(int const&,int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct ests const&,struct f_ests&,struct in_files const&,mstream&);
 
 void check_pval_snp(variant_block*,data_thread*,int const&,int const&,int const&,struct phenodt&,struct geno_block&,struct ests const&,struct f_ests&,struct param const&,mstream&);
 void get_sumstats(bool const&,int const&,data_thread*);
@@ -79,15 +79,17 @@ void get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&);
 
 
 // spa (multithreading in openmp)
-void run_SPA_test_snp(variant_block*,data_thread*,int const&,const Eigen::Ref<const ArrayXb>&,struct ests const&,struct param const&,mstream&);
-double solve_K1_snp(const double&,const int&,const struct param*,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,mstream&);
-double compute_K_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-double compute_K1_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-double compute_K2_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-double compute_K_fast_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-double compute_K1_fast_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-double compute_K2_fast_snp(const double&,const struct ests*,data_thread*,const Eigen::Ref<const ArrayXb>&,const int&);
-void get_SPA_pvalue_snp(const double&,const double&,const int&,struct param const*,const struct ests*,variant_block*,data_thread*,const Eigen::Ref<const ArrayXb>&,mstream&); 
+void run_SPA_test(bool&,int const&,data_thread*,const Eigen::Ref<const ArrayXb>&,struct ests const&,struct param const&);
+void run_SPA_test_snp(double&,double&,const double&,const double&,bool const&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,bool&,const double&,const double&,const double&);
+double solve_K1_snp(const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,struct spa_data&,const Eigen::Ref<const ArrayXb>&,const double&,const int&,const double&);
+double compute_K_snp(const double&,const double&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+double compute_K1_snp(const double&,const double&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+double compute_K2_snp(const double&,const double&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+double compute_K_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+double compute_K1_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+double compute_K2_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
+void get_SPA_pvalue_snp(const double&,const double&,double&,double&,bool&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,struct spa_data&,const Eigen::Ref<const ArrayXb>&); 
+
 
 // printing sum stats
 std::string print_header_output(struct param const*);
@@ -98,6 +100,7 @@ std::string print_sum_stats_head(const int&,std::vector<snp> const&);
 std::string print_sum_stats_head_htp(const int&,const std::string&,const std::string&,std::vector<snp> const&,struct param const*);
 std::string print_sum_stats(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
 std::string print_sum_stats_all(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
+std::string print_na_sumstats(const int&,const int&,const std::string&,const std::string&,variant_block const*,struct param const&);
 std::string print_sum_stats_single(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*);
 std::string print_sum_stats_htp(const double&,const double&,const double&,const double&,const double&,const double&,const double&,const Eigen::Ref<const Eigen::MatrixXd>&,const int&,const bool&,const int&,struct param const*);
 std::string print_sum_stats_line(int const&,int const&,std::string const&,std::string const&,std::string const&,variant_block*,data_thread*,std::vector<snp> const&,struct in_files const&,struct param const&);

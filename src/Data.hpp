@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -43,11 +43,10 @@ class Data {
     ests m_ests;
     ridgel1 l1_ests;
     f_ests firth_est;
-    spa_ests spa_est;
     // HLM
     HLM nullHLM; // for null model fitting of HLM
 
-    std::string model_type, correction_type, test_string;
+    std::string model_type, correction_type, test_string, wgr_string;
 
     uint32_t n_corrected = 0; // to keep track of how many SNPs require correction
     bool pval_converged = false; // keep track of whether SPA/Firth converged

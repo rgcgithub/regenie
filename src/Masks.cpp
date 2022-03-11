@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -27,6 +27,9 @@
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
+#include "Joint_Tests.hpp"
+#include "Step1_Models.hpp"
+#include "Step2_Models.hpp"
 #include "Masks.hpp"
 
 
@@ -48,6 +51,9 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   take_comphet = params.mask_rule_comphet;
   w_loo = params.mask_loo;
   w_lodo = params.mask_lodo;
+  w_vc_tests = params.vc_test;
+  vc_aaf = params.vc_maxAAF;
+  vc_collapse_MAC = params.skat_collapse_MAC;
   write_masks = params.write_masks;
   write_snplist = params.write_mask_snplist;
   verbose = params.verbose;
@@ -59,46 +65,51 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
 
 void GenoMask::setBins(struct param* params, mstream& sout){
 
-  int n_vals;
+  vector<double> tmpv;
 
   // check if not singleton when using LOO
   if(!params->mask_loo || ( params->mask_loo && (params->mbins[0] != "singleton")) ){
+
     if(params->mbins.size() >= 1){
       // convert them to double
-      for( size_t i = 0; i < params->mbins.size(); i++)
-        aafs.push_back( convertDouble( params->mbins[i], params, sout) );
+      for( size_t i = 0; i < params->mbins.size(); i++){
+        if(params->mbins[i] == "all")
+          tmpv.push_back( 1 );
+        else
+          tmpv.push_back( convertDouble( params->mbins[i], params, sout) );
+      }
+    } else tmpv.push_back( default_aaf );
+
+      if(w_vc_tests) tmpv.push_back( vc_aaf );
+
       // sort and retain unique values
-      std::sort(aafs.begin(), aafs.end());
-      aafs.erase( unique( aafs.begin(), aafs.end() ), aafs.end() );
+      std::sort(tmpv.begin(), tmpv.end());
+      tmpv.erase( unique( tmpv.begin(), tmpv.end() ), tmpv.end() );
+      // store in eigen object
+      aafs = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(tmpv.data(), tmpv.size());
 
-      n_vals = aafs.size();
+      // check validity
+      if( ( (aafs.array() < minAAF) || (aafs.array() > 1) ).any() && !w_vc_tests )
+        throw "must specify values for --aaf-bins in [" + to_string( minAAF ) + ", 1]";
+      else if( (aafs.array()>= 0.5).any() && !w_vc_tests )
+        sout << "WARNING: For computational efficiency, it is recommended that AAF cutoffs < 0.5\n";
 
-      // check valid (in (0,1))
-      if( std::count_if(aafs.begin(), aafs.end(), std::bind2nd(std::greater<double>(), minAAF)) != n_vals || std::count_if(aafs.begin(), aafs.end(), std::bind2nd(std::less<double>(), 1-minAAF)) != n_vals ){
-        sout << "ERROR : You must specify values for --aaf-bins in (" << minAAF << "," << 1-minAAF << ")\n" << params->err_help;
-        exit(-1);
-      } else if(std::count_if(aafs.begin(), aafs.end(), std::bind2nd(std::greater<double>(), 0.5)) > 0)
-        sout << "WARNING: For computational efficiency, it is recommended that AAF cutoffs <0.5\n";
-
-      max_aaf = *max_element(aafs.begin(), aafs.end());
-    } else aafs.push_back(default_aaf); // default
+      max_aaf = aafs.tail(1)(0);
   }
 
   n_aaf_bins = aafs.size();
 
-  if(n_aaf_bins > max_aaf_bins){
-    sout << "ERROR: Number of AAF bins (=" << n_aaf_bins << ") above maximum (="<< max_aaf_bins << ")\n";
-    exit(-1);
-  }
+  if(n_aaf_bins > max_aaf_bins)
+    throw "Number of AAF bins (=" + to_string( n_aaf_bins ) + ") above maximum (=" + to_string( max_aaf_bins ) + ")\n";
 
-  if(!params->mask_loo){
-    sout << left << std::setw(20) << " * aaf cutoffs" << ": [" << n_aaf_bins << " : "; 
-    for(int i = 0; i < n_aaf_bins; i++) sout << aafs[i] << " ";
-    sout << "] + singletons\n";
-  } else {
+  IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "", "", "","","");
+  if(!params->mask_loo)
+    sout << left << std::setw(20) << " * aaf cutoffs" << ": [ " << n_aaf_bins << " : "
+      << aafs.transpose().format(Fmt) << " ] + singletons\n";
+  else {
     sout << left << std::setw(20) << " * aaf cutoff" << ": " ;
     if(n_aaf_bins == 0) sout << "singleton";
-    else sout << aafs[0];
+    else sout << aafs(0);
     sout << endl;
   }
 
@@ -170,6 +181,12 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
   // identify which snps are in each aaf bin
   set_snp_aafs(start, bs, params->set_aaf, all_snps_info, setinfo, snpinfo, sout);
 
+  MatrixXb Jmat;
+  MatrixXd rare_mask_tmp;
+  if(w_vc_tests) {
+    Jmat = MatrixXb::Constant(bs, nmasks_total, false);
+    if(setinfo.ultra_rare_ind.any()) rare_mask_tmp = setinfo.vc_rare_mask; // not safe to update SpMat in parallel (not many columns)
+  }
 
   // update each mask 
 #if defined(_OPENMP)
@@ -184,6 +201,9 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
       ArrayXb colkeep = keepmask.col(i).array() && keepaaf.col(j).array();
       if(!take_max && !take_comphet) nsites(index_start) += colkeep.count();
       if(write_snplist) append_snplist(index_start, colkeep, start, setinfo, snpinfo);
+
+      if(w_vc_tests && (j > 0) && ( aafs(j-1) == vc_aaf )) // track variants in mask
+        Jmat.col(index_start) = colkeep.matrix();
 
       // ignore variants in previous AAF categories (accumulation is in next loop)
       if(j>0) colkeep = colkeep && !keepaaf.col(j-1).array(); 
@@ -234,12 +254,33 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
 
       }
 
+      // get ultra-rare mask if using VC test (take max)
+      if(w_vc_tests && setinfo.ultra_rare_ind.segment(start, bs).any() && ((j == 0) || ( aafs(j-1) <= vc_aaf )) ) {
+        SpMat gv, mv;
+        mv = setinfo.vc_rare_mask.col(index_start);
+        for(int k = 0; k < colkeep.size(); k++){
+          if(!colkeep(k) || !setinfo.ultra_rare_ind(start+k)) continue;
+          MapArXd garr (gblock->Gmat.col(k).data(), params->n_samples, 1);
+          // flip if necessary
+          if(all_snps_info[start+k].af1 > 0.5) gv = (garr == -3).select(0, 2 - garr).matrix().sparseView();
+          else gv = garr.matrix().sparseView();
+          mv = gv.cwiseMax(mv);
+          setinfo.vc_rare_mask_non_missing.col(index_start).array() = setinfo.vc_rare_mask_non_missing.col(index_start).array() || (garr != -3);
+        }
+        rare_mask_tmp.col(index_start) = mv;
+      } 
+
     }
   }
 
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
+
+  if(w_vc_tests) {
+    setinfo.Jmat.middleRows(start, bs) = Jmat;
+    if(setinfo.ultra_rare_ind.segment(start, bs).any()) setinfo.vc_rare_mask = rare_mask_tmp.sparseView();
+  }
 
 }
 
@@ -260,6 +301,18 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
   nmasks_total = nkept; // number of LOO masks
   Gtmp = MatrixXd::Constant(params->n_samples, nkept + 1, -3); // add full mask
   if(!take_max && !take_comphet) nsites = nkept - 1; // each loo mask has (n-1) sites included for AAF calculation
+
+  MatrixXb Jmat;
+  vector<SpMat> rare_mask_tmp;
+  if(w_vc_tests) {
+    Jmat = MatrixXb::Constant(bs, nkept+1, false);
+    setinfo.Jmat = MatrixXb::Constant(bs+nkept+1, nkept+1, false); // last K rows are for ultra rare masks
+    if(setinfo.ultra_rare_ind.any()) {
+      rare_mask_tmp.resize(Jmat.cols()); // not safe to update SpMat in parallel
+      setinfo.vc_rare_mask.resize(params->n_samples, Jmat.cols());
+      setinfo.vc_rare_mask_non_missing = MatrixXb::Constant(params->n_samples, Jmat.cols(), false);
+    }
+  }
 
   // update mask using LOO
 #if defined(_OPENMP)
@@ -298,13 +351,67 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
       }
 
       maskvec(k) = ds;
+
     }
+
+    if(w_vc_tests) // track variants in mask
+      Jmat.col(ix) = colkeep_loo.matrix();
+
   }
 
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
 
+
+  // for vc tests
+  if(w_vc_tests && setinfo.ultra_rare_ind.any()) {
+    // flip to minor
+    for(int i = 0; i < colset.size(); i++){
+      if(!colset(i) || !setinfo.ultra_rare_ind(i) ||
+          (all_snps_info[start+i].af1 <= 0.5) ) continue;
+      MapArXd garr (gblock->Gmat.col(i).data(), params->n_samples, 1);
+      garr = (garr == -3).select(-3, 2 - garr);
+    }
+
+    // get ultra-rare masks
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(int i = 0; i < colset.size(); i++){
+      if(!colset(i)) continue;
+      ArrayXb colkeep_loo = colset;
+      colkeep_loo(i) = false; // mask snp
+      ArrayXd garr = ArrayXd::Zero(params->n_samples,1);
+
+      double ds;
+      int ix = colset.head(i).count(); // new index among unmasked snps
+
+      for(int k = 0; k < Gtmp.rows(); k++){
+        if( !filters->ind_in_analysis(k) ) continue;
+        ds = (colkeep_loo && setinfo.ultra_rare_ind).select(gblock->Gmat.row(k).transpose().array(),-3).maxCoeff();
+        setinfo.vc_rare_mask_non_missing(k, ix) = (ds>=0);
+        if(ds > 0) garr(k) = ds;
+      }
+      if((garr>0).any())
+        rare_mask_tmp[ix] = garr.matrix().sparseView();
+    }
+#if defined(_OPENMP)
+    setNbThreads(params->threads);
+#endif
+
+    int jx; // new index among unmasked snps
+    for(int i = 0; i < colset.size(); i++){
+      jx = colset.head(i).count(); // new index among unmasked snps
+      if(colset(i) && setinfo.vc_rare_mask_non_missing.col(jx).any()){
+        setinfo.vc_rare_mask.col(jx) = rare_mask_tmp[jx];
+      }
+    }
+
+  }
+
+  MatrixXd tmp_v;
   // compute full mask
   for(int i = 0; i < colset.size(); i++){
     if(!colset(i)) continue;
@@ -314,6 +421,10 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
     int ix = colset.head(i).count(); // new index among unmasked snps
     MapArXd maskvec (Gtmp.rightCols(1).data(), Gtmp.rows(), 1); // in last column
     maskvec = Gtmp.col(ix); // start from LOO mask of 1st unmasked site
+    if(w_vc_tests && setinfo.ultra_rare_ind.any()){ // for ur mask in vc tests
+      tmp_v = setinfo.vc_rare_mask.col(ix);
+      setinfo.vc_rare_mask_non_missing.rightCols(1) = setinfo.vc_rare_mask_non_missing.col(ix);
+    }
 
     for(int k = 0; k < Gtmp.rows(); k++){
       if( !filters->ind_in_analysis(k) ) continue;
@@ -331,8 +442,24 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
         else if( (ds == 0) && !has_non_missing ) ds = -3;
       }
       maskvec(k) = ds;
+
+      // get ultra-rare mask if using VC test (take max)
+      if(w_vc_tests && setinfo.ultra_rare_ind(i)){
+        ds = gblock->Gmat(k, i);
+        setinfo.vc_rare_mask_non_missing.rightCols(1)(k) = setinfo.vc_rare_mask_non_missing(k, ix) || (ds>=0);
+        if(all_snps_info[i].af1 > 0.5) ds = ds == -3 ? 0 : 2 - ds;
+        tmp_v(k, 0) = max(ds, tmp_v(k, 0));
+      }
     }
     // cerr << endl << Gtmp.col(ix).head(3) << "\n\n" << gblock->Gmat.col(i).head(3) << "\n\n" << maskvec.head(3) << endl;
+
+    if(w_vc_tests){ // track variants in mask
+      Jmat.rightCols(1) = Jmat.col(ix);
+      Jmat.rightCols(1)(i) = true; 
+      if(setinfo.ultra_rare_ind.any()) 
+        setinfo.vc_rare_mask.rightCols(1) = tmp_v.sparseView();
+    }
+
     break;
   }
 
@@ -340,11 +467,16 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
     nsites.conservativeResize( nkept + 1);
     nsites(nkept) = nkept; // to compute AAF with sum for full mask
   }
+  if(w_vc_tests) 
+    setinfo.Jmat.topRows(Jmat.rows()) = Jmat;
 
 }
 
 
-void GenoMask::tally_masks(struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs){
+void GenoMask::tally_masks(struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, SpMat& vc_rare_mask, MatrixXb& vc_rare_mask_non_missing){
+
+  MatrixXd rare_mask_tmp;
+  if(w_vc_tests) rare_mask_tmp = vc_rare_mask; // not safe to update SpMat in parallel (not many columns)
 
 #if defined(_OPENMP)
   setNbThreads(1);
@@ -405,11 +537,25 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
 
       }
 
+      // update ultra-rare mask
+      if( w_vc_tests && ( aafs(j-1) <= vc_aaf ) && rare_mask_tmp.col(index_start-1).nonZeros() ){
+        rare_mask_tmp.col(index_start) = rare_mask_tmp.col(index_start).cwiseMax(rare_mask_tmp.col(index_start-1));
+        vc_rare_mask_non_missing.col(index_start).array() = vc_rare_mask_non_missing.col(index_start).array() || vc_rare_mask_non_missing.col(index_start-1).array();
+        if( aafs(j-1) < vc_aaf ){ // remove data as not needed anymore
+          rare_mask_tmp.col(index_start-1) *= 0;
+          vc_rare_mask_non_missing.col(index_start-1).array() = false;
+        }
+      }
+      
     }
   }
+
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
+
+  if(w_vc_tests) vc_rare_mask = rare_mask_tmp.sparseView();
+
 }
 
 void GenoMask::computeMasks(struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, struct geno_block* gblock, vector<variant_block> &all_snps_info, vset& setinfo, vector<snp>& snpinfo, mstream& sout){
@@ -418,7 +564,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
   if(((int) all_snps_info.size()) < nmasks_total) all_snps_info.resize( nmasks_total );
 
   // tally masks
-  tally_masks(params, filters, masked_indivs);
+  tally_masks(params, filters, masked_indivs, setinfo.vc_rare_mask, setinfo.vc_rare_mask_non_missing);
 
   ArrayXb in_bed = colset;
 
@@ -448,7 +594,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
 #endif
 
   n_mask_pass = colset.count();
-  if(verbose && ((!colset).count() > 0)) sout << "WARNING: " << (!colset).count() << "/" << nmasks_total << " masks are monomorphic...";
+  if(verbose && ((!colset).count() > 0)) sout << "WARNING: " << (!colset).count() << "/" << nmasks_total << " masks fail MAC filter...";
   //cerr << endl << Gtmp.block(0,0,10,5) << endl;
 
   // reset indices
@@ -476,7 +622,8 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
       // mask + aaf
       buffer <<  masks[i].name << ".";
       if(j==0) buffer << "singleton";
-      else buffer << aafs[j-1];
+      else if(aafs(j-1)==1) buffer << "all";
+      else buffer << aafs(j-1);
 
       // save in snpinfo
       tmpsnp.chrom = setinfo.chrom;
@@ -503,6 +650,11 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
 
       // store mask in G
       gblock->Gmat.col(k) = Gtmp.col(index_start);
+      if(w_vc_tests) {
+        all_snps_info[index_start].col_jmat_skat = index_start;
+        all_snps_info[index_start].skip_for_vc = (j == 0) || ( aafs(j-1) != vc_aaf );
+        all_snps_info[index_start].mask_name = masks[i].name;
+      }
       tmp_snp_info.push_back(all_snps_info[index_start]);
       k++;
 
@@ -547,7 +699,7 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
 #endif
 
   n_mask_pass = colset.count();
-  if(verbose && ((!colset).count() > 0)) sout << "WARNING: " << (!colset).count() << "/" << nmasks_total << " masks are monomorphic...";
+  if(verbose && ((!colset).count() > 0)) sout << "WARNING: " << (!colset).count() << "/" << nmasks_total << " masks fail MAC filter...";
   //cerr << "Npass="<< n_mask_pass << "/" << nmasks_total <<endl;
 
   // reset indices (add full mask)
@@ -572,7 +724,8 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
     std::ostringstream buffer;
     buffer <<  masks[0].name << "." ;
     if(n_aaf_bins == 1) buffer << "singleton";
-    else buffer << aafs[0];
+    else if(aafs(0)==1) buffer << "all";
+    else buffer << aafs(0);
 
     // update snpinfo
     tmpsnp.chrom = setinfo.chrom;
@@ -593,6 +746,10 @@ void GenoMask::computeMasks_loo(struct param* params, struct filter* filters, co
 
     // store mask in G
     gblock->Gmat.col(k) = Gtmp.col(index_start);
+    if(w_vc_tests) {
+      all_snps_info[index_start].col_jmat_skat = index_start;
+      all_snps_info[index_start].skip_for_vc = false;
+    }
     tmp_snp_info.push_back(all_snps_info[index_start]);
     k++;
 
@@ -640,7 +797,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
 
   // go through each aaf cutoff (also includes singletons)
   for(int i = (n_aaf_bins-1); i >= 0; i--){
-    if(i>0) upper = aafs[i-1];
+    if(i>0) upper = aafs(i-1);
 
     // get snps who match with mask
     for(int j = 0; j < bs; j++){
@@ -652,6 +809,8 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
       if( i == 0 ) colkeep(j) = all_snps_info[j].singleton;
       else if(aaf_given) colkeep(j) = (snpinfo[ setinfo.snp_indices[start + j] ].aaf <= upper);
       else colkeep(j) = (all_snps_info[j].af1 <= upper);
+
+      if(w_vc_tests) setinfo.ultra_rare_ind(start + j) = all_snps_info[j].mac1 <= vc_collapse_MAC;
       //cerr << snpinfo[ setinfo.snp_indices[start + j] ].aaf  << " " << all_snps_info[j].af1 << endl;
       //if(i==0 && all_snps_info[j].singleton) cerr << snpinfo[ setinfo.snp_indices[start + j] ].ID << endl;
     }
@@ -667,7 +826,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
 void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, variant_block* snp_data){
 
   int hc_val, lval, nmales = 0;
-  double ds, total = 0, mac = 0, mval;
+  double ds, total = 0, mac = 0, mval, sum_pos;
 
   MapArXd maskvec (Gtmp.col(isnp).data(), params->n_samples, 1);
   // reset variant info
@@ -696,7 +855,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       if( ds != -3 ){
         lval = 0, mval = ds;
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = params->sex(i);
+          lval = (params->sex(i) == 1);
           mval = ds * 0.5 * (2 - lval);
         }
         total += ds;
@@ -795,7 +954,13 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       maskvec = (maskvec >= 1).select(maskvec - 1, maskvec);
     }
 
-    total = ((maskvec != -3) && filters->ind_in_analysis).select(maskvec, 0).sum() / snp_data->ns1;
+    sum_pos = ((maskvec != -3) && filters->ind_in_analysis).select(maskvec, 0).sum();
+    if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
+      snp_data->ignored = true;
+      return;
+    }
+
+    total = sum_pos / snp_data->ns1;
     if(total < params->numtol) {
       snp_data->ignored = true;
       return;

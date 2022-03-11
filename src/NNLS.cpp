@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -560,7 +560,7 @@ inline void update_subsets(VectorXd &b, vector<bool> &P, vector<bool> &R)
 // NNLS model fitting: active set algorithm 
 int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
   Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
-  double tol, bool neg, int maxit, int verbose)
+  double tol, bool neg, int maxit, int maxit_inner, int verbose)
 {
   const int p = X.cols();
 
@@ -622,6 +622,8 @@ int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
       //   - 1st selected variable has b = 1e7, while tol = 1e-6
       //   - so this only variable is removed from set P and P becomes empty.
       if(sum_bool(P) == 0) break;
+      // added by JMb (02/16/2022): avoid cases where loops runs indefinitely
+      else if(cnt_inner >= maxit_inner) return(-1);
     }
     // early break from the main loop: see above
     if(sum_bool(P) == 0) break;

@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -35,6 +35,7 @@
 #include "Masks.hpp"
 #include "Data.hpp"
 
+
 using namespace std;
 using namespace Eigen;
 using namespace boost;
@@ -61,9 +62,9 @@ void blup_read_chr(bool const& silent, int const& chrom, struct ests& m_ests, st
   // read blup file for each phenotype
   for(int ph = 0; ph < params.n_pheno; ph++) {
 
-    int i_pheno = files.pheno_index[ph];
+    filename = files.blup_files[ files.pheno_names[ph] ];
     ArrayXb read_indiv = ArrayXb::Constant(params.n_samples, false);
-    blupf.openForRead(files.blup_files[ph], sout);
+    blupf.openForRead(filename, sout);
 
     // check header
     blupf.readLine(line);
@@ -79,11 +80,11 @@ void blup_read_chr(bool const& silent, int const& chrom, struct ests& m_ests, st
 
     // check number of entries is same as in header
     if(tmp_str_vec.size() != id_strings.size()) 
-      throw "blup file for phenotype [" + files.pheno_names[i_pheno] + "] has different number of entries on line " + to_string( chrom + 1 ) + " compared to the header (=" + to_string( tmp_str_vec.size() ) + " vs " + to_string( id_strings.size() ) + ").";
+      throw "blup file for phenotype '" + files.pheno_names[ph] + "' has different number of entries on line " + to_string( chrom + 1 ) + " compared to the header (=" + to_string( tmp_str_vec.size() ) + " vs " + to_string( id_strings.size() ) + ").";
 
     // check starts with chromosome number
     if(chrStrToInt(tmp_str_vec[0], params.nChrom) != chrom) 
-      throw "blup file for phenotype [" + files.pheno_names[i_pheno] + "] starts with `" +  tmp_str_vec[0]  + "`"
+      throw "blup file for phenotype '" + files.pheno_names[ph] + "' starts with `" +  tmp_str_vec[0]  + "`"
         + "instead of chromosome number=" + to_string( chrom ) + ".";
 
     // read blup data
@@ -97,33 +98,33 @@ void blup_read_chr(bool const& silent, int const& chrom, struct ests& m_ests, st
       if(!filters.ind_in_analysis(indiv_index)) continue;
 
       // ignore sample if it is masked for the trait (prs will be 0)
-      if(!pheno_data.masked_indivs(indiv_index,i_pheno)) continue;
+      if(!pheno_data.masked_indivs(indiv_index,ph)) continue;
 
       // check if duplicate
       if( !read_indiv(indiv_index) )
         read_indiv(indiv_index) = true;
       else 
-        throw "individual appears more than once in blup file [" + files.blup_files[ph] + "]: FID_IID=" + id_strings[filecol];
+        throw "individual appears more than once in blup file [" + filename + "]: FID_IID=" + id_strings[filecol];
 
       in_blup = convertDouble( tmp_str_vec[filecol], &params, sout);
 
       // if blup is NA then individual must be ignored in analysis for the phenotype (ie mask = 0)
       if (in_blup == params.missing_value_double)
-        throw "individual has missing predictions (FID_IID=" + id_strings[filecol] + ";chr=" + to_string( chrom ) + ";phenotype=" + files.pheno_names[i_pheno] + 
+        throw "individual has missing predictions (FID_IID=" + id_strings[filecol] + ";chr=" + to_string( chrom ) + ";phenotype=" + files.pheno_names[ph] + 
           "). Either ignore these individuals using option '--remove', or skip reading predictions with option '--ignore-pred'.\n" + params.err_help ;
       else if(params.w_ltco && (chrom != params.ltco_chr)) // use ltco
-        m_ests.blups(indiv_index, i_pheno) = in_blup - m_ests.ltco_prs(indiv_index, i_pheno);
+        m_ests.blups(indiv_index, ph) = in_blup - m_ests.ltco_prs(indiv_index, ph);
       else // loco
-        m_ests.blups(indiv_index, i_pheno) = in_blup;
+        m_ests.blups(indiv_index, ph) = in_blup;
     }
 
     // force all non-masked samples to have loco predictions
     //   -> this should not occur as masking of absent samples is done in blup_read() function
-    if( (pheno_data.masked_indivs.col(i_pheno).array() && read_indiv).count() < pheno_data.masked_indivs.col(i_pheno).count() )
+    if( (pheno_data.masked_indivs.col(ph).array() && read_indiv).count() < pheno_data.masked_indivs.col(ph).count() )
       throw "all samples included in the analysis (for phenotype " +
-        files.pheno_names[i_pheno] + ") must have LOCO predictions in file : " + files.blup_files[ph] ;
+        files.pheno_names[ph] + ") must have LOCO predictions in file : " + filename;
 
-    //cerr << m_ests.blups.col(i_pheno).head(5)<<endl;
+    //cerr << m_ests.blups.col(ph).head(5)<<endl;
 
     blupf.closeFile();
   }
@@ -214,8 +215,7 @@ void compute_score(int const& isnp, int const& snp_index, int const& chrom, int 
   if(params.trait_mode==1)
     compute_score_bt(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
   else if(params.trait_mode==2)
-    //compute_score_ct(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
-    throw "not yet implemented";
+    compute_score_ct(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
   else if(params.trait_mode==0)
     compute_score_qt(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
 
@@ -260,16 +260,18 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
   for( int i = 0; i < params.n_pheno; ++i ) {
 
-    if( block_info->ignored_trait(i) ) 
+    if( block_info->ignored_trait(i) ) {
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
-
+    }
     if(block_info->flipped) dt_thr->bhat(i) *= -1;
 
     // get pvalue
     get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));
 
     if(!params.p_joint_only)
-      block_info->sum_stats[i] = print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params);
+      block_info->sum_stats[i].append( print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params) );
 
   }
 
@@ -285,32 +287,39 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
   // header snp info for sum stats
   if(!params.htp_out) tmpstr = print_sum_stats_head(snp_index, snpinfo);
 
-  // genetype for marker
+  // genotype for marker
   MapArXd Geno (gblock.Gmat.col(isnp).data(), params.n_samples, 1);
 
   for( int i = 0; i < params.n_pheno; ++i ) {
 
-    if( block_info->ignored_trait(i) ) 
+    if( !pheno_data.pheno_pass(i) ) // if failed null firth 
       continue;
+    else if( block_info->ignored_trait(i) ){
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
+      continue;
+    }
+
     MapArXb mask (pheno_data.masked_indivs.col(i).data(), params.n_samples, 1);
     MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(i).data(), params.n_samples, 1);
-    MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, params.ncov);
-    MapcMatXd XWXinv (m_ests.Xt_Gamma_X_inv[i].data(), params.ncov, params.ncov);
+    MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, m_ests.X_Gamma[i].cols());
 
     // project out covariates from G
     if(dt_thr->is_sparse) {
       GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
-      dt_thr->Gres = -XWsqrt * (XWXinv * (XWsqrt.transpose() * GWs));
+      dt_thr->Gres = -XWsqrt * (XWsqrt.transpose() * GWs);
       dt_thr->Gres += GWs;
     } else {
       GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
-      dt_thr->Gres = GW - XWsqrt * (XWXinv * (XWsqrt.transpose() * GW));
+      dt_thr->Gres = GW - XWsqrt * (XWsqrt.transpose() * GW);
     }
 
     // denominator
     dt_thr->denum(i) = dt_thr->Gres.squaredNorm();
     if( dt_thr->denum(i) < params.numtol ){
       block_info->ignored_trait(i) = true;
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
     }
     // score test stat for BT
@@ -320,10 +329,10 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
       dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
 
     if(params.debug) {
-      cerr << endl << yres.col(i).topRows(4) << endl;
-      cerr << endl << dt_thr->Gres.topRows(4) << endl;
-      if(dt_thr->is_sparse) cerr << endl << GWs.sum() << endl;
-      cerr << "\nnum=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " denum=" << dt_thr->Gres.squaredNorm() << endl;
+      cerr << "\ny:\n" << yres.col(i).topRows(2) << endl;
+      cerr << "\nGresid:\n" << dt_thr->Gres.topRows(2) << endl;
+      if(dt_thr->is_sparse) cerr << "\nsum(GW)=" << GWs.sum() << endl;
+      cerr << "\nscore=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " var(score)=" << dt_thr->Gres.squaredNorm() << endl;
     }
 
     // use firth/spa
@@ -335,12 +344,88 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
 
     // print sum stats
     if(!params.p_joint_only)
-      block_info->sum_stats[i] = print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params);
+      block_info->sum_stats[i].append( print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params) );
 
   }
 
 
 }
+
+
+// poisson
+void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
+
+  string tmpstr; 
+  MatrixXd GW;
+  SpVec GWs;
+  data_thread* dt_thr = &(gblock.thread_data[thread_num]);
+
+  // header snp info for sum stats
+  if(!params.htp_out) tmpstr = print_sum_stats_head(snp_index, snpinfo);
+
+  // genetype for marker
+  MapArXd Geno (gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+
+  for( int i = 0; i < params.n_pheno; ++i ) {
+
+    if( block_info->ignored_trait(i) ) {
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
+      continue;
+    }
+    MapArXb mask (pheno_data.masked_indivs.col(i).data(), params.n_samples, 1);
+    MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(i).data(), params.n_samples, 1);
+    MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, m_ests.X_Gamma[i].cols());
+
+    // project out covariates from G
+    if(dt_thr->is_sparse) {
+      GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
+      dt_thr->Gres = -XWsqrt * (XWsqrt.transpose() * GWs);
+      dt_thr->Gres += GWs;
+    } else {
+      GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
+      dt_thr->Gres = GW - XWsqrt * (XWsqrt.transpose() * GW);
+    }
+
+    // denominator
+    dt_thr->denum(i) = dt_thr->Gres.squaredNorm();
+    if( dt_thr->denum(i) < params.numtol ){
+      block_info->ignored_trait(i) = true;
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
+      continue;
+    }
+    // score test stat for CT
+    if(dt_thr->is_sparse) 
+      dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+    else
+      dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+
+    if(params.debug) {
+      cerr << "\ny:\n" << yres.col(i).topRows(2) << endl;
+      cerr << "\nGresid:\n" << dt_thr->Gres.topRows(2) << endl;
+      if(dt_thr->is_sparse) cerr << "\nsum(GW)=" << GWs.sum() << endl;
+      cerr << "\nscore=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " var(score)=" << dt_thr->Gres.squaredNorm() << endl;
+    }
+
+    // apply correction
+    //check_pval_snp(block_info, dt_thr, chrom, i, isnp, pheno_data, gblock, m_ests, fest, params, sout);
+    get_sumstats(false, i, dt_thr);
+
+    dt_thr->bhat(i) /= block_info->scale_fac;
+    dt_thr->se_b(i) /= block_info->scale_fac;
+    if(block_info->flipped) dt_thr->bhat(i) *= -1;
+
+    // print sum stats
+    if(!params.p_joint_only)
+      block_info->sum_stats[i].append( print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params) );
+
+  }
+
+
+}
+
+
 
 // Firth (currently only used for null approximate firth)
 bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const* pheno_data, struct ests const* m_ests, Ref<ArrayXd> betavec, struct param const* params) {
@@ -382,8 +467,8 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
     if(!params->fix_maxstep_null) { // don't retry with user-given settings
       if( !success ){ // if failed to converge
         cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").\n";
-        maxstep = params->retry_maxstep_firth;
-        niter = params->retry_niter_firth;
+        maxstep = min(params->retry_maxstep_firth, maxstep);
+        niter = max(params->retry_niter_firth, niter);
         if(params->debug && (trial == 0)) cerr << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
         if(params->use_adam) set_start = false;
         continue;
@@ -407,6 +492,7 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
 
   auto t1 = std::chrono::high_resolution_clock::now();
   ArrayXb has_converged = ArrayXb::Constant(params->n_pheno, true);
+  pheno_data->pheno_pass = has_converged; // reset for each chr
   IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
 
   if(!silent) sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
@@ -428,6 +514,9 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
     has_converged(i) = fit_approx_firth_null(chrom, i, pheno_data, m_ests, bvec, params);
     if(!has_converged(i)) continue; // cannot use break
 
+    if(params->test_mode)
+      firth_est->cov_blup_offset.col(i) = pheno_data->new_cov * bvec.head(pheno_data->new_cov.cols()).matrix() + m_ests->blups.col(i); // store offset used for approx firth 
+
     if(params->write_null_firth)
       (*firth_est->firth_est_files[i]) << chrom << " " << bvec.head(params->ncov).matrix().transpose().format(Fmt) << endl;
 
@@ -436,19 +525,28 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
   if(params->n_pheno>2) setNbThreads(params->threads);
 #endif
 
-
   // check if some did not converge
-  if(!has_converged.all()) {
-    sout << "    + Firth did not converge for " << (!has_converged).count() << " traits\n";
-    for( int i = 0; i < params->n_pheno; ++i ) {
-      if(has_converged(i)) continue;
-      sout << "     - " << files->pheno_names[i] << endl;
-    }
+  if(!has_converged.any()) { //  none passed
+
     string msg1 = to_string( (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth) );
     string msg2 = to_string( (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) );
-    throw "Firth penalized logistic regression failed to converge."
+    throw "Firth penalized logistic regression failed to converge for all phenotypes."
       " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") "
       "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
+
+  } else if(!has_converged.all()) { // some phenotypes failed - write their names to file
+
+    Files outf;
+    string failed_file = files->out_file + "_failedNullFirth_chr" + to_string(chrom) + ".list";
+    outf.openForWrite( failed_file, sout);
+    pheno_data->pheno_pass = has_converged;
+    for( int i = 0; i < params->n_pheno; ++i ) {
+      if(pheno_data->pheno_pass(i)) continue;
+      outf << files->pheno_names[i] << endl;
+    }
+    outf.closeFile();
+    sout << "WARNING: null Firth failed for " << (!has_converged).count() << " phenotypes (list of traits written to '" << failed_file << "' and these will be skipped)\n";
+
   }
 
   if(silent) return;
@@ -492,9 +590,9 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
     if( null_fit ) col_incl--;
   }
 
-  offset = m_ests->blups.col(ph).array(); 
   // covariate effects added as offset in firth approx.
-  if( params->firth_approx && !null_fit ) offset += (pheno_data->new_cov * fest->beta_null_firth.block(0,ph,pheno_data->new_cov.cols(),1)).array(); 
+  if( params->firth_approx && !null_fit ) offset = fest->cov_blup_offset.col(ph).array(); 
+  else offset = m_ests->blups.col(ph).array(); 
 
   // starting values
   if(null_fit){
@@ -518,7 +616,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
 
   // If didn't converge
   if(!success){
-    if(params->verbose) sout << "WARNING: Logistic regression with Firth correction did not converge!\n";
+    if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge!\n";
     block_info->test_fail(ph) = true;
     return ;
   }
@@ -638,7 +736,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       betavec += step_size;
     dev_old = dev_new;
 
-    if(params->debug && (niter_cur%5==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << endl;
+    if(params->debug && (niter_cur%5==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << " (max=" << mod_score.maxCoeff() << ")\n";
 
   }
   if(params->debug) cerr << "Ending beta = " << betavec.matrix().transpose() << "\nScore = " << mod_score.matrix().transpose() << "\nNiter=" << niter_cur << endl;
@@ -731,7 +829,7 @@ bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, c
 
     }
 
-    if(params->debug && (niter_cur>1) && (niter_cur%5000==0) ) cerr << "\nNiter = " << niter_cur << " (beta = " << betavec.matrix().transpose() << ") : " << gradient_f.matrix().transpose() << endl;
+    if(params->debug && (niter_cur>1) && (niter_cur%100==0) ) cerr << "\nNiter = " << niter_cur << " (beta = " << betavec.matrix().transpose() << ") : " << gradient_f.matrix().transpose() << endl;
 
     mt = p_beta1 * mt + (1 - p_beta1) * gradient_f;
     vt = p_beta2 * vt + (1 - p_beta2) * gradient_f.square();
@@ -752,7 +850,7 @@ bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, c
 
 string get_firth_est_allChr(struct in_files& files, struct filter const& filters, struct ests& m_ests, struct f_ests& fest, struct phenodt& pheno_data, struct param& params, mstream& sout){
 
-  sout << "   -computing and storing Firth estimates for all chromosomes..." << flush;
+  sout << "   -computing and storing null Firth estimates for all chromosomes..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
 
   // go through each chromosome
@@ -762,6 +860,9 @@ string get_firth_est_allChr(struct in_files& files, struct filter const& filters
 
     // read the prs
     blup_read_chr(true, chr, m_ests, files, filters, pheno_data, params, sout);
+
+    // run null logistic regression to get the starting values for firth
+    fit_null_logistic(true, chr, &params, &pheno_data, &m_ests, &files, sout); // for all phenotypes
 
     // run null firth for each trait and write estimates to file
     fit_null_firth(true, chr, &fest, &pheno_data, &m_ests, &files, &params, sout);
@@ -812,7 +913,7 @@ void check_beta_start_firth(struct in_files& files, struct param const& params, 
   Files fClass;
 
   // get list of files containing blups
-  files.null_firth_files.resize(params.n_pheno);
+  files.null_firth_files.assign(params.n_pheno, "");
   fClass.openForRead(files.null_firth_file, sout);
 
   while (fClass.readLine(line)){
@@ -839,9 +940,9 @@ void check_beta_start_firth(struct in_files& files, struct param const& params, 
     read(tmp_index) = true;
   }
 
-  // force all phenotypes in phenotype file to be used
-  if(read.count() != params.n_pheno) 
-    throw "number of files (" + to_string( read.count() ) + ")  is not equal to the number of phenotypes." ;
+  // // force all phenotypes in phenotype file to be used
+  // if(read.count() != params.n_pheno) 
+  //   throw "number of valid step 1 files (" + to_string( read.count() ) + ")  is not equal to the number of phenotypes." ;
 
 }
 
@@ -857,6 +958,10 @@ void get_beta_start_firth(int const& chrom, struct f_ests* firth_est, struct in_
   for( int i = 0; i < params->n_pheno; ++i ) {
 
     bool chr_found = false;
+
+    // if file has not been given, use 0 as start
+    if(files->null_firth_files[i] == "") continue;
+
     fClass.openForRead(files->null_firth_files[i], sout);
 
     while(fClass.readLine(line)){
@@ -932,7 +1037,7 @@ void check_pval_snp(variant_block* block_info, data_thread* dt_thr, int const& c
 
   } else if(params.use_SPA) { // spa
 
-    run_SPA_test_snp(block_info, dt_thr, ph, pheno_data.masked_indivs.col(ph).array(), m_ests, params, sout);
+    run_SPA_test(block_info->test_fail(ph), ph, dt_thr, pheno_data.masked_indivs.col(ph).array(), m_ests, params);
     if(block_info->test_fail(ph)) {
       get_sumstats(true, ph, dt_thr);
       return;
@@ -970,82 +1075,86 @@ void run_firth_correction_snp(int const& chrom, int const& ph, int const& isnp, 
 
 }
 
+void run_SPA_test(bool& test_fail, int const& ph, data_thread* dt_thr, const Ref<const ArrayXb>& mask, struct ests const& m_ests, struct param const& params){
+  run_SPA_test_snp(dt_thr->chisq_val(ph), dt_thr->pval_log(ph), dt_thr->stats(ph), dt_thr->denum(ph), dt_thr->fastSPA, dt_thr->Gsparse, dt_thr->Gres.array(), m_ests.Y_hat_p.col(ph).array(), m_ests.Gamma_sqrt.col(ph).array(), mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double);
+}
 
-
-void run_SPA_test_snp(variant_block* block_info, data_thread* dt_thr, int const& ph, const Ref<const ArrayXb>& mask, struct ests const& m_ests, struct param const& params, mstream& sout){
+void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const double& denum, bool const& fastSPA, SpVec const& Gsparse, const Ref<const ArrayXd>& Gres, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask, bool& test_fail, const double& tol, const double& niter_max, const double& missing_value_double){
 
   int index_j;
   double score_num, tval, limK1_low, limK1_high, root_K1;
+  spa_data spa_df;
   ArrayXd Gmu;
 
   // compute needed quantities
-  dt_thr->val_c = sqrt( dt_thr->denum(ph) );  // sqrt( G'WG )
-  score_num = dt_thr->stats(ph) * dt_thr->val_c;
-  dt_thr->Gmod = dt_thr->Gres.array() / m_ests.Gamma_sqrt.col(ph).array() * mask.cast<double>();
-  Gmu = dt_thr->Gmod * m_ests.Y_hat_p.col(ph).array();
-  dt_thr->val_a = Gmu.sum();
+  spa_df.val_c = sqrt( denum );  // sqrt( G'WG )
+  score_num = stats * spa_df.val_c;
+  spa_df.Gmod = Gres / Gamma_sqrt * mask.cast<double>();
+  Gmu = spa_df.Gmod * phat;
+  spa_df.val_a = Gmu.sum();
+  spa_df.fastSPA = fastSPA;
 
-  if(dt_thr->fastSPA){
-    dt_thr->val_b = dt_thr->denum(ph);
-    dt_thr->val_d = 0;
-    for (SparseVector<double>::InnerIterator it(dt_thr->Gsparse); it; ++it) {
+  if(spa_df.fastSPA){
+    spa_df.val_b = denum;
+    spa_df.val_d = 0;
+    for (SpVec::InnerIterator it(Gsparse); it; ++it) {
       index_j = it.index();
       if(!mask(index_j)) continue;
-      dt_thr->val_b -= dt_thr->Gres(index_j) * dt_thr->Gres(index_j);
-      dt_thr->val_d += Gmu(index_j);
+      spa_df.val_b -= Gres(index_j) * Gres(index_j);
+      spa_df.val_d += Gmu(index_j);
     }
   }
 
   // check if K'(t)= s can be solved
-  limK1_low = (dt_thr->Gmod < 0).select(dt_thr->Gmod, 0 ).sum() - dt_thr->val_a ;
-  limK1_high = (dt_thr->Gmod > 0).select(dt_thr->Gmod, 0 ).sum() - dt_thr->val_a ;
+  limK1_low = (spa_df.Gmod < 0).select(spa_df.Gmod, 0 ).sum() - spa_df.val_a ;
+  limK1_high = (spa_df.Gmod > 0).select(spa_df.Gmod, 0 ).sum() - spa_df.val_a ;
   if( score_num < limK1_low || score_num > limK1_high ){
-    if(params.verbose) sout << "WARNING: SPA failed (solution to K'(t)=s is infinite)";
-    block_info->test_fail(ph) = true;
+    //if(params.verbose) sout << "WARNING: SPA failed (solution to K'(t)=s is infinite)";
+    test_fail = true;
     return;
   }
 
   // keep track of whether obs stat is positive
-  dt_thr->pos_score = dt_thr->stats(ph) > 0;
-  tval = fabs(dt_thr->stats(ph));
+  spa_df.pos_score = stats > 0;
+  tval = fabs(stats);
 
   // solve K'(t)= tval using a mix of Newton-Raphson and bisection method
-  root_K1 = solve_K1_snp(tval, ph, &params, &m_ests, dt_thr, mask, sout);
-  if( root_K1 == params.missing_value_double ){
-    block_info->test_fail(ph) = true;
+  root_K1 = solve_K1_snp(tval, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask, tol, niter_max, missing_value_double);
+  if( root_K1 == missing_value_double ){
+    test_fail = true;
     return;
   }
 
   // compute pvalue
-  get_SPA_pvalue_snp(root_K1, tval, ph, &params, &m_ests, block_info, dt_thr, mask, sout);
+  get_SPA_pvalue_snp(root_K1, tval, chisq, pv, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
 
 }
 
 
 
 // SPA (MT in OpenMP)
-double solve_K1_snp(const double& tval, const int& ph, const struct param* params, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, mstream& sout){
+double solve_K1_snp(const double& tval, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, struct spa_data& spa_df, const Ref<const ArrayXb>& mask, double const& tol, int const& niter_max, double const& missing_value_double){
 
   int niter_cur;
-  int lambda = dt_thr->pos_score ? 1 : -1; // if score is negative, adjust K' and K''
+  int lambda = spa_df.pos_score ? 1 : -1; // if score is negative, adjust K' and K''
   double min_x, max_x, t_old, f_old, t_new = -1, f_new, hess;
 
   niter_cur = 0;
   min_x = 0, max_x = std::numeric_limits<double>::infinity();
   t_old = 0;
-  f_old = dt_thr->fastSPA ? compute_K1_fast_snp(lambda * t_old, m_ests, dt_thr, mask, ph) : compute_K1_snp(lambda * t_old, m_ests, dt_thr, mask, ph);
+  f_old = spa_df.fastSPA ? compute_K1_fast_snp(lambda * t_old, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K1_snp(lambda * t_old, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
   f_old *= lambda;
   f_old -= tval; 
 
-  while( niter_cur++ < params->niter_max_spa ){
+  while( niter_cur++ < niter_max ){
 
-    hess = dt_thr->fastSPA ? compute_K2_fast_snp(lambda * t_old, m_ests, dt_thr, mask, ph) : compute_K2_snp(lambda * t_old, m_ests, dt_thr, mask, ph);
+    hess = spa_df.fastSPA ? compute_K2_fast_snp(lambda * t_old, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, Gamma_sqrt, mask) : compute_K2_snp(lambda * t_old, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, Gamma_sqrt, mask);
     t_new = t_old - f_old / hess;
-    f_new = dt_thr->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, dt_thr, mask, ph) : compute_K1_snp(lambda * t_new, m_ests, dt_thr, mask, ph);
+    f_new = spa_df.fastSPA ? compute_K1_fast_snp(lambda * t_new, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K1_snp(lambda * t_new, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
     f_new *= lambda;
     f_new -= tval;
 
-    if( fabs( f_new ) < params->tol_spa ) break;
+    if( fabs( f_new ) < tol ) break;
 
     // update bounds on root
     if( t_new && (t_new > min_x) && (t_new < max_x) ){
@@ -1054,9 +1163,12 @@ double solve_K1_snp(const double& tval, const int& ph, const struct param* param
     } else{ // bisection method if t_new went out of bounds and re-compute f_new
       t_new = ( min_x + max_x ) / 2;
       // if( fabs( min_x - t_new ) < params->tol_spa ) break;
-      f_new = dt_thr->fastSPA ? compute_K1_fast_snp(lambda * t_new, m_ests, dt_thr, mask, ph) : compute_K1_snp(lambda * t_new, m_ests, dt_thr, mask, ph);
+      f_new = spa_df.fastSPA ? compute_K1_fast_snp(lambda * t_new, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K1_snp(lambda * t_new, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
       f_new *= lambda;
       f_new -= tval;
+      // reduce bounds based on new value
+      if(f_new <= 0) min_x = t_new;
+      else max_x = t_new;
     }
 
     t_old = t_new;
@@ -1064,115 +1176,114 @@ double solve_K1_snp(const double& tval, const int& ph, const struct param* param
   }
 
   // If didn't converge
-  if( niter_cur > params->niter_max_spa ){
-    if(params->verbose) sout << "WARNING: SPA did not converge to root for K'(t)=s.\n";
-    return params->missing_value_double;
+  if( niter_cur > niter_max ){
+    //if(params->verbose) sout << "WARNING: SPA did not converge to root for K'(t)=s.\n";
+    return missing_value_double;
   }
   //sout << "#iterations = " << niter_cur << "; f= " << f_new << endl;
 
   return t_new;
 }
 
-double compute_K_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
-
-  double val = mask.select( ( 1 - m_ests->Y_hat_p.col(ph).array() + m_ests->Y_hat_p.col(ph).array() * ( t / dt_thr->val_c * dt_thr->Gmod ).exp() ).log(), 0).sum() - t * dt_thr->val_a / dt_thr->val_c;
+double compute_K_snp(const double& t, const double& a, const double& c, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXb>& mask){
+  double val = mask.select( ( 1 - phat + phat * ( t / c * Gmod ).exp() ).log(), 0).sum() - t * a / c;
 
   return val;
 }
 
-double compute_K_fast_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
+double compute_K_fast_snp(const double& t, const double& b, const double& c, const double& d, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXb>& mask){
 
   uint32_t index_j;
   double val = 0;
 
-  for (SparseVector<double>::InnerIterator it(dt_thr->Gsparse); it; ++it) {
+  for (SpVec::InnerIterator it(Gsparse); it; ++it) {
     index_j = it.index();
     if(!mask(index_j)) continue;
 
-    val += log( 1 - m_ests->Y_hat_p(index_j,ph) + m_ests->Y_hat_p(index_j,ph) * exp( t / dt_thr->val_c * dt_thr->Gmod(index_j)) );
+    val += log( 1 - phat(index_j) + phat(index_j) * exp( t / c * Gmod(index_j)) );
   }
-  val += -t * dt_thr->val_d / dt_thr->val_c + t * t / 2 / dt_thr->denum(ph) * dt_thr->val_b;
+  val += -t * d / c + t * t / 2 / denum * b;
 
   return val;
 }
 
-double compute_K1_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
+double compute_K1_snp(const double& t, const double& a, const double& c, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXb>& mask){
 
-  double val = mask.select( ( dt_thr->Gmod * m_ests->Y_hat_p.col(ph).array() / dt_thr->val_c ) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / dt_thr->val_c * dt_thr->Gmod).exp() ), 0).sum();
-  val -= dt_thr->val_a / dt_thr->val_c;
+  double val = mask.select( ( Gmod * phat / c ) / ( phat + (1 - phat) * ( -t / c * Gmod ).exp() ), 0).sum();
+  val -= a / c;
 
   return val;
 }
 
-double compute_K1_fast_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
+double compute_K1_fast_snp(const double& t, const double& b, const double& c, const double& d, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXb>& mask){
 
   uint32_t index_j;
   double val = 0;
 
-  for (SparseVector<double>::InnerIterator it(dt_thr->Gsparse); it; ++it) {
+  for (SpVec::InnerIterator it(Gsparse); it; ++it) {
     index_j = it.index();
     if(!mask(index_j)) continue;
 
-    val += ( dt_thr->Gmod(index_j) * m_ests->Y_hat_p(index_j,ph) / dt_thr->val_c ) / ( m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / dt_thr->val_c * dt_thr->Gmod(index_j)) );
+    val += ( Gmod(index_j) * phat(index_j) / c ) / ( phat(index_j) + (1 - phat(index_j)) * exp( -t / c * Gmod(index_j)) );
   }
-  val += -dt_thr->val_d / dt_thr->val_c + t / dt_thr->denum(ph) * dt_thr->val_b;
+  val += -d / c + t / denum * b;
 
   return val;
 }
 
-double compute_K2_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
+double compute_K2_snp(const double& t, const double& a, const double& c, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask){
 
-  double val = mask.select( ( dt_thr->Gmod.square() * m_ests->Gamma_sqrt.col(ph).array().square() / (dt_thr->val_c*dt_thr->val_c) * ( -t / dt_thr->val_c * dt_thr->Gmod).exp()) / ( m_ests->Y_hat_p.col(ph).array() + (1 - m_ests->Y_hat_p.col(ph).array()) * ( -t / dt_thr->val_c * dt_thr->Gmod).exp() ).square(), 0).sum();
+  double val = mask.select( ( Gmod.square() * Gamma_sqrt.square() / (c*c) * ( -t / c * Gmod).exp()) / ( phat + (1 - phat) * ( -t / c * Gmod ).exp() ).square(), 0).sum();
 
   return val;
 }
 
-double compute_K2_fast_snp(const double& t, const struct ests* m_ests, data_thread* dt_thr, const Ref<const ArrayXb>& mask, const int& ph){
+double compute_K2_fast_snp(const double& t, const double& b, const double& c, const double& d, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask){
 
   uint32_t index_j;
-  double val = 0, denum;
+  double val = 0, denum_v;
 
-  for (SparseVector<double>::InnerIterator it(dt_thr->Gsparse); it; ++it) {
+  for (SpVec::InnerIterator it(Gsparse); it; ++it) {
     index_j = it.index();
     if(!mask(index_j)) continue;
 
-    denum = m_ests->Y_hat_p(index_j,ph) + (1 - m_ests->Y_hat_p(index_j,ph)) * exp( -t / dt_thr->val_c * dt_thr->Gmod(index_j));
-    val += ( dt_thr->Gmod(index_j) * dt_thr->Gmod(index_j) * m_ests->Gamma_sqrt(index_j,ph) * m_ests->Gamma_sqrt(index_j,ph) * exp( -t / dt_thr->val_c * dt_thr->Gmod(index_j)) / dt_thr->val_c / dt_thr->val_c ) / (denum * denum);
+    denum_v = phat(index_j) + (1 - phat(index_j)) * exp( -t / c * Gmod(index_j));
+    val += ( Gmod(index_j) * Gmod(index_j) * Gamma_sqrt(index_j) * Gamma_sqrt(index_j) * exp( -t / c * Gmod(index_j)) / (c*c) ) / (denum_v * denum_v);
   }
-  val += dt_thr->val_b / dt_thr->denum(ph);
+  val += b / denum;
 
   return val;
 }
 
-void get_SPA_pvalue_snp(const double& root, const double& tval, const int& ph, struct param const* params, const struct ests* m_ests, variant_block* block_info, data_thread* dt_thr, const Ref<const ArrayXb>& mask, mstream& sout){
+void get_SPA_pvalue_snp(const double& root, const double& tval, double& chisq, double& pv, bool& test_fail, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, struct spa_data& spa_df, const Ref<const ArrayXb>& mask){
 
-  int lambda = dt_thr->pos_score ? 1 : -1; // if score is negative, adjust K and K''
+  int lambda = spa_df.pos_score ? 1 : -1; // if score is negative, adjust K and K''
   double kval, k2val, wval, vval, rval;
   normal nd(0,1);
 
-  kval = dt_thr->fastSPA ? compute_K_fast_snp(lambda * root, m_ests, dt_thr, mask, ph) : compute_K_snp(lambda * root, m_ests, dt_thr, mask, ph);
-  k2val = dt_thr->fastSPA ? compute_K2_fast_snp(lambda * root, m_ests, dt_thr, mask, ph) : compute_K2_snp(lambda * root, m_ests, dt_thr, mask, ph);
+  kval = spa_df.fastSPA ? compute_K_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
+  k2val = spa_df.fastSPA ? compute_K2_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, Gamma_sqrt, mask) : compute_K2_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, Gamma_sqrt, mask);
 
   wval = sqrt( 2 * ( root * tval - kval ) );
   vval = root * sqrt( k2val );
   if(vval == 0) {
-    dt_thr->chisq_val(ph) = 0;
-    dt_thr->pval_log(ph) = 0;
+    chisq = 0;
+    pv = 0;
     return;
   }
 
   rval = wval + log( vval / wval ) / wval;
 
   if(rval < 0) { // SPA can fail for SNPs with very low counts and give p-value>1
-    block_info->test_fail(ph) = true;
-    if(params->verbose) sout << "WARNING: SPA correction failed (resulted in p-value > 1).\n";
+    test_fail = true;
+    //sout << "WARNING: SPA correction failed (resulted in p-value > 1).\n"; // not valid in multithreaded call
     return;
   }
 
-  dt_thr->chisq_val(ph) = pow(rval, 2);
-  get_logp(dt_thr->pval_log(ph), dt_thr->chisq_val(ph));
+  chisq = pow(rval, 2);
+  get_logp(pv, chisq);
+  test_fail = false;
 }
-
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -1276,59 +1387,79 @@ std::string print_sum_stats(const double& af, const double& af_case, const doubl
 std::string print_sum_stats_all(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
 
   std::ostringstream buffer;
+  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0);
+  bool print_pv = (chisq>=0) && test_pass;
 
   // AF N INFO TEST
   if(ipheno == 1) {
-    buffer << af ;
-    if( params->af_cc ) buffer << " " << af_case << " " << af_control;
-    if(!params->build_mask && params->dosage_mode) buffer << " " << info;
+    if(print_afs) buffer << af ;
+    else buffer << "NA" ;
+    if( params->af_cc ){
+      if(print_afs) buffer << " " << af_case << " " << af_control;
+      else buffer << " NA NA";
+    }
+    if(!params->build_mask && params->dosage_mode) {
+      if(print_info) buffer << " " << info;
+      else buffer << " NA";
+    }
     buffer << " " << n << " " << model ;
   }
 
   // BETA SE
-  if( se < 0 ) buffer << " NA NA";
-  else buffer << ' ' << beta << ' ' << se;
+  if(print_se) buffer << ' ' << beta << ' ' << se;
+  else buffer << " NA NA";
 
   // CHISQ PV
-  if((chisq < 0) || !test_pass) 
-    buffer << " NA NA";
-  else 
-    buffer << ' ' << chisq << ' ' << pv;
+  if(print_pv) buffer << ' ' << chisq << ' ' << pv;
+  else buffer << " NA NA";
 
   // extra column
   if(ipheno == params->n_pheno) {
-    if(params->joint_test) buffer << " DF=" << df << endl;
+    if(params->joint_test && (df<0)) buffer << " DF=NA\n";
+    else if(params->joint_test) buffer << " DF=" << df << endl;
     else buffer << " NA\n";
   }
 
   return buffer.str();
 }
 
+std::string print_na_sumstats(int const& ph, int const& df, string const& header, string const& model, variant_block const* block_info, struct param const& params){
+  return ( ( ph==0 ? header : "" ) + print_sum_stats_all(block_info->af1, block_info->af_case(ph), block_info->af_control(ph), block_info->info1, block_info->ns1, model, -1, -1, -1, -1, false, df, &params, ph + 1) ); // pheno index is 1-based
+}
+
 // native format - single pheno
 std::string print_sum_stats_single(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params){
 
   std::ostringstream buffer;
+  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0);
+  bool print_pv = (chisq>=0) && test_pass;
 
   // AF N INFO TEST
-  buffer << af << " " ;
-  if( params->af_cc ) buffer << af_case << " " << af_control << " " ;
-  if(!params->build_mask && params->dosage_mode) buffer << info << " ";
+  if(print_afs) buffer << af << " " ;
+  else buffer << "NA " ;
+  if( params->af_cc ){
+    if(print_afs) buffer << af_case << " " << af_control << " ";
+    else buffer << "NA NA ";
+  }
+  if(!params->build_mask && params->dosage_mode) {
+    if(print_info) buffer << info << " ";
+    else buffer << "NA ";
+  }
   buffer << n << " " << model << " " ;
 
   // BETA SE
-  if( se < 0 ) buffer << "NA NA";
-  else buffer << beta << ' ' << se;
+  if(print_se) buffer << beta << ' ' << se;
+  else buffer << "NA NA";
 
   // CHISQ PV
-  if((chisq < 0) || !test_pass) 
-    buffer << " NA NA";
-  else 
-    buffer << ' ' << chisq << ' ' << pv;
+  if(print_pv) buffer << ' ' << chisq << ' ' << pv;
+  else buffer << " NA NA";
 
   // extra column
   vector<string> extraCol;
   if(!test_pass) extraCol.push_back("TEST_FAIL");
-  if(params->joint_test) extraCol.push_back("DF=" + to_string(df));
+  if(params->joint_test && (df<0)) extraCol.push_back("DF=NA");
+  else if(params->joint_test) extraCol.push_back("DF=" + to_string(df));
   buffer << " " << (extraCol.size() > 0 ? print_scsv(extraCol) : "NA") << endl;
 
   return buffer.str();
@@ -1377,14 +1508,21 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   }
 
   // print out AF
-  buffer << af << "\t";
+  if(af>=0)
+    buffer << af << "\t";
+  else
+    buffer << "NA\t";
 
-  // print counts in cases
-  buffer << (int) genocounts.block(0,ph,3,1).sum() << "\t" << (int) genocounts(0,ph) << "\t" << (int) genocounts(1,ph) << "\t" << (int) genocounts(2,ph) << "\t";
-  // print counts in controls
-  if(params->trait_mode==1){
-    buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
-  } else buffer << "NA\tNA\tNA\tNA";
+  if(mac>0) {
+
+    // print counts in cases
+    buffer << (int) genocounts.block(0,ph,3,1).sum() << "\t" << (int) genocounts(0,ph) << "\t" << (int) genocounts(1,ph) << "\t" << (int) genocounts(2,ph) << "\t";
+    // print counts in controls
+    if(params->trait_mode==1)
+      buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
+    else buffer << "NA\tNA\tNA\tNA";
+
+  } else buffer << "NA\tNA\tNA\tNA"; // for skat/acat-type tests
 
   // info column
   vector<string> infoCol;
@@ -1402,11 +1540,13 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
     } else infoCol.push_back( "REGENIE_SE=" + to_string(se) );// fot QTs
   }
   // info score
-  if(!params->build_mask && params->dosage_mode) infoCol.push_back( "INFO=" + to_string(info) );
+  if(!params->build_mask && params->dosage_mode && (info >= 0) ) infoCol.push_back( "INFO=" + to_string(info) );
   // mac
-  infoCol.push_back( "MAC=" + to_string(mac) );
+  if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
+  // indicator for no beta printed (joint or vc tests)
+  if(se<0) infoCol.push_back( "NO_BETA" );
   // print info column
   buffer << "\t" << print_scsv(infoCol) << endl;
 

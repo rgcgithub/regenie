@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -33,12 +33,9 @@
 struct ests {
 
   Eigen::MatrixXd offset_nullreg;
-  Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> blups;
-  Eigen::MatrixXd ltco_prs;
-  Eigen::MatrixXd Gamma_sqrt;
-  Eigen::MatrixXd Y_hat_p;
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > Xt_Gamma_X_inv;
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > X_Gamma;
+  Eigen::MatrixXd blups, ltco_prs;
+  Eigen::MatrixXd Gamma_sqrt, Y_hat_p;
+  std::vector<Eigen::MatrixXd> X_Gamma;
   Eigen::MatrixXd bhat_start; // for interaction tests
 
 };
@@ -47,8 +44,7 @@ struct ridgel0 {
 
   Eigen::MatrixXd GGt;
   Eigen::MatrixXd GTY;
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > G_folds; // storage for folds at levle 0
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > GtY; // storage for folds at levle 0
+  std::vector<Eigen::MatrixXd> G_folds, GtY; // storage for folds at levle 0
   Eigen::MatrixXd GGt_eig_vec, GGt_eig_val;
   Eigen::MatrixXd Wmat;
 
@@ -56,20 +52,20 @@ struct ridgel0 {
 
 struct ridgel1 {
 
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > X_folds, XtY; // storage for folds at level 1
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > > pred_mat, test_mat;
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > test_mat_conc;
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > > pred_pheno, test_pheno;
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > > pred_pheno_raw, test_pheno_raw;
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > > pred_offset, test_offset;
-  std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > cumsum_values; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
-  std::vector<std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> > > beta_hat_level_1;
+  std::vector<Eigen::MatrixXd> X_folds, XtY; // storage for folds at level 1
+  std::vector<std::vector<Eigen::MatrixXd>> pred_mat, test_mat;
+  std::vector<Eigen::MatrixXd> test_mat_conc;
+  std::vector<std::vector<Eigen::MatrixXd>> pred_pheno, test_pheno;
+  std::vector<std::vector<Eigen::MatrixXd>> pred_pheno_raw, test_pheno_raw;
+  std::vector<std::vector<Eigen::MatrixXd>> pred_offset, test_offset;
+  std::vector<Eigen::MatrixXd> cumsum_values; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
+  std::vector<std::vector<Eigen::MatrixXd>> beta_hat_level_1;
   ArrayXb pheno_l1_not_converged;
 
 };
 
 
-void fit_null_logistic(const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
+void fit_null_logistic(bool const&,const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
 bool fit_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&);
 double get_logist_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
 

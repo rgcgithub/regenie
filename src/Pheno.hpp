@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -41,6 +41,7 @@ struct phenodt {
   std::vector<Eigen::ArrayXd> scf_i;
   Eigen::MatrixXd phenotypes;
   Eigen::MatrixXd phenotypes_raw;
+  ArrayXb pheno_pass;
   MatrixXb masked_indivs;
   Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
   Eigen::RowVectorXd scale_Y;
@@ -69,10 +70,10 @@ bool residualize_matrix(Eigen::MatrixXd&,Eigen::ArrayXd&,struct param const*,str
 void apply_QR(Eigen::MatrixXd&,struct param const*,bool const&);
 void rescale_mat(Eigen::Ref<Eigen::MatrixXd>,struct param const*);
 void prep_run(struct in_files*,struct filter*,struct param*,struct phenodt*,struct ests*,mstream&);
-void check_blup(Eigen::Ref<ArrayXb>,struct in_files*,struct param*,mstream&);
-void check_blup(std::map<std::string,bool>&,struct in_files*,struct param*,mstream&);
-bool has_blup(std::string const&,std::map<std::string,bool> const&,struct param const*,mstream&);
+void check_blup(struct in_files*,struct param*,mstream&);
+bool has_blup(std::string const&,std::map<std::string,std::string> const&,struct param const*,mstream&);
 void blup_read(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
+void check_phenos(Eigen::Ref<ArrayXb>,std::vector<std::string> const&,std::string const&,mstream&);
 void write_ids(struct in_files const*,struct param*,struct phenodt const*,mstream&);
 void check_str(std::string&);
 void apply_rint(struct phenodt*,struct param const*);

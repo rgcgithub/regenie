@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -31,6 +31,7 @@
 class JTests {
 
   public:
+    std::map<std::string, int> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6} };
     std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG"};
     uchar qr_tests = 7<<1; // 01110000 for ftest, gates and nnls
 
@@ -43,7 +44,7 @@ class JTests {
     bool nnls_verbose_out = false;
     bool nnls_normalize = true, nnls_strict = false;
     int nnls_napprox, nnls_verbose = 0;
-    double acat_a1,acat_a2, acat_pv_thr = 1e-15;
+    double acat_a1,acat_a2;
     bool valid_snp_mode;
     double pval, plog, zval, scale_denum = 0;
     double pval_nnls_pos, pval_nnls_neg;
@@ -53,9 +54,11 @@ class JTests {
     std::string out_file_prefix; // prefix of output files
     Eigen::ArrayXi colKeep; // keep track of linearly independent columns in Gmat
     Eigen::MatrixXd Gtmp;
-    std::vector<bool> good_vars;
+    ArrayXb good_vars;
+    Eigen::ArrayXd log10pv; 
     std::vector<int> indices_vars;
     std::vector<std::string> variant_names;
+    bool apply_single_p = false;
 
     // for prep.
     bool get_test_info(const struct param*,const std::string&,mstream&);
@@ -64,12 +67,18 @@ class JTests {
 
     // assoc. tests
     std::string apply_joint_test(const int&,const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,const std::string&,struct param const*);
-    void compute_minp(const int&,const int&,const std::vector<variant_block>&);
+    void compute_minp();
     void compute_acat(const int&,const int&,const std::vector<variant_block>&);
     void compute_ftest(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
     void compute_nnls(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
     void compute_gates(const int&,const std::vector<variant_block>&);
     double get_me(const Eigen::Ref<const Eigen::MatrixXd>&);
+
+    // final acat round
+    std::string run_single_p_acat(int const&,const int&,const int&,int const&,const std::string&,std::vector<variant_block>&,std::map<std::string, double>&,struct geno_block const*,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,struct param const*);
+    std::string print_gene_output(const std::string&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_sum_stats_gene(const std::string&,const std::string&,const int&,const int&,const int&,struct param const*);
+    std::string print_sum_stats_htp_gene(const std::string&,const std::string&,const int&,const int&,const std::string&,struct param const*);
 
     // print results
     std::string print_output(const int&,const int&,const int&,const int&,const std::string&,struct param const*);
@@ -79,10 +88,12 @@ class JTests {
     void get_variant_names(int const&,int const&,std::vector<snp> const&);
     void reset_vals();
     void get_pv(const double&);
-    int test_ind(const std::string&);
 
     JTests();
     ~JTests();
 };
+
+double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&);
+double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&); // uniform weights
 
 #endif
