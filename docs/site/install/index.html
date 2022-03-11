@@ -174,7 +174,8 @@
 <h2 id="installation">Installation</h2>
 <p>Note: <strong>regenie</strong> requires compilation with 
 <a href="https://gcc.gnu.org">GCC</a> version &gt;= 5.1 (on Linux) 
-or Clang version &gt;=3.3 (on Mac OSX)</p>
+or Clang version &gt;=3.3 (on Mac OSX). 
+It also requires having GFortran library installed.</p>
 <h3 id="pre-compiled-binaries">Pre-compiled binaries</h3>
 <p>Pre-compiled binaries are available in the 
 <a href="https://github.com/rgcgithub/regenie/releases">Github repository</a>.
@@ -188,7 +189,7 @@ will provide speedups for many of the operations done in <strong>regenie</strong
 <li><strong>regenie</strong> requires the
   <a href="https://enkre.net/cgi-bin/code/bgen/dir?ci=trunk">BGEN library</a> so
   you will need to download and install that library.</li>
-<li>In the source code edit the BGEN_PATH variable in the <code>Makefile</code>
+<li>Edit the BGEN_PATH variable in the <code>Makefile</code>
    to the BGEN library path.</li>
 <li>On the command line type <code>make</code> while in the main source code directory.</li>
 <li>This should produce the executable called <code>regenie</code>.</li>
@@ -245,6 +246,8 @@ using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p></d
         
         <hr>
         <p>
+        <small>REGENIE is licensed under the <a href='https://github.com/rgcgithub/regenie/blob/master/LICENSE'>MIT license</small><br>
+        
         <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
         </p>
 

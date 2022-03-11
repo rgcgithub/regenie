@@ -207,7 +207,6 @@ plink \
   --merge-list list_beds.txt \
   --make-bed --out ukb_cal_allChrs
 </code></pre>
-
 <h4 id="exclusion-files">Exclusion files</h4>
 <p>Quality control (QC) filters can be applied using <a href="https://www.cog-genomics.org/plink/2.0/">PLINK2</a> to filter out samples and
 markers in the genotype file prior to step 1 of <strong>regenie</strong>.</p>
@@ -228,7 +227,6 @@ samples with more than 10% missingness,</p>
   --write-snplist --write-samples --no-id-header \
   --out qc_pass
 </code></pre>
-
 <h3 id="step-1">Step 1</h3>
 <p>We recommend to run <strong>regenie</strong> using multi-threading (8+ threads) which will 
 decrease the overall runtime of the program. 
@@ -249,7 +247,6 @@ will determine how much disk space is required (see table above).</p>
   --lowmem-prefix tmpdir/regenie_tmp_preds \
   --out ukb_step1_BT
 </code></pre>
-
 <p>For P phenotypes analyzed, this will generate a set of $P$ files ending with <code>.loco</code>
 which contain the genetic predictions using a LOCO scheme that will be needed for step 2,
 as well as a prediction list file <code>ukb_step1_BT_pred.list</code>, which lists 
@@ -261,7 +258,7 @@ Furthermore, you can use the same Step 1 output to test on array, exome or
 imputed variants; below, we will illustrate testing on imputed variants.</p>
 <p>Step 2  of <strong>regenie</strong> can be run in parallel across chromosomes so if you have access to multiple machines, we recommend to split the runs over chromosomes (using 8+ threads).</p>
 <!---
-#### Sample mismatch
+#### Sample mismatch 
 
 It may be that the genotype file used in step 2 does not contain all of the samples used in step 1 
 or contains additional samples not used in step 1. 
@@ -275,7 +272,8 @@ grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.
 
 --->
 
-<p>Running <strong>regenie</strong> tesing on a single chromosome (here chromosome 1) and using the fast Firth correction as fallback,</p>
+<p>Running <strong>regenie</strong> tesing on a single chromosome (here chromosome 1) 
+and using the fast Firth correction as fallback for p-values below 0.01</p>
 <pre><code>./regenie \
   --step 2 \
   --bgen ukb_imp_chr1_v3.bgen \
@@ -284,14 +282,13 @@ grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.
   --phenoFile ukb_phenotypes_BT.txt \
   --covarFile ukb_covariates.txt \
   --bt \
-  --firth 0.01 --approx \
+  --firth --approx --pThresh 0.01 \
   --pred ukb_step1_BT_pred.list \
   --bsize 400 \
   --split \
   --out ukb_step2_BT_chr1
 
 </code></pre>
-
 <p>This will create separate association results files for each phenotype as <code>ukb_step2_BT_chr1_*.regenie</code>.</p></div>
         
         
@@ -301,6 +298,8 @@ grep -wFf qc_pass_space.id ukbXXX_imp_chr1_v3_s487395.sample &gt; fid_iid_step2.
         
         <hr>
         <p>
+        <small>REGENIE is licensed under the <a href='https://github.com/rgcgithub/regenie/blob/master/LICENSE'>MIT license</small><br>
+        
         <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
         </p>
 
