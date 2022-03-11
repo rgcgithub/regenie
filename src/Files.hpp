@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -111,5 +111,7 @@ void openStream(T* ofs, std::string const& fname, std::ios_base::openmode mode, 
   return;
 }
 std::vector<std::string> string_split(std::string const&,const char*);
+bool startswith(const char*,const char*);
+int find_col(std::vector<std::string> const&,std::string const&);
 
 #endif

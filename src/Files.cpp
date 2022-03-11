@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2021 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2022 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -195,4 +195,19 @@ std::vector<std::string> string_split(std::string const& s, const char* delims) 
 
 }
 
+bool startswith(const char* s, const char* prefix) {
+   if(strncmp(s, prefix, strlen(prefix)) == 0) return true;
+   return false;
+}
+
+int find_col(std::vector<std::string> const& str_vec, std::string const& name){
+
+  if(str_vec.size() < 1) return -1;
+
+  auto scol = std::find(str_vec.begin(), str_vec.end(), name); 
+  if(scol == str_vec.end())
+    return -1;
+  else return std::distance(str_vec.begin(), scol);
+
+}
 
