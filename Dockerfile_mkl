@@ -52,7 +52,7 @@ RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/m
 FROM ubuntu:18.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgomp1 \
+      libgomp1 gfortran \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin

@@ -40,7 +40,7 @@ FROM ubuntu:18.04
 ARG LIB_INSTALL2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgomp1 $LIB_INSTALL2 \
+      libgomp1 gfortran $LIB_INSTALL2 \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin
