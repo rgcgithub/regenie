@@ -1,5 +1,21 @@
 ## Changelog for past releases
 
+Version 2.2.4 (Bug fix for multi-trait step 1 run with binary traits of different missingness patterns)
+
+Version 2.2.3 (Bug fix for binary traits for which null logistic regression gives 0/1 fitted probabilities; enabled multi-threaded null model fitting for approximate Firth null models)
+
+Version 2.2.2 (Bug fix for binary traits for which null logistic regression gives 0/1 fitted probabilities [i.e. highly imbalanced or low case counts]; New option `--sex-specific` for sex-specific analyses)
+
+Version 2.2.1 (Bug fix for Step 2 with binary traits for which null logistic regression gives 0/1 fitted probabilities [i.e. highly imbalanced or low case counts])
+
+Version 2.2 (Faster implementation of Step 1 and 2 (see [here](https://rgcgithub.github.io/regenie/performance/#new-timings-improvements) for details); new options `--write-null-firth/--use-null-firth` to store the estimates from approximate Firth null model; new option `--minCaseCount` to filter out BTs with low number of cases from the analysis; new option `--no-split` to enforce output of summary stats to a single file for all traits; added support for tranposed phenotype file format with `--tphenoFile`)
+
+Version 2.0.2 (Bug fix for burden testing with BGEN files not in v1.2 with 8-bit encoding; enabled faster step 2 implementation with Zstd compressed BGEN files in v1.2 with 8-bit encoding)
+
+Version 2.0.1 (New option `--catCovList` to specify categorical covariates; Enabled parameter expansion when specifying select phenotypes/covariates to analyze [e.g. 'PC{1:10}'])
+
+Version 2.0 (Added burden testing functionality for region or gene-based tests [see [website](https://rgcgithub.github.io/regenie/options/#burden-testing) for details]; added sample size column in summary stats output).
+
 Version 1.0.7 (Enabled for level 0 models in step 1 to be run in parallel [see [Wiki](https://github.com/rgcgithub/regenie/wiki/Further-parallelization-for-level-0-models-in-Step-1) for details]).
 
 Version 1.0.6.9 (Improved step 2 for BGEN format files not in v1.2 or 8-bit encoding).
