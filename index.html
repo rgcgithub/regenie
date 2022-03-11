@@ -165,16 +165,18 @@
 <ul>
 <li>It works on quantitative and binary traits, including binary
 traits with unbalanced case-control ratios</li>
+<li>It can handle population structure and relatedness</li>
 <li>It can process multiple phenotypes at once</li>
-<li>For binary traits it supports Firth logistic regression and an SPA test</li>
-<li>It can perform gene/region-based burden tests</li>
+<li>For binary traits, it supports Firth logistic regression and an SPA test</li>
+<li>It can perform gene/region-based tests (Burden, SKAT/SKATO, ACATV/ACATO)</li>
+<li>It can perform interaction tests (GxE, GxG) as well as conditional analyses</li>
 <li>It is fast and memory efficient 🔥</li>
 <li>It supports the <a href="https://www.well.ox.ac.uk/~gav/bgen_format/">BGEN</a>, <a href="https://www.cog-genomics.org/plink/1.9/formats#bed">PLINK</a> bed/bim/fam and <a href="https://www.cog-genomics.org/plink/2.0/formats#pgen">PLINK2</a> pgen/pvar/psam genetic data formats</li>
 <li>It is ideally suited for implementation in
   <a href="https://spark.apache.org/">Apache Spark</a> (see <a href="https://projectglow.io/">GLOW</a>)</li>
 </ul>
 <h2 id="citation">Citation</h2>
-<p>Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet 53, 1097–1103 (2021). https://doi.org/10.1038/s41588-021-00870-7</p>
+<p>Mbatchou, J., Barnard, L., Backman, J. et al. Computationally efficient whole-genome regression for quantitative and binary traits. Nat Genet 53, 1097–1103 (2021). <a href="https://doi.org/10.1038/s41588-021-00870-7">https://doi.org/10.1038/s41588-021-00870-7</a></p>
 <h2 id="license">License</h2>
 <p><strong>regenie</strong> is distributed under an <a href="https://github.com/rgcgithub/regenie/blob/master/LICENSE">MIT license</a>.</p>
 <h2 id="contact">Contact</h2>
@@ -198,6 +200,8 @@ Version 1.0 (22 June 2020): Initial release
         
         <hr>
         <p>
+        <small>REGENIE is licensed under the <a href='https://github.com/rgcgithub/regenie/blob/master/LICENSE'>MIT license</small><br>
+        
         <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
         </p>
 
@@ -303,6 +307,6 @@ autoNumber: "AMS"
 </html>
 
 <!--
-MkDocs version : 1.0.4
-Build Date UTC : 2021-09-27 21:46:14
+MkDocs version : 1.2.3
+Build Date UTC : 2022-03-11 14:20:02.060190+00:00
 -->
