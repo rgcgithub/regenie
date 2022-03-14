@@ -943,7 +943,6 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   MatrixXd XtWX, V1, b_loo;
   LLT<MatrixXd> Hinv;
   l1->pheno_l1_not_converged = ArrayXb::Constant(params->n_pheno, false);
-  MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
   for (int i = 0; i < 6; i++)
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
 
@@ -975,6 +974,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
     // starting values for each trait
     beta = ArrayXd::Zero(bs_l1);
     for(int j = 0; j < params->n_ridge_l1; ++j ) {
+      if(params->debug) cerr << "Ridge param #" << j+1 << "\n";
 
       // using warm starts (i.e. set final beta of previous ridge param 
       // as initial beta for current ridge param)
@@ -989,18 +989,18 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
       // compute Hinv
       // zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_nullreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
-      XtWX = MatrixXd::Zero(bs_l1, bs_l1);
+      XtWX = VectorXd::Constant(bs_l1, params->tau[0](j)).asDiagonal(); // compute XtWX in chunks
       for(chunk = 0; chunk < nchunk; ++chunk){
         size_chunk = ( chunk == nchunk - 1 ? params->cv_folds - target_size * chunk : target_size );
         j_start = chunk * target_size;
 
         Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
-        Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
-        Ref<MatrixXb> mask_chunk = mask.matrix().block(j_start, 0, size_chunk,1);
+        Ref<ArrayXd> w_chunk = wvec.segment(j_start, size_chunk);
+        Ref<ArrayXb> mask_chunk = mask.segment(j_start, size_chunk);
 
-        XtWX += Xmat_chunk.transpose() * mask_chunk.array().select(w_chunk.array(),0).matrix().asDiagonal() * Xmat_chunk;
+        XtWX.noalias() += Xmat_chunk.transpose() * mask_chunk.select(w_chunk,0).matrix().asDiagonal() * Xmat_chunk;
       }
-      Hinv.compute( XtWX + params->tau[0](j) * ident_l1 );
+      Hinv.compute( XtWX );
 
       // LOOCV estimates
       for(chunk = 0; chunk < nchunk; ++chunk ) {
@@ -1009,11 +1009,11 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
         Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
         Ref<MatrixXd> Yvec_chunk = Y.matrix().block(j_start, 0, size_chunk, 1);
-        Ref<MatrixXb> mask_chunk = mask.matrix().block(j_start, 0, size_chunk,1);
+        Ref<ArrayXb> mask_chunk = mask.segment(j_start, size_chunk);
 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
         for(int i = 0; i < size_chunk; ++i ) {
-          if(!mask_chunk(i,0)) continue;
+          if(!mask_chunk(i)) continue;
           v2 = Xmat_chunk.row(i) * V1.col(i);
           v2 *= wvec(j_start + i);
           b_loo = (beta - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
@@ -1050,60 +1050,77 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 
   int bs_l1 = params->total_n_block * params->n_ridge_l0;
   int niter_cur = 0, j_start, chunk, size_chunk;
-  ArrayXd etavec, zvec, betanew, score;
-  MatrixXd XtWX, XtWZ, V1;
+  double fn_start = 0, fn_end = 0;
+  ArrayXd etavec, betanew, score, step_size;
+  MatrixXd XtWX;
   LLT<MatrixXd> Hinv;
-  MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
+  //// get starting values
+  // get w=p*(1-p) and check none of the values are 0
+  get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
+  if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
+    sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
+    return false;
+  }
+  // get -2f(b)
+  fn_start = get_logist_dev(Y, pivec, mask) + lambda * betaold.square().sum();
+  // get the score
+  score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
+  score -= lambda * betaold;
 
   while(niter_cur++ < params->niter_max_ridge) {
 
-    // get w=p*(1-p) and check none of the values are 0
-    get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
-    if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
-      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
-      return false;
-    }
-
-    zvec = mask.select( (etavec - offset) + (Y - pivec) / wvec, 0);
-
-    // compute XtWX and XtWZ in chunks
-    XtWX = MatrixXd::Zero(bs_l1, bs_l1); XtWZ = MatrixXd::Zero(bs_l1, 1);
+    // get step size
+    XtWX = VectorXd::Constant(bs_l1, lambda).asDiagonal(); // compute XtWX in chunks
     for(chunk = 0; chunk < nchunk; ++chunk ) {
       size_chunk = ( chunk == nchunk - 1 ? params->cv_folds - target_size * chunk : target_size );
       j_start = chunk * target_size;
 
       Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
-      Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
-      Ref<MatrixXd> z_chunk = zvec.matrix().block(j_start, 0, size_chunk,1);
-      Ref<const MatrixXb> mask_chunk = mask.matrix().block(j_start, 0, size_chunk,1);
+      Ref<ArrayXd> w_chunk = wvec.segment(j_start, size_chunk); // nx1
+      Ref<const ArrayXb> mask_chunk = mask.segment(j_start, size_chunk); //nx1
 
-      V1 = Xmat_chunk.transpose() * mask_chunk.array().select(w_chunk.array(),0).matrix().asDiagonal();
-      XtWX += V1 * Xmat_chunk;
-      XtWZ += V1 * z_chunk;
+      XtWX.noalias() += Xmat_chunk.transpose() * mask_chunk.select(w_chunk,0).matrix().asDiagonal() * Xmat_chunk;
     }
-    Hinv.compute( XtWX + lambda * ident_l1 );
-    betanew = Hinv.solve(XtWZ).array();
+    Hinv.compute( XtWX );
+    step_size = Hinv.solve(score.matrix()).array();
 
-    // get w=p*(1-p) and check none of the values are 0
-    get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
-    if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
-      sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
-      return false;
+    // check f(b)
+    for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+
+      betanew = betaold + step_size;
+
+      // get w=p*(1-p) and check none of the values are 0
+      get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
+      if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
+        sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
+        return false;
+      }
+
+      // -2f(b)
+      fn_end = get_logist_dev(Y, pivec, mask) + lambda * betanew.square().sum();
+      if(params->debug) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << fn_start << "-->" << fn_end << "\n";
+
+      if( fn_end < (fn_start + params->numtol) ) break;
+      // adjusted step size
+      step_size /= 2;
     }
 
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
     score -= lambda * betanew;
+    if(params->debug) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
 
     if( score.abs().maxCoeff() < params->l1_ridge_tol ) break;
 
     betaold = betanew;
+    fn_start = fn_end;
   }
 
   if(niter_cur > params->niter_max_ridge) 
     return false;
-  //sout << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
+
+  if(params->debug) cerr << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
 
   betaold = betanew;
   return true;

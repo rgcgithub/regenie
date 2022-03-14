@@ -1305,7 +1305,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 
   // compute Hinv
   //zvec = (etavec - m_ests.offset_nullreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
-  XtWX = MatrixXd::Zero(bs_l1, bs_l1);
+  XtWX = VectorXd::Constant(bs_l1, params.tau[0](val)).asDiagonal(); // compute XtWX in chunks
   for(chunk = 0; chunk < nchunk; ++chunk){
     size_chunk = ( chunk == nchunk - 1 ? params.cv_folds - target_size * chunk : target_size );
     j_start = chunk * target_size;
@@ -1313,9 +1313,9 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
     Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
     Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
 
-    XtWX += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
+    XtWX.noalias() += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
   }
-  Hinv.compute( XtWX + params.tau[0](val) * ident_l1 );
+  Hinv.compute( XtWX );
 
   // loo estimates
   for(chunk = 0; chunk < nchunk; ++chunk ) {
