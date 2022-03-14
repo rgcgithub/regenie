@@ -913,7 +913,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
           l1->cumsum_values[2](ph,j) += p1(l) * p1(l); // Sx2
           l1->cumsum_values[3](ph,j) += l1->test_pheno_raw[ph][i](l,0) * l1->test_pheno_raw[ph][i](l,0); // Sy2
           l1->cumsum_values[4](ph,j) += p1(l) * l1->test_pheno_raw[ph][i](l,0); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik_bern(l1->test_pheno_raw[ph][i](l,0), p1(l)); // LL
+          l1->cumsum_values[5](ph,j) += compute_log_lik_bern(l1->test_pheno_raw[ph][i](l,0), p1(l)); // -LL
         }
 
       }
@@ -1031,7 +1031,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
           l1->cumsum_values[2](ph,j) += p1 * p1; // Sx2
           l1->cumsum_values[3](ph,j) += Yvec_chunk(i,0) * Yvec_chunk(i,0); // Sy2
           l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i,0); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik_bern(Yvec_chunk(i,0), p1); // Sxy
+          l1->cumsum_values[5](ph,j) += compute_log_lik_bern(Yvec_chunk(i,0), p1); // -LL
         }
       }
 
@@ -1307,7 +1307,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
           l1->cumsum_values[2](ph,j) += p1(l) * p1(l); // Sx2
           l1->cumsum_values[3](ph,j) += l1->test_pheno_raw[ph][i](l,0) * l1->test_pheno_raw[ph][i](l,0); // Sy2
           l1->cumsum_values[4](ph,j) += p1(l) * l1->test_pheno_raw[ph][i](l,0); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik_poisson(l1->test_pheno_raw[ph][i](l,0), p1(l)); // LL
+          l1->cumsum_values[5](ph,j) += compute_log_lik_poisson(l1->test_pheno_raw[ph][i](l,0), p1(l)); // -LL
         }
 
       }
@@ -1422,7 +1422,7 @@ void ridge_poisson_level_1_loocv(struct in_files* files, struct param* params, s
           l1->cumsum_values[2](ph,j) += p1 * p1; // Sx2
           l1->cumsum_values[3](ph,j) += Yvec_chunk(i,0) * Yvec_chunk(i,0); // Sy2
           l1->cumsum_values[4](ph,j) += p1 * Yvec_chunk(i,0); // Sxy
-          l1->cumsum_values[5](ph,j) += compute_log_lik_poisson(Yvec_chunk(i,0), p1); // Sxy
+          l1->cumsum_values[5](ph,j) += compute_log_lik_poisson(Yvec_chunk(i,0), p1); // -LL
         }
       }
 

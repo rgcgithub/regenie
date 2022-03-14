@@ -1208,7 +1208,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
   if(!params->test_mode && !params->run_l1_only && params->write_l0_pred){
     if(files->loco_tmp_prefix.empty()) files->loco_tmp_prefix = files->out_file;
     sout << " * writing level 0 predictions to disk" << endl;
-    sout << "   -temporary files will have prefix [" << files->loco_tmp_prefix << "_l0_Y]" << endl;
+    sout << "   -" << (params->rm_l0_pred ? "temporary " : "") << "files will have prefix [" << files->loco_tmp_prefix << "_l0_Y]" << endl;
     // N*P*T*R
     int b_eff = params->total_n_block;
     total_ram = params->n_pheno * b_eff * params->n_ridge_l0;

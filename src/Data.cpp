@@ -727,7 +727,7 @@ void Data::prep_parallel_l0(){
     throw "cannot read header line in master file."; 
 
   if( (sscanf( line.c_str(), "%d %d", &params.parallel_nGeno, &tmpi ) != 2) || (tmpi != params.block_size) )
-    throw "invalid header line."; 
+    throw "invalid header line in master file."; 
 
   // skip to line job_num
   int nskip=1;
@@ -769,7 +769,7 @@ void Data::prep_parallel_l1(){
   if(!getline(infile, line))
     throw "cannot read header line in master file."; 
   if( (sscanf( line.c_str(), "%d %d", &params.parallel_nGeno, &nb ) != 2) || (nb != params.block_size) )
-    throw "invalid header line."; 
+    throw "invalid header line in master file."; 
 
   nblocks = 0, nsnps = 0, lineread=0;
   while( getline(infile, line) ){
@@ -1283,7 +1283,6 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
   ArrayXd beta, pivec, wvec;
   MatrixXd XtWX, V1, beta_final;
   LLT<MatrixXd> Hinv;
-  MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
 
   uint64 max_bytes = params.chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (bs_l1 * target_size) matrix ]
