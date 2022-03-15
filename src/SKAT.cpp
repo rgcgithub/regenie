@@ -226,6 +226,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     if(jcol < 0) continue; // this should not happen though
     MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
     nnz = Jvec.count();
+    if(nnz == 0) continue;
 
     // get kernel matrix
     SpMat Jstar (nnz, Kmat.rows()); // KmxM
@@ -346,6 +347,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     if(jcol < 0) continue; // this should not happen though
     MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
     nnz = Jvec.count();
+    if(nnz == 0) continue;
 
     // to get variants in mask
     SpMat Jstar (nnz, Kmat.rows()); // KmxM
@@ -439,7 +441,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       if( (pvs_skato.row(ph).array() < 0).any() ) continue;
 
       if(with_skato_acat){
-        if(debug) cerr << "skat-acat logp=" << pvs_skato.row(ph) <<"\n";
+        if(debug) cerr << "skato-acat logp=" << pvs_skato.row(ph) <<"\n";
         get_logp(get_acat(pvs_skato.row(ph).array()), pvs_skato_acat(ph,0), chisq_skato_acat(ph, 0), nl_dbl_dmin);
       } 
       if(with_acato){ // include acatv pvalue
@@ -584,7 +586,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
       int npass = (Jvec && (Rvec != 0)).count();
-      if(npass < 1) continue;
+      if(npass == 0) continue;
 
       // extract rows/columns
       SpMat Jstar (npass, Kmat.rows()); // KmxM
@@ -728,7 +730,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
       int npass = (Jvec && (Rvec != 0)).count();
-      if(npass < 1) continue;
+      if(npass == 0) continue;
 
       // extract rows/columns
       SpMat Jstar (npass, Kmat.rows()); // KmxM
