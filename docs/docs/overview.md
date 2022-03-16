@@ -235,6 +235,11 @@ We also denote by \(S_i\) the score statistics obtained from the
 This can be especially helpful when testing rare variants as single-variant 
 tests usually have lower power performance.
 
+To avoid inflation in the gene-based tests due to rare variants, we have implemented the collapsing approach
+proposed in SAIGE-GENE+[@RN492], where ultra-rare vairants are aggregated into a mask.
+For highly imbalanced binary traits, SPA/Firth correction can be used to calibrate the test statistics in the
+gene-based tests as proposed in Zhao et al. (2020)[@RN452]. 
+
 #### Burden tests
 Burden tests, as defined in Lee et al. (2014)[@RN487], assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is a fixed coefficient, which then leads to the test statistic
 $$Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2$$
@@ -270,7 +275,7 @@ $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
 
-The omnibus test ACATO[$^{10}$](#fn:10) combines ACATV with the SKAT and burden tests as 
+The omnibus test ACATO[$^{12}$](#fn:12) combines ACATV with the SKAT and burden tests as 
 $$
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -282,6 +287,7 @@ where unlike the original ACATO test, we only use one set of the weights $w_i$.
 Alternatively, we augment the test to include an extended set of SKATO models beyond SKAT and Burden
 (which correspond to $\rho$ of 0 and 1 in SKATO respectively) and use the default SKATO grid of 8 values for $\rho$.
 
+#### Case-control imbalance
 
 #### Non-Negative Least Square test
 **regenie** can generate burden masks which are obtained by aggregating single variants

@@ -508,9 +508,7 @@ For example, `--vc-tests skato,acato-full` will run SKATO and ACATO
 the p-values for SKAT, SKATO, ACATV and ACATO will be output.
 
 Ultra-rare variants (defined by default as MAC$\le$10, see `--vc-MACthr`) are collapsed into
-a burden mask which is then included in the tests instead of the individual variants;
-this is the strategy which was recommended in [SAIGE-GENE+](https://www.medrxiv.org/content/10.1101/2021.07.12.21260400v1) 
-for ultra-rare variants.
+a burden mask which is then included in the tests instead of the individual variants.
 
 For additional details on the tests, [see here](../overview/#step-2-gene-based-testing).
 
@@ -527,7 +525,7 @@ generated using different annotation classes as well as AAF thresholds.
 | NNLS |nnls  | $\checkmark$|$\times$|$\checkmark$|$\checkmark$        |
 
 The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
-(see ref. 9 [here](../overview/#fn:9)).
+(see ref. 11 [here](../overview/#fn:11)).
 The NNLS test is described into more detail [here](../overview/#non-negative-least-square-test).
 
 

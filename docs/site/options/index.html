@@ -1050,9 +1050,7 @@ If you'd like to only include variants whose AAF is below a given threshold
 (both using the default grid of 8 <code>rho</code> values for the SKATO models) and 
 the p-values for SKAT, SKATO, ACATV and ACATO will be output.</p>
 <p>Ultra-rare variants (defined by default as MAC$\le$10, see <code>--vc-MACthr</code>) are collapsed into
-a burden mask which is then included in the tests instead of the individual variants;
-this is the strategy which was recommended in <a href="https://www.medrxiv.org/content/10.1101/2021.07.12.21260400v1">SAIGE-GENE+</a> 
-for ultra-rare variants.</p>
+a burden mask which is then included in the tests instead of the individual variants.</p>
 <p>For additional details on the tests, <a href="../overview/#step-2-gene-based-testing">see here</a>.</p>
 <h4 id="joint-test-for-burden-masks">Joint test for burden masks</h4>
 <p>The following tests can be used to combine different burden masks 
@@ -1096,7 +1094,7 @@ generated using different annotation classes as well as AAF thresholds.</p>
 </tbody>
 </table>
 <p>The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
-(see ref. 9 <a href="../overview/#fn:9">here</a>).
+(see ref. 11 <a href="../overview/#fn:11">here</a>).
 The NNLS test is described into more detail <a href="../overview/#non-negative-least-square-test">here</a>.</p>
 <h4 id="lovolodo-schemes">LOVO/LODO schemes</h4>
 <p>The leave-one-variant-out (LOVO) scheme takes all sites going into a mask,

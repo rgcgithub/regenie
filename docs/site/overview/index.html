@@ -166,6 +166,7 @@
                 <li class="third-level"><a href="#burden-tests">Burden tests</a></li>
                 <li class="third-level"><a href="#variance-component-tests">Variance component tests</a></li>
                 <li class="third-level"><a href="#cauchy-combination-tests">Cauchy combination tests</a></li>
+                <li class="third-level"><a href="#case-control-imbalance">Case-control imbalance</a></li>
                 <li class="third-level"><a href="#non-negative-least-square-test">Non-Negative Least Square test</a></li>
             <li class="second-level"><a href="#step-2-interaction-testing">Step 2 : Interaction testing</a></li>
                 
@@ -373,20 +374,24 @@ We also denote by <script type="math/tex">S_i</script> the score statistics obta
 <a href="#step-2-single-variant-association-testing">single-variant tests</a>.
 This can be especially helpful when testing rare variants as single-variant 
 tests usually have lower power performance.</p>
+<p>To avoid inflation in the gene-based tests due to rare variants, we have implemented the collapsing approach
+proposed in SAIGE-GENE+<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup>, where ultra-rare vairants are aggregated into a mask.
+For highly imbalanced binary traits, SPA/Firth correction can be used to calibrate the test statistics in the
+gene-based tests as proposed in Zhao et al. (2020)<sup id="fnref:6"><a class="footnote-ref" href="#fn:6">6</a></sup>. </p>
 <h4 id="burden-tests">Burden tests</h4>
-<p>Burden tests, as defined in Lee et al. (2014)<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup>, assume <script type="math/tex">\beta_i=\beta\; \forall i</script>, where <script type="math/tex">\beta</script> is a fixed coefficient, which then leads to the test statistic
+<p>Burden tests, as defined in Lee et al. (2014)<sup id="fnref:7"><a class="footnote-ref" href="#fn:7">7</a></sup>, assume <script type="math/tex">\beta_i=\beta\; \forall i</script>, where <script type="math/tex">\beta</script> is a fixed coefficient, which then leads to the test statistic
 <script type="math/tex; mode=display">Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2</script>
 These tests collapse variants into a single variable which is then tested for association with the phenotype. Hence, they are more powerful when variants have effects in the same direction and of similar magnitude. 
 In <strong>regenie</strong>, multiple options are available to aggregate variants together into a burden mask beyond the linear combination above (<a href="../options/#options_1">see here</a>). 
-For example, the burden tests that were employed in Backman et al. (2021)<sup id="fnref:6"><a class="footnote-ref" href="#fn:6">6</a></sup>
+For example, the burden tests that were employed in Backman et al. (2021)<sup id="fnref:8"><a class="footnote-ref" href="#fn:8">8</a></sup>
 use the default strategy in <strong>regenie</strong> of collapsing variants by taking
 the maximum number of rare alleles across the sites.</p>
 <h4 id="variance-component-tests">Variance component tests</h4>
-<p>Unlike burden tests, SKAT<sup id="fnref:7"><a class="footnote-ref" href="#fn:7">7</a></sup> assume the effect sizes $\beta_i$ come from an arbitrary
+<p>Unlike burden tests, SKAT<sup id="fnref:9"><a class="footnote-ref" href="#fn:9">9</a></sup> assume the effect sizes $\beta_i$ come from an arbitrary
 distribution with mean 0 and variance $\tau^2$ which leads to the test statistic
 <script type="math/tex; mode=display">Q_{SKAT} = \sum_i w_i^2S_i^2</script>
 Hence, SKAT can remain powerful when variant effects are in opposite directions.</p>
-<p>The omnibus test SKATO<sup id="fnref:8"><a class="footnote-ref" href="#fn:8">8</a></sup> combines the SKAT and burden tests as 
+<p>The omnibus test SKATO<sup id="fnref:10"><a class="footnote-ref" href="#fn:10">10</a></sup> combines the SKAT and burden tests as 
 <script type="math/tex; mode=display">Q_{SKATO} = \rho Q_{BURDEN} + (1-\rho) Q_{SKAT}</script>
 So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
 In practice, the parameter $\rho$ is chosen to maximize the power 
@@ -395,14 +400,14 @@ and set the weights $w_i = Beta(MAF_i,1,25)$].</p>
 <p>The original SKATO method uses numerical integration when maximizing power across the 
 various SKATO models that use different values for $\rho$. 
 We also implement a modification of SKATO, named SKATO-ACAT, 
-which instead uses the Cauchy combination method<sup id="fnref:9"><a class="footnote-ref" href="#fn:9">9</a></sup> 
+which instead uses the Cauchy combination method<sup id="fnref:11"><a class="footnote-ref" href="#fn:11">11</a></sup> 
 to combine the p-values for the different SKATO models.</p>
 <h4 id="cauchy-combination-tests">Cauchy combination tests</h4>
-<p>The ACATV<sup id="fnref:10"><a class="footnote-ref" href="#fn:10">10</a></sup> test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
+<p>The ACATV<sup id="fnref:12"><a class="footnote-ref" href="#fn:12">12</a></sup> test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
 <script type="math/tex; mode=display">Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}</script>
 where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.</p>
-<p>The omnibus test ACATO<a href="#fn:10">$^{10}$</a> combines ACATV with the SKAT and burden tests as 
+<p>The omnibus test ACATO<a href="#fn:12">$^{12}$</a> combines ACATV with the SKAT and burden tests as 
 <script type="math/tex; mode=display">
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -413,10 +418,11 @@ Q_{ACATO} =
 <p>where unlike the original ACATO test, we only use one set of the weights $w_i$.
 Alternatively, we augment the test to include an extended set of SKATO models beyond SKAT and Burden
 (which correspond to $\rho$ of 0 and 1 in SKATO respectively) and use the default SKATO grid of 8 values for $\rho$.</p>
+<h4 id="case-control-imbalance">Case-control imbalance</h4>
 <h4 id="non-negative-least-square-test">Non-Negative Least Square test</h4>
 <p><strong>regenie</strong> can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Non-Negative Least Square (NNLS) test<sup id="fnref:11"><a class="footnote-ref" href="#fn:11">11</a></sup> combines these burden masks
+thresholds. The Non-Negative Least Square (NNLS) test<sup id="fnref:13"><a class="footnote-ref" href="#fn:13">13</a></sup> combines these burden masks
 in a joint model imposing constraints of same direction of effects
 <script type="math/tex; mode=display">
 \mu = \sum_{\text{mask }i} M_i\gamma_i
@@ -454,9 +460,9 @@ The last term in the model allows for the variant to have different effects acro
 <p>Misspecification of the model above, 
 such as in the presence of heteroskedasticity, or 
 the presence of high case-control imbalance can lead to inflation in the tests.
-Robust (sandwich) standard error (SE) estimators<sup id="fnref:12"><a class="footnote-ref" href="#fn:12">12</a></sup> can be used to adress model misspecification however, 
+Robust (sandwich) standard error (SE) estimators<sup id="fnref:14"><a class="footnote-ref" href="#fn:14">14</a></sup> can be used to adress model misspecification however, 
 they can suffer from inflation when testing rare variants
-or in the presence of high case-control imbalance<sup id="fnref:13"><a class="footnote-ref" href="#fn:13">13</a></sup>$^,$<sup id="fnref:14"><a class="footnote-ref" href="#fn:14">14</a></sup>.</p>
+or in the presence of high case-control imbalance<sup id="fnref:15"><a class="footnote-ref" href="#fn:15">15</a></sup>$^,$<sup id="fnref:16"><a class="footnote-ref" href="#fn:16">16</a></sup>.</p>
 <p>In <strong>regenie</strong>, we use a hybrid approach which combines:</p>
 <ul>
 <li>Wald test with sandwich estimators</li>
@@ -465,7 +471,7 @@ or in the presence of high case-control imbalance<sup id="fnref:13"><a class="fo
 </ul>
 <p>For quantitative traits,
 we use the sandwich estimators HC3 to perform a Wald test for variants whose minor allele count (MAC) is above 1000 (see <code>--rare-mac</code>). 
-For the remaining variants, we fit a heteroskedastic linear model (HLM)<sup id="fnref:15"><a class="footnote-ref" href="#fn:15">15</a></sup>
+For the remaining variants, we fit a heteroskedastic linear model (HLM)<sup id="fnref:17"><a class="footnote-ref" href="#fn:17">17</a></sup>
 <script type="math/tex; mode=display">
 Y = E\alpha + E^2\zeta + G\beta + (G\odot E)\gamma + \epsilon
 </script>
@@ -513,37 +519,43 @@ complete data by setting the phenotype values of individuals to remove to NA.</p
 <p>R. Dey, E.M. Schmidt, G.R. Abecasis, and S. Lee. A fast and accurate algorithm to test for binary phenotypes and its application to phewas. <em>The American Journal of Human Genetics</em>, 101(1):37&ndash;49, 2017.&#160;<a class="footnote-backref" href="#fnref:4" title="Jump back to footnote 4 in the text">&#8617;</a></p>
 </li>
 <li id="fn:5">
-<p>S. Lee, G.R. Abecasis, M. Boehnke, and X. Lin. Rare-variant association analysis: study designs and statistical tests. <em>Am J Hum Genet</em>, 95(1):5&ndash;23, 2014.&#160;<a class="footnote-backref" href="#fnref:5" title="Jump back to footnote 5 in the text">&#8617;</a></p>
+<p>W. et al. Zhou. Set-based rare variant association tests for biobank scale sequencing data sets. <em>medRxiv</em>, 2021.&#160;<a class="footnote-backref" href="#fnref:5" title="Jump back to footnote 5 in the text">&#8617;</a></p>
 </li>
 <li id="fn:6">
-<p>J.D. et al. Backman. Exome sequencing and analysis of 454,787 uk biobank participants. <em>Nature</em>, 599(7886):628&ndash;634, 2021.&#160;<a class="footnote-backref" href="#fnref:6" title="Jump back to footnote 6 in the text">&#8617;</a></p>
+<p>Z. et al. Zhao. Uk biobank whole-exome sequence binary phenome analysis with robust region-based rare-variant test. <em>Am J Hum Genet</em>, 106(1):3&ndash;12, 2020.&#160;<a class="footnote-backref" href="#fnref:6" title="Jump back to footnote 6 in the text">&#8617;</a></p>
 </li>
 <li id="fn:7">
-<p>M.C. et al. Wu. Rare-variant association testing for sequencing data with the sequence kernel association test. <em>Am J Hum Genet</em>, 89(1):82&ndash;93, 2011.&#160;<a class="footnote-backref" href="#fnref:7" title="Jump back to footnote 7 in the text">&#8617;</a></p>
+<p>S. Lee, G.R. Abecasis, M. Boehnke, and X. Lin. Rare-variant association analysis: study designs and statistical tests. <em>Am J Hum Genet</em>, 95(1):5&ndash;23, 2014.&#160;<a class="footnote-backref" href="#fnref:7" title="Jump back to footnote 7 in the text">&#8617;</a></p>
 </li>
 <li id="fn:8">
-<p>S. Lee, M.C. Wu, and X. Lin. Optimal tests for rare variant effects in sequencing association studies. <em>Biostatistics</em>, 13(4):762&ndash;75, 2012.&#160;<a class="footnote-backref" href="#fnref:8" title="Jump back to footnote 8 in the text">&#8617;</a></p>
+<p>J.D. et al. Backman. Exome sequencing and analysis of 454,787 uk biobank participants. <em>Nature</em>, 599(7886):628&ndash;634, 2021.&#160;<a class="footnote-backref" href="#fnref:8" title="Jump back to footnote 8 in the text">&#8617;</a></p>
 </li>
 <li id="fn:9">
-<p>Y. Liu and J. Xie. Cauchy combination test: a powerful test with analytic p-value calculation under arbitrary dependency structures. <em>J Am Stat Assoc</em>, 115(529):393&ndash;402, 2020.&#160;<a class="footnote-backref" href="#fnref:9" title="Jump back to footnote 9 in the text">&#8617;</a></p>
+<p>M.C. et al. Wu. Rare-variant association testing for sequencing data with the sequence kernel association test. <em>Am J Hum Genet</em>, 89(1):82&ndash;93, 2011.&#160;<a class="footnote-backref" href="#fnref:9" title="Jump back to footnote 9 in the text">&#8617;</a></p>
 </li>
 <li id="fn:10">
-<p>Y. et al. Liu. Acat: a fast and powerful p value combination method for rare-variant analysis in sequencing studies. <em>Am J Hum Genet</em>, 104(3):410&ndash;421, 2019.&#160;<a class="footnote-backref" href="#fnref:10" title="Jump back to footnote 10 in the text">&#8617;</a></p>
+<p>S. Lee, M.C. Wu, and X. Lin. Optimal tests for rare variant effects in sequencing association studies. <em>Biostatistics</em>, 13(4):762&ndash;75, 2012.&#160;<a class="footnote-backref" href="#fnref:10" title="Jump back to footnote 10 in the text">&#8617;</a></p>
 </li>
 <li id="fn:11">
-<p>A. Ziyatdinov, M. Barber, and J. Marchini. Pooling information across burden tests in the uk biobank exome sequencing study. <em>ASHG Conference</em>, 2020.&#160;<a class="footnote-backref" href="#fnref:11" title="Jump back to footnote 11 in the text">&#8617;</a></p>
+<p>Y. Liu and J. Xie. Cauchy combination test: a powerful test with analytic p-value calculation under arbitrary dependency structures. <em>J Am Stat Assoc</em>, 115(529):393&ndash;402, 2020.&#160;<a class="footnote-backref" href="#fnref:11" title="Jump back to footnote 11 in the text">&#8617;</a></p>
 </li>
 <li id="fn:12">
-<p>J.G. MacKinnon and H. White. Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. <em>Journal of Econometrics</em>, 29(3):305&ndash;325, 1985.&#160;<a class="footnote-backref" href="#fnref:12" title="Jump back to footnote 12 in the text">&#8617;</a></p>
+<p>Y. et al. Liu. Acat: a fast and powerful p value combination method for rare-variant analysis in sequencing studies. <em>Am J Hum Genet</em>, 104(3):410&ndash;421, 2019.&#160;<a class="footnote-backref" href="#fnref:12" title="Jump back to footnote 12 in the text">&#8617;</a></p>
 </li>
 <li id="fn:13">
-<p>E.J. Tchetgen Tchetgen and P. Kraft. On the robustness of tests of genetic associations incorporating gene-environment interaction when the environmental exposure is misspecified. <em>Epidemiology</em>, 22(2):257&ndash;61, 2011.&#160;<a class="footnote-backref" href="#fnref:13" title="Jump back to footnote 13 in the text">&#8617;</a></p>
+<p>A. Ziyatdinov, M. Barber, and J. Marchini. Pooling information across burden tests in the uk biobank exome sequencing study. <em>ASHG Conference</em>, 2020.&#160;<a class="footnote-backref" href="#fnref:13" title="Jump back to footnote 13 in the text">&#8617;</a></p>
 </li>
 <li id="fn:14">
-<p>A. Voorman, T. Lumley, B. McKnight, and K. Rice. Behavior of qq-plots and genomic control in studies of gene-environment interaction. <em>PLoS One</em>, 6(5):e19416, 2011.&#160;<a class="footnote-backref" href="#fnref:14" title="Jump back to footnote 14 in the text">&#8617;</a></p>
+<p>J.G. MacKinnon and H. White. Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. <em>Journal of Econometrics</em>, 29(3):305&ndash;325, 1985.&#160;<a class="footnote-backref" href="#fnref:14" title="Jump back to footnote 14 in the text">&#8617;</a></p>
 </li>
 <li id="fn:15">
-<p>A.I. Young, F.L. Wauthier, and P. Donnelly. Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. <em>Nat Genet</em>, 50(11):1608&ndash;1614, 2018.&#160;<a class="footnote-backref" href="#fnref:15" title="Jump back to footnote 15 in the text">&#8617;</a></p>
+<p>E.J. Tchetgen Tchetgen and P. Kraft. On the robustness of tests of genetic associations incorporating gene-environment interaction when the environmental exposure is misspecified. <em>Epidemiology</em>, 22(2):257&ndash;61, 2011.&#160;<a class="footnote-backref" href="#fnref:15" title="Jump back to footnote 15 in the text">&#8617;</a></p>
+</li>
+<li id="fn:16">
+<p>A. Voorman, T. Lumley, B. McKnight, and K. Rice. Behavior of qq-plots and genomic control in studies of gene-environment interaction. <em>PLoS One</em>, 6(5):e19416, 2011.&#160;<a class="footnote-backref" href="#fnref:16" title="Jump back to footnote 16 in the text">&#8617;</a></p>
+</li>
+<li id="fn:17">
+<p>A.I. Young, F.L. Wauthier, and P. Donnelly. Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. <em>Nat Genet</em>, 50(11):1608&ndash;1614, 2018.&#160;<a class="footnote-backref" href="#fnref:17" title="Jump back to footnote 17 in the text">&#8617;</a></p>
 </li>
 </ol>
 </div></div>
