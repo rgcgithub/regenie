@@ -509,7 +509,7 @@ the p-values for SKAT, SKATO, ACATV and ACATO will be output.
 
 Ultra-rare variants (defined by default as MAC$\le$10, see `--vc-MACthr`) are collapsed into
 a burden mask which is then included in the tests instead of the individual variants;
-this is the strategy which was recommended in [SAIGE-GENE+](https://www.medrxiv.org/content/10.1101/2021.07.12.21260400v1.full.pdf) 
+this is the strategy which was recommended in [SAIGE-GENE+](https://www.medrxiv.org/content/10.1101/2021.07.12.21260400v1) 
 for ultra-rare variants.
 
 For additional details on the tests, [see here](../overview/#step-2-gene-based-testing).
