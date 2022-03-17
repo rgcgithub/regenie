@@ -1,0 +1,110 @@
+{% set name = "regenie" %}
+{% set version = "3.0" %}
+{% set sha256 = "" %}
+
+package:
+    name: {{ name|lower }}
+    version: {{ version }}
+
+build:
+    number: '0'
+
+source:
+    url: 
+    sha256: {{ sha256 }}
+
+requirements:
+    build:
+        - {{ compiler('c') }}
+        - {{ compiler('cxx') }}
+        - {{ compiler('fortran') }}
+        - _libgcc_mutex 0.1 conda_forge
+        - _openmp_mutex 4.5 1_gnu
+        - binutils_impl_linux-64 2.35.1 h193b22a_1
+        - binutils_linux-64 2.35 hc3fd857_29
+        - bzip2 1.0.8 h7f98852_4
+        - c-ares 1.17.1 h36c2ea0_0
+        - ca-certificates 2020.12.5 ha878542_0
+        - cmake 3.19.2 h4547794_0
+        - expat 2.2.9 he1b5a44_2
+        - gcc_impl_linux-64 7.5.0 hd9e1a51_17
+        - gcc_linux-64 7.5.0 he2a3fca_29
+        - gfortran_impl_linux-64 7.5.0 hfca37b7_17
+        - gfortran_linux-64 7.5.0 ha081f1e_29
+        - gxx_impl_linux-64 7.5.0 h7ea4de1_17
+        - gxx_linux-64 7.5.0 h547f3ba_29
+        - kernel-headers_linux-64 2.6.32 h77966d4_13
+        - krb5 1.17.2 h926e7f8_0
+        - ld_impl_linux-64 2.35.1 hea4e1c9_1
+        - libcurl 7.71.1 hcdd3856_8
+        - libedit 3.1.20191231 he28a2e2_2
+        - libev 4.33 h516909a_1
+        - libgcc-devel_linux-64 7.5.0 h42c25f5_17
+        - libgcc-ng 9.3.0 h5dbcf3e_17
+        - libgfortran4 7.5.0 hae1eefd_17
+        - libgomp 9.3.0 h5dbcf3e_17
+        - libnghttp2 1.41.0 h8cfc5f6_2
+        - libssh2 1.9.0 hab1572f_5
+        - libstdcxx-devel_linux-64 7.5.0 h4084dd6_17
+        - libstdcxx-ng 9.3.0 h2ae2ef3_17
+        - libuv 1.40.0 h7f98852_0
+        - make 4.3 hd18ef5c_1
+        - ncurses 6.2 h58526e2_4
+        - openssl 1.1.1i h7f98852_0
+        - rhash 1.4.1 h7f98852_0
+        - sysroot_linux-64 2.12 h77966d4_13
+        - tk 8.6.10 h21135ba_1
+        - xz 5.2.5 h516909a_1
+        - zlib 1.2.11 h516909a_1010
+    host:
+        - _libgcc_mutex 0.1 conda_forge
+        - _openmp_mutex 4.5 1_llvm
+        - bgenix 1.1.7 hd96fc87_1
+        - boost-cpp 1.74.0 h9d3c048_1
+        - bzip2 1.0.8 h7f98852_4
+        - icu 68.1 h58526e2_0
+        - libgcc-ng 9.3.0 h5dbcf3e_17
+        - libgfortran-ng 7.5.0 hae1eefd_17
+        - libgfortran4 7.5.0 hae1eefd_17
+        - liblapacke 3.8.0 20_mkl
+        - libstdcxx-ng 9.3.0 h2ae2ef3_17
+        - llvm-openmp 11.0.0 hfc4b9b4_1
+        - lz4-c 1.9.3 h9c3ff4c_0
+        - mkl 2020.4 h726a3e6_304
+        - mkl-include 2020.4 h726a3e6_304
+        - ncurses 6.2 h58526e2_4
+        - readline 8.0 he28a2e2_2
+        - sqlite 3.34.0 h74cdb3f_0
+        - xz 5.2.5 h516909a_1
+        - zlib 1.2.11 h516909a_1010
+        - zstd 1.4.8 ha95c52a_1
+    run:
+        - boost-cpp >=1.74.0,<1.74.1.0a0
+        - libgcc-ng >=7.5.0
+        - libgfortran-ng
+        - libgfortran4 >=7.5.0
+        - libstdcxx-ng >=7.5.0
+        - llvm-openmp
+        - mkl >=2020.4,<2021.0a0
+        - mkl-include
+        - sqlite >=3.34.0,<4.0a0
+        - zlib >=1.2.11,<1.3.0a0
+        - zstd >=1.4.8,<1.5.0a0
+test:
+    commands:
+        - regenie --help
+        - regenie --version
+about:
+    dev_url: https://github.com/rgcgithub/regenie
+    doc_url: https://rgcgithub.github.io/regenie/options/
+    home: https://rgcgithub.github.io/regenie/
+    license: MIT
+    license_file: LICENSE
+    summary: Regenie is a C++ program for whole genome regression modelling of large
+        genome-wide association studies (GWAS).
+extra:
+    copy_test_source_files: true
+    final: true
+    recipe-maintainers:
+      - matuskosut
+      - joellembatchou
