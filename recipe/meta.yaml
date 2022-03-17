@@ -10,8 +10,9 @@ build:
     number: '0'
 
 source:
-    url: 
-    sha256: {{ sha256 }}
+    git_url: https://github.com/rgcgithub/regenie.git
+    git_tag: conda_recipe
+      #    sha256: {{ sha256 }}
 
 requirements:
     build:
