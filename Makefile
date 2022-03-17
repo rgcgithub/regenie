@@ -119,7 +119,7 @@ RGFLAGS      += -DVERSION_NUMBER=\"$(RG_VERSION)\"
 OBJECTS       = $(patsubst %.cpp,%.o,$(wildcard ./src/*.cpp))
 
 PGEN_PATH     = ./external_libs/pgenlib/
-INC          += -I${PGEN_PATH} -I${PGEN_PATH}/simde/ -I${PGEN_PATH}/include/ -I./external_libs/cxxopts/include/ -I./external_libs/LBFGSpp/include/ -I${BGEN_PATH} -I./external_libs/eigen3/ -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I${BGEN_PATH}/db/include/ -I${BGEN_PATH}/3rd_party/sqlite3 -I./external_libs/
+INC          += -I${PGEN_PATH} -I${PGEN_PATH}/simde/ -I${PGEN_PATH}/include/ -I./external_libs/cxxopts/include/ -I./external_libs/LBFGSpp/include/ -I${BGEN_PATH} -I./external_libs/eigen3/ -I${BGEN_PATH}/genfile/include/ -I${BGEN_PATH}/3rd_party/boost_1_55_0/ -I${BGEN_PATH}/3rd_party/zstd-1.1.0/lib -I${BGEN_PATH}/db/include/ -I${BGEN_PATH}/3rd_party/sqlite3 -I./external_libs/
 
 LPATHS       += ${LIBMKL} -L${BGEN_PATH}/build/ -L${BGEN_PATH}/build/3rd_party/zstd-1.1.0/ -L${BGEN_PATH}/build/db/ -L${BGEN_PATH}/build/3rd_party/sqlite3/ -L${BGEN_PATH}/build/3rd_party/boost_1_55_0 -L/usr/lib/
 
