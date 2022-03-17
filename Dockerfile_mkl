@@ -10,9 +10,12 @@ FROM ubuntu:18.04 AS builder
 ARG BOOST_IO
 ARG LIB_INSTALL
 ARG STATIC
+ARG CMAKE_VERSION_MAJOR=3.13
+ARG CMAKE_VERSION_MINOR=0
 
 WORKDIR /src
 
+ADD http://cmake.org/files/v${CMAKE_VERSION_MAJOR}/cmake-${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}-Linux-x86_64.sh cmake_install.sh
 ADD http://code.enkre.net/bgen/tarball/release/v1.1.7 v1.1.7.tgz
 
 # install BGEN library
@@ -25,6 +28,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       zlib1g-dev \
       apt-transport-https ca-certificates \
       $LIB_INSTALL \
+      && sh cmake_install.sh --prefix=/usr/local --skip-license --exclude-subdir \
+      && rm cmake_install.sh \
       && tar -xzf v1.1.7.tgz \
       && rm v1.1.7.tgz \
       && cd v1.1.7 \
@@ -45,8 +50,8 @@ COPY . /src/regenie
 WORKDIR /src/regenie
 
 # compile with MKL as static
-RUN make BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/mkl/ STATIC=1
-
+RUN BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/mkl/ STATIC=1 cmake . \
+      && make
 
 # no need to install Boost IO and MKL here (static linking)
 FROM ubuntu:18.04

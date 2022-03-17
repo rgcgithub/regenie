@@ -3,40 +3,37 @@
 ### REGENIE TEST SCRIPT TO USE WITH DOCKER IMAGE ###
 # Functions used
 help_msg="Check the docker image and re-build if needed."
+fail_msg="Step 1 of REGENIE did not finish successfully."
 err_msg="Docker image did not build successfully."
 print_err () { 
   echo "$err_msg"; exit 1 
 }
+print_simple_err () {
+  echo "ERROR: ${1}"; exit 1 
+}
 print_custom_err () {
-  echo "${1} $help_msg"; exit 1 
+  echo "ERROR: ${1} $help_msg"; exit 1 
 }
 
 ### READ OPTIONS
 if [ "$#" -eq 0 ]; then
-  echo "Usage: test.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"; exit 1
+  print_simple_err "Need to specify options. Usage: test_docker.sh <PATH_TO_CLONED_REGENIE_REPO> <DOCKER_IMAGE_TAG>"
 fi
 
 REGENIE_PATH="$1" 
 DOCKER_IMAGE=$2
-WITH_GZ=$3
 
 # quick check src/example folders are present
 if [ ! -d "${REGENIE_PATH}/src" ] || [ ! -d "${REGENIE_PATH}/example" ]; then
-  echo "ERROR: First input argument must be the directory where Regenie repo was cloned"; exit 1
+  print_simple_err "First input argument must be the directory where Regenie repo was cloned"
 fi 
 cd $REGENIE_PATH
 
 # check docker image
 if [ -z $DOCKER_IMAGE ]; then
-  echo "ERROR: Need to pass docker image tag."; exit 1
+  print_simple_err "Need to pass docker image tag."
 elif [[ "$(docker images -q $DOCKER_IMAGE 2> /dev/null)" == "" ]]; then
-  echo "ERROR: Image with tag \"${DOCKER_IMAGE}\" does not exist!"; exit 1
-fi
-
-# If compiling was done with Boost Iostream library, use gzipped files as input
-if [ "$WITH_GZ" = "1" ]; then
-  fsuf=.gz
-  arg_gz="--gz"
+  print_simple_err "Image with tag \"${DOCKER_IMAGE}\" does not exist!"
 fi
 
 # Create test folder to store results and use as mounting point
@@ -44,13 +41,17 @@ REGENIE_PATH=$(pwd)/  # use absolute path
 # where to mount in container
 mntpt=/docker/ 
 
+# If compiling was done with Boost Iostream library, use gzipped files as input
+if docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie --version | grep -q "gz"; then
+  fsuf=.gz
+  arg_gz="--gz"
+fi
+
 echo "** Checking docker image \"${DOCKER_IMAGE}\" **"
 echo -e "  -> Mounting directory $REGENIE_PATH to /docker/ \n"
 
-
 echo -e "==>Running step 1 of REGENIE"
 # Prepare regenie command to run for Step 1
-fail_msg="Step 1 of REGENIE did not finish successfully."
 basecmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \

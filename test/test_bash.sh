@@ -2,28 +2,32 @@
 
 ### REGENIE TEST SCRIPT 
 # Functions used
-help_msg="Update to most recent REGENIE version (using 'git pull') and re-compile the software (using 'make clean && make')."
+help_msg="Update to most recent REGENIE version (using 'git pull') and re-compile the software."
+fail_msg="Step 1 of REGENIE did not finish successfully."
 err_msg="Uh oh, REGENIE did not build successfully. $help_msg"
 print_err () { 
   echo "$err_msg"; exit 1 
 }
+print_simple_err () {
+  echo "ERROR: ${1}"; exit 1 
+}
 print_custom_err () {
-  echo "${1} $help_msg"; exit 1 
+  echo "ERROR: ${1} $help_msg"; exit 1 
 }
 
 
 ### READ OPTIONS
-info_msg="Usage: ./test_bash.sh OPTIONS\n"
-info_msg+="  --path  path to Regenie repository\n"
-info_msg+="  --gz    Flag to specify compilation was done with Boost Iostream library\n"
-if [ "$#" -eq 0 ]; then
-  echo -e "$info_msg"; exit 1
-fi
+info_msg='
+Usage: ./test_bash.sh OPTIONS
+          --path  path to Regenie repository
+          --gz    Flag to specify compilation was done with Boost Iostream library
+'
+REGENIE_PATH=$(pwd) # assume current wd
 
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --path) REGENIE_PATH="$2"; shift ;;
-    --gz) WITH_GZ=1 ;;
+    -h|--help) echo $info_msg; exit 1;;
     *) echo -e "Unknown parameter passed: $1.\n$info_msg"; exit 1 ;;
   esac
   shift
@@ -32,23 +36,23 @@ done
 
 # quick check src/example folders are present
 if [ ! -d "${REGENIE_PATH}/src" ] || [ ! -d "${REGENIE_PATH}/example" ]; then
-  echo "ERROR: First input argument must be the directory where Regenie repo was cloned"; exit 1
+  print_simple_err "First input argument must be the directory where Regenie repo was cloned."
 else
   cd $REGENIE_PATH
 fi 
-
-# If compiling was done with Boost Iostream library, use gzipped files as input
-if [ "$WITH_GZ" = "1" ]; then
-  fsuf=.gz
-  arg_gz="--gz"
-fi
 
 REGENIE_PATH=$(pwd)/  # use absolute path
 mntpt=
 regenie_bin=`ls regenie* | head -n 1`
 
 if [ ! -f "$regenie_bin" ]; then
-  echo "ERROR: Regenie binary cannot be found. Compile the software first using 'make clean && make'"; exit 1
+  print_simple_err "Regenie binary cannot be found. Specify the Regenie source path (--path) or compile the software first."
+fi
+
+# If compiling was done with Boost Iostream library, use gzipped files as input
+if ./$regenie_bin --version | grep -q "gz"; then
+  fsuf=.gz
+  arg_gz="--gz"
 fi
 
 
@@ -58,7 +62,6 @@ echo -e "==>Running step 1 of REGENIE"
 #  --tpheno-file ${mntpt}example/tphenotype_bin.txt${fsuf} \
 #  --tpheno-indexCol 4 \
 #  --tpheno-ignoreCols {1:3} \
-fail_msg="Step 1 of REGENIE did not finish successfully."
 basecmd="--step 1 \
   --bed ${mntpt}example/example \
   --exclude ${mntpt}example/snplist_rm.txt \
