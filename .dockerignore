@@ -6,6 +6,7 @@
 # directories to ignore
 example/
 test/
+recipe/
 # in source code
 src/*.o
 external_libs/pgenlib/*.o
