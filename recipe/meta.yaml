@@ -10,8 +10,11 @@ build:
     number: '0'
 
 source:
+    patches:
+      - patches/0001-use-conda-cmakelist-file.patch
+    # for now stick to main branch (until push release)
     git_url: https://github.com/rgcgithub/regenie.git
-    git_tag: conda_recipe
+    git_tag: master
       #    sha256: {{ sha256 }}
 
 requirements:
