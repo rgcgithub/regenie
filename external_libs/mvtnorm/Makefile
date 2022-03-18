@@ -1,16 +1,20 @@
-FLAG=-O2 -DNDEBUG -fPIC
+FLAG  =-O2 -DNDEBUG -fPIC
+AR   ?= ar
+CXX  ?= g++
+CC   ?= gcc
+FC   ?= gfortran
 
 libMvtnorm.a: mvtnorm.o mvt.o randomF77.o
-	ar rcs $@ $^ 
+	${AR} rcs $@ $^ 
 
 mvtnorm.o: mvtnorm.cpp mvtnorm.h
-	g++ $(FLAG) -c mvtnorm.cpp -o mvtnorm.o
+	${CXX} $(FLAG) -c mvtnorm.cpp -o mvtnorm.o
 
 mvt.o: mvt.f
-	gfortran $(FLAG) -c mvt.f
+	${FC} $(FLAG) -c mvt.f
 
 randomF77.o: randomF77.c
-	gcc $(FLAG) -c randomF77.c
+	${CC} $(FLAG) -c randomF77.c
 
 clean:
 	rm -f *.o *.a

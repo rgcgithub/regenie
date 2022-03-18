@@ -1,12 +1,14 @@
 FLAG=-O2 -DNDEBUG -fPIC -std=legacy
+AR   ?= ar
+FC   ?= gfortran
 
 OBJECTS = $(patsubst %.f,%.o,$(wildcard ./*.f))
 
 libquad.a: ${OBJECTS}
-	ar rcs $@ $^ 
+	${AR} rcs $@ $^ 
 
 %.o: %.f
-	gfortran $(FLAG) -c $<
+	${FC} $(FLAG) -c $<
 
 clean:
 	rm -f *.o *.a
