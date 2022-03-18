@@ -17,13 +17,19 @@ jobs:
       BOOST_IO: 0
       STATIC: 1
       BGEN_VERSION: v1.1.7
+      CMAKE_VERSION_MAJOR: 3.13
+      CMAKE_VERSION_MINOR: 0
       LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
 
       - name: Apt packages
-        run: sudo apt install -y --no-install-recommends ${LIB_INSTALL}
+        run: |
+          sudo apt install -y --no-install-recommends ${LIB_INSTALL}
+          wget -O cmake_install.sh "http://cmake.org/files/v${CMAKE_VERSION_MAJOR}/cmake-${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}-Linux-x86_64.sh"
+          sh cmake_install.sh --prefix=/usr/local --skip-license --exclude-subdir
+          rm cmake_install.sh
 
       - name: Cache Bgen
         id: bgen-cache
@@ -46,7 +52,11 @@ jobs:
           popd
 
       - name: Build
-        run: make BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC all
-
+        run: |
+          BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC cmake .
+          make
+    
       - name: Test
-        run: ./regenie --help
+        run: |
+          ./regenie --help
+          ./regenie --version
