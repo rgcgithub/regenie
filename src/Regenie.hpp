@@ -34,6 +34,7 @@
 #include <algorithm>
 #include <iomanip>
 #include <random>
+#include <memory>
 #include <map>
 #include <fstream>
 #include <math.h>       /* exp */
