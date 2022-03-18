@@ -28,8 +28,8 @@ jobs:
         run: |
           sudo apt install -y --no-install-recommends ${LIB_INSTALL}
           wget -O cmake_install.sh "http://cmake.org/files/v${CMAKE_VERSION_MAJOR}/cmake-${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}-Linux-x86_64.sh"
-          sh cmake_install.sh --prefix=/usr/local --skip-license --exclude-subdir
-          rm cmake_install.sh
+          sudo sh cmake_install.sh --prefix=/usr/local --skip-license --exclude-subdir
+          sudo rm cmake_install.sh
 
       - name: Cache Bgen
         id: bgen-cache
