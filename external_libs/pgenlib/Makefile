@@ -1,10 +1,10 @@
 #
 # Makefile to compile PGEN library
 #
-AR   				 ?= ar
-CXX          ?= g++
-CXXFLAGS      = -O3 -Wall -std=c++11
-CFLAGS		    = 
+AR         ?= ar
+CXX        ?= g++
+CXXFLAGS    = -O3 -Wall -std=c++11
+CFLAGS      = 
 
 OBJECTS       = $(patsubst %.cc,%.o,$(wildcard ./include/*.cc)) $(patsubst %.cpp,%.o,$(wildcard *.cpp))  $(patsubst %.cc,%.o,$(wildcard *.cc))
 INC           =  -I./simde/ -I./include/

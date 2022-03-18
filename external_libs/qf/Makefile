@@ -1,6 +1,6 @@
-AR   		?= ar
-CXX     ?= g++
-CXXFLAGS = -O2 -DNDEBUG -fPIC
+AR       ?= ar
+CXX      ?= g++
+CXXFLAGS  = -O2 -DNDEBUG -fPIC
 
 qf.a: qfc.o
 	${AR} rcs $@ $^ 
