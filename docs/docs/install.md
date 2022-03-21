@@ -42,16 +42,16 @@ on your system and modify the MKLROOT variable in the `Makefile`
 to the installed MKL library path.
 
 ### With CMake
-You can compile the **regenie** binary using CMake version >=3.13 (instead of `make` as above).
+You can compile the binary using CMake version >=3.13 (instead of `make` as above).
 ```
 mkdir -p build
 cd build
 cmake ..
 make
 ```
-This will generate the binary in the `build/` directory. 
+This will generate the binary in the `build/` subdirectory. 
 To use with Boost Iostreams and/or Intel MKL library,
-you can add the corresponding flags before the cmake command
+add the corresponding flags before the `cmake` command on line 3
 (e.g. `HAS_BOOST_IOSTREAM=1 cmake ..`).
 
 ### With Docker
