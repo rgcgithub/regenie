@@ -41,6 +41,19 @@ the Intel Math Kernel (MKL) library. You first need to have it installed
 on your system and modify the MKLROOT variable in the `Makefile`
 to the installed MKL library path.
 
+### With CMake
+You can compile the **regenie** binary using CMake version >=3.13 (instead of `make` as above).
+```
+mkdir -p build
+cd build
+cmake ..
+make
+```
+This will generate the binary in the `build/` directory. 
+To use with Boost Iostreams and/or Intel MKL library,
+you can add the corresponding flags before the cmake command
+(e.g. `HAS_BOOST_IOSTREAM=1 cmake ..`).
+
 ### With Docker
 Alternatively, you can use a Docker image to run **regenie**. 
 A guide to using docker is available on 
@@ -49,7 +62,6 @@ the [Github page](https://github.com/rgcgithub/regenie/wiki/Using-docker).
 ### With conda
 To install with conda, follow the directions 
 [here](https://anaconda.org/bioconda/regenie).
-Note that we do not maintain the package in conda.
 
 
 
