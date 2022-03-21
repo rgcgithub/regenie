@@ -27,7 +27,7 @@ REGENIE_PATH=$(pwd) # assume current wd
 while [[ "$#" -gt 0 ]]; do
   case $1 in
     --path) REGENIE_PATH="$2"; shift ;;
-    -h|--help) echo $info_msg; exit 1;;
+    -h|--help) echo "$info_msg"; exit 1;;
     *) echo -e "Unknown parameter passed: $1.\n$info_msg"; exit 1 ;;
   esac
   shift
