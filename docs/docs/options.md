@@ -151,9 +151,8 @@ Each line contains individual FID and IID followed by \(C\) covariate
 values.
 
 Samples listed in this file that are not in bgen/bed/pgen file are ignored.
-Genotyped samples that are not in this file are removed from the analysis.
-
-No missing values are allowed.
+Genotyped samples that are not in this file are removed from the analysis as well as
+samples with missing values at any of the covariates included.
 
 If `--step 2` is specified, then the covariate file should be the same
 as that used in Step 1.
