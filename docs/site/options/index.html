@@ -418,8 +418,8 @@ will be collapsed into a single chromosome.</p>
 <p>Each line contains individual FID and IID followed by <script type="math/tex">C</script> covariate
 values.</p>
 <p>Samples listed in this file that are not in bgen/bed/pgen file are ignored.
-Genotyped samples that are not in this file are removed from the analysis.</p>
-<p>No missing values are allowed.</p>
+Genotyped samples that are not in this file are removed from the analysis as well as
+samples with missing values at any of the covariates included.</p>
 <p>If <code>--step 2</code> is specified, then the covariate file should be the same
 as that used in Step 1.</p>
 <h4 id="phenotype-file-format">Phenotype file format</h4>
