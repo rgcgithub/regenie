@@ -597,7 +597,7 @@ std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const i
     buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
     if( params->af_cc ) buffer << " NA NA ";
     // info
-    if(params->dosage_mode) buffer << "NA ";
+    if(!params->build_mask && params->dosage_mode) buffer << "NA ";
     // n test
     buffer << "NA " << burden_str << test_names[ttype];
   }
