@@ -155,6 +155,8 @@
                 
             <li class="second-level"><a href="#standard-installation">Standard installation</a></li>
                 
+            <li class="second-level"><a href="#with-cmake">With CMake</a></li>
+                
             <li class="second-level"><a href="#with-docker">With Docker</a></li>
                 
             <li class="second-level"><a href="#with-conda">With conda</a></li>
@@ -203,14 +205,24 @@ If this library is installed on the system, you should compile using
 the Intel Math Kernel (MKL) library. You first need to have it installed 
 on your system and modify the MKLROOT variable in the <code>Makefile</code>
 to the installed MKL library path.</p>
+<h3 id="with-cmake">With CMake</h3>
+<p>You can compile the binary using CMake version &gt;=3.13 (instead of <code>make</code> as above).</p>
+<pre><code>mkdir -p build
+cd build
+cmake ..
+make
+</code></pre>
+<p>This will generate the binary in the <code>build/</code> subdirectory. 
+To use with Boost Iostreams and/or Intel MKL library,
+add the corresponding flags before the <code>cmake</code> command on line 3
+(e.g. <code>HAS_BOOST_IOSTREAM=1 cmake ..</code>).</p>
 <h3 id="with-docker">With Docker</h3>
 <p>Alternatively, you can use a Docker image to run <strong>regenie</strong>. 
 A guide to using docker is available on 
 the <a href="https://github.com/rgcgithub/regenie/wiki/Using-docker">Github page</a>.</p>
 <h3 id="with-conda">With conda</h3>
 <p>To install with conda, follow the directions 
-<a href="https://anaconda.org/bioconda/regenie">here</a>.
-Note that we do not maintain the package in conda.</p>
+<a href="https://anaconda.org/bioconda/regenie">here</a>.</p>
 <h2 id="computing-requirements">Computing requirements</h2>
 <p>We have tested <strong>regenie</strong> on 64-bit Linux and 64-bit Mac OSX computing environments.</p>
 <p>Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. </p>
