@@ -101,6 +101,7 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
 
   ncovars = params->ncov;
   apply_single_p = params->apply_gene_pval_strategy;
+  debug_mode = params->debug;
 
   return with_flip;
 }
@@ -208,6 +209,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
   boost::math::beta_distribution<>  dist(acat_a1, acat_a2);
 
   df_test = good_vars.count();
+  if(debug_mode) cerr << "# burden masks for joint acat test = " << df_test << "\n";
   if( df_test == 0 ) {reset_vals(); return;}
 
   // make array of weights
@@ -222,6 +224,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
       wts(isnp) = v_maf * (1-v_maf) * tmpd * tmpd;
     } else wts(isnp) = 1; // assume weight=1
   }
+  if(debug_mode) cerr << "done building acat weights\n";
 
   // get ACAT test stat
   get_pv( get_acat(log10pv, wts) );

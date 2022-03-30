@@ -45,7 +45,7 @@ class JTests {
     bool nnls_normalize = true, nnls_strict = false;
     int nnls_napprox, nnls_verbose = 0;
     double acat_a1,acat_a2;
-    bool valid_snp_mode;
+    bool valid_snp_mode, debug_mode;
     double pval, plog, zval, scale_denum = 0;
     double pval_nnls_pos, pval_nnls_neg;
     double tol = 1e-6, qr_tol = 1e-7, nnls_tol = 1e-10; // qr threshold used in R
