@@ -22,6 +22,7 @@ plugins:
   - search
   - bibtex:
       bib_file: "refs.bib"
+      csl_file: "/tmp/nature.csl"
 
 google_analytics:
   - UA-166859683-2

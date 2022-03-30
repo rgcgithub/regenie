@@ -20,7 +20,7 @@ with both **regenie** and BOLT-LMM resulting in stronger association signals rel
 at known peaks of association 
 (note that in the plots, the scaling of the y-axis changes above the upper dashed line).
 
-![QTmanP](img/ManP_exemplarQTs_WB.png)
+![QTmanP](img/ManP_exemplarQTs_WB.jpg)
 <br/><br/>
 
 
@@ -58,7 +58,7 @@ However both **regenie** with Firth and SPA corrections, as well as SAIGE, which
 are all robust to this inflation and show similar agreement for the associations detected.
 
 
-![BTmanP](img/ManP_exemplarBTs_WB.png)
+![BTmanP](img/ManP_exemplarBTs_WB.jpg)
 <br/>
 
 We assessed the computational requirements of **regenie** and SAIGE using a larger set of 50 
@@ -81,7 +81,7 @@ and 26.8x faster in elapsed time.
 All runs above were done on the same computing environment (16 virtual CPU cores of 
 a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).
 
-### New timings improvements
+### Timings improvements in v2.2
 
 We have several changes in **regenie** v2.2 to improve the computational efficiency:
 
@@ -106,3 +106,19 @@ We have several changes in **regenie** v2.2 to improve the computational efficie
 *We thank Juha Karjalainen for suggesting this feature.*
 
 Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in **regenie** and each setting was replicated 5 times.
+
+<!---
+### Gene-based testing
+**regenie** v3.0 adds in a wide set of gene-based tests (see [here](../overview/#step-2-gene-based-testing) for details).
+We have performed simulation experiments to assess the performance of the various tests with quantitative and binary traits 
+(see the "Methods" section of the [Regenie paper](https://doi.org/10.1038/s41588-021-00870-7) for details).
+Variant sets were constructed using functional annotations (LoF only or Lof+missense where missense vairants are classified as deleterious 
+using 5 in-silico algorithms) 
+as well as allele frequency thresholds focusing on rarer variation (1%, 0.1% and 0.01%).
+The SKAT/ACAT tests were applied only to variant sets using a 1% AAF threshold and 
+NNLS combined all mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
+For binary traits, we simulated phenotypes with various case-control ratios (1:9, 1:99 and 1:999)
+to have various amount of imbalance in the data and apply Firth/SPA correction to the tests.
+XX genes on chromosome 2 (XX variant sets in total) are tested for adssociation
+and the QQ plots below show the distribution p-values for each test.
+--->

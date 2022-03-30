@@ -154,7 +154,7 @@
                 
             <li class="second-level"><a href="#binary-traits">Binary traits</a></li>
                 
-            <li class="second-level"><a href="#new-timings-improvements">New timings improvements</a></li>
+            <li class="second-level"><a href="#timings-improvements-in-v22">Timings improvements in v2.2</a></li>
                 
     </ul>
 </div></div>
@@ -178,7 +178,7 @@ where testing was performed on 9.8 million imputed SNPs. </p>
 with both <strong>regenie</strong> and BOLT-LMM resulting in stronger association signals relative to fastGWA 
 at known peaks of association 
 (note that in the plots, the scaling of the y-axis changes above the upper dashed line).</p>
-<p><img alt="QTmanP" src="../img/ManP_exemplarQTs_WB.png" />
+<p><img alt="QTmanP" src="../img/ManP_exemplarQTs_WB.jpg" />
 <br/><br/></p>
 <p>We assessed the computational requirements of all three methods using a larger set of 50 
 quantitative traits from the UK Biobank, looking at computational timings as well as
@@ -205,7 +205,7 @@ all four approaches show very good agreement for the most balanced trait (CAD; c
 but as the fraction of cases decreases BOLT-LMM tends to give inflated test statistics. 
 However both <strong>regenie</strong> with Firth and SPA corrections, as well as SAIGE, which uses SPA correction, 
 are all robust to this inflation and show similar agreement for the associations detected.</p>
-<p><img alt="BTmanP" src="../img/ManP_exemplarBTs_WB.png" />
+<p><img alt="BTmanP" src="../img/ManP_exemplarBTs_WB.jpg" />
 <br/></p>
 <p>We assessed the computational requirements of <strong>regenie</strong> and SAIGE using a larger set of 50 
 binary traits from the UK Biobank that have a range of different case-control ratios and distinct missing data patterns. 
@@ -221,7 +221,7 @@ Overall, <strong>regenie</strong> using Firth correction was 8x faster than SAIG
 and 26.8x faster in elapsed time.</p>
 <p>All runs above were done on the same computing environment (16 virtual CPU cores of 
 a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).</p>
-<h3 id="new-timings-improvements">New timings improvements</h3>
+<h3 id="timings-improvements-in-v22">Timings improvements in v2.2</h3>
 <p>We have several changes in <strong>regenie</strong> v2.2 to improve the computational efficiency:</p>
 <ul>
 <li>The genotype file reading in Step 1 is now multi-threaded for all supported formats (i.e. BED, PGEN, and BGEN) and uses a faster file reading implementation for BGEN v1.2 format with 8-bit encoding. From our timings experiments below, these changes helped reduce the CPU time by 40-60% depending on the input format. </li>
@@ -242,7 +242,22 @@ a 2.1GHz AMD EPYC 7571 processor, 64GB of memory, and 600GB solid-state disk).</
 <li>We have added new options <code>--write-null-firth</code> and <code>--use-null-firth</code> to reduce the timing of Step 2 with approximate Firth when ran in parallel jobs split in smaller chunks within chromosomes. More specifically, <code>--write-null-firth</code> can be used in Step 1 to fit the null model for approximate Firth test and store the resulting estimates to file. Then in Step 2, specifying <code>--use-null-firth</code> will re-use these parameter estimates to reduce the timing of the approximate Firth null model fitting. 
 <em>We thank Juha Karjalainen for suggesting this feature.</em></li>
 </ul>
-<p>Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in <strong>regenie</strong> and each setting was replicated 5 times.</p></div>
+<p>Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in <strong>regenie</strong> and each setting was replicated 5 times.</p>
+<!---
+### Gene-based testing
+**regenie** v3.0 adds in a wide set of gene-based tests (see [here](../overview/#step-2-gene-based-testing) for details).
+We have performed simulation experiments to assess the performance of the various tests with quantitative and binary traits 
+(see the "Methods" section of the [Regenie paper](https://doi.org/10.1038/s41588-021-00870-7) for details).
+Variant sets were constructed using functional annotations (LoF only or Lof+missense where missense vairants are classified as deleterious 
+using 5 in-silico algorithms) 
+as well as allele frequency thresholds focusing on rarer variation (1%, 0.1% and 0.01%).
+The SKAT/ACAT tests were applied only to variant sets using a 1% AAF threshold and 
+NNLS combined all mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
+For binary traits, we simulated phenotypes with various case-control ratios (1:9, 1:99 and 1:999)
+to have various amount of imbalance in the data and apply Firth/SPA correction to the tests.
+XX genes on chromosome 2 (XX variant sets in total) are tested for adssociation
+and the QQ plots below show the distribution p-values for each test.
+---></div>
         
         
     </div>

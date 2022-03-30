@@ -333,7 +333,7 @@ We can look at the following hypotheses:
 Misspecification of the model above, 
 such as in the presence of heteroskedasticity, or 
 the presence of high case-control imbalance can lead to inflation in the tests.
-Robust (sandwich) standard error (SE) estimators[@RN490] can be used to adress model misspecification however, 
+Robust (sandwich) standard error (SE) estimators[@RN485] can be used to adress model misspecification however, 
 they can suffer from inflation when testing rare variants
 or in the presence of high case-control imbalance[@RN373]$^,$[@RN320].
 
