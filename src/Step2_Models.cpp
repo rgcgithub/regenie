@@ -489,11 +489,10 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
 }
 
 // Approximate null firth model
-void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_est, struct phenodt* pheno_data, struct ests const* m_ests, struct in_files* files, struct param const* params, mstream& sout){
+void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_est, struct phenodt* pheno_data, struct ests const* m_ests, struct in_files* files, struct param* params, mstream& sout){
 
   auto t1 = std::chrono::high_resolution_clock::now();
-  ArrayXb has_converged = ArrayXb::Constant(params->n_pheno, true);
-  pheno_data->pheno_pass = has_converged; // reset for each chr
+  ArrayXb has_converged = params->pheno_pass; // if null log reg converged
   IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
 
   if(!silent) sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
@@ -536,18 +535,17 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
       " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") "
       "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
 
-  } else if(!has_converged.all()) { // some phenotypes failed - write their names to file
+  } else if( ((!has_converged) && params->pheno_pass).any() ) { // some phenotypes failed - write their names to file
 
     Files outf;
     string failed_file = files->out_file + "_failedNullFirth_chr" + to_string(chrom) + ".list";
     outf.openForWrite( failed_file, sout);
-    pheno_data->pheno_pass = has_converged;
-    for( int i = 0; i < params->n_pheno; ++i ) {
-      if(pheno_data->pheno_pass(i)) continue;
-      outf << files->pheno_names[i] << endl;
-    }
+    for( int i = 0; i < params->n_pheno; ++i )
+      if(((!has_converged) && params->pheno_pass)(i))
+        outf << files->pheno_names[i] << endl;
     outf.closeFile();
-    sout << "WARNING: null Firth failed for " << (!has_converged).count() << " phenotypes (list of traits written to '" << failed_file << "' and these will be skipped)\n";
+    sout << "WARNING: null Firth failed for " << ((!has_converged) && params->pheno_pass).count() << " phenotypes (list of traits written to '" << failed_file << "' and these will be skipped)\n";
+    params->pheno_pass = has_converged;
 
   }
 
@@ -1526,7 +1524,7 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
       buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
     else buffer << "NA\tNA\tNA\tNA";
 
-  } else buffer << "NA\tNA\tNA\tNA"; // for skat/acat-type tests
+  } else buffer << "NA\tNA\tNA\tNA\tNA\tNA\tNA\tNA"; // for skat/acat-type tests
 
   // info column
   vector<string> infoCol;

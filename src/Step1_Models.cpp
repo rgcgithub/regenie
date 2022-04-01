@@ -45,6 +45,7 @@ using namespace boost;
 void fit_null_logistic(bool const& silent, const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
 
   if(!silent) sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
+  if(params->test_mode) params->pheno_pass = true;
 
   auto t1 = std::chrono::high_resolution_clock::now();
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
@@ -67,10 +68,13 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
     betaold(0) = etavec.mean() - loco_offset.mean();
 
-    if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout))
-      throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
-    else if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
-      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype #" << files->pheno_names[i] <<").";
+    if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)) {
+      params->pheno_pass(i) = false; // phenotype will be ignored
+      if(!silent) sout << "\n     WARNING: logistic regression did not converge for phenotype '" << files->pheno_names[i] <<"'.";
+      continue;
+      // throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter or check the covariates.";
+    } else if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
+      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
 
     if(params->test_mode){
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
@@ -198,8 +202,12 @@ void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* ph
     betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
     betaold(0) = etavec.mean() - loco_offset.mean();
 
-    if(!fit_poisson(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout))
-      throw "poisson regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
+    if(!fit_poisson(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)){
+      params->pheno_pass(i) = false; // phenotype will be ignored
+      sout << "\n     WARNING: poisson regression did not converge for phenotype '" << files->pheno_names[i] <<"'.";
+      continue;
+      // throw "poisson regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter?";
+    }
     else if( (mask && pivec < params->numtol_eps).any() )
       sout << "\n     WARNING: Fitted rates numerically 0 occurred (phenotype #" << files->pheno_names[i] <<").";
 

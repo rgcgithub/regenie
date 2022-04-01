@@ -64,7 +64,7 @@ void run_firth_correction_snp(int const&,int const&,int const&,struct geno_block
 
 // firth
 bool fit_approx_firth_null(int const&,int const&,struct phenodt const*,struct ests const*,Eigen::Ref<Eigen::ArrayXd>,struct param const*);
-void fit_null_firth(bool const&,int const&,struct f_ests*,struct phenodt*,struct ests const*,struct in_files*,struct param const*,mstream&);
+void fit_null_firth(bool const&,int const&,struct f_ests*,struct phenodt*,struct ests const*,struct in_files*,struct param*,mstream&);
 void fit_firth_logistic_snp(int const&,int const&,int const&,bool const&,struct param const*,struct phenodt*,struct ests const*,struct f_ests const*,const Eigen::Ref<const Eigen::MatrixXd>&,variant_block*,data_thread*,mstream&);
 bool fit_firth(int const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,int const&,double&,bool const&,double&,int const&,int const&,double const&,struct param const*);
 bool fit_firth_nr(double&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,int const&,double&,bool const&,double&,int const&,int const&,double const&,struct param const*);
