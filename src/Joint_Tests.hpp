@@ -31,15 +31,14 @@
 class JTests {
 
   public:
-    std::map<std::string, int> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6} };
-    std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG"};
-    uchar qr_tests = 7<<1; // 01110000 for ftest, gates and nnls
+    std::map<std::string, int> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6}, {"gene_m1_p", 7}, {"gene_p", 8} };
+    std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG","GENE_M1_P","GENE_P"};
+    uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
 
     // store variant set info (for each chr)
     std::vector<std::vector<vset>> setinfo;
 
     // for testing
-    uchar test_list; // 8 tests max
     int df_test, nvars, ncovars; // df, number of variants which passed filters,#covariates
     bool nnls_verbose_out = false;
     bool nnls_normalize = true, nnls_strict = false;
@@ -66,7 +65,7 @@ class JTests {
     void compute_qr_G(const Eigen::Ref<const MatrixXb>&,struct geno_block const*);
 
     // assoc. tests
-    std::string apply_joint_test(const int&,const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,const std::string&,struct param const*);
+    std::vector<std::string> apply_joint_test(const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,std::vector<std::string> const&,struct param const*);
     void compute_minp();
     void compute_acat(const int&,const int&,const std::vector<variant_block>&);
     void compute_ftest(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
@@ -75,7 +74,7 @@ class JTests {
     double get_me(const Eigen::Ref<const Eigen::MatrixXd>&);
 
     // final acat round
-    std::string run_single_p_acat(int const&,const int&,const int&,int const&,const std::string&,std::vector<variant_block>&,std::map<std::string, double>&,struct geno_block const*,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,struct param const*);
+    void run_single_p_acat(int const&,const int&,const int&,int const&,const std::string&,std::vector<variant_block>&,std::map<std::string, double>&,struct geno_block const*,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,std::vector<std::vector<std::string>>&,struct param const*);
     std::string print_gene_output(const std::string&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
     std::string print_sum_stats_gene(const std::string&,const std::string&,const int&,const int&,const int&,struct param const*);
     std::string print_sum_stats_htp_gene(const std::string&,const std::string&,const int&,const int&,const std::string&,struct param const*);

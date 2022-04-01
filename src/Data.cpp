@@ -2400,7 +2400,7 @@ void Data::test_joint() {
 
   std::chrono::high_resolution_clock::time_point t1, t2;
   string out;
-  vector < string > out_split;
+  vector < string > out_split, tmp_str;
   // output files
   Files ofile;
   // use pointer to class since it contains non-copyable elements
@@ -2536,11 +2536,14 @@ void Data::test_joint() {
         sout << "     -computing joint association tests..." << flush;
 
         jt.get_variant_names(chrom, bb, snpinfo);
-        for(int j = 0; j < params.n_pheno; ++j) 
+        tmp_str = jt.apply_joint_test(chrom, bb, &pheno_data, res, &Gblock, block_info, files.pheno_names, &params);
+
+        for(int j = 0; j < params.n_pheno; ++j) {
           if(params.split_by_pheno)
-            (*ofile_split[j]) << jt.apply_joint_test(chrom, bb, j, &pheno_data, res.col(j), &Gblock, block_info, files.pheno_names[j], &params);
+            (*ofile_split[j]) << tmp_str[j];
           else
-            ofile << jt.apply_joint_test(chrom, bb, j, &pheno_data, res.col(j), &Gblock, block_info, files.pheno_names[j], &params); // add test info
+            ofile << tmp_str[j]; // add test info
+        }
 
         auto t2 = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);

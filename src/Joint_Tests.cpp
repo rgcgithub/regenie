@@ -106,72 +106,102 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
   return with_flip;
 }
 
-string JTests::apply_joint_test(const int& chrom, const int& block, const int& ph, struct phenodt const* pheno_data, const Eigen::Ref<const Eigen::MatrixXd>& yres, struct geno_block const* gblock, std::vector<variant_block>& block_info, const string& pheno_name, struct param const* params){
+vector<string> JTests::apply_joint_test(const int& chrom, const int& block, struct phenodt const* pheno_data, const Eigen::Ref<const Eigen::MatrixXd>& res, struct geno_block const* gblock, std::vector<variant_block>& block_info, vector<string> const& ynames, struct param const* params){
 
-  int bs = setinfo[chrom - 1][block].snp_indices.size();
-  std::map<std::string, double> overall_p;
-  std::ostringstream buffer;
-  reset_vals();
+  int print_index, bs = setinfo[chrom - 1][block].snp_indices.size();
+  vector<string> out_str(params->n_pheno);
+  vector<vector<string>> sum_stats_str;
+  sum_stats_str.resize(joint_tests_map.size());
+  for (size_t i = 0; i < joint_tests_map.size(); i++)
+    sum_stats_str[i].resize(params->n_pheno); // store sum stats for each test/phenotype
 
-  if(nvars == 0 || set_vars(bs, ph, block_info)) 
-    return ""; // if no variants in set passed filters
-  
-  if( CHECK_BIT(test_list,joint_tests_map["minp"]) ) { // minP
-    compute_minp();
-    buffer << print_output(joint_tests_map["minp"], ph+1, chrom, block, pheno_name, params);
-  } 
-  if( CHECK_BIT(test_list,joint_tests_map["acat"]) ) { // ACAT
-    compute_acat(bs, ph, block_info);
-    if(apply_single_p && (plog >= 0)) overall_p["BURDEN-ACAT"] = plog;
-    buffer << print_output(joint_tests_map["acat"], ph+1, chrom, block, pheno_name, params);
-  } 
+  for(int ph = 0; ph < params->n_pheno; ++ph) {
 
-  // check other test
-  if( test_list & qr_tests ) {
+    std::map<std::string, double> overall_p;
+    reset_vals();
 
-    compute_qr_G(pheno_data->masked_indivs.col(ph), gblock);
+    MapcMatXd yres (res.col(ph).data(), res.rows(), 1);
+    string pheno_name = ynames[ph];
 
-    if( CHECK_BIT(test_list,joint_tests_map["ftest"]) ) { // F-test
-      compute_ftest(pheno_data->masked_indivs.col(ph), yres); 
-      buffer << print_output(joint_tests_map["ftest"], ph+1, chrom, block, pheno_name, params);
+    // keep track of this when not splitting sum stats file
+    bool run_tests = params->pheno_pass(ph) && (nvars > 0) && !set_vars(bs, ph, block_info);
+    bool print_stats = run_tests || !params->split_by_pheno;
+
+    if( CHECK_BIT(test_list,joint_tests_map["minp"]) ) { // minP
+      if(run_tests) compute_minp();
+      if(print_stats) sum_stats_str[joint_tests_map["minp"]][ph] = print_output(joint_tests_map["minp"], ph+1, chrom, block, pheno_name, params);
     } 
-    if( CHECK_BIT(test_list,joint_tests_map["gates"]) ) { // GATES
-      compute_gates(ph, block_info);
-      buffer << print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
+    if( CHECK_BIT(test_list,joint_tests_map["acat"]) ) { // ACAT
+      if(run_tests) {
+        compute_acat(bs, ph, block_info);
+        if(apply_single_p && (plog >= 0)) overall_p["BURDEN-ACAT"] = plog;
+      }
+      if(print_stats) sum_stats_str[joint_tests_map["acat"]][ph] = print_output(joint_tests_map["acat"], ph+1, chrom, block, pheno_name, params);
     } 
-    if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
-      compute_nnls(pheno_data->masked_indivs.col(ph), yres); 
 
-      if(!nnls_verbose_out) { 
-        // default output
-        buffer << print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
-      } else {
-        // verbose output with NNLS pos & neg split into two 
-        // 1. NNLS pos (test code 5)
-        if((pval_nnls_pos >= 0) && (pval_nnls_pos <= 1)) get_pv(pval_nnls_pos);
-        else reset_vals();
-        buffer << print_output(joint_tests_map["nnls_pos"], ph+1, chrom, block, pheno_name, params);
-        // 2. NNLS neg (test code 6)
-        if((pval_nnls_neg >= 0) && (pval_nnls_neg <= 1)) get_pv(pval_nnls_neg);
-        else reset_vals();
-        buffer << print_output(joint_tests_map["nnls_neg"], ph+1, chrom, block, pheno_name, params);
+    // check other test
+    if( test_list & qr_tests ) {
+
+      if(run_tests) compute_qr_G(pheno_data->masked_indivs.col(ph), gblock);
+
+      if( CHECK_BIT(test_list,joint_tests_map["ftest"]) ) { // F-test
+        if(run_tests) compute_ftest(pheno_data->masked_indivs.col(ph), yres); 
+        if(print_stats) sum_stats_str[joint_tests_map["ftest"]][ph] = print_output(joint_tests_map["ftest"], ph+1, chrom, block, pheno_name, params);
+      } 
+      if( CHECK_BIT(test_list,joint_tests_map["gates"]) ) { // GATES
+        if(run_tests) compute_gates(ph, block_info);
+        if(print_stats) sum_stats_str[joint_tests_map["gates"]][ph] = print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
+      } 
+      if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
+        if(run_tests) compute_nnls(pheno_data->masked_indivs.col(ph), yres); 
+
+        if(apply_single_p || !nnls_verbose_out) { 
+          // default output
+          if(print_stats) sum_stats_str[joint_tests_map["nnls"]][ph] = print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
+        } 
+        if(apply_single_p || nnls_verbose_out) { 
+          // verbose output with NNLS pos & neg split into two 
+          // 1. NNLS pos (test code 5)
+          if(run_tests && (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1)) get_pv(pval_nnls_pos);
+          else reset_vals();
+          if(print_stats) sum_stats_str[joint_tests_map["nnls_pos"]][ph] = print_output(joint_tests_map["nnls_pos"], ph+1, chrom, block, pheno_name, params);
+          // 2. NNLS neg (test code 6)
+          if(run_tests && (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1)) get_pv(pval_nnls_neg);
+          else reset_vals();
+          if(print_stats) sum_stats_str[joint_tests_map["nnls_neg"]][ph] = print_output(joint_tests_map["nnls_neg"], ph+1, chrom, block, pheno_name, params);
+        }
+
+        if( run_tests && apply_single_p &&
+            (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
+            (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) 
+          ) {
+          get_pv(pval_nnls_pos);overall_p["NNLS_POS"] = plog;
+          get_pv(pval_nnls_neg);overall_p["NNLS_NEG"] = plog;
+        }
+
       }
-
-      if( apply_single_p &&
-          (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
-          (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) 
-        ) {
-        get_pv(pval_nnls_pos);overall_p["NNLS_POS"] = plog;
-        get_pv(pval_nnls_neg);overall_p["NNLS_NEG"] = plog;
-      }
-
     }
+
+    // should at least have burden-acat p-value
+    if(apply_single_p) {
+      if(run_tests) run_single_p_acat(bs, chrom, block, ph, pheno_name, block_info, overall_p, gblock, yres, pheno_data->masked_indivs.col(ph), sum_stats_str, params);
+      // in case printing to single file
+      else if(!params->split_by_pheno) {
+        sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", "", ph+1, chrom, block, pheno_name, params);
+        sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+      }
+    }
+
   }
 
-  // should at least have burden-acat p-value
-  if(apply_single_p) buffer << run_single_p_acat(bs, chrom, block, ph, pheno_name, block_info, overall_p, gblock, yres, pheno_data->masked_indivs.col(ph), params);
+  // store sum stats (if single file, store at index 0)
+  for(size_t i = 0; i < joint_tests_map.size(); ++i)
+    for(int ph = 0; ph < params->n_pheno; ++ph){
+      print_index = params->split_by_pheno ? ph : 0;
+      out_str[print_index].append( sum_stats_str[i][ph] );
+    }
 
-  return buffer.str();
+  return out_str;
 }
 
 
@@ -505,7 +535,7 @@ double JTests::get_me(const Ref<const MatrixXd>& ldmat){
   return m_e;
 }
 
-std::string JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block, int const& ph, const string& pheno_name, std::vector<variant_block>& block_info, std::map<std::string, double>& overall_p, struct geno_block const* gblock, const Eigen::Ref<const Eigen::MatrixXd>& yres, const Eigen::Ref<const MatrixXb>& mask, struct param const* params){
+void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block, int const& ph, const string& pheno_name, std::vector<variant_block>& block_info, std::map<std::string, double>& overall_p, struct geno_block const* gblock, const Eigen::Ref<const Eigen::MatrixXd>& yres, const Eigen::Ref<const MatrixXb>& mask, vector<vector<string>>& sum_stats_str, struct param const* params){
 
   int ip;
   double max_logp = -1, pv; 
@@ -514,7 +544,6 @@ std::string JTests::run_single_p_acat(int const& bs, const int& chrom, const int
   ArrayXd pvals_gene;
   std::map <std::string, double> overall_p_m1;
   std::map <std::string, double>::iterator itr;
-  std::ostringstream buffer;
 
   // overall
   good_vars = false;
@@ -549,7 +578,10 @@ std::string JTests::run_single_p_acat(int const& bs, const int& chrom, const int
     for (itr = overall_p.begin(); itr !=  overall_p.end(); ++itr) 
       pvals_gene(ip++) = itr->second;
     get_pv( get_acat(pvals_gene) );
-    buffer << print_gene_output("GENE_P", max_logp_mask, ph+1, chrom, block, pheno_name, params);
+    sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", max_logp_mask, ph+1, chrom, block, pheno_name, params);
+  } else if(!params->split_by_pheno){
+    reset_vals();
+    sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", "", ph+1, chrom, block, pheno_name, params);
   }
 
   // for M1 masks
@@ -576,11 +608,17 @@ std::string JTests::run_single_p_acat(int const& bs, const int& chrom, const int
       for (itr = overall_p_m1.begin(); itr !=  overall_p_m1.end(); ++itr) 
         pvals_gene(ip++) = itr->second;
       get_pv( get_acat(pvals_gene) );
-      buffer << print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+      sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+    } else if(!params->split_by_pheno){
+      reset_vals();
+      sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
     }
+
+  } else if(!params->split_by_pheno){
+    reset_vals();
+    sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
   }
 
-  return buffer.str();
 }
 
 string JTests::print_output(const int& ttype, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
@@ -598,15 +636,15 @@ std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const i
   // chr pos id a0 a1 af
   if(params->split_by_pheno || ipheno == 1) {
     buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
-    if( params->af_cc ) buffer << " NA NA ";
+    if( params->af_cc ) buffer << "NA NA ";
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
     // n test
-    buffer << "NA " << burden_str << test_names[ttype];
+    buffer << "NA " << burden_str << test_names[ttype] << " ";
   }
 
   //beta se
-  buffer << " NA NA ";
+  buffer << "NA NA ";
 
   // chisq
   if( zval != -9 ) buffer << zval << " ";
@@ -618,7 +656,7 @@ std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const i
 
   //df (print it out only if split by pheno)
   if(params->split_by_pheno || (ipheno == params->n_pheno)) {
-    if(params->split_by_pheno && (plog != -9))  buffer << " DF=" << df_test << endl;
+    if(params->split_by_pheno && (plog != -9))  buffer << "DF=" << df_test << endl;
     else buffer << "DF=NA\n";
   }
 
@@ -677,15 +715,15 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
   // chr pos id a0 a1 af
   if(params->split_by_pheno || ipheno == 1) {
     buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
-    if( params->af_cc ) buffer << " NA NA ";
+    if( params->af_cc ) buffer << "NA NA ";
     // info
     if(params->dosage_mode) buffer << "NA ";
     // n test
-    buffer << "NA " << mname;
+    buffer << "NA " << mname << " ";
   }
 
   //beta se
-  buffer << " NA NA ";
+  buffer << "NA NA ";
 
   // chisq
   if( zval != -9 ) buffer << zval << " ";
@@ -697,7 +735,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 
   //df (print it out only if split by pheno)
   if(params->split_by_pheno || (ipheno == params->n_pheno)) {
-    if(params->split_by_pheno && (plog != -9))  buffer << " DF=" << df_test;
+    if(params->split_by_pheno && (plog != -9))  buffer << "DF=" << df_test;
     else buffer << "DF=NA";
 
     // top signal (only if split files)
