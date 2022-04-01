@@ -72,6 +72,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->w_interaction){
     if(params->interaction_snp) // if doing GxG interaction
       extract_interaction_snp(params, files, filters, pheno_data, gblock, ind_in_cov_and_geno, sout);
+    else if(params->interaction_prs) // if doing GxPRS interaction
+      extract_interaction_prs(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
     if(params->gwas_condtl){ // append to new_cov
       pheno_data->new_cov.conservativeResize(pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + pheno_data->interaction_cov.cols());
       pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov;
@@ -546,7 +548,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       covar_names.push_back( tmp_str_vec[i+2] );
       nc_cat += !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
       // with interaction test
-      if(params->w_interaction && !params->interaction_snp && (filters->interaction_cov == tmp_str_vec[i+2]) ) {
+      if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (filters->interaction_cov == tmp_str_vec[i+2]) ) {
         np_inter = 1;
         params->interaction_cat = !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
       }
@@ -559,7 +561,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   if( (int)filters->cov_colKeep_names.size() != params->n_cov ) 
     throw "not all covariates specified are found in the covariate file.";
 
-  if(params->w_interaction && !params->interaction_snp && (np_inter != 1))
+  if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (np_inter != 1))
     throw "cannot find the interaction covariate specified in the covariate file.";
 
   // check #covariates is > 0
@@ -573,7 +575,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   // allocate memory 
   pheno_data->new_cov = MatrixXd::Zero(params->n_samples, 1 + params->n_cov - np_inter);
   pheno_data->new_cov.col(0) = MatrixXd::Ones(params->n_samples, 1);
-  if(params->w_interaction && !params->interaction_snp) inter_cov_column.resize(params->n_samples);
+  if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) inter_cov_column.resize(params->n_samples);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -599,7 +601,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       if( !keep_cols(j) ) continue;
 
       // interaction covariate
-      if(params->w_interaction && !params->interaction_snp && (covar_names[i_cov] == filters->interaction_cov)){
+      if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i_cov] == filters->interaction_cov)){
 
         if( filters->cov_colKeep_names[ covar_names[i_cov] ] ) // if quantitative
           inter_cov_column(indiv_index) = convertDouble(tmp_str_vec[2+j], params, sout);
@@ -634,7 +636,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   }
   //cerr << endl<<pheno_data->new_cov.block(0,0,3,pheno_data->new_cov.cols())<< endl;
-  //if(params->w_interaction && !params->interaction_snp) cerr << inter_cov_column.head(3);
+  //if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) cerr << inter_cov_column.head(3);
 
   // mask individuals in genotype data but not in covariate data
   pheno_data->new_cov.array().colwise() *= ind_in_cov_and_geno.cast<double>();
@@ -654,7 +656,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
       if( filters->cov_colKeep_names[ covar_names[i] ] ) { // qCovar so copy column
 
-        if(params->w_interaction && !params->interaction_snp && (covar_names[i] == filters->interaction_cov))  
+        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov))  
           inter_cov_matrix = inter_cov_column.matrix();
         else
           full_covarMat.col(full_col) = pheno_data->new_cov.col(raw_col);
@@ -663,7 +665,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
         icat++;
 
-        if(params->w_interaction && !params->interaction_snp && (covar_names[i] == filters->interaction_cov)) { 
+        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov)) { 
 
           np_inter = inter_cov_column.maxCoeff(); // get number of dummies to use
 
@@ -696,7 +698,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
   }
 
-  if(params->w_interaction && !params->interaction_snp) // save inter cov
+  if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) // save inter cov
     pheno_data->interaction_cov = filters->cov_colKeep_names[filters->interaction_cov] ? inter_cov_column.matrix() : inter_cov_matrix;
 
   sout <<  "   -number of individuals with covariate data = " << ind_in_cov_and_geno.count() << endl;
@@ -999,7 +1001,7 @@ void check_blup(struct in_files* files, struct param* params, mstream& sout) {
   Files fClass;
 
   // skip reading if specified by user
-  if( params->skip_blups ) return;
+  if( params->skip_blups && !params->interaction_prs ) return;
 
   fClass.openForRead(files->blup_list_file, sout);
 
@@ -1021,7 +1023,7 @@ void check_blup(struct in_files* files, struct param* params, mstream& sout) {
 
 bool has_blup(string const& yname, map<string,string> const& y_read, struct param const* params, mstream& sout) {
 
-  if( params->skip_blups || in_map(yname, y_read)) return true;
+  if( ( params->skip_blups && !params->interaction_prs ) || in_map(yname, y_read)) return true;
 
   sout << "WARNING: No step 1 file provided for phenotype '" << yname << "' so it will be ignored.\n";
   return false;
@@ -1044,14 +1046,14 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   m_ests->blups = MatrixXd::Zero(params->n_samples, params->n_pheno);
 
   // skip reading if specified by user
-  if( params->skip_blups ) {
+  if( params->skip_blups && !params->interaction_prs) {
     string mode;
     if(params->trait_mode==0) mode = "linear";
     else if(params->trait_mode==1) mode = "logistic";
     else if(params->trait_mode==2) mode = "poisson";
       sout << " * no step 1 predictions given. Simple " << mode << " regression will be performed" <<endl;
     return;
-  }
+  } else if(params->interaction_prs) return;
 
   sout << " * " << (params->use_prs ? "PRS" : "LOCO") << " predictions : [" << files->blup_list_file << "]\n";
   all_miss_pheno = ArrayXb::Constant(params->n_pheno, false);
@@ -1165,6 +1167,132 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
   }
 
     check_phenos(all_miss_pheno, files->pheno_names, files->out_file + "_" + "pheno_all_miss.txt", sout);
+
+}
+
+void extract_interaction_prs(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
+
+  pheno_data->interaction_cov.resize(params->n_samples, 1);
+  MapArXd PRS (pheno_data->interaction_cov.col(0).data(), params->n_samples, 1);
+
+  // read prs
+  read_prs(PRS, files, params, ind_in_cov_and_geno, sout);
+  if(params->debug) cerr << "full PRS head:" << PRS.matrix().transpose().array().head(5) << endl;
+
+  // disable adjusting for PRS
+  params->use_prs = false;
+  params->skip_blups = true;
+
+}
+
+void read_prs(Ref<ArrayXd> full_prs, struct in_files* files, struct param* params, Ref<ArrayXb> ind_in_cov_and_geno, mstream& sout) {
+
+  int n_masked_prior, n_masked_post;
+  uint32_t indiv_index;
+  double blup_val;
+  string yfile, line;
+  std::vector< string > tmp_str_vec, tmp_prs_vec;
+  ArrayXb blupf_mask;
+  Files fClass;
+
+  sout << "    + extracting full PRS using " << (params->use_prs ? "PRS" : "LOCO") << " predictions : [" << files->blup_list_file << "]\n";
+  if(params->n_pheno > 1) throw "option '--interaction-prs' only works with a single phenotype"; 
+
+  // read blup file for each phenotype
+  for(int ph = 0; ph < params->n_pheno; ph++) {
+    if( !params->pheno_pass(ph) ) continue;
+
+    yfile = files->blup_files[ files->pheno_names[ph] ];
+    sout << "    -file [" << yfile  << "] for phenotype '" << files->pheno_names[ph] << "'\n";
+
+    fClass.openForRead(yfile, sout);
+
+    // to mask all individuals not present in .loco file
+    blupf_mask = ArrayXb::Constant(params->n_samples, false);
+    n_masked_prior = ind_in_cov_and_geno.count();
+    full_prs = 0;
+
+    // read first line which has FID_IID
+    fClass.readLine(line);
+    tmp_str_vec = string_split(line,"\t ");
+
+    if( tmp_str_vec[0] != "FID_IID") 
+      throw "header of blup file must start with FID_IID (=" + tmp_str_vec[0] + ")";
+
+    // read second line to check for missing predictions
+    fClass.readLine(line);
+    tmp_prs_vec = string_split(line,"\t ");
+
+    if( params->use_prs && (tmp_prs_vec[0] != "0") )
+      throw "second line must start with 0 (=" + tmp_prs_vec[0] + ").";
+
+    for (size_t i = 1; i < tmp_str_vec.size(); i++){
+      // ignore sample if it is not in genotype data
+      if (!in_map(tmp_str_vec[i], params->FID_IID_to_ind)) continue;
+      indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
+      blup_val = convertDouble(tmp_prs_vec[i], params, sout);
+
+      // ignore samples where prediction is NA
+      blupf_mask( indiv_index ) = (blup_val != params->missing_value_double);
+      //cerr << tmp_str_vec[i] << "\t" << std::boolalpha << blupf_mask( indiv_index ) << endl; 
+      if (!blupf_mask( indiv_index )) continue;
+
+      if( params->use_prs ) full_prs(indiv_index) = blup_val;
+    }
+
+    // mask samples not in file
+    ind_in_cov_and_geno = ind_in_cov_and_geno && blupf_mask;
+    n_masked_post = ind_in_cov_and_geno.count();
+
+    // check not everyone is masked
+    if( n_masked_post < 1 )
+      throw "none of the samples have step 1 predictions in file."; 
+
+    if( n_masked_post < n_masked_prior ){
+      sout << "     * " << n_masked_prior - n_masked_post <<
+        " individuals with missing LOCO predictions will be ignored for the trait\n";
+    }
+
+    if(!params->use_prs){ // go through each line and sum up the loco prs to get the full PRS
+
+      int nchr_file = 0;
+      double ds;
+
+      // Re-open file (since skipped 2nd row)
+      fClass.closeFile();
+      fClass.openForRead(yfile, sout);
+      fClass.ignoreLines(1); // skip first row
+
+      while( fClass.readLine(line) ){
+
+        tmp_prs_vec = string_split(line,"\t ");
+        if( tmp_prs_vec.size() != tmp_str_vec.size() )
+          throw "number of entries for chromosome " + tmp_prs_vec[0] + 
+            " does not match with that in header (" + 
+            to_string(tmp_prs_vec.size()) + " vs " + to_string(tmp_str_vec.size()) + ")";
+
+        for (size_t i = 1; i < tmp_str_vec.size(); i++){
+          // ignore sample if it is not in genotype data
+          if (!in_map(tmp_str_vec[i], params->FID_IID_to_ind)) continue;
+          indiv_index = params->FID_IID_to_ind[tmp_str_vec[i]];
+          if(!ind_in_cov_and_geno(indiv_index)) continue;
+
+          ds = convertDouble(tmp_prs_vec[i], params, sout);
+          full_prs(indiv_index) += ds;
+        }
+
+        nchr_file++;
+      }
+
+      if( nchr_file != params->nChrom )
+        throw "incorrectly formatted file (not enough chromosomes).";
+
+      full_prs /= (nchr_file - 1);
+
+    }
+
+    fClass.closeFile();
+  }
 
 }
 

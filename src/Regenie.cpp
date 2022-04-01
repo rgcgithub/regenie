@@ -282,6 +282,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
     ("nnls-verbose", "To output detailed NNLS test results")
     ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,1)")
+    ("interaction-prs", "perform interaction testing with the full PRS from step 1")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene (all masks/M1-only)")
     ("use-adam", "use ADAM to fit penalized logistic models")
@@ -482,6 +483,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(!vm.count("interaction-snp") && !in_map(filters->interaction_cov,filters->cov_colKeep_names))
         filters->cov_colKeep_names[filters->interaction_cov] = true; // assume qt
       if(vm.count("no-condtl") || (vm.count("interaction-snp") && !vm.count("force-condtl")) )
+        params->gwas_condtl = false;
+    }
+    if( (params->run_mode ==2) && vm.count("interaction-prs") ) {
+      params->w_interaction = true;
+      params->interaction_prs = true;
+      filters->interaction_cov = "PRS";
+      if(vm.count("no-condtl") || (!vm.count("force-condtl")) )
         params->gwas_condtl = false;
     }
     if( vm.count("tpheno-ignoreCols") ) {
@@ -914,11 +922,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if(params->test_mode && !params->skip_blups && !vm.count("pred")) 
       throw "must specify --pred if using --step 2 (otherwise use --ignore-pred).";
-    if(vm.count("interaction") || vm.count("interaction-snp")){
-      if(!vm.count("interaction-snp") && (!vm.count("covarFile") || !params->test_mode) )
+    if(vm.count("interaction") || vm.count("interaction-snp") || vm.count("interaction-prs")){
+      if(!vm.count("interaction-snp") && !vm.count("interaction-prs") && (!vm.count("covarFile") || !params->test_mode) )
         throw "can only use --interaction with --covarFile in step 2.";
-      if( vm.count("interaction") && vm.count("interaction-snp") ) 
-        throw "cannot use both --interaction and --interaction-snp";
+      if( (vm.count("interaction") + vm.count("interaction-prs") + vm.count("interaction-snp")) > 1 ) 
+        throw "must only specify single interacting variable";
       if(vm.count("spa"))
         throw "cannot use --interaction with Firth or SPA tests.";
       if(vm.count("interaction-snp") && vm.count("use-prs"))
@@ -940,6 +948,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
       throw "cannot use interaction tests with count phenotypes.";
+    if( params->interaction_prs && !(vm.count("use-prs") || vm.count("pred")) )
+      throw "must supply step 1 predictions.";
 
     if(vm.count("force-ltco") && vm.count("use-prs"))
       throw "cannot use LTCO with full PRS.";
