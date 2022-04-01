@@ -1306,13 +1306,18 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
 // print sum_stats
 void print_vc_sumstats(int const& snp_index, string const& test_string, string const& wgr_string, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, struct param const* params){
 
+  int print_index;
   string header;
   std::map <std::string, MatrixXd>::iterator itr;
   if(!params->htp_out) header = print_sum_stats_head(snp_index, snpinfo);
 
   for (itr = block_info->sum_stats_vc.begin(); itr != block_info->sum_stats_vc.end(); ++itr) {
     // for each pheno
-    for(int i = 0; i < itr->second.rows(); i++) // col 0 = chisq, col 1 = logp
+    for(int i = 0; i < params->n_pheno; i++) { // col 0 = chisq, col 1 = logp
+
+      // make sure results for test are all on same line
+      print_index = params->split_by_pheno ? i : 0;
+
       if(itr->second(i, 1) >= 0) {
         std::ostringstream buffer;
 
@@ -1321,9 +1326,12 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
         else 
           buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, (params->split_by_pheno ? block_info->ns(i) : block_info->ns1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
 
-        block_info->sum_stats[i].append( buffer.str() );
+        block_info->sum_stats[print_index].append( buffer.str() );
       } else if(!params->split_by_pheno) // print NA sum stats
-        block_info->sum_stats[i].append( print_na_sumstats(i, 1, header, test_string + "-" + itr->first, block_info, *params) );
+        block_info->sum_stats[print_index].append( print_na_sumstats(i, 1, header, test_string + "-" + itr->first, block_info, *params) );
+
+    }
   }
+
 }
 
