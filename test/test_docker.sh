@@ -418,5 +418,5 @@ echo "SUCCESS: Docker image passed the tests!"
 echo -e "\nYou can run regenie using for example:"
 echo -e "docker run -v <host_path>:<mount_path> $DOCKER_IMAGE regenie <command_options>\n"
 # file cleanup
-rm -f ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out_firth* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
+rm -f ${REGENIE_PATH}test/fit_bin_* ${REGENIE_PATH}test/test_bin_out_* ${REGENIE_PATH}test/test_out* ${REGENIE_PATH}test/tmp[12].txt
 
