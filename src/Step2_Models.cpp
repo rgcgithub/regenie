@@ -328,12 +328,14 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     else
       dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
 
+    /*
     if(params.debug) {
       cerr << "\ny:\n" << yres.col(i).topRows(2) << endl;
       cerr << "\nGresid:\n" << dt_thr->Gres.topRows(2) << endl;
       if(dt_thr->is_sparse) cerr << "\nsum(GW)=" << GWs.sum() << endl;
       cerr << "\nscore=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " var(score)=" << dt_thr->Gres.squaredNorm() << endl;
     }
+    */
 
     // use firth/spa
     check_pval_snp(block_info, dt_thr, chrom, i, isnp, pheno_data, gblock, m_ests, fest, params, sout);
@@ -1311,10 +1313,10 @@ std::string print_header_output_all(struct param const* params){
     ( !params->build_mask && params->dosage_mode ? "INFO ":"") 
     << "N TEST";
 
-  for(i = 1; i < params->n_pheno; i++) 
-    buffer << " BETA.Y" << i << " SE.Y" << i << " CHISQ.Y" << i << " LOG10P.Y" << i;
-  // last phenotype
-  buffer << " BETA.Y" << i << " SE.Y" << i <<  " CHISQ.Y" << i << " LOG10P.Y" << i <<  " EXTRA\n";
+  for(i = 0; i < params->n_pheno; i++) 
+    buffer << " BETA.Y" << i+1 << " SE.Y" << i+1 << " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1;
+  // end of line
+  buffer << " EXTRA\n";
 
   return buffer.str();
 }
