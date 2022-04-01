@@ -80,7 +80,7 @@ class Data {
     void set_blocks();
     void set_folds();
     void setmem();
-    void calc_cv_matrices(int const&,struct ridgel0*);
+    void calc_cv_matrices(struct ridgel0*);
     void level_0_calculations();
     void exit_early();
     // output of step 1

@@ -143,6 +143,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
   if(!params->htp_out) head = print_sum_stats_head(index, snpinfo);
 
   for(int i = 0; i < params->n_pheno; ++i ) {
+    if( !params->pheno_pass(i) ) continue;
 
     if( snp_data->ignored_trait(i) ) continue;
 
@@ -302,6 +303,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
   if(!params->htp_out) head = print_sum_stats_head(index, snpinfo);
 
   for(int i = 0; i < params->n_pheno; ++i ) {
+    if( !params->pheno_pass(i) ) continue;
 
     if( snp_data->ignored_trait(i) ) continue;
 
@@ -461,10 +463,10 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
   MatrixXd WX, Vmat, XWX_inv, V_robust;
 
   for(int i = 0; i < params->n_pheno; ++i ){
+    if( !params->pheno_pass(i) ) continue;
 
     if( snp_data->ignored_trait(i) ) continue;
-    else if( !pheno_data->pheno_pass(i) ) // if failed null firth
-      continue;
+      
     std::ostringstream buffer, buffer_int;
 
     MapArXd Y (pheno_data->phenotypes_raw.col(i).data(), pheno_data->phenotypes_raw.rows());

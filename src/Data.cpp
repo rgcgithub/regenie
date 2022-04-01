@@ -336,6 +336,7 @@ void Data::set_blocks() {
     ArrayXd base_tau = params.tau[0];
     params.tau.assign(params.n_pheno, base_tau);
     for(int i = 0; i < params.n_pheno; i++){
+      if( !params.pheno_pass(i) ) continue;
       double rate = pheno_data.phenotypes_raw.col(i).sum() / pheno_data.Neff(i); // masked entries are 0
       params.tau[i] = (params.total_n_block * params.n_ridge_l0) / (1 + params.tau[i] / (rate * (1 - params.tau[i]))).log();
       //cerr << endl << params.tau[i].matrix().transpose() << endl;
@@ -445,14 +446,17 @@ void Data::set_folds() {
     int minIndex;
     uint32_t cum_size_folds = 0;
     ArrayXd sum, n_cv, sd_phenos;
-    MatrixXd phenos = ( pheno_data.phenotypes_raw.array() * pheno_data.masked_indivs.array().cast<double>()).matrix();
 
     for(int i = 0; i < params.cv_folds; i++) {
-      sum = phenos.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).colwise().sum();
+
+      MatrixXb M = pheno_data.masked_indivs.middleRows(cum_size_folds, params.cv_sizes(i)); // nxp
+      MatrixXd Y = (pheno_data.phenotypes_raw.middleRows(cum_size_folds, params.cv_sizes(i)).array() * M.array().cast<double>()).matrix().transpose(); // pxn
+
+      sum = params.pheno_pass.select( Y.array().rowwise().sum() , 10);
 
       // BTs
       if(params.trait_mode == 1){
-        n_cv = pheno_data.masked_indivs.block(cum_size_folds,0,params.cv_sizes(i),params.n_pheno).cast<double>().colwise().sum();
+        n_cv = params.pheno_pass.select( M.transpose().array().rowwise().count().cast<double>() , 100);
         sd_phenos = (sum/n_cv) * (1 - sum/n_cv);
 
         if( sd_phenos.minCoeff(&minIndex) < params.numtol )
@@ -460,7 +464,7 @@ void Data::set_folds() {
             + "'. Either use smaller #folds (option --cv) or use LOOCV (option --loocv).";
       } else if(params.trait_mode == 2){
 
-        if( sum.maxCoeff(&minIndex) <= 0 )
+        if( sum.minCoeff(&minIndex) == 0 )
           throw "one of the folds has only zero counts for phenotype '" + files.pheno_names[minIndex] 
             + "'. Either use smaller #folds (option --cv) or use LOOCV (option --loocv).";
       }
@@ -480,6 +484,8 @@ void Data::set_folds() {
 
 
 void Data::setmem() {
+
+  bool is_set = false;
   sout << " * setting memory..." << flush;
 
   set_folds();
@@ -509,6 +515,8 @@ void Data::setmem() {
   if(params.print_block_betas) params.beta_print_out.resize(params.n_pheno);
 
   for(int i = 0; i < params.n_pheno; ++i ) {
+
+    if( !params.pheno_pass(i) && (!params.write_l0_pred || (i!=0)) ) continue;
 
     if (params.within_sample_l0) {
       l1_ests.pred_mat[i].resize(params.cv_folds);
@@ -550,11 +558,19 @@ void Data::setmem() {
         if(!params.use_loocv) l1_ests.test_offset[i][j] = MatrixXd::Zero(params.cv_sizes(j), 1);
       }
 
-      if(i == 0) masked_in_folds[j] = MatrixXb::Constant(params.cv_sizes(j), params.n_pheno, false);
-
     }
+
+    if(!is_set) {// only done once
+      for(int j = 0; j < params.cv_folds; ++j ) 
+        masked_in_folds[j] = MatrixXb::Constant(params.cv_sizes(j), params.n_pheno, false);
+      is_set = true;
+    }
+
+
   }
+
   sout << "done\n\n";
+
 }
 
 void Data::get_block_size(int const& target, int const& total, int const& block, int& bs){
@@ -594,6 +610,7 @@ void Data::level_0_calculations() {
     string fout_p;
     files.write_preds_files.resize(params.n_pheno);
     for(int ph = 0; ph < params.n_pheno; ph++){
+      if( !params.pheno_pass(ph) ) continue;
       files.write_preds_files[ph] = std::make_shared<ofstream>();
       fout_p = files.loco_tmp_prefix + "_l0_Y" + to_string(ph+1);
       openStream(files.write_preds_files[ph].get(), fout_p, ios::out | ios::binary, sout);
@@ -626,7 +643,7 @@ void Data::level_0_calculations() {
       residualize_genotypes();
 
       // calc working matrices for ridge regressions across folds
-      calc_cv_matrices(bs, &l0);
+      calc_cv_matrices(&l0);
 
       // calc level 0 ridge regressions
       if(params.use_loocv)
@@ -642,7 +659,7 @@ void Data::level_0_calculations() {
   // close streams
   if(params.write_l0_pred)
     for( auto &yfile : files.write_preds_files)
-      yfile->close();
+      if(yfile->is_open()) yfile->close();
 
   if(params.early_exit) {
     sout << "\nDone printing out level 0 predictions. There are " <<
@@ -657,25 +674,24 @@ void Data::level_0_calculations() {
 
   // free up memory not used anymore
   Gblock.Gmat.resize(0,0);
-  if(params.write_l0_pred && (params.n_pheno > 1) ) {
+  if(params.write_l0_pred && (params.n_pheno > 1) ) 
     // free level 0 predictions for (P-1) indices in test_mat
     for(int ph = 1; ph < params.n_pheno; ++ph ) {
+      if( !params.pheno_pass(ph) ) continue;
       if(!params.use_loocv){ // k-fold
         for(int i = 0; i < params.cv_folds; ++i ) 
           l1_ests.test_mat[ph][i].resize(0,0);
         l1_ests.test_mat[ph].resize(0);
-      } else { // loocv
-        l1_ests.test_mat_conc[ph].resize(0,0);
-      }
+      } else l1_ests.test_mat_conc[ph].resize(0,0); // loocv
     }
-  }
 
 }
 
-void Data::calc_cv_matrices(int const& bs, struct ridgel0* l0) {
+void Data::calc_cv_matrices(struct ridgel0* l0) {
 
   sout << "   -calc working matrices..." << flush;
   auto t2 = std::chrono::high_resolution_clock::now();
+  int bs = Gblock.Gmat.rows();
 
   if(!params.use_loocv){ // k-fold
 
@@ -684,9 +700,10 @@ void Data::calc_cv_matrices(int const& bs, struct ridgel0* l0) {
     uint32_t cum_size_folds = 0;
 
     for( int i = 0; i < params.cv_folds; ++i ) {
-      l0->GtY[i] = Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes(i)) * pheno_data.phenotypes.block(cum_size_folds, 0, params.cv_sizes(i), params.n_pheno);
+      MapMatXd Gmat (&(Gblock.Gmat(0,cum_size_folds)), bs, params.cv_sizes(i));
+      l0->GtY[i] = Gmat * pheno_data.phenotypes.middleRows(cum_size_folds, params.cv_sizes(i));
       l0->GTY += l0->GtY[i];
-      l0->G_folds[i] = Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes(i)) * Gblock.Gmat.block(0, cum_size_folds, bs, params.cv_sizes(i)).transpose();
+      l0->G_folds[i] = Gmat * Gmat.transpose();
       l0->GGt += l0->G_folds[i];
 
       cum_size_folds += params.cv_sizes(i);
@@ -845,6 +862,7 @@ void Data::output() {
   }
 
   for(int ph = 0; ph < params.n_pheno; ++ph ) {
+    if( !params.pheno_pass(ph) ) continue;
 
     sout << "phenotype " << ph+1 << " (" << files.pheno_names[ph] << ") : " ;
     loco_filename = files.out_file + "_" + to_string(ph + 1) + ".loco" + (params.gzOut ? ".gz" : "");
@@ -862,7 +880,7 @@ void Data::output() {
         if(params.print_prs) 
           outp << files.pheno_names[ph]  << " " <<  path_prs << endl;
 
-      } else { // for binary traits - check level 1 ridge converged
+      } else { // check level 1 ridge converged
 
         if( !l1_ests.pheno_l1_not_converged(ph) ) {
           outb << files.pheno_names[ph]  << " " << fullpath_str << endl;
@@ -984,11 +1002,9 @@ void Data::rm_l0_files(int const& ph){
   } else {
     for(auto const& pfx : files.mprefix){
       pfile = pfx + "_l0_Y" + to_string(ph+1);
-      remove(pfile.c_str()); // l0 predictions
-      if(ph==0){
-        pfile = pfx + ".snplist";
-        remove(pfile.c_str()); // snplist
-      }
+      if(file_exists(pfile)) remove(pfile.c_str()); // l0 predictions
+      pfile = pfx + ".snplist";
+      if(file_exists(pfile)) remove(pfile.c_str()); // snplist
     }
   }
 
@@ -1797,7 +1813,7 @@ void Data::print_test_info(){
     default:
       throw "unrecognized test value";
   }
-  wgr_string = ( params.skip_blups ?  "" : "-WGR" );
+  wgr_string = ( params.skip_blups && !params.interaction_prs ?  "" : "-WGR" );
 
 
   if(params.htp_out){
@@ -2088,7 +2104,6 @@ void Data::test_snps_fast() {
 
       sout << " block [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
 
-
       allocate_mat(Gblock.Gmat, params.n_samples, bs);
       block_info.resize(bs);
 
@@ -2120,7 +2135,7 @@ void Data::test_snps_fast() {
 
         for(int j = 0; j < params.n_pheno; ++j) {
 
-          if( snp_data.ignored_trait(j) ) {
+          if( !params.pheno_pass(j) || snp_data.ignored_trait(j) ) {
             if(!params.split_by_pheno) // if using single file, print NAs for snp/trait sum stats
               ofile << snp_data.sum_stats[j];
 
@@ -2499,7 +2514,7 @@ void Data::test_joint() {
 
         for(int j = 0; j < params.n_pheno; ++j) {
 
-          if( snp_data.ignored_trait(j) ) {
+          if( !params.pheno_pass(j) || snp_data.ignored_trait(j) ) {
             if(!params.split_by_pheno) // if using single file, print NAs for snp/trait sum stats
               ofile << snp_data.sum_stats[j];
 

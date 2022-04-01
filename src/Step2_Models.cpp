@@ -61,6 +61,7 @@ void blup_read_chr(bool const& silent, int const& chrom, struct ests& m_ests, st
 
   // read blup file for each phenotype
   for(int ph = 0; ph < params.n_pheno; ph++) {
+    if( !params.pheno_pass(ph) ) continue;
 
     filename = files.blup_files[ files.pheno_names[ph] ];
     ArrayXb read_indiv = ArrayXb::Constant(params.n_samples, false);
@@ -260,7 +261,7 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
   for( int i = 0; i < params.n_pheno; ++i ) {
 
-    if( block_info->ignored_trait(i) ) {
+    if( !params.pheno_pass(i) || block_info->ignored_trait(i) ) {
       if(!params.p_joint_only && !params.split_by_pheno)
         block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
@@ -292,9 +293,7 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
 
   for( int i = 0; i < params.n_pheno; ++i ) {
 
-    if( !pheno_data.pheno_pass(i) ) // if failed null firth 
-      continue;
-    else if( block_info->ignored_trait(i) ){
+    if( !params.pheno_pass(i) || block_info->ignored_trait(i) ){
       if(!params.p_joint_only && !params.split_by_pheno)
         block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
@@ -370,7 +369,7 @@ void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, i
 
   for( int i = 0; i < params.n_pheno; ++i ) {
 
-    if( block_info->ignored_trait(i) ) {
+    if( !params.pheno_pass(i) || block_info->ignored_trait(i) ) {
       if(!params.p_joint_only && !params.split_by_pheno)
         block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
@@ -511,6 +510,7 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
 #pragma omp parallel for schedule(dynamic) if(params->n_pheno>2)
 #endif
   for( int i = 0; i < params->n_pheno; ++i ) {
+    if( !params->pheno_pass(i) ) continue;
 
     MapArXd bvec (firth_est->beta_null_firth.col(i).data(), firth_est->beta_null_firth.rows());
     has_converged(i) = fit_approx_firth_null(chrom, i, pheno_data, m_ests, bvec, params);
@@ -894,6 +894,7 @@ string print_null_firth_info(struct in_files const& files, struct f_ests& fest, 
       throw "cannot write file : " + out_firth_list;
 
     for( int j = 0; j < params.n_pheno; ++j ) {
+      if( !params.pheno_pass(j) ) continue;
       firth_filename = files.out_file + "_" + to_string(j + 1) + ".firth" + (params.gzOut ? ".gz" : "");
       path_firth = get_fullpath(firth_filename);
       outf << files.pheno_names[j]  << " " <<  path_firth << endl;
@@ -963,6 +964,7 @@ void get_beta_start_firth(int const& chrom, struct f_ests* firth_est, struct in_
 
     // if file has not been given, use 0 as start
     if(files->null_firth_files[i] == "") continue;
+    if( !params->pheno_pass(i) ) continue;
 
     fClass.openForRead(files->null_firth_files[i], sout);
 

@@ -98,6 +98,9 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(params->trait_mode==1)
     print_cc_info(params, files, pheno_data, sout);
 
+  // used for step 2 if using firth and it failed
+  params->pheno_pass = ArrayXb::Constant(params->n_pheno, true);
+
 }
 
 void pheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_pheno_and_geno, mstream& sout) {
@@ -753,8 +756,6 @@ void setMasks(struct param* params, struct filter* filters, struct phenodt* phen
   pheno_data->Neff = pheno_data->masked_indivs.colwise().count().cast<double>();
   //sout << pheno_data->Neff << endl;
 
-  pheno_data->pheno_pass = ArrayXb::Constant(pheno_data->phenotypes.cols(), true); // used for step 2 if using firth
-
 }
 
 
@@ -986,6 +987,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   if(params->use_adam && params->adam_mini){
     params->adam_indices.resize(params->n_pheno);
     for(int ph = 0; ph < params->n_pheno; ph++){
+      if( !params->pheno_pass(ph) ) continue;
       params->adam_indices[ph].resize(pheno_data->masked_indivs.col(ph).count(),1);
       for(size_t i = 0, j = 0; i < params->n_samples; i++)
         if(pheno_data->masked_indivs(i,ph)) params->adam_indices[ph](j++) = i;
@@ -1063,6 +1065,8 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
 
   // read blup file for each phenotype
   for(int ph = 0; ph < params->n_pheno; ph++) {
+
+    if( !params->pheno_pass(ph) ) continue;
 
     yfile = files->blup_files[ files->pheno_names[ph] ];
     sout << "   -file [" << yfile  << "] for phenotype '" << files->pheno_names[ph] << "'\n";
@@ -1326,6 +1330,9 @@ void write_ids(struct in_files const* files, struct param* params, struct phenod
     sout << " * user specified to write sample IDs for each trait"<<endl;
 
   for( int ph = 0; ph < params->n_pheno; ph++){
+
+    if( !params->pheno_pass(ph) ) continue;
+
     idfile = files->out_file + "_" + files->pheno_names[ph] + ".regenie.ids";
     fout.openForWrite(idfile, sout);
 
@@ -1419,6 +1426,9 @@ void residualize_phenotypes(struct param const* params, struct phenodt* pheno_da
   pheno_data->phenotypes -= ( (pheno_data->new_cov * beta.transpose()).array() * pheno_data->masked_indivs.array().cast<double>() ).matrix();
   pheno_data->scale_Y = pheno_data->phenotypes.colwise().norm().array() / sqrt(pheno_data->Neff.matrix().transpose().array() - params->ncov);
 
+  // set sd for phenotypes which are ignored to 1
+  pheno_data->scale_Y = params->pheno_pass.select(pheno_data->scale_Y.transpose().array(), 1).matrix().transpose();
+
   // check sd is not 0 
   MatrixXd::Index minIndex;
   if(pheno_data->scale_Y.minCoeff(&minIndex) < params->numtol)
@@ -1504,7 +1514,8 @@ void apply_rint(struct phenodt* pheno_data, struct param const* params){
 
   // for each trait, apply rank-inverse normal transformation
   for(int ph = 0; ph < params->n_pheno; ph++)
-    rint_pheno(pheno_data->phenotypes.col(ph), pheno_data->masked_indivs.col(ph).array());
+    if( params->pheno_pass(ph) )
+      rint_pheno(pheno_data->phenotypes.col(ph), pheno_data->masked_indivs.col(ph).array());
 
 }
 

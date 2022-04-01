@@ -41,7 +41,6 @@ struct phenodt {
   std::vector<Eigen::ArrayXd> scf_i;
   Eigen::MatrixXd phenotypes;
   Eigen::MatrixXd phenotypes_raw;
-  ArrayXb pheno_pass;
   MatrixXb masked_indivs;
   Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
   Eigen::RowVectorXd scale_Y;

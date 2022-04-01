@@ -538,6 +538,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   sum_stats = MatrixXd::Constant(n_pheno, 2, -1); // chisq & logp
 
   for(int ph = 0; ph < n_pheno; ph++) { 
+    if( !params.pheno_pass(ph) ) continue;
 
     MapcArXd Y (yraw.col(ph).data(), yraw.rows());
     MapcArXb mask (masked_indivs.col(ph).data(), yraw.rows());
@@ -682,6 +683,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   flipped_skato_rho = 1 - rho_vec;
 
   for(int ph = 0; ph < n_pheno; ph++) { 
+    if( !params.pheno_pass(ph) ) continue;
 
     MapcArXd Y (yraw.col(ph).data(), yraw.rows());
     MapcArXb mask (masked_indivs.col(ph).data(), yraw.rows());

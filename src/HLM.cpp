@@ -112,6 +112,7 @@ void HLM_fitNull(HLM& nullHLM, struct ests const& m_ests, struct phenodt const& 
 
   
   for(int i = 0; i < params.n_pheno; i++){
+    if( !params.pheno_pass(i) ) continue;
 
     nullHLM.n = pheno_data.Neff(i);
     nullHLM.mask = pheno_data.masked_indivs.col(i);
