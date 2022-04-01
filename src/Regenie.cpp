@@ -1297,6 +1297,8 @@ double convertDouble(const string& val, struct param const* params, mstream& sou
 
   if(val == params->missing_pheno_str)
     return params->missing_value_double;
+  else if( (val == "nan") || (val == "inf") )
+    return params->missing_value_double;
 
   double dval;
   if(sscanf(val.c_str(), "%lf", &dval) != 1)
@@ -1309,6 +1311,8 @@ double convertDouble(const string& val, struct param const* params, mstream& sou
 double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struct param const* params, mstream& sout){
 
   if(val == params->missing_pheno_str)
+    return params->missing_value_double;
+  else if( (val == "nan") || (val == "inf") )
     return params->missing_value_double;
 
   if(in_map(val, cmap)) 
