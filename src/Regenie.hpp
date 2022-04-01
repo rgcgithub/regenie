@@ -270,7 +270,7 @@ struct param {
   bool write_samples = false; // write sample IDs for each trait
   double alpha_pvalue = 0.05, zcrit, z_thr, chisq_thr; // significance threshold above which to use firth correction
   int test_type = 0; // add=0/dom=1/rec=2 test
-  bool w_interaction = false, interaction_cat = false, interaction_snp = false, interaction_file = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
+  bool w_interaction = false, interaction_cat = false, interaction_snp = false, interaction_prs = false, interaction_file = false, w_ltco = false, print_vcov = false, hlm_vquad = true, int_add_extra_term = false, int_add_esq = false, add_homdev = false; // interaction test
   int interaction_istart = 0, ltco_chr;
   uint64 interaction_snp_offset; // index in genotype file
   bool force_robust = false, force_hc4 = false, no_robust = false; // when using robust SE for rare variants with QTs
