@@ -65,7 +65,7 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
 
   bool with_flip = true; // allow to flip to minor alleles
   std::vector< string > tmp_str_vec ;
-  test_list = 0u;
+  test_list = 0ULL;
 
   burden_str = test_string + "-BURDEN-";
   if(params->htp_out){
@@ -789,16 +789,14 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
 void JTests::get_variant_names(int const& chrom, int const& block, vector<snp> const& snpinfo){
 
   // only for NNLS (for now)
-  if( !CHECK_BIT(test_list,3) || !nnls_verbose_out ) return;
+  if( !(CHECK_BIT(test_list, joint_tests_map["nnls"]) && nnls_verbose_out) ) return;
 
-  int bs = setinfo[chrom - 1][block].snp_indices.size();
-  uint32_t index;
+  vector<uint64> *indices =  &(setinfo[chrom - 1][block].snp_indices);
+  int bs = indices->size();
   variant_names.resize(bs);
 
-  for(int i = 0; i < bs; i++){
-    index = setinfo[chrom - 1][block].snp_indices[ i ];
-    variant_names[i] = snpinfo[index].ID;
-  }
+  for(int i = 0; i < bs; i++)
+    variant_names[i] = snpinfo[ indices->at(i) ].ID;
 
 }
 
