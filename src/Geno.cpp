@@ -1872,13 +1872,8 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 
     // check MAC
     if( params->test_mode){
-      compute_mac(chrom != params->nChrom, mac, total, nmales, snpinfo[indices[snp]].MAC_fail_if_checked, snp_data, params);
-
-      if((mac < params->min_MAC) && snpinfo[indices[snp]].MAC_fail_if_checked) { 
-        snp_data->ignored = true; continue;
-      }
-
-      if(params->build_mask && params->singleton_carriers) snp_data->singleton = (ncarriers == 1); 
+      compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, snpinfo[indices[snp]].MAC_fail_if_checked, snp_data, params);
+      if(snp_data->ignored) continue;
     }
 
     //sout << "SNP#" << snp + 1 << "AC=" << mac << endl;
@@ -2131,13 +2126,8 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 
   // check MAC
   if( params->test_mode){
-    compute_mac(chrom != params->nChrom, mac, total, nmales, infosnp->MAC_fail_if_checked, snp_data, params);
-
-    if((mac < params->min_MAC) && infosnp->MAC_fail_if_checked) { 
-      snp_data->ignored = true;return;
-    }
-
-    if(params->build_mask && params->singleton_carriers) snp_data->singleton = (ncarriers == 1);
+    compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    if(snp_data->ignored) return;
   }
 
   compute_aaf_info(total, info_num, snp_data, params);
@@ -2266,13 +2256,8 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 
   // check MAC
   if( params->test_mode){
-    compute_mac(chrom != params->nChrom, mac, total, nmales, infosnp->MAC_fail_if_checked, snp_data, params);
-
-    if((mac < params->min_MAC) && infosnp->MAC_fail_if_checked) { 
-      snp_data->ignored = true; return;
-    }
-
-    if(params->build_mask && params->singleton_carriers) snp_data->singleton = (ncarriers == 1); // round dosages
+    compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    if(snp_data->ignored) return;
   }
 
   compute_aaf_info(total, 0, snp_data, params);
@@ -2325,7 +2310,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     thread_num = omp_get_thread_num();
 #endif
 
-    int hc, cur_index, index, lval, nmales;
+    int hc, cur_index, index, lval, nmales, ncarriers;
     double total, mac, mval, ival, eij2 = 0, sum_pos;
     ArrayXb keep_index;
 
@@ -2394,15 +2379,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 
     // check MAC
     if( params->test_mode){
-      compute_mac(chrom != params->nChrom, mac, total, nmales, snpinfo[indices[j]].MAC_fail_if_checked, snp_data, params);
-
-      if((mac < params->min_MAC) && snpinfo[indices[j]].MAC_fail_if_checked) { 
-        snp_data->ignored = true; continue;
-      }
-
-      // check if carrier
-      if(params->build_mask && params->singleton_carriers) snp_data->singleton = (keep_index && (Geno >= 0.5)).count() == 1; // round for dosages
-
+      ncarriers = (keep_index && (Geno >= 0.5)).count(); // check carriers
+      compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, snpinfo[indices[j]].MAC_fail_if_checked, snp_data, params);
+      if(snp_data->ignored) continue;
     }
 
     compute_aaf_info(total, eij2, snp_data, params);
@@ -2666,7 +2645,7 @@ void update_af_cc(int const& ind, double const& genoValue, variant_block* snp_da
 
 }
 
-void compute_mac(bool const& auto_chrom, double& mac, double const& total, int const& nmales, bool const& MAC_fail_if_checked, variant_block* snp_data, struct param const* params){
+void compute_mac(bool const& auto_chrom, double& mac, double const& total, int const& nmales, int const& ncarriers, bool const& MAC_fail_if_checked, variant_block* snp_data, struct param const* params){
 
   if(auto_chrom) mac = total; // use MAC assuming diploid coding
   //cerr << snp_data->mac << endl << endl; 
@@ -2674,6 +2653,7 @@ void compute_mac(bool const& auto_chrom, double& mac, double const& total, int c
 
   // for masks, identify singletons
   if(params->build_mask && !params->singleton_carriers) snp_data->singleton = ( ((int)(mac+0.5)) == 1 ); // use AAC (round for dosages)
+  else if(params->build_mask && params->singleton_carriers) snp_data->singleton = (ncarriers == 1);
 
   // get counts by trait 
   snp_data->mac += mac; // aac
@@ -2691,6 +2671,8 @@ void compute_mac(bool const& auto_chrom, double& mac, double const& total, int c
   snp_data->ignored_trait = MAC_fail_if_checked;
   snp_data->ignored_trait = snp_data->ignored_trait && (snp_data->mac < params->min_MAC);
   //cerr << snp_data->ignored_trait.cast<double>() << endl << endl; exit(EXIT_FAILURE);
+  if((mac < params->min_MAC) && MAC_fail_if_checked) 
+    snp_data->ignored = true;
 
 }
 
@@ -3327,7 +3309,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
   // check if there is a header line
   myfile.readLine(line);
   tmp_str_vec = string_split(line,"\t ,");
-  if( tmp_str_vec.size() < 2 ) 
+  if( tmp_str_vec.size() < ncols_min ) 
     throw "incorrectly formatted file at line " + to_string( lineread+1 );
   if( startswith(tmp_str_vec[0].c_str(), "#") ){
     // find ID column

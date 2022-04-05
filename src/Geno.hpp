@@ -184,7 +184,7 @@ void reset_stats(variant_block*,struct param const&);
 void update_trait_counts(int const&,double const&,double const&,int const&,double const&,variant_block*,const Eigen::Ref<const MatrixXb>&);
 void update_genocounts(bool const&,int const&,int const&,Eigen::MatrixXd&,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
 void update_af_cc(int const&,double const&,variant_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
-void compute_mac(bool const&,double&,double const&,int const&,bool const&,variant_block*,struct param const*);
+void compute_mac(bool const&,double&,double const&,int const&,int const&,bool const&,variant_block*,struct param const*);
 void compute_aaf_info(double&,double const&,variant_block*,struct param const*);
 void flip_geno(double&,Eigen::Ref<Eigen::ArrayXd>,variant_block*,struct param const*);
 void check_sparse_G(int const&,int const&,struct geno_block*,uint32_t const&,const Eigen::Ref<const ArrayXb>&);
