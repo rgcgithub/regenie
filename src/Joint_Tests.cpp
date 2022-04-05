@@ -718,7 +718,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
     buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
     if( params->af_cc ) buffer << "NA NA ";
     // info
-    if(params->dosage_mode) buffer << "NA ";
+    if(!params->build_mask && params->dosage_mode) buffer << "NA ";
     // n test
     buffer << "NA " << mname << " ";
   }
