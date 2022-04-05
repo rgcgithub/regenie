@@ -208,12 +208,14 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
 // determine if marginal test failed 
 bool JTests::set_vars(const int& bs, const int& ph, std::vector<variant_block> const& block_info){
 
-  log10pv.resize(bs);
-  good_vars.resize(bs);
+  good_vars = ArrayXb::Constant(bs, false);
+  log10pv = ArrayXd::Zero(bs);
 
+  if(debug_mode) cerr << "checking burden masks in set...";
   for(int isnp = 0; isnp < bs; isnp++){
-    log10pv(isnp) = block_info[isnp].pval_log(ph);
     good_vars(isnp) = !block_info[isnp].ignored && !block_info[isnp].ignored_trait(ph) && !block_info[isnp].test_fail(ph);
+    if(!good_vars(isnp)) continue;
+    log10pv(isnp) = block_info[isnp].pval_log(ph);
   }
   nvars = good_vars.count();
 
