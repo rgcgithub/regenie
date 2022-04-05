@@ -229,8 +229,7 @@ void JTests::compute_minp(){
   if( df_test == 0 ) {reset_vals(); return;}
 
   // get minimum p-value (on log scale)
-  double logpmax = good_vars.select(log10pv, 0).maxCoeff();
-  get_pv( pow(10, -logpmax) );
+  get_pv( pow(10, -(log10pv.maxCoeff())) );
 
 }
 
