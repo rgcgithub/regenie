@@ -458,6 +458,16 @@ Each line contains the variant name followed by its AAF
 .
 ```
 
+Since singleton variants cannot be identified from this file, they are determined by default
+based on the input genetic data. To enforce which sites should be included in the singleton masks
+(see `--set-singletons`), you can add a third column in the file with a binary indicator 
+(1=singleton; 0=not singleton)
+
+```bash
+7:6187101:C:T 1.53918207864341e-05 0
+7:6190395:C:A 2.19920388819247e-06 1
+.
+```
 
 #### Mask definitions
 
@@ -572,6 +582,7 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--aaf-bins`| FLOAT,...,FLOAT| Optional| comma-separated list of AAF upper bounds to use when building masks [default is a single cutoff of 1%]|
 |`--build-mask`| STRING| Optional| build masks using the maximum number of ALT alleles across sites (`'max'`; the default), or the sum of ALT alleles (`'sum'`), or thresholding the sum to 2 (`'comphet'`)|
 |`--singleton-carrier`| FLAG| Optional| to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)|
+|`--set-singletons`| FLAG| Optional| to use 3rd column in AAF file to specify variants included in singleton masks|
 |`--write-mask`| FLAG| Optional| write mask to PLINK bed format **(does not work when building masks with 'sum')**|
 |`--vc-tests`| STRING| Optional| comma-separated list of SKAT/ACAT-type tests to run|
 |`--vc-maxAAF`| FLOAT| Optional| AAF upper bound to use for SKAT/ACAT-type tests [default is 100%]|
