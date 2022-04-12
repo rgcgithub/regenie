@@ -946,6 +946,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     }
     if((params->skato_rho.size() > 0) && (params->skato_rho <0 || params->skato_rho >1).any())
       throw "rho values for SKAT-O must be in [0,1]";
+    if(params->singleton_carriers && params->aaf_file_wSingletons){
+      sout << "WARNING: Ignoring option --singleton-carrier when using --set-singletons.\n";
+      params->singleton_carriers = false;
+    }
 
     params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
