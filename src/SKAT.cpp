@@ -256,11 +256,12 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     // get eigen values
     get_lambdas(lambdas, Kv, skat_lambda_tol);
     if(lambdas.size() == 0) continue;
-    //cerr << lambdas.matrix().transpose() << "\n\n";
+    if(debug) cerr << "L:" << lambdas.transpose() << "\n";
 
     // compute test statistic & p-value
     for(int ph = 0; ph < n_pheno; ph++) {
       q = (1 - rho) * Qs(ph, jcol) + rho * Qb(ph, jcol);
+      if(debug) cerr << "Q:" << q << "\n";
       if( (rho == 1) || (lambdas.size() == 1) ){ // burden or single variant
         sum_stats(ph, 0) = q / lambdas.tail(1)(0);
         get_logp(sum_stats(ph, 1), sum_stats(ph, 0)); 
@@ -383,7 +384,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       get_skato_mom(skato_muQ, skato_sd, skato_tau, nnz, skato_lambdas, ztz, zmZ.squaredNorm(), ZtIUZ, ZtUZ, rho_vec, debug);
 
     Qopt = Qs.col(jcol) * flipped_skato_rho.matrix().transpose() + Qb.col(jcol) * rho_vec.matrix().transpose(); // P x Nrho
-    if(debug) cerr << "Q:\n" << Qopt.row(0) << "\n";
+    if(debug) cerr << "Q:" << Qopt.row(0) << "\n";
 
     es.compute( MatrixXd::Ones(nnz, nnz) ); // psd matrix
     for(int j = 0; j < nrho; j++){
@@ -395,6 +396,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
       // get eigen values
       get_lambdas(lambdas, Kv, skat_lambda_tol);
+      //if(debug) cerr << "rho:" << rho_vec(j) << "-> L:" << lambdas.transpose() << "\n";
       if(lambdas.size() == 0) break; // SKAT & SKAT-O failed
 
       // needed for skato (M>1)
