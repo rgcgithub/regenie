@@ -327,7 +327,8 @@ void Data::set_blocks() {
   if(params.split_l0) return;
   else if(params.run_l0_only) {
     if((params.parallel_nBlocks != params.total_n_block) || (params.parallel_nSnps!= (int)params.n_variants))
-      throw "number of variants/blocks in file don't match with that in master file.";
+      throw "number of variants/blocks in file (=" + to_string(params.parallel_nSnps) + "/" + to_string(params.total_n_block) +
+        ") don't match with that in master file (=" + to_string(params.n_variants) + "/" + to_string(params.parallel_nBlocks) +").";
   } else if(params.run_l1_only) prep_parallel_l1();
 
   // set ridge params
