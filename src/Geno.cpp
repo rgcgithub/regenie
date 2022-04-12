@@ -3087,7 +3087,7 @@ void get_masks_info(const struct in_files* files, struct param* params, struct f
   // read annotations
   read_anno(params, files, filters, anno_map, regions, snpinfo, sout);
 
-  if(params->set_aaf) read_aafs(params->tol, files, filters, snpinfo, sout);
+  if(params->set_aaf) read_aafs(params->tol, files, filters, snpinfo, params->aaf_file_wSingletons, sout);
 
   // read masks
   read_masks(files, params, anno_map, mask_map, mask_out, all_masks, sout);
@@ -3294,9 +3294,9 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
 }
 
-void read_aafs(const double tol, const struct in_files* files, struct filter* filters, vector<snp>& snpinfo, mstream& sout) {
+void read_aafs(const double tol, const struct in_files* files, struct filter* filters, vector<snp>& snpinfo, bool const& wSingletons, mstream& sout) {
 
-  int lineread = 0, id_col = 0, aaf_col = 1;
+  int lineread = 0, id_col = 0, aaf_col = 1, singleton_col = -1;
   float aaf;
   uint32_t snp_pos, ncols_min = 2;
   std::vector< string > tmp_str_vec ;
@@ -3319,10 +3319,19 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     // check if columns were found
     if( (id_col < 0) || (aaf_col < 0) ) throw "could not find 'ID' or 'ALT_FREQS' in header";
     ncols_min = max(id_col, aaf_col) + 1;
-  } else if (in_map(tmp_str_vec[id_col], filters->snpID_to_ind)){ // read in AAF for variant
-    snp_pos = filters->snpID_to_ind[ tmp_str_vec[id_col] ];
-    aaf = stof( tmp_str_vec[aaf_col] );
-    snpinfo[ snp_pos ].aaf = aaf;
+  } else {
+    if(wSingletons) {
+      if(tmp_str_vec.size() < 3) throw "not enough columns in AAF file in line 1";
+      singleton_col = 2;
+      sout << left << std::setw(20) << "  -using third column to identify singleton variants\n";
+      ncols_min = 3;
+    }
+    if (in_map(tmp_str_vec[id_col], filters->snpID_to_ind)){ // read in AAF for variant
+      snp_pos = filters->snpID_to_ind[ tmp_str_vec[id_col] ];
+      aaf = stof( tmp_str_vec[aaf_col] );
+      snpinfo[ snp_pos ].aaf = aaf;
+      if(wSingletons) snpinfo[ snp_pos ].force_singleton = check_singleton_column( tmp_str_vec[singleton_col] );
+    }
   }
   lineread++;
 
@@ -3351,11 +3360,20 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
       throw "invalid AAF given at line " + to_string( lineread+1 );
     */
     snpinfo[ snp_pos ].aaf = aaf;
+    if(wSingletons) snpinfo[ snp_pos ].force_singleton = check_singleton_column( tmp_str_vec[singleton_col] );
 
     lineread++;
   }
 
   myfile.closeFile();
+
+}
+
+bool check_singleton_column(string const& col_str){
+
+  if(col_str == "0") return false;
+  else if(col_str == "1") return true;
+  else throw "unindentified value in third column ('=" + col_str + "')";
 
 }
 

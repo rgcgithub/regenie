@@ -213,6 +213,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("anno-labels", "file with labels to annotations", cxxopts::value<std::string>(files->anno_labs_file),"FILE")
     ("mask-def", "file with mask definitions", cxxopts::value<std::string>(files->mask_file),"FILE")
     ("aaf-file", "file with AAF to use when building masks", cxxopts::value<std::string>(files->aaf_file),"FILE")
+    ("set-singletons", "use 0/1 indicator in third column of AAF file to specify singleton variants")
     ("aaf-bins", "comma separated list of AAF bins cutoffs for building masks", cxxopts::value<std::string>(),"FLOAT,..,FLOAT")
     ("build-mask", "rule to construct masks, can be 'max', 'sum' or 'comphet' (default is max)", cxxopts::value<std::string>(params->mask_rule),"STRING")
     ("vc-tests", "comma separated list of tests to compute for each set of variants included in a mask [skat/skato/skato-acat/acatv/acato]", cxxopts::value<std::string>(),"STRING,..,STRING")
@@ -390,6 +391,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
+    if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
     if( vm.count("mask-lovo") ) params->mask_loo = true;
     if( vm.count("mask-lodo") ) params->mask_lodo = true;

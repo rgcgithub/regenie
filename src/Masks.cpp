@@ -56,6 +56,7 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   vc_collapse_MAC = params.skat_collapse_MAC;
   write_masks = params.write_masks;
   write_snplist = params.write_mask_snplist;
+  force_singleton = params.aaf_file_wSingletons;
   verbose = params.verbose;
 
   if(!take_max && !take_comphet) params.htp_out = false; // due to genocounts with sum rule
@@ -806,7 +807,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
         continue;
       }
        
-      if( i == 0 ) colkeep(j) = all_snps_info[j].singleton;
+      if( i == 0 ) colkeep(j) = force_singleton ? snpinfo[ setinfo.snp_indices[start + j] ].force_singleton : all_snps_info[j].singleton;
       else if(aaf_given) colkeep(j) = (snpinfo[ setinfo.snp_indices[start + j] ].aaf <= upper);
       else colkeep(j) = (all_snps_info[j].af1 <= upper);
 

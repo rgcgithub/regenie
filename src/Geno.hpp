@@ -55,6 +55,7 @@ struct snp {
   // for masks
   std::map <std::string, annoinfo> anno; // annotation
   float aaf = -1;
+  bool force_singleton = false; // for singleton masks
   bool MAC_fail_if_checked = true; // for extract/exclude OR
 } ;
 
@@ -229,7 +230,8 @@ void check_in_map_from_files_sets(bool const&,std::map<std::string,std::vector<i
 void get_masks_info(const struct in_files*,struct param*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint16_t>>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,std::vector<snp>&,mstream& sout);
 void read_anno_cat(const struct in_files*,struct param*,std::map<std::string,anno_name>&,mstream& sout);
 void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint16_t>>&,std::vector<snp>&,mstream& sout);
-void read_aafs(const double,const struct in_files*,struct filter*,std::vector<snp>&,mstream& sout);
+void read_aafs(const double,const struct in_files*,struct filter*,std::vector<snp>&,bool const&,mstream& sout);
+bool check_singleton_column(std::string const&);
 void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
 
 void read_snp(bool const&,uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct geno_block*,struct param*);

@@ -53,6 +53,7 @@ class GenoMask {
     bool write_setlist = false, write_masks = false, write_snplist = false, verbose = false;
     bool w_regions = false, w_loo = false, w_lodo = false, w_vc_tests = false;
     bool take_max = true, take_comphet = false; // either max comphet or sum
+    bool force_singleton = false; // allow user to specify singleton variants
     std::string gfile_prefix;
     uint64 gblock_size; // number of bytes to use for bed file format
     double max_aaf = -1, vc_aaf, vc_collapse_MAC; // maximum AAF to consider

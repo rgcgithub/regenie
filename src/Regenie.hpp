@@ -324,6 +324,7 @@ struct param {
   bool mask_rule_max = true, mask_rule_comphet = false; // default use max to combine mask
   std::string mask_rule = "max";
   bool set_aaf = false;// for user-given AAFs for building masks
+  bool aaf_file_wSingletons = false;//for choosing snps in singleton masks
   bool singleton_carriers = false; // carrier count used to define singletons
   bool write_masks = false, write_setlist = false, write_mask_snplist = false; //write masks to bed file
   bool mask_loo = false, mask_lodo = false;
