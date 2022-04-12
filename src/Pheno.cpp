@@ -62,6 +62,9 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   }
 
+  // used for step 2 if using firth and it failed
+  params->pheno_pass = ArrayXb::Constant(params->n_pheno, true);
+
   // Intercept
   pheno_data->new_cov = MatrixXd::Ones(params->n_samples, 1);
 
@@ -97,9 +100,6 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   // print case-control counts per trait
   if(params->trait_mode==1)
     print_cc_info(params, files, pheno_data, sout);
-
-  // used for step 2 if using firth and it failed
-  params->pheno_pass = ArrayXb::Constant(params->n_pheno, true);
 
 }
 
