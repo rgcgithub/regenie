@@ -647,7 +647,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         if(!vm.count("vc-maxAAF")) params->vc_maxAAF = 0.01;
         if(params->burden != "") params->burden.append(",");
         params->burden.append("acat");
-        if(!params->trait_mode) params->burden.append(",nnls");
         if(!params->trait_mode && !vm.count("skip-nnls")) params->burden.append(",nnls");
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
