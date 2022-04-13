@@ -1835,6 +1835,7 @@ void Data::print_test_info(){
   if( params.joint_test ) {
     params.with_flip = jt.get_test_info(&params, test_string, sout) && params.with_flip;
     jt.out_file_prefix = files.out_file;
+    sout << " * list of joint tests run on burden masks: " << get_test_list(jt.test_list, jt.joint_tests_map) << "\n";
   }
 
   normal nd(0,1);
@@ -2631,6 +2632,7 @@ void Data::set_groups_for_testing() {
 
     sout << "  -variants with MAC <= " << params.skat_collapse_MAC << " are collapsed into a mask\n";
     sout << "  -weights are obtained from Beta(MAF,"<< params.skat_a1 <<","<< params.skat_a2 <<")\n";
+    sout << "  -list of gene-based tests run: " << get_test_list(params.vc_test, params.vc_tests_map) << "\n";
 
     // set max rho to 0.999 as it will o.w. cause issue with skat-o p-value calculation
     if(params.skato_rho.size() > 1) params.skato_rho = params.skato_rho.min(0.999); 

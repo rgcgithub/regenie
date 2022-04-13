@@ -286,6 +286,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("interaction-prs", "perform interaction testing with the full PRS from step 1")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene (all masks/M1-only)")
+    ("skip-nnls", "skip running NNLS test for --rgc-gene-p")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
@@ -647,6 +648,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         if(params->burden != "") params->burden.append(",");
         params->burden.append("acat");
         if(!params->trait_mode) params->burden.append(",nnls");
+        if(!params->trait_mode && !vm.count("skip-nnls")) params->burden.append(",nnls");
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
     }

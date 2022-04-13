@@ -461,7 +461,8 @@ Each line contains the variant name followed by its AAF
 Since singleton variants cannot be identified from this file, they are determined by default
 based on the input genetic data. To enforce which sites should be included in the singleton masks
 (see `--set-singletons`), you can add a third column in the file with a binary indicator 
-(1=singleton; 0=not singleton)
+(1=singleton; 0=not singleton). So only variants which are specified as singletons will be 
+considered for the singleton masks, regardless of whether they are singletons in the input genetic data.
 
 ```bash
 7:6187101:C:T 1.53918207864341e-05 0

@@ -432,6 +432,23 @@ template <typename T> int sgn(T val) {
   return (T(0) < val) - (val < T(0));
 }
 
+template <typename U> 
+std::string get_test_list(U const& bit_map, std::map<std::string, U>& srt_map){
+
+  std::vector<std::string> test_list;
+  typename std::map <std::string, U>::iterator itr;
+  for (itr = srt_map.begin(); itr !=  srt_map.end(); ++itr) {
+    // skip nnls_pos and neg
+    if(itr->first == "nnls_pos" || itr->first == "nnls_neg") continue;
+    if( CHECK_BIT(bit_map, itr->second) ) { // add to test list
+      std::string newstr = itr->first;
+      std::transform(newstr.begin(), newstr.end(), newstr.begin(), ::toupper);
+      test_list.push_back( newstr );
+    }
+  }
+  return print_csv(test_list);
+}
+
 
 
 #endif

@@ -31,7 +31,7 @@
 class JTests {
 
   public:
-    std::map<std::string, int> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6}, {"gene_m1_p", 7}, {"gene_p", 8} };
+    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6}, {"gene_m1_p", 7}, {"gene_p", 8} };
     std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG","GENE_M1_P","GENE_P"};
     uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
 
