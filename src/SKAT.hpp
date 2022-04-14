@@ -41,7 +41,11 @@ void compute_vc_masks_bt(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Ei
 void compute_vc_masks_bt_fixed_rho(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct ests const&,struct f_ests const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const MatrixXb>&,std::vector<variant_block>&,double const&,double const&,double const&,bool const&,uint const&,bool const&,struct param const&);
 void compute_vc_masks_bt(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct ests const&,struct f_ests const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const MatrixXb>&,std::vector<variant_block>&,const Eigen::Ref<const Eigen::ArrayXd>&,double const&,double const&,bool const&,uint const&,bool const&,struct param const&);
 void get_single_pvs_bt(Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&);
+Eigen::MatrixXd get_RsKRs(const Eigen::Ref<const Eigen::MatrixXd>&,const double&,const double&);
+Eigen::MatrixXd get_RsKRs(const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const double&,const double&,const double&);
 void get_lambdas(Eigen::VectorXd&,const Eigen::Ref<const Eigen::MatrixXd>&,const double&);
+void compute_fixed_skato_p(double&,double&,double const&,double const&,double const&,Eigen::VectorXd&,const double&,bool const&);
+void compute_fixed_skato_p(double&,double&,double&,double const&,Eigen::VectorXd&,const double&);
 void compute_skat_pv(double&,double&,double const&,Eigen::VectorXd&,const double&);
 double get_chisq_mix_pv(double const&,const Eigen::Ref<const Eigen::VectorXd>&);
 double get_davies_pv(double const&,Eigen::Ref<Eigen::VectorXd>);
@@ -57,7 +61,7 @@ double Kpp_lambda(const double&,const Eigen::Ref<const Eigen::ArrayXd>&);
 double get_spa_pv(const double&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&);
 void apply_correction_cc(const int&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,SpMat const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct f_ests const&,struct param const&);
 void apply_firth_snp(bool&,double&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
-void get_skato_mom(double&,double&,Eigen::ArrayXd&,int const&,const Eigen::Ref<const Eigen::VectorXd>&,double const&,double const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,bool const&);
+void get_skato_mom(double&,double&,double&,double&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::VectorXd>&,double const&,double const&,double const&,const Eigen::Ref<const Eigen::ArrayXd>&,bool const&);
 void get_cvals(int const&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::VectorXd>&);
 void get_cvals(Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::VectorXd>&);
 void get_Qmin(int const&,double&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::MatrixXd>&);
@@ -72,6 +76,7 @@ extern "C"
 
   extern void dqags_(double f(double*),double*,double*,double*,double*,double*,double*,int*,int*,int*,int*,int*,int*,double*);
   double SKATO_integral_fn(double*);
+  double SKATO_integral_fn_liu(double*);
 
 #ifdef __cplusplus
 }
@@ -83,8 +88,12 @@ extern Eigen::ArrayXd skato_Qmin_rho;
 extern Eigen::ArrayXd skato_tau;
 extern Eigen::VectorXd skato_lambdas;
 extern double skato_muQ;
-extern double skato_sd;
+extern double skato_fdavies;
+extern double skato_sdQ;
+extern double skato_dfQ;
+extern double skato_upper;
+extern int skato_strict;
 extern int skato_state; // positive if integration failed
-void integrate(double f(double*),double&, bool const&);
+void integrate(double f(double*),double&,int const&,bool const&);
 
 #endif

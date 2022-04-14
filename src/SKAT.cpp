@@ -51,7 +51,11 @@ ArrayXd skato_Qmin_rho = ArrayXd::Zero(1);
 ArrayXd skato_tau = ArrayXd::Zero(1);
 VectorXd skato_lambdas = VectorXd::Zero(1);
 double skato_muQ = 0;
-double skato_sd = 0;
+double skato_fdavies = 0;
+double skato_sdQ = 0;
+double skato_dfQ = 0;
+double skato_upper = 0;
+int skato_strict = 0;
 int skato_state = 0;
 
 /////////////////////////////////////////////////
@@ -186,11 +190,10 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_skat = (vc_test>>1)&15;
   int jcol, n_pheno = yres.cols(), bs = mat.cols(), nnz;
-  double q;
+  double c1 = sqrt(1 - rho);
   ArrayXd D, w_mask;
   VectorXd lambdas;
-  MatrixXd Qs, Qb, Kv, Svals, Kmat, Rsqrt, sum_stats, pvals, pv_mask;
-  SelfAdjointEigenSolver<MatrixXd> es;
+  MatrixXd Qs, Qb, Svals, Kmat, sum_stats, pvals, pv_mask;
 
   Svals.resize(n_pheno, bs); // PxM
   Kmat.resize(bs, bs); // MxM
@@ -246,27 +249,15 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     }
     if(!with_skat) continue;
 
-    // R_rho sqrt
-    es.compute( MatrixXd::Ones(nnz, nnz) ); // psd matrix
-    D = 1 - rho + rho * es.eigenvalues().array();
-    Rsqrt = es.eigenvectors() * D.max(0).sqrt().matrix().asDiagonal() * es.eigenvectors().transpose(); // 0 ev is ok but not neg due to numerical error
-
-    Kv = Rsqrt * Jstar * (Kmat * Jstar.transpose()) * Rsqrt;
-
-    // get eigen values
-    get_lambdas(lambdas, Kv, skat_lambda_tol);
+    // get eigen values of Rsqrt*V*Rsqrt
+    get_lambdas(lambdas, get_RsKRs(Jstar * (Kmat * Jstar.transpose()), rho, c1), skat_lambda_tol);
     if(lambdas.size() == 0) continue;
     if(debug) cerr << "L:" << lambdas.transpose() << "\n";
 
     // compute test statistic & p-value
-    for(int ph = 0; ph < n_pheno; ph++) {
-      q = (1 - rho) * Qs(ph, jcol) + rho * Qb(ph, jcol);
-      if(debug) cerr << "Q:" << q << "\n";
-      if( (rho == 1) || (lambdas.size() == 1) ){ // burden or single variant
-        sum_stats(ph, 0) = q / lambdas.tail(1)(0);
-        get_logp(sum_stats(ph, 1), sum_stats(ph, 0)); 
-      } else compute_skat_pv(sum_stats(ph, 1), sum_stats(ph, 0), q, lambdas, nl_dbl_dmin);
-    }
+    for(int ph = 0; ph < n_pheno; ph++)
+      compute_fixed_skato_p(sum_stats(ph, 1), sum_stats(ph, 0), Qs(ph, jcol), Qb(ph, jcol), rho, lambdas, nl_dbl_dmin, debug);
+
     if( (sum_stats.col(1).array() >= 0).any() ){
       string test_name = (rho > 0 ? "SKAT-RHO" : "SKAT");
       block_info->sum_stats_vc[test_name] = sum_stats;
@@ -284,13 +275,12 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_skato_acat = CHECK_BIT(vc_test,3);
   bool with_acato = CHECK_BIT(vc_test,4);
   int jcol, n_pheno = yres.cols(), bs = mat.cols(), nnz, nrho = rho_vec.size();
-  double ztz, q, minp;
-  ArrayXd D, w_mask, p_acato;
-  VectorXd lambdas, z_mean, zmZ;
-  MatrixXd XtG, ZtZ, ZtUZ, ZtIUZ, Qs, Qb, Qopt, Kv, Svals, Kmat, Rsqrt, cvals, sum_stats, pvals, pv_mask;
+  double minp, gamma1, gamma2, gamma3;
+  ArrayXd D, w_mask, p_acato, flip_rho_sqrt;
+  VectorXd lambdas, ZtZ_rsum;
+  MatrixXd XtG, ZtZ, Qs, Qb, Qopt, Svals, Kmat, cvals, sum_stats, pvals, pv_mask, r_outer_sum;
   MatrixXd pvs_skato, chisq_skato, pvs_skato_acat, chisq_skato_acat, pvs_acato, chisq_acato;
   SpMat Gw;
-  SelfAdjointEigenSolver<MatrixXd> es;
 
   Svals.resize(n_pheno, bs); // PxM
   Kmat.resize(bs, bs); // MxM
@@ -298,13 +288,14 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   skato_Qmin_rho.resize(nrho, 1);
   if(with_acato) p_acato.resize(nrho+1);
   flipped_skato_rho = 1 - rho_vec;
+  flip_rho_sqrt = flipped_skato_rho.sqrt();
 
   // project covariates
-  Gw = mat  * weights.matrix().asDiagonal(); // NxM
+  Gw = mat  * weights.matrix().asDiagonal(); // NxM - sparse
   XtG = X.transpose() * Gw; // CxM
 
   // get score stats
-  // need to use Gresid (must have yres centered)
+  // need to use Gresid (must have yres centered) - avoid storing dense NxM matrices
   Svals = yres.transpose() * Gw - (yres.transpose() * X) * XtG; // PxM
   mat.resize(0,0); // not needed anymore
 
@@ -355,7 +346,6 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     Jstar.reserve(nnz);
     for(int i = 0, j = 0; i < Jvec.size(); i++)
       if(Jvec(i)) Jstar.insert(j++, i) = 1;
-    ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
 
     // ACAT-V 
     if(with_acatv){
@@ -369,46 +359,35 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     }
     if(!with_omnibus) continue;
 
-    z_mean = (Gw * Jvec.matrix().cast<double>()).rowwise().sum(); // Nx1
-    z_mean -= X * (XtG * Jvec.matrix().cast<double>()).rowwise().sum(); 
-    z_mean /= nnz;
-    ztz = z_mean.squaredNorm();
-    zmZ = ZtZ.rowwise().mean(); // Kmx1
-    ZtUZ = zmZ * zmZ.transpose() / ztz; // KmxKm
-    ZtIUZ = ZtZ - ZtUZ;
-    get_lambdas(skato_lambdas, ZtIUZ, skat_lambda_tol);
+    // get eigen values of Zt(I-U)Z
+    ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
+    ZtZ_rsum = ZtZ.rowwise().sum();//Kmx1
+    r_outer_sum = ZtZ_rsum.rowwise().replicate(nnz) + ZtZ_rsum.transpose().colwise().replicate(nnz);
+    gamma1 = ZtZ_rsum.sum();
+    gamma2 = ZtZ_rsum.squaredNorm();
+    gamma3 = ZtZ_rsum.dot( ZtZ * ZtZ_rsum);
+    get_lambdas(skato_lambdas, ZtZ - ZtZ_rsum * (ZtZ_rsum/gamma1).transpose(), skat_lambda_tol);
     if(skato_lambdas.size() == 0) continue;
     if(debug) cerr << "L:\n" << skato_lambdas.transpose() << "\n";
 
     if(nnz > 1)
-      get_skato_mom(skato_muQ, skato_sd, skato_tau, nnz, skato_lambdas, ztz, zmZ.squaredNorm(), ZtIUZ, ZtUZ, rho_vec, debug);
+      get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
 
     Qopt = Qs.col(jcol) * flipped_skato_rho.matrix().transpose() + Qb.col(jcol) * rho_vec.matrix().transpose(); // P x Nrho
     if(debug) cerr << "Q:" << Qopt.row(0) << "\n";
 
-    es.compute( MatrixXd::Ones(nnz, nnz) ); // psd matrix
     for(int j = 0; j < nrho; j++){
 
-      // get kernel matrix
-      D = flipped_skato_rho(j) + rho_vec(j) * es.eigenvalues().array();
-      Rsqrt = es.eigenvectors() * D.max(0).sqrt().matrix().asDiagonal() * es.eigenvectors().transpose(); // 0 ev is ok but check not neg due to numerical error
-      Kv = Rsqrt * ZtZ * Rsqrt;
-
-      // get eigen values
-      get_lambdas(lambdas, Kv, skat_lambda_tol);
+      // get eigen values of Rsqrt*ZtZ*Rsqrt
+      get_lambdas(lambdas, get_RsKRs(ZtZ, r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
       //if(debug) cerr << "rho:" << rho_vec(j) << "-> L:" << lambdas.transpose() << "\n";
       if(lambdas.size() == 0) break; // SKAT & SKAT-O failed
 
       // needed for skato (M>1)
       if(nnz > 1)  get_cvals(j, cvals, lambdas);
 
-      for(int ph = 0; ph < n_pheno; ph++) {
-        q = Qopt(ph, j);
-        if( (rho_vec(j) == 1) || (lambdas.size() == 1) ){ // burden
-          chisq_skato(ph, j) = q / lambdas.tail(1)(0);
-          get_logp(pvs_skato(ph, j), chisq_skato(ph, j)); 
-        } else compute_skat_pv(pvs_skato(ph, j), chisq_skato(ph, j), q, lambdas, nl_dbl_dmin);
-      }
+      for(int ph = 0; ph < n_pheno; ph++) 
+        compute_fixed_skato_p(pvs_skato(ph, j), chisq_skato(ph, j), Qopt(ph, j), rho_vec(j), lambdas, nl_dbl_dmin);
 
       // store SKAT results
       if(rho_vec(j)==0) {
@@ -526,12 +505,11 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_skat = (vc_test>>1)&15;
   int jcol, n_pheno = yres.cols();
-  double q;
+  double c1 = sqrt(1 - rho);
   VectorXd lambdas, Qs, Qb;
-  ArrayXd Svals, Rvec, Rw, D, w_mask, pvals;
-  MatrixXd Kv, Kraw, Kmat, GtWX, Rsqrt, sum_stats, pv_mask;
+  ArrayXd Svals, Rvec, Rw, w_mask, pvals;
+  MatrixXd Kraw, Kmat, GtWX, sum_stats, pv_mask;
   SpMat GWs;
-  SelfAdjointEigenSolver<MatrixXd> es;
 
   MatrixXd pvs_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
   MatrixXd chisq_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
@@ -606,26 +584,13 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
       }
       if(!with_skat) continue;
 
-      // R_rho sqrt
-      es.compute( MatrixXd::Ones(npass, npass) ); // psd matrix
-      D = 1 - rho + rho * es.eigenvalues().array();
-      Rsqrt = es.eigenvectors() * D.max(0).sqrt().matrix().asDiagonal() * es.eigenvectors().transpose(); // 0 ev is ok but not neg due to numerical error
-
-      // get kernel matrix
-      Kv = Rsqrt * Jstar * (Kmat * Jstar.transpose()) * Rsqrt;
-
-      // get eigen values
-      get_lambdas(lambdas, Kv, skat_lambda_tol);
+    // get eigen values of Rsqrt*V*Rsqrt
+      get_lambdas(lambdas, get_RsKRs(Jstar * (Kmat * Jstar.transpose()), rho, c1), skat_lambda_tol);
       if(lambdas.size() == 0) continue;
       //cerr << lambdas << "\n\n";
 
       // compute SKAT
-      q = ((1 - rho) * Qs(jcol) + rho * Qb(jcol));
-      if( (rho == 1) || (lambdas.size() == 1) ){ // burden or single variant
-        chisq_m(ph, imask) = q / lambdas.tail(1)(0);
-        get_logp(pvs_m(ph, imask), chisq_m(ph, imask)); 
-      } else compute_skat_pv(pvs_m(ph, imask), chisq_m(ph, imask), q, lambdas, nl_dbl_dmin);
-      //cerr << "\n\n" << p_skat << "\n\n";
+      compute_fixed_skato_p(pvs_m(ph, imask), chisq_m(ph, imask), Qs(jcol), Qb(jcol), rho, lambdas, nl_dbl_dmin, debug);
 
     }
   }
@@ -659,12 +624,11 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_skato_acat = CHECK_BIT(vc_test,3);
   bool with_acato = CHECK_BIT(vc_test,4);
   int jcol, n_pheno = yres.cols(), nrho = rho_vec.size();
-  double q, ztz, minp;
-  VectorXd lambdas, Qs, Qb, Qopt, z_mean, zmZ;
-  ArrayXd Svals, Rvec, Rw, D, pvs_skato, chisq_skato, w_mask, pvals, p_acato;
-  MatrixXd ZtZ, ZtUZ, ZtIUZ, Kraw, Kmat, Kv, GtWX, Rsqrt, cvals, sum_stats, pv_mask;
+  double minp, gamma1, gamma2, gamma3;
+  VectorXd lambdas, Qs, Qb, Qopt, ZtZ_rsum;
+  ArrayXd Svals, Rvec, Rw, pvs_skato, chisq_skato, w_mask, pvals, p_acato, flip_rho_sqrt;
+  MatrixXd ZtZ, Kraw, Kmat, GtWX, cvals, sum_stats, pv_mask, r_outer_sum;
   SpMat GWs;
-  SelfAdjointEigenSolver<MatrixXd> es;
 
   MatrixXd pvs_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);//skat
   MatrixXd chisq_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
@@ -683,6 +647,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   cvals.resize(nrho, 5);
   skato_Qmin_rho.resize(nrho, 1);
   flipped_skato_rho = 1 - rho_vec;
+  flip_rho_sqrt = flipped_skato_rho.sqrt();
 
   for(int ph = 0; ph < n_pheno; ph++) { 
     if( !params.pheno_pass(ph) ) continue;
@@ -751,46 +716,34 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       }
       if(!with_omnibus) continue;
 
+    // get eigen values of Zt(I-U)Z
       ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
-
-      z_mean = (GWs * (Jvec && (Rvec != 0)).select(weights, 0).matrix()).rowwise().sum(); // Nx1
-      z_mean -= XWsqrt * (GtWX * (Jvec && (Rvec != 0)).select(weights, 0).matrix()).rowwise().sum(); 
-      z_mean /= npass;
-      ztz = z_mean.squaredNorm();
-      zmZ = ZtZ.rowwise().mean(); // Kmx1
-      ZtUZ = zmZ * zmZ.transpose() / ztz;
-      ZtIUZ = ZtZ - ZtUZ;
-      get_lambdas(skato_lambdas, ZtIUZ, skat_lambda_tol);
+      ZtZ_rsum = ZtZ.rowwise().sum();//Kmx1
+      r_outer_sum = ZtZ_rsum.rowwise().replicate(npass) + ZtZ_rsum.transpose().colwise().replicate(npass);
+      gamma1 = ZtZ_rsum.sum();
+      gamma2 = ZtZ_rsum.squaredNorm();
+      gamma3 = ZtZ_rsum.dot( ZtZ * ZtZ_rsum);
+      get_lambdas(skato_lambdas, ZtZ - ZtZ_rsum * (ZtZ_rsum/gamma1).transpose(), skat_lambda_tol);
       if(skato_lambdas.size() == 0) continue;
       if(debug) cerr << "L:\n" << skato_lambdas.transpose() << "\n";
 
       if(npass > 1)
-        get_skato_mom(skato_muQ, skato_sd, skato_tau, npass, skato_lambdas, ztz, zmZ.squaredNorm(), ZtIUZ, ZtUZ, rho_vec, debug);
+        get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
 
       Qopt = (Qs(jcol) * flipped_skato_rho + Qb(jcol) * rho_vec).matrix(); // Nrho x 1
       if(debug) cerr << "Q:\n" << std::setprecision(10) << Qopt.transpose() << "\n";
 
-      es.compute( MatrixXd::Ones(npass, npass) ); // psd matrix
       for(int j = 0; j < nrho; j++){
 
-        // get kernel matrix
-        D = flipped_skato_rho(j) + rho_vec(j) * es.eigenvalues().array();
-        Rsqrt = es.eigenvectors() * D.max(0).sqrt().matrix().asDiagonal() * es.eigenvectors().transpose(); // 0 ev is ok but check not neg due to numerical error
-        Kv = Rsqrt * ZtZ * Rsqrt;
-
-        // get eigen values
-        get_lambdas(lambdas, Kv, skat_lambda_tol);
+        // get eigen values of Rsqrt*ZtZ*Rsqrt
+        get_lambdas(lambdas, get_RsKRs(ZtZ, r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
         if(lambdas.size() == 0) continue;
         //if(rho_vec(j) >0.9) cerr << "rho=" << rho_vec(j) << "\nL:"<<lambdas.matrix().transpose() << "\n\nQ=" << Qopt.col(j);
 
         // needed for skato (M>1)
         if(npass > 1)  get_cvals(j, cvals, lambdas);
 
-        q = Qopt(j);
-        if((rho_vec(j) == 1) || (lambdas.size() == 1) ){ // burden
-          chisq_skato(j) = q / lambdas.tail(1)(0);
-          get_logp(pvs_skato(j), chisq_skato(j)); 
-        } else compute_skat_pv(pvs_skato(j), chisq_skato(j), q, lambdas, nl_dbl_dmin);
+        compute_fixed_skato_p(pvs_skato(j), chisq_skato(j), Qopt(j), rho_vec(j), lambdas, nl_dbl_dmin);
 
         // store SKAT results
         if(rho_vec(j)==0) {
@@ -835,7 +788,6 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         minp = pow(10, -pvs_skato.maxCoeff());
         get_Qmin(nrho, minp, skato_Qmin_rho, cvals);
         if(debug) cerr << "Qmin=" << skato_Qmin_rho.matrix().transpose() << "\nlogp=" << pvs_skato.matrix().transpose() <<"\n";
-
         // numerical integration
         get_skato_pv(pvs_m_o(ph, imask), chisq_m_o(ph, imask), minp, nrho, nl_dbl_dmin, debug);
       }
@@ -956,6 +908,33 @@ void get_single_pvs_bt(Ref<ArrayXd> pvals, const Ref<const ArrayXd>& chisq_vals)
 /////////////////////
 /////////////////////
 
+Eigen::MatrixXd get_RsKRs(const Ref<const MatrixXd>& K, const double& rho, const double& c1){
+
+  int m = K.rows(); // M
+  double c2 = sqrt( 1 - rho + m * rho), gamma1;
+
+  VectorXd b = K.rowwise().sum(); // Mx1
+  gamma1 = b.sum();
+
+  return (
+      (1-rho) * K.array() + 
+      c1 * (c2-c1)/m * (b.rowwise().replicate(m) + b.transpose().colwise().replicate(m)).array() + // last term is outer sum of b
+      (c2-c1)/m * (c2-c1)/m * gamma1
+      ).matrix();
+}
+
+Eigen::MatrixXd get_RsKRs(const Ref<const MatrixXd>& K, const Ref<const MatrixXd>& b_outer_sum, const double& gamma1, const double& rho, const double& c1){
+
+  int m = K.rows(); // M
+  double c2 = sqrt( 1 - rho + m * rho);
+
+  return (
+      (1-rho) * K.array() + 
+      c1 * (c2-c1)/m * b_outer_sum.array() +
+      (c2-c1)/m * (c2-c1)/m * gamma1
+      ).matrix();
+}
+
 void get_lambdas(VectorXd& lambdas, const Ref<const MatrixXd>& K, const double& tol){
 
   if(K.rows() == 1) { // K is scalar (e.g. single variant in set)
@@ -971,6 +950,27 @@ void get_lambdas(VectorXd& lambdas, const Ref<const MatrixXd>& K, const double& 
   int nng = (esK.eigenvalues().array() >= 0).count();
   int nonzero = (esK.eigenvalues().array() > ( (esK.eigenvalues().array() >= 0).select(esK.eigenvalues().array(),0).sum() / nng * tol) ).count();
   lambdas = esK.eigenvalues().tail(nonzero);
+}
+
+void compute_fixed_skato_p(double& pval, double& chival, double const& Qs, double const& Qb, double const& rho, VectorXd& lambdas, const double& tol, bool const& debug){
+
+  double q = (1 - rho) * Qs + rho * Qb;
+  if(debug) cerr << "Q:" << q << "\n";
+
+  if( (rho == 1) || (lambdas.size() == 1) ){ // burden or single variant
+    chival = q / lambdas.tail(1)(0);
+    get_logp(pval, chival); 
+  } else compute_skat_pv(pval, chival, q, lambdas, tol);
+
+}
+
+void compute_fixed_skato_p(double& pval, double& chival, double& q, double const& rho, VectorXd& lambdas, const double& tol){
+
+  if( (rho == 1) || (lambdas.size() == 1) ){ // burden or single variant
+    chival = q / lambdas.tail(1)(0);
+    get_logp(pval, chival); 
+  } else compute_skat_pv(pval, chival, q, lambdas, tol);
+
 }
 
 void compute_skat_pv(double& pval, double& chival, double const& Q, VectorXd& lambdas, const double& tol){
@@ -1008,15 +1008,17 @@ double get_chisq_mix_pv(double const& q, const Ref<const VectorXd>& lambdas){
 // return 1-F(x) for chisq mixture
 double get_davies_pv(double const& q, Ref<VectorXd> lambdas){
 
-  int k = lambdas.size(), ifault = 0; // p & error
-  double cdf, pv;
+  // use default lim/acc values from CompQuadForm R package and SKAT resp.
+  int k = lambdas.size(), ifault = 0, lim = 1e4; // p & error
+  double cdf, pv, acc1 = 1e-6;
+  if(skato_strict == 1){ lim=1e5; acc1 = 1e-7; }
+  else if(skato_strict == 2){ lim=1e6; acc1 = 1e-9; }
   ArrayXd nc = ArrayXd::Constant(k, 0); // ncp
   ArrayXi df = ArrayXi::Constant(k, 1); // df
   ArrayXd tr = ArrayXd::Constant(7, 0); // params for qf
 
-  // use default lim/acc values from CompQuadForm R package and SKAT resp.
   try {
-    cdf = qf(lambdas.data(), nc.data(), df.data(), k, 0, q, 1e4, 1e-6, tr.data(), &ifault); 
+    cdf = qf(lambdas.data(), nc.data(), df.data(), k, 0, q, lim, acc1, tr.data(), &ifault); 
     pv = 1 - cdf;
   } catch (...){
     return -1;
@@ -1166,16 +1168,19 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas){
   return pv;
 }
 
-void get_skato_mom(double& mu, double& sd, ArrayXd& tau, int const& nnz, const Ref<const VectorXd>& lambdas, double const& ztz, double const& zmZ_nsq, const Ref<const MatrixXd>& ZtIUZ, const Ref<const MatrixXd>& ZtUZ, const Ref<const ArrayXd>& rho, bool const& debug){
+void get_skato_mom(double& mu, double& sc_fac, double& sd, double& df, ArrayXd& tau, const Ref<const VectorXd>& lambdas, double const& gamma1, double const& gamma2, double const& gamma3, const Ref<const ArrayXd>& rho, bool const& debug){
 
-  double s2_xi, s2Q;
+  double v0, ve, vq;
 
   mu = lambdas.sum();
-  s2_xi = 4 * (ZtIUZ.array() * ZtUZ.array()).sum();
-  s2Q = 2 * lambdas.squaredNorm() + s2_xi;
-  sd = sqrt( (s2Q - s2_xi) / s2Q );
-  if(debug) cerr << "[muQ, scFac]=" << mu << " " << sd << "\n";
-  tau = nnz * nnz * rho * ztz + (1-rho) * zmZ_nsq / ztz;
+  v0 = 2 * lambdas.squaredNorm();
+  ve = 4 * (gamma3/gamma1 - gamma2*gamma2/gamma1/gamma1);
+  vq = v0 + ve;
+  sd = sqrt(vq);
+  sc_fac = sqrt( v0 / vq );
+  df = 0.5 * 0.5 * v0 * v0 / lambdas.array().pow(4).sum();
+  if(debug) cerr << "[muQ, scFac, sd, df]=" << mu << " " << sc_fac << " " << sd << " " << df << "\n";
+  tau = gamma1 * rho + gamma2/gamma1 * (1-rho);
   if(debug) cerr << "tau=" << tau.matrix().transpose() << "\n";
 
 }
@@ -1237,6 +1242,7 @@ void get_Qmin(int const& nrho, double& pmin, Ref<ArrayXd> Qmin, const Ref<const 
     chi_squared chisq( cvals(j, 4) );
     Qmin(j) = cvals(j, 0) + (quantile(complement(chisq, pmin)) - cvals(j, 4)) * sqrt(cvals(j, 1)/cvals(j, 4)) ;
   }
+  skato_upper = ((Qmin + flipped_skato_rho * skato_muQ * (1 - skato_fdavies) / skato_fdavies)/skato_tau).minCoeff();
 }
 
 double SKATO_integral_fn(double* x){ // variables used beside x are global
@@ -1245,56 +1251,87 @@ double SKATO_integral_fn(double* x){ // variables used beside x are global
   double S, dlt;
   chi_squared chisq1( 1 );
 
-  // get first term in integral
+  if(skato_state == 1) return 0; // skip if failed for other x values
+
+  // get first term in integral (1-cdf)
   if( val > (skato_muQ * 1e4) ) S = 0; // value check from SKAT R package
   else {
-    dlt = (val - skato_muQ) * skato_sd + skato_muQ;
-    if(dlt <= 0) return 0; // cdf=0
+    dlt = (val - skato_muQ) * skato_fdavies + skato_muQ;
+    if(dlt <= 0) S = 1;
     else{
-      // davies/kuonen returns -1 if fails
       S = get_chisq_mix_pv(dlt, skato_lambdas);
+      //cerr << *x << " " << S << " " << val << " " << skato_muQ << " " << skato_sdQ << " " << skato_dfQ << endl;
 
       if(S <= 0) { // failed
         skato_state = 1; 
         return 0;
-      }
+      } else if(S >= 1) S = 1;
     }
   }
 
-  if(S >= 1) return 0; // cdf=0
-
-  return (1-S) * pdf(chisq1, *x);
+  return S * pdf(chisq1, *x);
 
 }
 
-// for skato num int
-void integrate(double f(double*), double& pv, bool const& debug){
+double SKATO_integral_fn_liu(double* x){ // variables used beside x are global
 
-  int neval, ierror, ilimit = 1000, last; 
+  double val = ((skato_Qmin_rho - skato_tau * (*x)) / flipped_skato_rho).minCoeff();
+  double S, dlt;
+  chi_squared chisq1( 1 );
+
+  if(skato_state == 1) return 0; // skip if failed for other x values
+
+  chi_squared chisqL( skato_dfQ );
+
+  // get first term in integral
+  dlt = (val - skato_muQ) / skato_sdQ * sqrt(2*skato_dfQ) + skato_dfQ;
+  if(dlt<0) return 0; // cdf=0
+  S = cdf(complement(chisqL, dlt));
+  //cerr << *x << " " << S << " " << val << " " << skato_muQ << " " << skato_sdQ << " " << skato_dfQ << endl;
+
+  return S * pdf(chisq1, *x);
+
+}
+
+
+// for skato num int
+void integrate(double f(double*), double& pv, int const& subd, bool const& debug){
+
+  int neval, ierror, ilimit = subd, last; 
   int lenw = 4 * ilimit;
-  double lower = 0, upper = 40, epsabs = 1e-25, epsrel = 0.0001220703, result, abserr; // rel. eps = eps^.25 in R
+  double lower = 0, upper = skato_upper, epsabs = 1e-25, epsrel = pow(std::numeric_limits<double>::epsilon(), .25), result, abserr;
   VectorXi iwork = VectorXi::Zero(ilimit);
   VectorXd work = VectorXd::Zero(lenw);
   skato_state = 0;
 
   dqags_(f, &lower, &upper, &epsabs, &epsrel, &result, &abserr, &neval, &ierror, &ilimit, &lenw, &last, iwork.data(), work.data());
+  if(ierror != 0) skato_state = 1;
   if(debug) {
-    cerr << "Niter=" << neval << ";integral=" << result << "Abs.error=" << abserr << ";rel.error=" << epsrel << 
-      ";fail="<< skato_state << "/" << ierror << "\n";
-    for(int i = 1; i < 5; i++) {lower=0.2*i;cerr << "g(" << lower << ")=" << SKATO_integral_fn(&lower) << " ";}
+    cerr << "Niter=" << neval << ";integral=" << result << "Abs.error=" << abserr << ";rel.error=" << epsrel <<  ";fail="<< skato_state << "/" << ierror << "\n";
+    if(skato_state == 0) for(int i = 1; i < 6; i++) {lower=skato_upper*0.2*i;cerr << "g(" << lower << ")=" << f(&lower) << " ";}
   }
 
-  if ((skato_state != 0) || (ierror != 0))  pv = -1; 
-  else pv = 1 - result;
+  if (skato_state != 0)  pv = -1; 
+  else pv = result;
 
 } 
 
 void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nrhos, double const& nl_dbl_dmin, bool const& debug){
 
   double a, p_bc = minp * nrhos;
+  chi_squared chisq1( 1 );
+  double tstar = cdf(complement(chisq1, skato_upper)); 
+  skato_strict = (minp < .05 ? 1 : 0); // use stricter convergence criteria for davies
 
-  integrate(SKATO_integral_fn, a, debug);
-  if(debug) cerr << "\nSKATO p=" << a << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
+  integrate(SKATO_integral_fn, a, 1000, debug);
+  if(debug) cerr << "SKATO p=" << (skato_state == 0 ? (a+tstar) : -1) << "=" << a << "+" << tstar  << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
+  if(skato_state == 0) a += tstar;
+  else { 
+    skato_strict++; // even stricter criteria for davies
+    integrate(SKATO_integral_fn, a, 2000, debug);
+    if(skato_state == 0) a += tstar;
+  }
+  skato_strict = 0;
 
   if( p_bc < a ) a = p_bc; // bonferroni corrected p
   else if( (a <= 0) && (p_bc <= 1) ) a = p_bc; // if integrate function failed
