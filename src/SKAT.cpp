@@ -1321,12 +1321,14 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
   double a, p_bc = minp * nrhos;
   chi_squared chisq1( 1 );
   double tstar = cdf(complement(chisq1, skato_upper)); 
-  skato_strict = (minp < .05 ? 1 : 0); // use stricter convergence criteria for davies
+  skato_strict = 0;
+  if(minp < 0.05) skato_strict = minp < 1e-5 ? 2 : 1; // use stricter convergence criteria for davies
 
   integrate(SKATO_integral_fn, a, 1000, debug);
   if(debug) cerr << "SKATO p=" << (skato_state == 0 ? (a+tstar) : -1) << "=" << a << "+" << tstar  << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
-  if(skato_state == 0) a += tstar;
-  else { 
+
+  if(skato_state == 0) a += tstar; // add s(q*) to integral
+  else if(skato_strict < 2) { 
     skato_strict++; // even stricter criteria for davies
     integrate(SKATO_integral_fn, a, 2000, debug);
     if(skato_state == 0) a += tstar;
