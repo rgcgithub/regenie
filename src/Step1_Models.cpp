@@ -1092,6 +1092,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     }
     Hinv.compute( XtWX );
     step_size = Hinv.solve(score.matrix()).array();
+    //cerr << (step_size * score).sum()/(.01 + abs(fn_end)) << "\n\n";
 
     // check f(b)
     for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
@@ -1107,7 +1108,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
         return false;
       }
 
-      if(params->debug) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << fn_start << "-->" << fn_end << "\n";
+      if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "-->" << fn_end << "\n";
 
       if( fn_end < (fn_start + params->numtol) ) break;
       // adjusted step size
@@ -1117,7 +1118,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
     score -= lambda * betanew;
-    if(params->debug) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
+    if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
 
     if( score.abs().maxCoeff() < params->l1_ridge_tol ) break;
 
@@ -1557,6 +1558,7 @@ void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, c
     if(etavec(i) > ETAMAXTHR) pivec(i) = 1 / (1 + eps);
     else if(etavec(i) < ETAMINTHR) pivec(i) = eps / (1 + eps);
     else pivec(i) = 1 - 1/(exp(etavec(i)) + 1);
+    //cerr << setprecision(16) << i << " " << etavec(i) << " " << pivec(i) << "\n";
   }
 
 }
