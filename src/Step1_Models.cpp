@@ -167,16 +167,6 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
   return true;
 }
 
-double get_logist_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi, const Ref<const ArrayXb>& mask){
-
-  double dev = 0;
-
-  for( int i = 0; i < Y.size(); i++)
-    if(mask(i)) dev += compute_log_lik_bern(Y(i), pi(i));
-
-  return 2 * dev; // -2 log.lik
-}
-
 // poisson models
 void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
 
@@ -295,16 +285,6 @@ bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, co
 
   if(params->debug) cerr << "Final (" << niter_cur << ") : " << betavec.matrix().transpose() << " : " << score.matrix().transpose() << "\n";
   return true;
-}
-
-double get_poisson_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi, const Ref<const ArrayXb>& mask){
-
-  double dev = 0;
-
-  for(int i = 0; i < Y.size(); i++)
-    if(mask(i)) dev += compute_log_lik_poisson(Y(i), pi(i));
-
-  return 2 * dev; // -2 log.lik
 }
 
 
@@ -1586,6 +1566,26 @@ void get_pvec_poisson(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>&
   etavec = offset + (Xmat * beta.matrix()).array();
   pivec = etavec.exp(); // lambda = E(Y)
 
+}
+
+double get_logist_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi, const Ref<const ArrayXb>& mask){
+
+  double dev = 0;
+
+  for( int i = 0; i < Y.size(); i++)
+    if(mask(i)) dev += compute_log_lik_bern(Y(i), pi(i));
+
+  return 2 * dev; // -2 log.lik
+}
+
+double get_poisson_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi, const Ref<const ArrayXb>& mask){
+
+  double dev = 0;
+
+  for(int i = 0; i < Y.size(); i++)
+    if(mask(i)) dev += compute_log_lik_poisson(Y(i), pi(i));
+
+  return 2 * dev; // -2 log.lik
 }
 
 
