@@ -1059,7 +1059,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   int bs_l1 = params->total_n_block * params->n_ridge_l0;
   int niter_cur = 0, j_start, chunk, size_chunk;
   double fn_start = 0, fn_end = 0;
-  ArrayXd etavec, betanew, score, step_size;
+  ArrayXd etavec, betanew, score, step_size, vweights;
   MatrixXd XtWX;
   LLT<MatrixXd> Hinv;
 
@@ -1075,6 +1075,9 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   // get the score
   score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
   score -= lambda * betaold;
+  // for convergence check
+  //vweights = (X.array().square().matrix().transpose() * mask.select(wvec,0).matrix()).array();
+  //vweights /= mask.select(wvec,0).sum();
 
   while(niter_cur++ < params->niter_max_ridge) {
 
@@ -1120,10 +1123,15 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     score -= lambda * betanew;
     if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
 
-    if( score.abs().maxCoeff() < params->l1_ridge_tol ) break;
+    if( score.abs().maxCoeff() < params->l1_ridge_tol ||
+        //( (vweights * (betanew - betaold).square()).maxCoeff() < params->tol)  // convergence criteria from glmnet
+        (abs(fn_end - fn_start)/(.01 + abs(fn_end)) < params->tol) // fractional change - same as glm
+        ) break;
 
     betaold = betanew;
     fn_start = fn_end;
+    //vweights = (X.array().square().matrix().transpose() * mask.select(wvec,0).matrix()).array();
+    //vweights /= mask.select(wvec,0).sum();
   }
 
   if(niter_cur > params->niter_max_ridge) 
