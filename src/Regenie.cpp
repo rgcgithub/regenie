@@ -388,6 +388,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("firth") && vm.count("firth-se") ) params->back_correct_se = true;
     if( vm.count("use-adam") ) params->use_adam = true;
     if( vm.count("adam-mini") ) params->adam_mini = true;
+    if( vm.count("niter") ) params->niter_max_ridge = params->niter_max;
     if( vm.count("force-ltco") ) params->w_ltco = true;
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
