@@ -1066,12 +1066,12 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   //// get starting values
   // get w=p*(1-p) and check none of the values are 0
   get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
+  // get -2f(b)
+  fn_start = get_logist_dev(Y, pivec, mask) + lambda * betaold.square().sum();
   if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
     sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
     return false;
   }
-  // get -2f(b)
-  fn_start = get_logist_dev(Y, pivec, mask) + lambda * betaold.square().sum();
   // get the score
   score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
   score -= lambda * betaold;
@@ -1100,13 +1100,13 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 
       // get w=p*(1-p) and check none of the values are 0
       get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
+      // -2f(b)
+      fn_end = get_logist_dev(Y, pivec, mask) + lambda * betanew.square().sum();
       if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
         sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
         return false;
       }
 
-      // -2f(b)
-      fn_end = get_logist_dev(Y, pivec, mask) + lambda * betanew.square().sum();
       if(params->debug) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << fn_start << "-->" << fn_end << "\n";
 
       if( fn_end < (fn_start + params->numtol) ) break;
