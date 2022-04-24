@@ -74,8 +74,6 @@ std::string print_null_firth_info(struct in_files const&,struct f_ests&,struct p
 void check_beta_start_firth(struct in_files&,struct param const&,mstream&);
 void get_beta_start_firth(const int&,struct f_ests*,struct in_files*,struct param const*,mstream&);
 void get_beta_start_firth(struct f_ests*,struct ests const*);
-void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&);
-void get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&);
 
 
 // spa (multithreading in openmp)

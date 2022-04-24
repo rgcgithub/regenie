@@ -675,14 +675,14 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   while(niter_cur++ < niter_firth){
 
     // update quantities
-    get_pvec(etavec, pivec, betavec, offset, X1);
-    get_wvec(pivec, wvec, mask);
+    get_pvec(etavec, pivec, betavec, offset, X1, params->numtol_eps);
+    dev_old = get_logist_dev(Y1, pivec, mask);
+    get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
     XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
     XtWX = XtW * XtW.transpose();
     qr.compute(XtWX);
-
     // compute deviance
-    dev_old = get_logist_dev(Y1, pivec, mask) - qr.logAbsDeterminant();
+    dev_old -= qr.logAbsDeterminant();
     if(comp_lrt && (niter_cur == 1)) // at first iter (i.e. betaSNP=0)
       dev0 = dev_old;
 
@@ -718,12 +718,13 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       else 
         betanew = betavec + step_size;
 
-      get_pvec(etavec, pivec, betanew, offset, X1);
-      get_wvec(pivec, wvec, mask);
+      get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
+      dev_new = get_logist_dev(Y1, pivec, mask);
+      get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
       XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
       qr.compute(XtWX);
-      dev_new = get_logist_dev(Y1, pivec, mask) - qr.logAbsDeterminant();
+      dev_new -= qr.logAbsDeterminant();
 
       //cerr << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << dev_new << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
       if( dev_new < dev_old + params->numtol ) break;
@@ -736,13 +737,13 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       betavec += step_size;
     dev_old = dev_new;
 
-    if(params->debug && (niter_cur%5==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << " (max=" << mod_score.maxCoeff() << ")\n";
+    if(params->debug && (niter_cur%10==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << " (max=" << mod_score.maxCoeff() << ")\n";
 
   }
   if(params->debug) cerr << "Ending beta = " << betavec.matrix().transpose() << "\nScore = " << mod_score.matrix().transpose() << "\nNiter=" << niter_cur << endl;
 
   // If didn't converge
-  if(niter_cur > niter_firth) return false;
+  if( niter_cur > niter_firth ) return false;
 
   dev = dev_new;
   if( comp_lrt ) {
@@ -998,20 +999,6 @@ void get_beta_start_firth(struct f_ests* firth_est, struct ests const* m_ests){
   // get b0 from null logistic regression
   firth_est->beta_null_firth.topRows(m_ests->bhat_start.rows()) = m_ests->bhat_start;
 }
-
-// when using Firth (does not use mask info)
-void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat){
-
-  etavec = offset + (Xmat * beta.matrix()).array();
-  pivec = 1 - 1/(etavec.exp() + 1);
-
-}
-
-// when using Firth (set masked to 0)
-void get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask){
-  wvec = mask.select(pivec * (1-pivec), 0);
-}
-
 
 void check_pval_snp(variant_block* block_info, data_thread* dt_thr, int const& chrom, int const& ph, int const& isnp, struct phenodt& pheno_data, struct geno_block& gblock, struct ests const& m_ests, struct f_ests& fest, struct param const& params, mstream& sout){
 
