@@ -48,7 +48,7 @@ void compute_fixed_skato_p(double&,double&,double const&,double const&,double co
 void compute_fixed_skato_p(double&,double&,double&,double const&,Eigen::VectorXd&,const double&);
 void compute_skat_pv(double&,double&,double const&,Eigen::VectorXd&,const double&);
 double get_chisq_mix_pv(double const&,const Eigen::Ref<const Eigen::VectorXd>&);
-double get_davies_pv(double const&,Eigen::Ref<Eigen::VectorXd>);
+double get_davies_pv(double const&,Eigen::Ref<Eigen::VectorXd>,bool const&);
 double get_kuonen_pv(const double&,const Eigen::Ref<const Eigen::VectorXd>&);
 double get_liu_pv(const double&,const Eigen::Ref<const Eigen::VectorXd>&);
 double get_tmin_lambda(const double&,const Eigen::Ref<const Eigen::ArrayXd>&);
@@ -92,7 +92,6 @@ extern double skato_fdavies;
 extern double skato_sdQ;
 extern double skato_dfQ;
 extern double skato_upper;
-extern int skato_strict;
 extern int skato_state; // positive if integration failed
 void integrate(double f(double*),double&,int const&,bool const&);
 

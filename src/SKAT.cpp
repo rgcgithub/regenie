@@ -55,7 +55,6 @@ double skato_fdavies = 0;
 double skato_sdQ = 0;
 double skato_dfQ = 0;
 double skato_upper = 0;
-int skato_strict = 0;
 int skato_state = 0;
 
 /////////////////////////////////////////////////
@@ -990,29 +989,34 @@ void compute_skat_pv(double& pval, double& chival, double const& Q, VectorXd& la
 // returns p-value or -1
 double get_chisq_mix_pv(double const& q, const Ref<const VectorXd>& lambdas){
 
-  double pv;
+  double pv, pv_davies_thr = 1e-5; // davies can be unreliable if pv is too small
 
   // re-scale so that max lambda is 1 (lambda is sorted)
   double newQ = q / lambdas.tail(1)(0);
   VectorXd newL = lambdas / lambdas.tail(1)(0);
 
   // exact
-  pv = get_davies_pv(newQ, newL);
-  if(pv <= 0) pv = get_kuonen_pv(newQ, newL);
-  if(pv <= 0) pv = get_liu_pv(newQ, newL);
+  pv = get_davies_pv(newQ, newL, false);
+  // if failed or is very low, use SPA
+  if(pv <= pv_davies_thr){ 
+    pv = get_kuonen_pv(newQ, newL); // SPA
+    if(pv <= 0) {// if SPA failed
+      pv = get_davies_pv(newQ, newL, true); // use Davies with stringent parameters
+      if(pv <= 0) pv = get_liu_pv(newQ, newL); // only use mod Liu if Davies/SPA failed
+    }
+  }
 
   return pv;
 
 }
 
 // return 1-F(x) for chisq mixture
-double get_davies_pv(double const& q, Ref<VectorXd> lambdas){
+double get_davies_pv(double const& q, Ref<VectorXd> lambdas, bool const& force_stringent){
 
   // use default lim/acc values from CompQuadForm R package and SKAT resp.
   int k = lambdas.size(), ifault = 0, lim = 1e4; // p & error
   double cdf, pv, acc1 = 1e-6;
-  if(skato_strict == 1){ lim=1e5; acc1 = 1e-7; }
-  else if(skato_strict == 2){ lim=1e6; acc1 = 1e-9; }
+  if(force_stringent){ lim=1e6; acc1 = 1e-9;}
   ArrayXd nc = ArrayXd::Constant(k, 0); // ncp
   ArrayXi df = ArrayXi::Constant(k, 1); // df
   ArrayXd tr = ArrayXd::Constant(7, 0); // params for qf
@@ -1321,19 +1325,11 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
   double a, p_bc = minp * nrhos;
   chi_squared chisq1( 1 );
   double tstar = cdf(complement(chisq1, skato_upper)); 
-  skato_strict = 0;
-  if(minp < 0.05) skato_strict = minp < 1e-5 ? 2 : 1; // use stricter convergence criteria for davies
 
   integrate(SKATO_integral_fn, a, 1000, debug);
   if(debug) cerr << "SKATO p=" << (skato_state == 0 ? (a+tstar) : -1) << "=" << a << "+" << tstar  << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
 
   if(skato_state == 0) a += tstar; // add s(q*) to integral
-  else if(skato_strict < 2) { 
-    skato_strict++; // even stricter criteria for davies
-    integrate(SKATO_integral_fn, a, 2000, debug);
-    if(skato_state == 0) a += tstar;
-  }
-  skato_strict = 0;
 
   if( p_bc < a ) a = p_bc; // bonferroni corrected p
   else if( (a <= 0) && (p_bc <= 1) ) a = p_bc; // if integrate function failed
