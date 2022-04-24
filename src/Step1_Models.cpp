@@ -163,7 +163,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 
   betavec = betanew;
 
-  //cerr << endl << betavec.matrix().transpose() << "\n\n" << score.matrix().transpose() << "\n\n";
+  //if(params->debug) cerr << "\nLog. reg done: beta\n" << betavec.matrix().transpose() << "\nscore:\n" << score.matrix().transpose() << "\n\n";
   return true;
 }
 
@@ -1560,14 +1560,10 @@ bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, con
 void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat, double const& eps){
 
   etavec = offset + (Xmat * beta.matrix()).array();
-  pivec.resize(etavec.size(),1);
   // strategy used in glm
-  for (int i = 0; i < pivec.size(); i++){
-    if(etavec(i) > ETAMAXTHR) pivec(i) = 1 / (1 + eps);
-    else if(etavec(i) < ETAMINTHR) pivec(i) = eps / (1 + eps);
-    else pivec(i) = 1 - 1/(exp(etavec(i)) + 1);
-    //cerr << setprecision(16) << i << " " << etavec(i) << " " << pivec(i) << "\n";
-  }
+  pivec = (etavec > ETAMAXTHR).select( 1 /(1+eps),
+      (etavec < ETAMINTHR).select( eps/(1+eps), 1 - 1/(etavec.exp() + 1) ) );
+  //cerr << setprecision(16) << etavec.head(5) << "\n" << pivec.head(5) << "\n";
 
 }
 
