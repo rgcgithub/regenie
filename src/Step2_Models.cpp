@@ -1065,13 +1065,13 @@ void run_firth_correction_snp(int const& chrom, int const& ph, int const& isnp, 
 }
 
 void run_SPA_test(bool& test_fail, int const& ph, data_thread* dt_thr, const Ref<const ArrayXb>& mask, struct ests const& m_ests, struct param const& params){
-  run_SPA_test_snp(dt_thr->chisq_val(ph), dt_thr->pval_log(ph), dt_thr->stats(ph), dt_thr->denum(ph), dt_thr->fastSPA, dt_thr->Gsparse, dt_thr->Gres.array(), m_ests.Y_hat_p.col(ph).array(), m_ests.Gamma_sqrt.col(ph).array(), mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double);
+  run_SPA_test_snp(dt_thr->chisq_val(ph), dt_thr->pval_log(ph), dt_thr->stats(ph), dt_thr->denum(ph), dt_thr->fastSPA, dt_thr->Gsparse, dt_thr->Gres.array(), m_ests.Y_hat_p.col(ph).array(), m_ests.Gamma_sqrt.col(ph).array(), mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
 }
 
-void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const double& denum, bool const& fastSPA, SpVec const& Gsparse, const Ref<const ArrayXd>& Gres, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask, bool& test_fail, const double& tol, const double& niter_max, const double& missing_value_double){
+void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const double& denum, bool const& fastSPA, SpVec const& Gsparse, const Ref<const ArrayXd>& Gres, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask, bool& test_fail, const double& tol, const double& niter_max, const double& missing_value_double, const double& nl_dbl_dmin){
 
   int index_j;
-  double score_num, tval, limK1_low, limK1_high, root_K1;
+  double score_num, tval, limK1_low, limK1_high, root_K1, pval1, pval2;
   spa_data spa_df;
   ArrayXd Gmu;
 
@@ -1103,19 +1103,39 @@ void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const doub
     return;
   }
 
-  // keep track of whether obs stat is positive
-  spa_df.pos_score = stats > 0;
-  tval = fabs(stats);
+  tval = stats >= 0 ? -stats : stats;
 
+  // 1.for T
+  spa_df.pos_score = true;
   // solve K'(t)= tval using a mix of Newton-Raphson and bisection method
   root_K1 = solve_K1_snp(tval, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask, tol, niter_max, missing_value_double);
   if( root_K1 == missing_value_double ){
     test_fail = true;
     return;
   }
+  // compute pvalue (one tail)
+  get_SPA_pvalue_snp(root_K1, tval, chisq, pval1, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
+  if(test_fail) {return;}
 
-  // compute pvalue
-  get_SPA_pvalue_snp(root_K1, tval, chisq, pv, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
+  // 2.for -T
+  spa_df.pos_score = false;
+  // solve K'(t)= tval using a mix of Newton-Raphson and bisection method
+  root_K1 = solve_K1_snp(tval, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask, tol, niter_max, missing_value_double);
+  if( root_K1 == missing_value_double ){
+    test_fail = true;
+    return;
+  }
+  // compute pvalue (other tail)
+  get_SPA_pvalue_snp(root_K1, tval, chisq, pval2, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
+  if(test_fail) {return;}
+
+  // get quantile
+  //cerr << stats << ":" << pval1 << " " << pval2 << "\n";
+  if( (pval1 + pval2) > 1 ){
+    test_fail = true;
+    return;
+  }
+  get_logp(pval1+pval2, pv, chisq, nl_dbl_dmin);
 
 }
 
@@ -1129,7 +1149,8 @@ double solve_K1_snp(const double& tval, const double& denum, SpVec const& Gspars
   double min_x, max_x, t_old, f_old, t_new = -1, f_new, hess;
 
   niter_cur = 0;
-  min_x = 0, max_x = std::numeric_limits<double>::infinity();
+  if(tval >=0){min_x = 0, max_x = std::numeric_limits<double>::max();}
+  else{min_x = std::numeric_limits<double>::lowest(), max_x = 0;}
   t_old = 0;
   f_old = spa_df.fastSPA ? compute_K1_fast_snp(lambda * t_old, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K1_snp(lambda * t_old, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
   f_old *= lambda;
@@ -1253,24 +1274,14 @@ void get_SPA_pvalue_snp(const double& root, const double& tval, double& chisq, d
   kval = spa_df.fastSPA ? compute_K_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
   k2val = spa_df.fastSPA ? compute_K2_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, Gamma_sqrt, mask) : compute_K2_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, Gamma_sqrt, mask);
 
-  wval = sqrt( 2 * ( root * tval - kval ) );
+  wval = sgn(root) * sqrt( 2 * ( root * tval - kval ) );
   vval = root * sqrt( k2val );
-  if(vval == 0) {
-    chisq = 0;
-    pv = 0;
-    return;
+  if(vval == 0) { // root is 0 so s=0 (K'(0)=0)
+    pv = 0.5;
+  } else {
+    rval = wval + log( vval / wval ) / wval;
+    pv = cdf(nd, rval); // one-sided
   }
-
-  rval = wval + log( vval / wval ) / wval;
-
-  if(rval < 0) { // SPA can fail for SNPs with very low counts and give p-value>1
-    test_fail = true;
-    //sout << "WARNING: SPA correction failed (resulted in p-value > 1).\n"; // not valid in multithreaded call
-    return;
-  }
-
-  chisq = pow(rval, 2);
-  get_logp(pv, chisq);
   test_fail = false;
 }
 
