@@ -1096,7 +1096,8 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
     // apply masking to snps
    if( params->keep_snps ) {
       sout << "   -keeping variants specified by --extract\n";
-      geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
+      if(params->cormat_force_vars) geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, params->forced_in_snps, sout);
+      else geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
     }
     if( params->rm_snps ) {
       sout << "   -removing variants specified by --exclude\n";
@@ -1261,6 +1262,34 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
   params->n_samples = filters->ind_in_analysis.count();
 }
 
+ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, vector<string>& force_in_vars, mstream& sout) {
+
+  string line;
+  std::vector< string > tmp_str_vec ;
+  Files myfile;
+  ArrayXb mask = ArrayXb::Constant( map_ID.size() , false); 
+
+  for(auto fin : file_list) {
+
+    myfile.openForRead (fin, sout);
+
+    while( myfile.readLine(line) ){
+      tmp_str_vec = string_split(line,"\t ");
+
+      if( tmp_str_vec.size() < 1 )
+        throw "incorrectly formatted file.";
+
+      if( in_map(tmp_str_vec[0], map_ID) ) 
+        mask( map_ID[ tmp_str_vec[0] ] ) = true;
+      else force_in_vars.push_back(tmp_str_vec[0]);
+    }
+
+    myfile.closeFile();
+  }
+
+  return mask;
+
+}
 
 ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, mstream& sout) {
 

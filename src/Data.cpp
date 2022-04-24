@@ -1723,12 +1723,12 @@ void Data::setup_output(Files* ofile, string& out, std::vector<std::shared_ptr<F
       sout << " * computing correlation matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
       ofile->openMode(out, std::ios_base::out | std::ios_base::binary, sout);
       ArrayXi vals(2);
-      vals << params.n_samples , params.n_variants;
+      vals << params.n_samples , params.n_variants + params.forced_in_snps.size();
       //cerr << vals << endl;
       ofile->writeBinMode(vals, sout);
     }
     sout << "  + list of snps written to [" << out << ".snplist]\n";
-    sout << "  + n_snps = " << params.n_variants <<"\n\n";
+    sout << "  + n_snps = " << params.n_variants + params.forced_in_snps.size() <<"\n\n";
     return;
   }
 
@@ -1846,41 +1846,7 @@ void Data::print_test_info(){
 
 }
 
-
-/// When computing & outputting LD info
-// write list of variants used to compute LD
-void Data::write_snplist(int const& bs, vector<variant_block> const& all_snps_info){
-
-  bool reject = false;
-  string const out = files.out_file + ".corr.snplist";
-  string const out_reject = files.out_file + ".corr.exclude";
-  std::ostringstream buffer, buffer_reject;
-  Files ofile;
-
-  for(int snp = 0; snp < bs; snp++) {
-    if(all_snps_info[snp].ignored){
-      reject = true;
-      buffer_reject << snpinfo[snp].ID << endl;
-    } else buffer << snpinfo[snp].ID << endl;
-  }
-
-  if(reject){
-    // write SNP list to ignore
-    ofile.openForWrite(out_reject, sout);
-    ofile << buffer_reject.str();
-    ofile.closeFile();
-
-    throw "SNPs with low variance are present. Use '--exclude " + out_reject + "' to ignore them.";
-  }
-
-  // write SNP list
-  ofile.openForWrite(out, sout);
-  ofile << buffer.str();
-  ofile.closeFile();
-
-}
-
-void Data::print_cor(Files* ofile){
+void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, Files* ofile){
 
   int bits = 16; // break [0,1] into 2^bits intervals
   double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
@@ -1889,7 +1855,29 @@ void Data::print_cor(Files* ofile){
   sout << "   -computing LD matrix..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
 
+  write_snplist(bs, all_snps_info);
+
   MatrixXd LDmat = (Gblock.Gmat.transpose() * Gblock.Gmat) / (params.n_samples - params.ncov);
+
+  // take care of variants with low variance
+  for(int snp = 0; snp < bs; snp++) {
+    if(all_snps_info[snp].ignored){
+      // row to 0
+      LDmat.row(snp).array() = 0;
+      // col to 0
+      LDmat.col(snp).array() = 0;
+      // diagonal to 1
+      LDmat(snp, snp) = 1;
+    } 
+  }
+
+  if(params.forced_in_snps.size() > 0){ // add additional columns & rows for these SNPs
+    int n_add = params.forced_in_snps.size();
+    LDmat.conservativeResize(LDmat.rows() + n_add, LDmat.cols() + n_add);
+    LDmat.bottomRows(n_add).array() = 0;
+    LDmat.rightCols(n_add).array() = 0;
+    LDmat.diagonal().tail(n_add).array() = 1;
+  }
 
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();
@@ -1907,12 +1895,11 @@ void Data::print_cor(Files* ofile){
   } else {
 
     ArrayXt vals;
-    vals.resize( (Gblock.Gmat.cols() * (Gblock.Gmat.cols() - 1)) / 2 );
+    vals.resize( (LDmat.rows() * (LDmat.rows() - 1)) / 2 ); // m choose 2
 
     for(int i = 0, k = 0; i < LDmat.rows(); i++)
-      for(int j = i+1; j < LDmat.cols(); j++){
+      for(int j = i+1; j < LDmat.cols(); j++)
         vals(k++) = LDmat(i,j) * LDmat(i,j) * mult + 0.5; // round to nearest integer
-      }
 
     //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
      // vals.head(5) << "\n-->" << vals.size() << endl;
@@ -1927,6 +1914,46 @@ void Data::print_cor(Files* ofile){
   sout << " (" << duration.count() << "ms) "<< endl;
 
   exit_early();
+
+}
+
+/// When computing & outputting LD info
+// write list of variants used to compute LD
+void Data::write_snplist(int const& bs, vector<variant_block> const& all_snps_info){
+
+  int n_low_var = 0;
+  string const out = files.out_file + ".corr.snplist";
+  string const out_reject = files.out_file + ".corr.lowVar";
+  std::ostringstream buffer, buffer_reject;
+  Files ofile;
+
+  for(int snp = 0; snp < bs; snp++) {
+    if(all_snps_info[snp].ignored){
+      buffer_reject << snpinfo[snp].ID << endl;
+      n_low_var++;
+    } 
+    buffer << snpinfo[snp].ID << endl;
+  }
+
+  if(params.forced_in_snps.size() > 0){
+    for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++)
+      buffer << params.forced_in_snps[snp] << endl;
+  }
+
+  if(n_low_var > 0){
+    // write SNP list to ignore
+    ofile.openForWrite(out_reject, sout);
+    ofile << buffer_reject.str();
+    ofile.closeFile();
+
+    sout << "WARNING: " << n_low_var << " SNPs with low variance are present (use '--exclude " + out_reject + "' to ignore them)." <<
+      " These will be kept in the LD matrix (correlations will be set to 0)\n";
+  }
+
+  // write SNP list
+  ofile.openForWrite(out, sout);
+  ofile << buffer.str();
+  ofile.closeFile();
 
 }
 
@@ -2112,10 +2139,8 @@ void Data::test_snps_fast() {
       // read SNP, impute missing & compute association test statistic
       analyze_block(chrom, bs, &snp_tally, block_info);
 
-      if(params.getCorMat) {
-        write_snplist(bs, block_info);
-        print_cor(&ofile);
-      }
+      if(params.getCorMat) print_cor(bs, block_info, &ofile);
+      
 
       // print the results
       for (auto const& snp_data : block_info){

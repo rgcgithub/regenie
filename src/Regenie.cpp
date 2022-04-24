@@ -265,6 +265,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("print-pheno", "Print phenotype name when writing sample IDs to file (only for step 2)")
     ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
     ("output-corr-text", "output matrix of Pearson correlations to text file")
+    ("forcein-vars", "retain variants from extract file not present in genetic data file for the LD matrix")
     ("print-vcov", "print variance-covariance matrix for interaction test to file")
     ;
 
@@ -412,6 +413,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("print-vcov") ) params->print_vcov = true;
     if( vm.count("compute-corr") || vm.count("output-corr-text") ) {
       params->getCorMat = true;
+      params->cormat_force_vars = vm.count("forcein-vars") && vm.count("extract");
       params->run_mode = 2;
       params->skip_blups = params->strict_mode = true;
       params->trait_mode = 0;

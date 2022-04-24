@@ -105,8 +105,8 @@ class Data {
     void compute_res_bin(int const&);
     void compute_res_count(int const&);
     void setup_output(Files*,std::string&,std::vector<std::shared_ptr<Files>>&,std::vector<std::string>&);
+    void print_cor(int const&,std::vector<variant_block> const&,Files*);
     void write_snplist(int const&,std::vector<variant_block> const&);
-    void print_cor(Files*);
 
     // step 2 using multithreading in eigen
     double check_pval(double const&,int const&,int const&,int const&);

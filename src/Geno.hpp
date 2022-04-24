@@ -156,6 +156,7 @@ void read_psam(struct in_files*,struct param*,mstream&);
 void prep_pgen(struct in_files const*,struct filter const*,struct geno_block*,struct param*,mstream&);
 
 ArrayXb check_in_map_from_files(std::map<std::string,uint>&,std::vector<std::string> const&,mstream&);
+ArrayXb check_in_map_from_files(std::map<std::string,uint>&,std::vector<std::string> const&,std::vector<std::string>&,mstream&);
 ArrayXb check_in_map_from_files_IDs(std::vector<std::string> const&,struct param*,mstream&);
 void check_snps_include_exclude(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void check_snps_include_exclude_or(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);

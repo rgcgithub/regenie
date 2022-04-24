@@ -166,7 +166,8 @@ struct param {
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
   bool transposedPheno = false, tpheno_iid_only = false;
-  bool getCorMat = false, cor_out_txt = false;
+  bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false;
+  std::vector<std::string> forced_in_snps;//variant to force in for LD matrix
   bool condition_snps = false, condition_file = false;
   uint32_t max_condition_vars = 10000;
   int sex_specific = 0; // 0 = all; 1 = male-only; 2=female-only
