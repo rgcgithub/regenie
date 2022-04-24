@@ -507,7 +507,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   double c1 = sqrt(1 - rho);
   VectorXd lambdas, Qs, Qb;
   ArrayXb masked_sites;
-  ArrayXd Svals, Rvec_sqrt, Rw, w_mask, pvals;
+  ArrayXd Svals, Rvec_sqrt, w_mask, pvals;
   MatrixXd Kraw, Kmat, Kmask, GtWX, sum_stats, pv_mask;
   SpMat GWs;
 
@@ -630,7 +630,8 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   int jcol, n_pheno = yres.cols(), nrho = rho_vec.size();
   double minp, gamma1, gamma2, gamma3;
   VectorXd lambdas, Qs, Qb, Qopt, ZtZ_rsum;
-  ArrayXd Svals, Rvec, Rw, pvs_skato, chisq_skato, w_mask, pvals, p_acato, flip_rho_sqrt;
+  ArrayXb masked_sites;
+  ArrayXd Svals, Rvec_sqrt, pvs_skato, chisq_skato, w_mask, pvals, p_acato, flip_rho_sqrt;
   MatrixXd ZtZ, Kraw, Kmat, GtWX, cvals, sum_stats, pv_mask, r_outer_sum;
   SpMat GWs;
 
@@ -673,25 +674,23 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     Kraw = GWs.transpose() * GWs - GtWX.transpose() * GtWX; // ZtZ
 
     // apply firth/spa corrections (set R=0 if failed)
-    Rvec = (weights > 0).cast<double>();
-    //cerr << weights.matrix().transpose() << "\n--\n" << Rvec.matrix().transpose() << "\n\n";
+    masked_sites = (weights > 0);
+    Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      apply_correction_cc(ph, Rvec, Svals, Kraw.diagonal().array(), mat, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kraw, mat, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
-      get_single_pvs_bt(pvals, (Rvec!=0).select((Svals/Rvec).square() / Kraw.diagonal().array(),1)); 
+      get_single_pvs_bt(pvals, masked_sites.select(Svals.square() / Kraw.diagonal().array(),1)); 
     }
 
     // SKAT for all masks (Kmx1)
-    Qs = Jmat.transpose().cast<double>() * (Rvec != 0).select(Svals * weights, 0).square().matrix();
+    Qs = Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).square().matrix();
     // burden
-    Qb = (Jmat.transpose().cast<double>() * (Rvec != 0).select(Svals * weights, 0).matrix()).array().square().matrix();
+    Qb = (Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).matrix()).array().square().matrix();
     if(debug) cerr << "Q_SKAT for all masks:\n" << Qs.transpose() << "\nQ_BURDEN for all masks:\n" << Qb.transpose() << "\n";
 
-    // apply correction factor
-    Rw = Rvec * weights;
-    Kmat = Rw.matrix().asDiagonal() * Kraw * Rw.matrix().asDiagonal();
-    //cerr << "\n--\n" << Svals.matrix().transpose() << "\n--\n" << Rvec.matrix().transpose() << "\n\n" << Kmat.diagonal() << "\n\n";
+    // apply weights
+    Kmat = weights.matrix().asDiagonal() * Kraw * weights.matrix().asDiagonal();
 
     for(size_t imask = 0; imask < all_snps_info.size(); imask++){
 
@@ -702,14 +701,14 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       jcol = block_info->col_jmat_skat;
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
-      int npass = (Jvec && (Rvec != 0)).count();
+      int npass = (Jvec && masked_sites).count();
       if(npass == 0) continue;
 
       // extract rows/columns
       SpMat Jstar (npass, Kmat.rows()); // KmxM
       Jstar.reserve(npass);
       for(int i = 0, j = 0; i < Jvec.size(); i++)
-        if(Jvec(i) && (Rvec(i) != 0)) Jstar.insert(j++, i) = 1;
+        if(Jvec(i) && masked_sites(i)) Jstar.insert(j++, i) = 1;
 
       // ACAT-V 
       if(with_acatv){
@@ -720,8 +719,13 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       }
       if(!with_omnibus) continue;
 
-    // get eigen values of Zt(I-U)Z
+      // correct using burden test
       ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
+      if(apply_correction)
+        if(!correct_vcov_burden(ph, Qb(jcol), ZtZ, (Jvec && masked_sites).select(weights, 0), mat, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
+          continue; // failed to correct with burden mask
+
+    // get eigen values of Zt(I-U)Z
       ZtZ_rsum = ZtZ.rowwise().sum();//Kmx1
       r_outer_sum = ZtZ_rsum.rowwise().replicate(npass) + ZtZ_rsum.transpose().colwise().replicate(npass);
       gamma1 = ZtZ_rsum.sum();
@@ -871,7 +875,7 @@ void apply_correction_cc(int const& ph, Ref<ArrayXd> Rvec, const Ref<const Array
     Gres += GWs.col(i);
 
     // use SPA by default
-    run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double);
+    run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
     //cerr << "wSPA\n" ;
 
     // use firth as fallback if spa failed
@@ -929,7 +933,7 @@ bool correct_vcov_burden(int const& ph, double const& qb, Ref<MatrixXd> Kmat, co
   VectorXd g_res = gw - XWsqrt * (GtWX * w.matrix()); // get mask residuals
 
   // use SPA by default
-  run_SPA_test_snp(chisq, pv, tstat_cur, var_sb, true, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double);
+  run_SPA_test_snp(chisq, pv, tstat_cur, var_sb, true, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
 
   // use firth as fallback if spa failed
   if(params.firth && test_fail){
