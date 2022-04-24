@@ -2502,7 +2502,7 @@ void Data::test_joint() {
         continue;
       } else if(!block_init_pass) block_init_pass = true;
 
-      sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << bs << " variants..." << flush;
+      sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << jt.setinfo[chrom - 1][bb].ID << " - " << bs << " variants..." << flush;
 
       if(params.joint_test && !params.build_mask) allocate_mat(Gblock.Gmat, params.n_samples, bs);
       block_info.resize(bs);

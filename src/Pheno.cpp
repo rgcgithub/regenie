@@ -487,7 +487,7 @@ void rm_phenoCols(Ref<ArrayXb> sample_keep, struct in_files* files, struct param
   for(int i = 0, j = 0; i < params->n_pheno; i++ ) {
 
     if(colrm(i)) {
-      if(params->verbose) sout << "    +WARNING: Phenotype '" << files->pheno_names[i] << "' has too few cases so it will be ignored.\n";
+      sout << "    +WARNING: Phenotype '" << files->pheno_names[i] << "' has too few cases so it will be ignored.\n";
       continue;
     } 
 
