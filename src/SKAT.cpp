@@ -338,6 +338,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     if(jcol < 0) continue; // this should not happen though
     MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
     nnz = Jvec.count();
+    if(debug) cerr << "#sites in mask=" << nnz << "\n";
     if(nnz == 0) continue;
 
     // to get variants in mask
@@ -350,7 +351,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     if(with_acatv){
       pv_mask = Jstar * pvals; // KmxP
       w_mask = (Jstar * weights_acat.matrix()).array(); // Kmx1
-      if(debug) cerr << "#in mask=" << pv_mask.rows() << "\nSV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
+      if(debug) cerr << "SV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
       for(int ph = 0; ph < n_pheno; ph++)
         get_logp(get_acat(pv_mask.col(ph).array(), w_mask), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin);
       block_info->sum_stats_vc["ACATV"] = sum_stats;
@@ -702,6 +703,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
       int npass = (Jvec && masked_sites).count();
+      if(debug) cerr << "sites in mask=" << npass << "\n";
       if(npass == 0) continue;
 
       // extract rows/columns
@@ -746,7 +748,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         // get eigen values of Rsqrt*ZtZ*Rsqrt
         get_lambdas(lambdas, get_RsKRs(ZtZ, r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
         if(lambdas.size() == 0) continue;
-        //if(rho_vec(j) >0.9) cerr << "rho=" << rho_vec(j) << "\nL:"<<lambdas.matrix().transpose() << "\n\nQ=" << Qopt.col(j);
+        //if(rho_vec(j) >0.9) cerr << "rho=" << rho_vec(j) << "\nL:"<<lambdas.matrix().transpose() << "\n";
 
         // needed for skato (M>1)
         if(npass > 1)  get_cvals(j, cvals, lambdas);
@@ -884,7 +886,7 @@ void apply_correction_cc(int const& ph, Ref<ArrayXd> Rvec, const Ref<const Array
       //cerr << "wFirth\n" ;
     }
 
-    if(params.debug) cerr << "uncorrected: " << tstat_cur << " [=" << score_stats(i) << " /sqrt(" << var_score(i) << ")] -> " << chisq << endl;
+    //if(params.debug) cerr << "uncorrected: " << tstat_cur * tstat_cur << " [=(" << score_stats(i) << ")^2/" << var_score(i) << "] -> " << chisq << endl;
 
     if( test_fail || (chisq == 0) ) { // set R to 0 for variant
       Rvec(i) = 0;
@@ -1037,7 +1039,7 @@ void compute_fixed_skato_p(double& pval, double& chival, double& q, double const
 
 }
 
-void compute_skat_pv(double& pval, double& chival, double const& Q, VectorXd& lambdas, const double& tol){
+void compute_skat_pv(double& logp, double& chival, double const& Q, VectorXd& lambdas, const double& tol){
 
   double pv;
 
@@ -1045,9 +1047,11 @@ void compute_skat_pv(double& pval, double& chival, double const& Q, VectorXd& la
   //cerr << "mixture pv = " << pv << "\n";
 
   if(pv <= 0) { // spa also failed
-    pval = -1; chival = -1;
+    logp = -1; chival = -1;
+  } else if( pv >= 1 ){ // numerically 1
+    logp = 0; chival = 0;
   } else // take log10 and get chisq quantile
-    get_logp(pv, pval, chival, tol);
+    get_logp(pv, logp, chival, tol);
 
 }
 
@@ -1391,9 +1395,10 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
   chi_squared chisq1( 1 );
   double tstar = cdf(complement(chisq1, skato_upper)); 
 
+  if(minp >= 1) {logp = 0; chisq=0; return;}
+
   integrate(SKATO_integral_fn, a, 1000, debug);
   if(debug) cerr << "SKATO p=" << (skato_state == 0 ? (a+tstar) : -1) << "=" << a << "+" << tstar  << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
-
   if(skato_state == 0) a += tstar; // add s(q*) to integral
 
   if( p_bc < a ) a = p_bc; // bonferroni corrected p
