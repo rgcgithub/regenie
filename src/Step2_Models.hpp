@@ -86,7 +86,7 @@ double compute_K2_snp(const double&,const double&,const double&,const Eigen::Ref
 double compute_K_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
 double compute_K1_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
 double compute_K2_fast_snp(const double&,const double&,const double&,const double&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
-void get_SPA_pvalue_snp(const double&,const double&,double&,double&,bool&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,struct spa_data&,const Eigen::Ref<const ArrayXb>&); 
+void get_SPA_pvalue_snp(const double&,const double&,double&,bool&,const double&,SpVec const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,struct spa_data&,const Eigen::Ref<const ArrayXb>&); 
 
 
 // printing sum stats

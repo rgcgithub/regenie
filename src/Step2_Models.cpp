@@ -1114,7 +1114,7 @@ void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const doub
     return;
   }
   // compute pvalue (one tail)
-  get_SPA_pvalue_snp(root_K1, tval, chisq, pval1, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
+  get_SPA_pvalue_snp(root_K1, tval, pval1, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
   if(test_fail) {return;}
 
   // 2.for -T
@@ -1126,7 +1126,7 @@ void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const doub
     return;
   }
   // compute pvalue (other tail)
-  get_SPA_pvalue_snp(root_K1, tval, chisq, pval2, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
+  get_SPA_pvalue_snp(root_K1, tval, pval2, test_fail, denum, Gsparse, phat, Gamma_sqrt, spa_df, mask);
   if(test_fail) {return;}
 
   // get quantile
@@ -1265,7 +1265,7 @@ double compute_K2_fast_snp(const double& t, const double& b, const double& c, co
   return val;
 }
 
-void get_SPA_pvalue_snp(const double& root, const double& tval, double& chisq, double& pv, bool& test_fail, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, struct spa_data& spa_df, const Ref<const ArrayXb>& mask){
+void get_SPA_pvalue_snp(const double& root, const double& tval, double& pv, bool& test_fail, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, struct spa_data& spa_df, const Ref<const ArrayXb>& mask){
 
   int lambda = spa_df.pos_score ? 1 : -1; // if score is negative, adjust K and K''
   double kval, k2val, wval, vval, rval;
