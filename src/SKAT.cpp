@@ -918,41 +918,43 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 bool correct_vcov_burden(int const& ph, double const& qb, Ref<MatrixXd> Kmat, const Ref<const ArrayXd>& w, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const VectorXd>& yres, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
 
   bool test_fail = true;
-  double chisq, pv, sb, var_sb, corrected_var, rfrac;
+  double chisq, pv, sb, var_sb, rfrac;
+  if(qb == 0) return true; // no need to apply it
 
   // build burden mask
   SpVec g_burden = (Gsparse * w.matrix()).sparseView(); // Nx1
   VectorXd gw = GWs * w.matrix(); // Nx1
   sb = gw.dot(yres);
   var_sb = Kmat.sum(); 
+  //if(params.debug) cerr << "sb^2: " << sb*sb << " vs qb:" << qb << "\n";
 
   double tstat_cur = sb / sqrt(var_sb);
-  if(params.debug) cerr << "sb^2: " << sb*sb << " vs qb:" << qb << "\nT:" <<tstat_cur << "\n";
-  //if(fabs(tstat_cur) <= params.z_thr) return true;
+  //if(params.debug) cerr << "T_burden=" << tstat_cur << "\n";
 
   VectorXd g_res = gw - XWsqrt * (GtWX * w.matrix()); // get mask residuals
+  //cerr << "w=" << w.matrix().transpose() << "\nGburden:" << g_burden.transpose().head(5) << "\nGres=" << g_res.transpose().head(5) << "\n";
 
-  // use SPA by default
-  run_SPA_test_snp(chisq, pv, tstat_cur, var_sb, true, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
+  // apply firth (leads to better calibration than SPA for burden mask)
+  apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
+  /*if(params.debug && !test_fail) 
+    cerr << "Firth // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
+      ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
 
-  // use firth as fallback if spa failed
-  if(params.firth && test_fail){
-    apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
-    //cerr << "wFirth\n" ;
+  if(test_fail){ // SPA as fallback
+    run_SPA_test_snp(chisq, pv, tstat_cur, var_sb, false, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
+  /*if(params.debug && !test_fail) 
+    cerr << "SPA // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
+      ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
   }
 
-  if(params.debug) cerr << "uncorrected: " << qb << " -> " << chisq << endl;
+  if( test_fail || (chisq == 0) ) return false;
 
-  if( test_fail || (chisq == 0) )  // failed
-    return false;
-
-  corrected_var = qb / chisq;
-  if(corrected_var == 0) rfrac = 1;
-  else rfrac = min(1.0, var_sb / corrected_var );
-  if(params.debug) cerr << "R-factor:" << rfrac << " (" << var_sb / corrected_var << ")\n";
+  // need to make variance bigger (so bigger p-values) so take max
+  rfrac = max(1.0, tstat_cur * tstat_cur / chisq );
+  if(params.debug) cerr << "R_factor_burden:" << rfrac << "\n";
 
   // apply correction factor
-  Kmat.array() /= rfrac;
+  Kmat.array() *= rfrac;
 
   return true;
 }

@@ -495,7 +495,7 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
   ArrayXb has_converged = params->pheno_pass; // if null log reg converged
   IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
 
-  if(!silent) sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
+  if(!silent && params->firth) sout << "   -fitting null Firth logistic regression on binary phenotypes..." << flush;
 
   // get starting values
   if(params->use_null_firth) // saved in file
@@ -549,7 +549,7 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
 
   }
 
-  if(silent) return;
+  if(silent || !params->firth) return;
 
   sout << "done";
   auto t2 = std::chrono::high_resolution_clock::now();

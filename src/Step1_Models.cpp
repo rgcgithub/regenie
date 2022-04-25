@@ -50,7 +50,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
   auto t1 = std::chrono::high_resolution_clock::now();
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
   MatrixXd XtW;
-  if(params->w_interaction || params->firth) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
+  if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
 
   for(int i = 0; i < params->n_pheno; ++i ){
 
@@ -82,7 +82,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
       getBasis(m_ests->X_Gamma[i], params);
-      if(params->w_interaction || params->firth) m_ests->bhat_start.col(i) = betaold.matrix();
+      if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.col(i) = betaold.matrix();
     } else m_ests->offset_nullreg.col(i) = etavec;
 
     /*

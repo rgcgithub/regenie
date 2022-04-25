@@ -2019,7 +2019,7 @@ void Data::set_nullreg_mat(){
   m_ests.X_Gamma.resize(params.n_pheno);
 
   // for firth  approx
-  if(params.firth_approx){ 
+  if(params.firth_approx || (params.use_SPA && params.vc_test) ){ // for vc tests with spa, firth is used to correct skato-burden
     firth_est.covs_firth = MatrixXd::Zero(params.n_samples, pheno_data.new_cov.cols() + 1);
     firth_est.covs_firth.leftCols(pheno_data.new_cov.cols()) = pheno_data.new_cov;
     firth_est.beta_null_firth = MatrixXd::Zero(firth_est.covs_firth.cols(), params.n_pheno);
@@ -2259,7 +2259,7 @@ void Data::compute_res_bin(int const& chrom){
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
   // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
-  if(params.firth_approx) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+  if(params.firth_approx || (params.use_SPA && params.vc_test)) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
 
 }
 
