@@ -1395,7 +1395,7 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
   chi_squared chisq1( 1 );
   double tstar = cdf(complement(chisq1, skato_upper)); 
 
-  if(minp >= 1) {logp = 0; chisq=0; return;}
+  if(minp >= (1 - std::numeric_limits<float>::epsilon())) {logp = 0; chisq=0; return;}
 
   integrate(SKATO_integral_fn, a, 1000, debug);
   if(debug) cerr << "SKATO p=" << (skato_state == 0 ? (a+tstar) : -1) << "=" << a << "+" << tstar  << " (minP="<< minp <<"; Bonf=" << p_bc << ")\n";
