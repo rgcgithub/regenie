@@ -103,5 +103,5 @@ For PLINK bed/bim/fam files, PLINK2 pgen/pvar/psam files, as well as BGEN v1.2 f
 500K imputed data), step 2 of **regenie** has been optimized by 
 using multithreading through [OpenMP](https://www.openmp.org).
 
-
-
+When running the SKAT/ACAT gene-based tests, we recommend to use at most 2 threads and 
+instead parallelize the runs over partitions of the genome (e.g. groups of genes).

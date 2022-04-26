@@ -235,8 +235,8 @@ We also denote by \(S_i\) the score statistics obtained from the
 This can be especially helpful when testing rare variants as single-variant 
 tests usually have lower power performance.
 
-To avoid inflation in the gene-based tests due to rare variants, we have implemented the collapsing approach
-proposed in SAIGE-GENE+[@RN492], where ultra-rare vairants are aggregated into a mask.
+To avoid inflation in the gene-based tests due to rare variants as well as reduce computation time, we have implemented the collapsing approach
+proposed in SAIGE-GENE+[@RN492], where ultra-rare variants are aggregated into a mask.
 For highly imbalanced binary traits, SPA/Firth correction can be used to calibrate the test statistics in the
 gene-based tests as proposed in Zhao et al. (2020)[@RN452]. 
 
@@ -262,20 +262,24 @@ In practice, the parameter $\rho$ is chosen to maximize the power
 [**regenie** uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
 and set the weights $w_i = Beta(MAF_i,1,25)$].
 
+To obtain the p-value from a mixture of chi-square distributions, **regenie** uses Davies' exact method[@RN524] by default.
+Following Wu et al (2016)[@RN514], **regenie** uses Kuonen's saddlepoint approximation method[@RN526] when the Davies' p-value
+is below 1e-5 and if that fails, it uses Davies' method with more stringent convergence parameters (lim=1e5,acc=1e-9). 
+
 The original SKATO method uses numerical integration when maximizing power across the 
 various SKATO models that use different values for $\rho$. 
 We also implement a modification of SKATO, named SKATO-ACAT, 
 which instead uses the Cauchy combination method[@RN482] 
-to combine the p-values for the different SKATO models.
+to combine the p-values from the different SKATO models.
 
 
 #### Cauchy combination tests
-The ACATV[@RN339] test uses on the Cauchy combination method to combine single variant p-values $p_i$ as
+The ACATV[@RN339] test uses the Cauchy combination method to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
 
-The omnibus test ACATO[$^{12}$](#fn:12) combines ACATV with the SKAT and burden tests as 
+The omnibus test ACATO[@RN339] combines ACATV with the SKAT and burden tests as 
 $$
 Q_{ACATO} = 
 \frac{1}{3}\tan{\{\pi(0.5 - p_{ACATV})\}}+
@@ -286,8 +290,6 @@ $$
 where unlike the original ACATO test, we only use one set of the weights $w_i$.
 Alternatively, we augment the test to include an extended set of SKATO models beyond SKAT and Burden
 (which correspond to $\rho$ of 0 and 1 in SKATO respectively) and use the default SKATO grid of 8 values for $\rho$.
-
-#### Case-control imbalance
 
 #### Non-Negative Least Square test
 **regenie** can generate burden masks which are obtained by aggregating single variants

@@ -163,3 +163,5 @@ and using the fast Firth correction as fallback for p-values below 0.01
 
 This will create separate association results files for each phenotype as `ukb_step2_BT_chr1_*.regenie`.
 
+When running the SKAT/ACAT gene-based tests, we recommend to use at most 2 threads and 
+instead parallelize the runs over partitions of the genome (e.g. groups of genes).
