@@ -20,7 +20,6 @@ print_custom_err () {
 info_msg='
 Usage: ./test_bash.sh OPTIONS
           --path  path to Regenie repository
-          --gz    Flag to specify compilation was done with Boost Iostream library
 '
 REGENIE_PATH=$(pwd) # assume current wd
 
