@@ -1076,8 +1076,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     }
 
   } catch (const cxxopts::OptionException& e) {
-    print_header(cerr);
-    cerr << "ERROR: " << e.what() << endl << params->err_help << endl;
+    if (!sout.coss.is_open()) {
+      print_header(cerr);
+      cerr << "ERROR: " << e.what() << endl << params->err_help << "\n";
+    } else {
+      print_header(sout.coss);
+      print_header(cout);
+      sout << "ERROR: " << e.what() << endl << params->err_help << "\n";
+    }
     exit(EXIT_FAILURE);
   } catch (const std::string& msg) {// after opening sout
     sout <<  "ERROR: " <<  msg << "\n" <<  params->err_help << "\n";

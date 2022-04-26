@@ -55,6 +55,7 @@ void rm_phenoCols(Eigen::Ref<ArrayXb>,struct in_files*,struct param*,struct phen
 void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt*,Eigen::Ref<ArrayXb>,mstream&);
 void setMasks(struct param*,struct filter*,struct phenodt*,mstream&);
 void print_cc_info(struct param*,struct in_files*,struct phenodt*,mstream&);
+void print_info(struct param*,struct in_files*,struct phenodt*,mstream&);
 void extract_interaction_snp(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);
 void extract_condition_snps(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);
 int check_categories(std::vector<std::string>&,std::vector<std::map<std::string,int>>&,struct param*,struct filter*,mstream&);

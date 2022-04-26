@@ -100,6 +100,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   // print case-control counts per trait
   if(params->trait_mode==1)
     print_cc_info(params, files, pheno_data, sout);
+  else
+    print_info(params, files, pheno_data, sout);
 
 }
 
@@ -768,6 +770,7 @@ void print_cc_info(struct param* params, struct in_files* files, struct phenodt*
   sout << " * case-control counts for each trait:\n";
 
   for (size_t i = 0; i < files->pheno_names.size(); i++){
+    if( !params->pheno_pass(i) ) continue;
 
     ncases = pheno_data->masked_indivs.col(i).select( pheno_data->phenotypes_raw.col(i).array(), 0).sum();
     ncontrols = pheno_data->masked_indivs.col(i).select( 1 - pheno_data->phenotypes_raw.col(i).array(), 0).sum();
@@ -775,6 +778,15 @@ void print_cc_info(struct param* params, struct in_files* files, struct phenodt*
       ncases << " cases and " << ncontrols << " controls\n";
 
   }
+}
+
+void print_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
+
+  // go through each trait and print number of samples used
+  sout << " * number of observations for each trait:\n";
+  for (size_t i = 0; i < files->pheno_names.size(); i++)
+    if( params->pheno_pass(i) )
+      sout << "   - '" << files->pheno_names[i] << "': " << pheno_data->masked_indivs.col(i).count() << " observations\n";
 }
 
 
