@@ -596,7 +596,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct ridgel1*
     if(params->write_l0_pred){
 
       // allocate memory
-      if(ph == 0) {
+      if(l1->test_mat[ph_eff][0].cols() != bs_l1) {
         for( int i = 0; i < params->cv_folds; ++i )
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes(i), bs_l1);
       }
@@ -689,7 +689,8 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     if(params->write_l0_pred){
 
       // allocate memory (re-use same matrix for all traits)
-      if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
+      if(l1->test_mat_conc[ph_eff].cols() != bs_l1) 
+        l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
       read_l0(ph, ph_eff, files, params, l1, sout);
     }
@@ -769,7 +770,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
     if(params->write_l0_pred){
 
       // allocate memory
-      if(ph == 0) {
+      if(l1->test_mat[ph_eff][0].cols() != bs_l1) {
         for( int i = 0; i < params->cv_folds; ++i )
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes(i), bs_l1);
       }
@@ -969,7 +970,8 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
     // read in level 0 predictions from file
     if(params->write_l0_pred){
       // allocate memory (re-use same matrix for all traits)
-      if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
+      if(l1->test_mat_conc[ph_eff].cols() != bs_l1)
+        l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
       read_l0(ph, ph_eff, files, params, l1, sout);
     }
@@ -1225,7 +1227,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
     if(params->write_l0_pred){
 
       // allocate memory
-      if(ph == 0) {
+      if(l1->test_mat[ph_eff][0].cols() != bs_l1) {
         for( int i = 0; i < params->cv_folds; ++i )
           l1->test_mat[ph_eff][i] = MatrixXd::Zero(params->cv_sizes(i), bs_l1);
       }
@@ -1391,7 +1393,8 @@ void ridge_poisson_level_1_loocv(struct in_files* files, struct param* params, s
     // read in level 0 predictions from file
     if(params->write_l0_pred){
       // allocate memory (re-use same matrix for all traits)
-      if(ph == 0) l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
+      if(l1->test_mat_conc[ph_eff].cols() != bs_l1)
+        l1->test_mat_conc[ph_eff] = MatrixXd::Zero(params->n_samples, bs_l1);
 
       read_l0(ph, ph_eff, files, params, l1, sout);
     }

@@ -79,6 +79,7 @@ void check_phenos(Eigen::Ref<ArrayXb>,std::vector<std::string> const&,std::strin
 void write_ids(struct in_files const*,struct param*,struct phenodt const*,mstream&);
 void check_str(std::string&);
 void apply_rint(struct phenodt*,struct param const*);
+void set_pheno_pass(struct in_files const*,struct param*);
 void rint_pheno(Eigen::Ref<Eigen::MatrixXd>,Eigen::Ref<ArrayXb>);
 bool cmp_rank_pair(struct rank_pair&,struct rank_pair&);
 

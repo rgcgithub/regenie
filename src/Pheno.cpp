@@ -63,7 +63,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   }
 
   // used for step 2 if using firth and it failed
-  params->pheno_pass = ArrayXb::Constant(params->n_pheno, true);
+  set_pheno_pass(files, params);
 
   // Intercept
   pheno_data->new_cov = MatrixXd::Ones(params->n_samples, 1);
@@ -1528,6 +1528,23 @@ void apply_rint(struct phenodt* pheno_data, struct param const* params){
   for(int ph = 0; ph < params->n_pheno; ph++)
     if( params->pheno_pass(ph) )
       rint_pheno(pheno_data->phenotypes.col(ph), pheno_data->masked_indivs.col(ph).array());
+
+}
+
+void set_pheno_pass(struct in_files const* files, struct param* params){
+
+  bool select_phenos = params->select_pheno_l1.size() > 0;
+  params->pheno_pass = ArrayXb::Constant(params->n_pheno, false);
+  // for each trait, apply rank-inverse normal transformation
+  for(int ph = 0; ph < params->n_pheno; ph++)
+    if( select_phenos )
+      params->pheno_pass(ph) = in_map( files->pheno_names[ph], params->select_pheno_l1 );
+    else
+      params->pheno_pass(ph) = true;
+
+  // sanity check
+  if((!params->pheno_pass).all())
+    throw "none of the specified phenotypes for level 1 were found.\n";
 
 }
 

@@ -167,6 +167,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("split-l0", "split level 0 across N jobs and set prefix of output files", cxxopts::value<std::string>(),"PREFIX,N")
     ("run-l0", "run level 0 for job K in {1..N} using master file created from '--split-l0'", cxxopts::value<std::string>(),"FILE,K")
     ("run-l1", "run level 1 using master file from '--split-l0'", cxxopts::value<std::string>(files->split_file),"FILE")
+    ("l1-phenoList", "run level 1 for a subset of the phenotypes (specified as comma-separated list)", cxxopts::value<std::string>(),"STRING,...,STRING")
     ("keep-l0", "avoid deleting the level 0 predictions written on disk after fitting the level 1 models")
     ("strict", "remove all samples with missingness at any of the traits")
     ("print-prs", "also output polygenic predictions without using LOCO (=whole genome PRS)")
@@ -709,6 +710,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->tau[0] = get_unit_params(false, "--l1", tmp_str_vec, params, sout);
         params->n_ridge_l1 = params->tau[0].size();
       } else set_ridge_params(params->n_ridge_l1, params->tau[0], sout);
+
+      if( params->run_l1_only && vm.count("l1-phenoList") ) {
+        tmp_str_vec = string_split(vm["l1-phenoList"].as<string>(),",");
+        for( size_t i = 0; i < tmp_str_vec.size(); i++) {
+          for(auto cn : check_name(tmp_str_vec[i], sout))
+            params->select_pheno_l1[cn] = true;
+        }
+      }
 
       // firth only done in test mode
       if(params->firth) params->firth = false;
