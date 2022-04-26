@@ -238,6 +238,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--split-l0`| PREFIX,N | Optional | split level 0 across N jobs and set prefix of output files of level 0 predictions|
 |`--run-l0`| FILE,K | Optional | run level 0 for job K in {1..N} specifying the master file created from '--split-l0'|
 |`--run-l1`| FILE | Optional | run level 1 specifying the master file from '--split-l0'|
+|`--l1-phenoList` | STRING | Optional | to specify a subset of phenotypes to analyze when using `--run-l1`|
 |`--keep-l0`| FLAG | Optional | avoid deleting the level 0 predictions written on disk after fitting the level 1 models|
 |`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
 |`--force-step1`|FLAG| Optional| flag to run step 1 when >1M variants are used (not recommened)|
