@@ -249,7 +249,9 @@ number of threads can be specified using the <code>--threads</code> option.</p>
 efficient linear algebra operations and this uses threading where possible.</p>
 <p>For PLINK bed/bim/fam files, PLINK2 pgen/pvar/psam files, as well as BGEN v1.2 files with 8-bit encoding (format used for UK Biobank
 500K imputed data), step 2 of <strong>regenie</strong> has been optimized by 
-using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p></div>
+using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p>
+<p>When running the SKAT/ACAT gene-based tests, we recommend to use at most 2 threads and 
+instead parallelize the runs over partitions of the genome (e.g. groups of genes).</p></div>
         
         
     </div>
