@@ -546,6 +546,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>run level 1 specifying the master file from '--split-l0'</td>
 </tr>
 <tr>
+<td><code>--l1-phenoList</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>to specify a subset of phenotypes to analyze when using <code>--run-l1</code></td>
+</tr>
+<tr>
 <td><code>--keep-l0</code></td>
 <td>FLAG</td>
 <td>Optional</td>
@@ -983,6 +989,15 @@ alternatively, the user can specify variant AAFs using this file.</p>
 7:6190395:C:A 2.19920388819247e-06
 .
 </code></pre>
+<p>Since singleton variants cannot be identified from this file, they are determined by default
+based on the input genetic data. To enforce which sites should be included in the singleton masks
+(see <code>--set-singletons</code>), you can add a third column in the file with a binary indicator 
+(1=singleton; 0=not singleton). So only variants which are specified as singletons will be 
+considered for the singleton masks, regardless of whether they are singletons in the input genetic data.</p>
+<pre><code class="language-bash">7:6187101:C:T 1.53918207864341e-05 0
+7:6190395:C:A 2.19920388819247e-06 1
+.
+</code></pre>
 <h4 id="mask-definitions">Mask definitions</h4>
 <h5 id="mask-file">Mask file</h5>
 <p>This file specifies which annotation categories should be combined into masks. 
@@ -1094,7 +1109,7 @@ generated using different annotation classes as well as AAF thresholds.</p>
 </tbody>
 </table>
 <p>The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
-(see ref. 11 <a href="../overview/#fn:11">here</a>).
+(see ref. 14 <a href="../overview/#fn:14">here</a>).
 The NNLS test is described into more detail <a href="../overview/#non-negative-least-square-test">here</a>.</p>
 <h4 id="lovolodo-schemes">LOVO/LODO schemes</h4>
 <p>The leave-one-variant-out (LOVO) scheme takes all sites going into a mask,
@@ -1153,6 +1168,12 @@ listed last in the bim file).</p>
 <td>FLAG</td>
 <td>Optional</td>
 <td>to define singletons as variants with a single carrier in the sample (rather than alternative allele count=1)</td>
+</tr>
+<tr>
+<td><code>--set-singletons</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to use 3rd column in AAF file to specify variants included in singleton masks</td>
 </tr>
 <tr>
 <td><code>--write-mask</code></td>
