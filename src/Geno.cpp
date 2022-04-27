@@ -2185,6 +2185,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 
       missing = ((ploidy_n[i]) & 0x80);
       if(missing) {
+        index++; // bug fix
         buffer+=2;
         continue;
       }
