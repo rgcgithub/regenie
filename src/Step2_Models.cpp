@@ -727,7 +727,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       dev_new -= qr.logAbsDeterminant();
 
       //cerr << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << dev_new << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
-      if( dev_new < dev_old + params->numtol ) break;
+      if( dev_new < dev_old ) break;
       denum *= 2;
     }
 

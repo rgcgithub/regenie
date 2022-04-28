@@ -1115,7 +1115,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 
       if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "-->" << fn_end << "\n";
 
-      if( fn_end < (fn_start + params->numtol) ) break;
+      if( fn_end < fn_start ) break;
       // adjusted step size
       step_size /= 2;
     }
