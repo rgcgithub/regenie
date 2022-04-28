@@ -107,18 +107,33 @@ We have several changes in **regenie** v2.2 to improve the computational efficie
 
 Note: in our timings experiments, the PGEN genotype file only includes hard-calls. We ran a single trait in **regenie** and each setting was replicated 5 times.
 
-<!---
 ### Gene-based testing
-**regenie** v3.0 adds in a wide set of gene-based tests (see [here](../overview/#step-2-gene-based-testing) for details).
-We have performed simulation experiments to assess the performance of the various tests with quantitative and binary traits 
-(see the "Methods" section of the [Regenie paper](https://doi.org/10.1038/s41588-021-00870-7) for details).
-Variant sets were constructed using functional annotations (LoF only or Lof+missense where missense vairants are classified as deleterious 
-using 5 in-silico algorithms) 
+**regenie** v3.0 adds in a wide range of [gene-based tests](../overview/#step-2-gene-based-testing).
+We have performed simulation experiments to assess the calibration of the tests with quantitative and binary traits 
+using real genetic data from the UK Biobank where we randomly selected 100,000 samples obtained from the set of white British participants
+(see the "Methods" section of the [Regenie paper](https://doi.org/10.1038/s41588-021-00870-7) for details on phenotype simulation
+where we set the heritability to 20%).
+
+Using whole exome sequencing data, we constructed variant sets incorporating functional annotations 
+(LoF and missense, where missense vairants were predicted as deleterious 
+using a score based on 5 in-silico algorithms), 
 as well as allele frequency thresholds focusing on rarer variation (1%, 0.1% and 0.01%).
-The SKAT/ACAT tests were applied only to variant sets using a 1% AAF threshold and 
-NNLS combined all mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
-For binary traits, we simulated phenotypes with various case-control ratios (1:9, 1:99 and 1:999)
-to have various amount of imbalance in the data and apply Firth/SPA correction to the tests.
-XX genes on chromosome 2 (XX variant sets in total) are tested for adssociation
-and the QQ plots below show the distribution p-values for each test.
---->
+The SKAT/ACAT tests were applied only to variant sets using a 1% or 0.01% AAF threshold and 
+NNLS and BURDEN-ACAT joint tests combined all burden mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
+1000 genes on even chromosomes were randonly selected and tested for association (causal variants were on odd chromosomes).
+The QQ plots below show the distribution p-values for each test across the different annotation categories (ran in Regenie v3.1).
+
+#### Quantitative traits
+Using a 1% allele frequency cutoff for the SKAT/ACAT tests.
+![QT_gene](img/Gene_burden_QTsims.png)
+
+#### Binary traits
+We simulated highly imbalanced phenotypes with a disease prevalence of 1%  (case-control ratio of 1:99)
+and applied Firth/SPA correction to the tests.
+
+Using a 1% allele frequency cutoff for the SKAT/ACAT tests.
+![BT_gene1](img/Gene_burden_BTsims_AF1pct.png)
+
+Using a 0.01% allele frequency cutoff for the SKAT/ACAT tests.
+![BT_gene_001](img/Gene_burden_BTsims_AF001pct.png)
+

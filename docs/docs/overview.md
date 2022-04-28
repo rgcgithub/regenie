@@ -238,7 +238,7 @@ tests usually have lower power performance.
 To avoid inflation in the gene-based tests due to rare variants as well as reduce computation time, we have implemented the collapsing approach
 proposed in SAIGE-GENE+[@RN492], where ultra-rare variants are aggregated into a mask.
 For highly imbalanced binary traits, SPA/Firth correction can be used to calibrate the test statistics in the
-gene-based tests as proposed in Zhao et al. (2020)[@RN452]. 
+gene-based tests as proposed in Zhao et al. (2020)[@RN452] using `--firth/--spa`. 
 
 #### Burden tests
 Burden tests, as defined in Lee et al. (2014)[@RN487], assume \(\beta_i=\beta\; \forall i\), where \(\beta\) is a fixed coefficient, which then leads to the test statistic
