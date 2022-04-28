@@ -193,7 +193,7 @@ struct param {
   double numtol_firth = 1e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
   double tol = 1e-8; // for logistic regression
-  double eigen_val_rel_tol = 1e-16;
+  double eigen_val_rel_tol = 1e-15;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0, neff_threads = 1;
   bool verbose = false, debug = false;
