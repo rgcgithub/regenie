@@ -732,11 +732,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->rm_or = params->keep_or = false;
       }
 
-    } else if(params->firth && (params->trait_mode!=1)) {
+    } 
+    if(params->firth && (params->trait_mode!=1)) {
       // firth correction is only applied to binary traits
       sout << "WARNING: option --firth will not be applied (it is only run with binary traits).\n";
       params->firth = false;
-    } else if(params->use_SPA && (params->trait_mode!=1)) {
+    } 
+    if(params->use_SPA && (params->trait_mode!=1)) {
       // SPA is only applied to binary traits
       sout << "WARNING: option --spa will not be applied (it is only run with binary traits).\n";
       params->use_SPA = false;
