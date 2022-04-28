@@ -376,7 +376,7 @@ tests usually have lower power performance.</p>
 <p>To avoid inflation in the gene-based tests due to rare variants as well as reduce computation time, we have implemented the collapsing approach
 proposed in SAIGE-GENE+<sup id="fnref:5"><a class="footnote-ref" href="#fn:5">5</a></sup>, where ultra-rare variants are aggregated into a mask.
 For highly imbalanced binary traits, SPA/Firth correction can be used to calibrate the test statistics in the
-gene-based tests as proposed in Zhao et al. (2020)<sup id="fnref:6"><a class="footnote-ref" href="#fn:6">6</a></sup>. </p>
+gene-based tests as proposed in Zhao et al. (2020)<sup id="fnref:6"><a class="footnote-ref" href="#fn:6">6</a></sup> using <code>--firth/--spa</code>. </p>
 <h4 id="burden-tests">Burden tests</h4>
 <p>Burden tests, as defined in Lee et al. (2014)<sup id="fnref:7"><a class="footnote-ref" href="#fn:7">7</a></sup>, assume <script type="math/tex">\beta_i=\beta\; \forall i</script>, where <script type="math/tex">\beta</script> is a fixed coefficient, which then leads to the test statistic
 <script type="math/tex; mode=display">Q_{BURDEN} = \left(\sum_i w_iS_i\right)^2</script>
