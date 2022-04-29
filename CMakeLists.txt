@@ -198,7 +198,7 @@ target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/cxxopts/include/)
 target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/LBFGSpp/include/)
 
 # Eigen (header-only)
-target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/eigen3/)
+target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/eigen-3.4.0/)
 
 # Boost IO
 if(${HAS_BOOST_IOSTREAM}) 
