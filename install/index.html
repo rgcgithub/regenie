@@ -221,8 +221,9 @@ add the corresponding flags before the <code>cmake</code> command on line 3
 A guide to using docker is available on 
 the <a href="https://github.com/rgcgithub/regenie/wiki/Using-docker">Github page</a>.</p>
 <h3 id="with-conda">With conda</h3>
-<p>To install with conda, follow the directions 
-<a href="https://anaconda.org/bioconda/regenie">here</a>.</p>
+<p>To install with <a href="https://anaconda.org/bioconda/regenie">conda</a>, you can use the following command to create a new environment.</p>
+<pre><code>conda create -n regenie_env -c conda-forge -c bioconda regenie
+</code></pre>
 <h2 id="computing-requirements">Computing requirements</h2>
 <p>We have tested <strong>regenie</strong> on 64-bit Linux and 64-bit Mac OSX computing environments.</p>
 <p>Note that for Mac OSX computing environments, compiling is done without OpenMP, as the library is not built-in by default and has to be installed separately. </p>
