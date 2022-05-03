@@ -60,8 +60,13 @@ A guide to using docker is available on
 the [Github page](https://github.com/rgcgithub/regenie/wiki/Using-docker).
 
 ### With conda
-To install with conda, follow the directions 
-[here](https://anaconda.org/bioconda/regenie).
+To install with [conda](https://anaconda.org/bioconda/regenie), you can use the following commands:
+```
+# create new environment
+conda create -n regenie_env -c conda-forge -c bioconda regenie
+# load it
+conda activate regenie_env
+```
 
 
 
