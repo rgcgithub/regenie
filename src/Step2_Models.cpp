@@ -435,7 +435,7 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   int col_incl;
   int maxstep = params->maxstep_null;
   int niter = params->niter_max_firth_null;
-  double tol = params->numtol;
+  double tol = 10*params->numtol;
   double dev, lrt;
 
   ArrayXd betaold, se, etavec, pivec;
@@ -567,7 +567,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
   int col_incl;
   int maxstep = null_fit ? params->maxstep_null : params->maxstep;
   int niter = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
-  double tol = null_fit ? params->numtol : params->numtol_firth;
+  double tol = null_fit ? (10*params->numtol) : params->numtol_firth;
   double dev, lrt;
 
   ArrayXd betaold, se, etavec, pivec, offset;
