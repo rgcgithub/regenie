@@ -102,6 +102,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
 bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout) {
 
+  bool dev_conv = false;
   int niter_cur = 0;
   double dev_old, dev_new=0;
   ArrayXd score, betanew, wvec, zvec;
@@ -144,9 +145,8 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
 
     // stopping criterion
-    if( (score.abs().maxCoeff() < params->tol) ||
-        (abs(dev_new - dev_old)/(0.1 + abs(dev_new)) < params->tol) )
-      break;
+    dev_conv = (abs(dev_new - dev_old)/(0.1 + abs(dev_new))) < params->tol;
+    if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
 
     betavec = betanew;
     dev_old = dev_new;
@@ -154,8 +154,8 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
   if(params->debug) cerr << "Log. reg iter#" << niter_cur << ": beta\n" << betanew.matrix().transpose() << "\nscore_max=" << score.abs().maxCoeff() << ";dev_diff=" << 
    setprecision(16) << abs(dev_new - dev_old)/(0.1 + abs(dev_new)) << "\n";
 
-  // If didn't converge
-  if(niter_cur > params->niter_max)
+  // If didn't converge (check frac. change in deviances)
+  if( !dev_conv && (niter_cur > params->niter_max) )
     return false;
 
   betavec = betanew;
