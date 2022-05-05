@@ -223,6 +223,7 @@ void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* ph
 
 bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout) {
 
+  bool dev_conv = false;
   int niter_cur = 0;
   double dev_old, dev_new=0;
   ArrayXd score, betanew, zvec;
@@ -265,16 +266,15 @@ bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, co
     score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
 
     // stopping criterion
-    if( (score.abs().maxCoeff() < params->tol) ||
-        (abs(dev_new - dev_old)/(0.1 + abs(dev_new)) < params->tol) )
-      break;
+    dev_conv = (abs(dev_new - dev_old)/(0.1 + abs(dev_new))) < params->tol;
+    if( score.abs().maxCoeff() < params->tol ) break;
 
     betavec = betanew;
     dev_old = dev_new;
   }
 
   // If didn't converge
-  if(niter_cur > params->niter_max)
+  if( !dev_conv && (niter_cur > params->niter_max) )
     return false;
 
   betavec = betanew;
