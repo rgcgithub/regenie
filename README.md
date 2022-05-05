@@ -40,7 +40,9 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
-[Version 3.1](https://github.com/rgcgithub/regenie/releases/tag/v3.1) (Fixed bug in SKAT/SKATO tests when applying Firth/SPA correction; Improved SPA implementation by computing both tail probabilities; New option `--set-singletons` to specify variants to consider as singletons for burden masks; New option --l1-phenoList to run level 1 models in Step 1 in parallel across phenotypes; Several bug fixes)
+[Version 3.1.1](https://github.com/rgcgithub/regenie/releases/tag/v3.1.1) (Reduction in memory usage for SKAT/SKATO tests; Improvements for logistic regressions algorithms to address reported convergence issues)
+
+[Version 3.1](https://github.com/rgcgithub/regenie/releases/tag/v3.1) (Fixed bug in SKAT/SKATO tests when applying Firth/SPA correction; Improved SPA implementation by computing both tail probabilities; New option `--set-singletons` to specify variants to consider as singletons for burden masks; New option `--l1-phenoList` to run level 1 models in Step 1 in parallel across phenotypes; Several bug fixes)
 
 [Version 3.0.3](https://github.com/rgcgithub/regenie/releases/tag/v3.0.3) (Skip BTs where null model fit failed; Bug fix for BURDEN-ACAT; Bug fix when nan/inf values are in phenotype/covariate file)
 
