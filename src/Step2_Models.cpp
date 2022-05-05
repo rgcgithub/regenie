@@ -660,7 +660,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
-  int niter_cur = 0, nc = X1.cols();
+  int niter_cur = 0, niter_search, nc = X1.cols();
   double dev_old=0, dev_new=0, denum, mx;
 
   ArrayXd hvec, mod_score;
@@ -677,7 +677,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     // update quantities
     get_pvec(etavec, pivec, betavec, offset, X1, params->numtol_eps);
     dev_old = get_logist_dev(Y1, pivec, mask);
-    get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
+    get_wvec(pivec, wvec, mask);
     XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
     XtWX = XtW * XtW.transpose();
     qr.compute(XtWX);
@@ -707,7 +707,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 
     // start step-halving and stop when deviance decreases 
     denum = 1;
-    for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+    for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
       // adjusted step size
       step_size /= denum;
@@ -720,7 +720,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 
       get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
       dev_new = get_logist_dev(Y1, pivec, mask);
-      get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
+      get_wvec(pivec, wvec, mask);
       XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
       XtWX = XtW * XtW.transpose();
       qr.compute(XtWX);
@@ -730,6 +730,8 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       if( dev_new < dev_old ) break;
       denum *= 2;
     }
+    if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
+
     if(params->debug && (niter_cur%10==0)) cerr << "Niter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
 
 
