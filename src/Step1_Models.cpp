@@ -51,6 +51,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
   MatrixXd XtW;
   if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
+  betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
 
   for(int i = 0; i < params->n_pheno; ++i ){
 
@@ -65,8 +66,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     // starting values
     pivec = ( 0.5 + Y ) / 2;
     etavec = mask.select( log(pivec/ (1-pivec)), 0);
-    betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
-    betaold(0) = etavec.mean() - loco_offset.mean();
+    betaold = 0;
 
     if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)) {
       params->pheno_pass(i) = false; // phenotype will be ignored
@@ -133,11 +133,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
       get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
       dev_new = get_logist_dev(Y1, pivec, mask);
 
-      /*
-      cerr << "\n\n" << std::boolalpha << ((pivec > 0) && (pivec < 1)).all()
-        << " " << pivec.minCoeff() << "-" << pivec.maxCoeff() 
-        << "-> " << betanew.head(3).matrix().transpose() << "--" << dev_new << " #" << niter_cur << "(" << niter_search  << ")\n";
-        */
+      //cerr << "HS" << niter_search<<setprecision(16) << ": p in (" << pivec.minCoeff() << "-" << pivec.maxCoeff() << "; dev " << dev_old << "->" << dev_new << " \n";
       if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
 
       // adjust step size
@@ -155,7 +151,8 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     betavec = betanew;
     dev_old = dev_new;
   }
-  //sout << "Took "<< niter_cur << " iterations." << endl;
+  if(params->debug) cerr << "Log. reg iter#" << niter_cur << ": beta\n" << betanew.matrix().transpose() << "\nscore_max=" << score.abs().maxCoeff() << ";dev_diff=" << 
+   setprecision(16) << abs(dev_new - dev_old)/(0.1 + abs(dev_new)) << "\n";
 
   // If didn't converge
   if(niter_cur > params->niter_max)
@@ -163,7 +160,6 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 
   betavec = betanew;
 
-  //if(params->debug) cerr << "\nLog. reg done: beta\n" << betavec.matrix().transpose() << "\nscore:\n" << score.matrix().transpose() << "\n\n";
   return true;
 }
 
@@ -283,7 +279,7 @@ bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, co
 
   betavec = betanew;
 
-  if(params->debug) cerr << "Final (" << niter_cur << ") : " << betavec.matrix().transpose() << " : " << score.matrix().transpose() << "\n";
+  if(params->debug) cerr << "Final (" << niter_cur << ") : " << betavec.matrix().transpose() << " : " << score.abs().maxCoeff() << "\n";
   return true;
 }
 
@@ -1113,9 +1109,9 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
         return false;
       }
 
-      if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "-->" << fn_end << "\n";
+      if(params->debug &&( (niter_cur % 2) == 1)) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "-->" << fn_end << "\n";
 
-      if( fn_end < fn_start ) break;
+      if( fn_end < (fn_start + params->numtol) ) break;
       // adjusted step size
       step_size /= 2;
     }
@@ -1123,7 +1119,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
     score -= lambda * betanew;
-    if(params->debug &&( (niter_cur % 5) == 1)) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
+    if(params->debug &&( (niter_cur % 2) == 1)) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
 
     if( score.abs().maxCoeff() < params->l1_ridge_tol ||
         //( (vweights * (betanew - betaold).square()).maxCoeff() < params->tol)  // convergence criteria from glmnet
@@ -1139,7 +1135,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   if(niter_cur > params->niter_max_ridge) 
     return false;
 
-  if(params->debug) cerr << "Converged in "<< niter_cur << " iterations. Score max = " << score.abs().maxCoeff() << endl;
+  if(params->debug) cerr << "Done (#"<< niter_cur << "): score max = " << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << abs(fn_end - fn_start)/(.01 + abs(fn_end)) << "\n";
 
   betaold = betanew;
   return true;
@@ -1537,7 +1533,6 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
   return true;
 }
 
-
 bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, const double& tol){
 
   wvec = ArrayXd::Ones( mask.size() );// set all entries to 1
@@ -1568,6 +1563,11 @@ void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, c
       (etavec < ETAMINTHR).select( eps/(1+eps), 1 - 1/(etavec.exp() + 1) ) );
   //cerr << setprecision(16) << etavec.head(5) << "\n" << pivec.head(5) << "\n";
 
+}
+
+// for firth (ok if wvec=0)
+void get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask){
+  wvec = mask.select(pivec*(1-pivec), 1);
 }
 
 void get_pvec_poisson(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat, double const& eps){

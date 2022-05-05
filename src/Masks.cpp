@@ -57,7 +57,7 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   write_masks = params.write_masks;
   write_snplist = params.write_mask_snplist;
   force_singleton = params.aaf_file_wSingletons;
-  verbose = params.verbose;
+  verbose = params.verbose || params.debug;
 
   if(!take_max && !take_comphet) params.htp_out = false; // due to genocounts with sum rule
   if(write_masks) gfile_prefix = files.out_file + "_masks";
@@ -595,7 +595,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
 #endif
 
   n_mask_pass = colset.count();
-  if(verbose && ((!colset).count() > 0)) sout << "WARNING: " << (!colset).count() << "/" << nmasks_total << " masks fail MAC filter...";
+  if(verbose && (!colset).any()) sout << "WARNING: " << (nmasks_total - n_mask_pass) << "/" << nmasks_total << " masks fail MAC filter and will be skipped...";
   //cerr << endl << Gtmp.block(0,0,10,5) << endl;
 
   // reset indices
@@ -932,7 +932,6 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       snp_data->af_control /= nsites(isnp);;
     }
   }
-
 
   if(params->use_SPA) {
     // switch to minor allele

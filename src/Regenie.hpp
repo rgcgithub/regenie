@@ -168,6 +168,7 @@ struct param {
   bool transposedPheno = false, tpheno_iid_only = false;
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false;
   std::vector<std::string> forced_in_snps;//variant to force in for LD matrix
+  std::map<std::string, int> extract_vars_order;//order of variants
   bool condition_snps = false, condition_file = false;
   uint32_t max_condition_vars = 10000;
   int sex_specific = 0; // 0 = all; 1 = male-only; 2=female-only
@@ -295,7 +296,6 @@ struct param {
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
-  int retry_maxstep_firth=5, retry_niter_firth = 5000; // fallback settings for null approx. firth regression
   bool fix_maxstep_null = false; // if user specifies max step size
   bool back_correct_se = false; // for SE with Firth
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
@@ -328,6 +328,7 @@ struct param {
   bool set_aaf = false;// for user-given AAFs for building masks
   bool aaf_file_wSingletons = false;//for choosing snps in singleton masks
   bool singleton_carriers = false; // carrier count used to define singletons
+  uint64 max_bsize = 0; // number of SNPs per variant set
   bool write_masks = false, write_setlist = false, write_mask_snplist = false; //write masks to bed file
   bool mask_loo = false, mask_lodo = false;
   bool use_max_bsize = false; // set bsize to max set size
@@ -419,6 +420,7 @@ double convertNumLevel(const std::string&,std::map<std::string,int>&,struct para
 void check_inter_var(std::string&,std::string&,mstream&);
 std::string print_csv(const std::vector<std::string>&);
 std::string print_scsv(const std::vector<std::string>&);
+Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
 void allocate_mat(Eigen::MatrixXd&,int const&,int const&);

@@ -1096,7 +1096,7 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
     // apply masking to snps
    if( params->keep_snps ) {
       sout << "   -keeping variants specified by --extract\n";
-      if(params->cormat_force_vars) geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, params->forced_in_snps, sout);
+      if(params->cormat_force_vars) geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, params, sout);
       else geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
     }
     if( params->rm_snps ) {
@@ -1262,12 +1262,16 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
   params->n_samples = filters->ind_in_analysis.count();
 }
 
-ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, vector<string>& force_in_vars, mstream& sout) {
+ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, struct param* params, mstream& sout) {
 
+  int lineread = 0;
   string line;
   std::vector< string > tmp_str_vec ;
   Files myfile;
   ArrayXb mask = ArrayXb::Constant( map_ID.size() , false); 
+
+  // only allow a single extract file
+  if(file_list.size() > 1) throw "cannot have multiple extract files";
 
   for(auto fin : file_list) {
 
@@ -1281,7 +1285,9 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
 
       if( in_map(tmp_str_vec[0], map_ID) ) 
         mask( map_ID[ tmp_str_vec[0] ] ) = true;
-      else force_in_vars.push_back(tmp_str_vec[0]);
+      else params->forced_in_snps.push_back(tmp_str_vec[0]);
+
+      params->extract_vars_order[ tmp_str_vec[0] ] = lineread++;
     }
 
     myfile.closeFile();
@@ -2977,7 +2983,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
       throw "set '" + tmp_set.ID + "' is larger than maximum allowed (=" + to_string( params->max_set_size ) + ").";
 
     // if not set, fix block size to maximum number of variants in set
-    if( !bsize_set && ((int)tmp_set.snp_indices.size() > params->block_size) ) params->block_size = tmp_set.snp_indices.size();
+    if(tmp_set.snp_indices.size() > params->max_bsize) params->max_bsize = tmp_set.snp_indices.size();
 
     // add to map if needed
     if( !(params->mask_loo || params->mask_lodo) && (params->keep_sets || params->rm_sets) ){
@@ -3019,6 +3025,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
   }
 
   if(no_AAF) sout << "WARNING: Variants in the set list file not in the AAF file will be ignored.\n";
+  if( !bsize_set ) params->block_size = params->max_bsize;
 
   if( !(params->mask_loo || params->mask_lodo) && (params->keep_sets || params->rm_sets) ) 
     check_sets_include_exclude(bsize_set, files, params, filters, setinfo, sout);

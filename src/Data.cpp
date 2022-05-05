@@ -1727,7 +1727,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<std::shared_ptr<F
       //cerr << vals << endl;
       ofile->writeBinMode(vals, sout);
     }
-    sout << "  + list of snps written to [" << out << ".snplist]\n";
+    if(!params.cormat_force_vars) sout << "  + list of snps written to [" << out << ".snplist]\n";
     sout << "  + n_snps = " << params.n_variants + params.forced_in_snps.size() <<"\n\n";
     return;
   }
@@ -1850,12 +1850,13 @@ void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, 
 
   int bits = 16; // break [0,1] into 2^bits intervals
   double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
+  ArrayXi indices;
 
   // get LD matrix
   sout << "   -computing LD matrix..." << flush;
   auto t1 = std::chrono::high_resolution_clock::now();
 
-  write_snplist(bs, all_snps_info);
+  write_snplist(bs, indices, all_snps_info);
 
   MatrixXd LDmat = (Gblock.Gmat.transpose() * Gblock.Gmat) / (params.n_samples - params.ncov);
 
@@ -1889,7 +1890,7 @@ void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, 
   if(params.cor_out_txt){
 
     IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    (*ofile) << LDmat.format(Fmt);
+    (*ofile) << LDmat(indices, indices).format(Fmt);
     ofile->closeFile();
 
   } else {
@@ -1899,7 +1900,7 @@ void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, 
 
     for(int i = 0, k = 0; i < LDmat.rows(); i++)
       for(int j = i+1; j < LDmat.cols(); j++)
-        vals(k++) = LDmat(i,j) * LDmat(i,j) * mult + 0.5; // round to nearest integer
+        vals(k++) = LDmat(indices(i),indices(j)) * LDmat(indices(i),indices(j)) * mult + 0.5; // round to nearest integer
 
     //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
      // vals.head(5) << "\n-->" << vals.size() << endl;
@@ -1919,7 +1920,7 @@ void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, 
 
 /// When computing & outputting LD info
 // write list of variants used to compute LD
-void Data::write_snplist(int const& bs, vector<variant_block> const& all_snps_info){
+void Data::write_snplist(int const& bs, ArrayXi& indices, vector<variant_block> const& all_snps_info){
 
   int n_low_var = 0;
   string const out = files.out_file + ".corr.snplist";
@@ -1927,18 +1928,39 @@ void Data::write_snplist(int const& bs, vector<variant_block> const& all_snps_in
   std::ostringstream buffer, buffer_reject;
   Files ofile;
 
-  for(int snp = 0; snp < bs; snp++) {
-    if(all_snps_info[snp].ignored){
-      buffer_reject << snpinfo[snp].ID << endl;
-      n_low_var++;
-    } 
-    buffer << snpinfo[snp].ID << endl;
+  if(params.cormat_force_vars){ // no need to print snplist file
+
+    indices.resize( params.extract_vars_order.size() );
+    for(int snp = 0; snp < bs; snp++){
+      if(all_snps_info[snp].ignored){
+        buffer_reject << snpinfo[snp].ID << endl;
+        n_low_var++;
+      } 
+      indices( params.extract_vars_order[snpinfo[snp].ID] ) = snp;
+    }
+
+    if(params.forced_in_snps.size() > 0){
+      for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++)
+        indices( params.extract_vars_order[params.forced_in_snps[snp]] ) = snp + bs;
+    }
+
+  } else {
+
+    indices = ArrayXi::LinSpaced(bs, 0, bs);
+    for(int snp = 0; snp < bs; snp++) {
+      if(all_snps_info[snp].ignored){
+        buffer_reject << snpinfo[snp].ID << endl;
+        n_low_var++;
+      } 
+      buffer << snpinfo[snp].ID << endl;
+    }
+    // write SNP list
+    ofile.openForWrite(out, sout);
+    ofile << buffer.str();
+    ofile.closeFile();
+
   }
 
-  if(params.forced_in_snps.size() > 0){
-    for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++)
-      buffer << params.forced_in_snps[snp] << endl;
-  }
 
   if(n_low_var > 0){
     // write SNP list to ignore
@@ -1949,11 +1971,6 @@ void Data::write_snplist(int const& bs, vector<variant_block> const& all_snps_in
     sout << "WARNING: " << n_low_var << " SNPs with low variance are present (use '--exclude " + out_reject + "' to ignore them)." <<
       " These will be kept in the LD matrix (correlations will be set to 0)\n";
   }
-
-  // write SNP list
-  ofile.openForWrite(out, sout);
-  ofile << buffer.str();
-  ofile.closeFile();
 
 }
 

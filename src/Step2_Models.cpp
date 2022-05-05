@@ -447,17 +447,17 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   col_incl = Xmat.cols();
 
   // with firth approx. => trial 1: use maxstep_null
-  // trial 2 => use fallback options (increase maxstep & niter)
+  // trial=1+ => use fallback options (update maxstep & niter)
   for(int trial = 0; trial < 2; trial++){
 
     // starting values
     if(set_start){
         if(params->use_null_firth || (trial == 0) ){ // use saved est or those from unpenalized log. reg
           betaold = betavec.head(Xmat.cols());
-        } else {
-          betaold = ArrayXd::Zero(Xmat.cols());
-          betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
-          betaold(0) = log( betaold(0) / (1 - betaold(0) ));
+        } else {// set to 0 if null firth failed
+          betaold = 0;
+          //betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
+          //betaold(0) = log( betaold(0) / (1 - betaold(0) ));
           // LOCO prediction is offset
           betaold(0) -= mask.select(offset,0).mean();
         }
@@ -467,9 +467,9 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
 
     if(!params->fix_maxstep_null) { // don't retry with user-given settings
       if( !success ){ // if failed to converge
-        cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").\n";
-        maxstep = min(params->retry_maxstep_firth, maxstep);
-        niter = max(params->retry_niter_firth, niter);
+        cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").";
+        maxstep /= 5;
+        niter *= 5;
         if(params->debug && (trial == 0)) cerr << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
         if(params->use_adam) set_start = false;
         continue;
@@ -529,8 +529,8 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
   // check if some did not converge
   if(!has_converged.any()) { //  none passed
 
-    string msg1 = to_string( (params->fix_maxstep_null ? params->maxstep_null : params->retry_maxstep_firth) );
-    string msg2 = to_string( (params->fix_maxstep_null ? params->niter_max_firth_null : params->retry_niter_firth) );
+    string msg1 = to_string( params->maxstep_null / (params->fix_maxstep_null ? 1 : 5) );
+    string msg2 = to_string( params->niter_max_firth_null * (params->fix_maxstep_null ? 1 : 5) );
     throw "Firth penalized logistic regression failed to converge for all phenotypes."
       " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") "
       "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
@@ -668,7 +668,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   MatrixXd XtW, XtWX;
   ColPivHouseholderQR<MatrixXd> qr, qrX;
 
-  if(params->debug) cerr << "Starting beta = " << betavec.matrix().transpose() << endl;
+  if(params->debug) cerr << "Firth starting beta = " << betavec.matrix().transpose() << "\n";
 
   // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
   betanew = betavec * 0;
@@ -726,10 +726,12 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       qr.compute(XtWX);
       dev_new -= qr.logAbsDeterminant();
 
-      //cerr << "\n["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";\n step =" << step_size.matrix().transpose().array() / denum<<"; \nbeta=" << betanew.matrix().transpose().array() << ";\n Lnew= " << dev_new << " vs L0="<< dev_old << ";score="<< mod_score<< endl;
+      //cerr << "["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";Lnew= " << dev_new << " vs L0="<< dev_old << ";score_max="<< mod_score.abs().maxCoeff()<< "\n";
       if( dev_new < dev_old ) break;
       denum *= 2;
     }
+    if(params->debug && (niter_cur%10==0)) cerr << "Niter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
+
 
     if(cols_incl < nc)  
       betavec.head(cols_incl) += step_size;
@@ -737,10 +739,8 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       betavec += step_size;
     dev_old = dev_new;
 
-    if(params->debug && (niter_cur%10==0)) cerr << "\nNiter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : " << mod_score.matrix().transpose() << " (max=" << mod_score.maxCoeff() << ")\n";
-
   }
-  if(params->debug) cerr << "Ending beta = " << betavec.matrix().transpose() << "\nScore = " << mod_score.matrix().transpose() << "\nNiter=" << niter_cur << endl;
+  if(params->debug) cerr << "Niter_total=" << niter_cur << ";Firth ending beta = " << betavec.matrix().transpose() << "\nscore_max=" << mod_score.abs().maxCoeff() << "\n";
 
   // If didn't converge
   if( niter_cur > niter_firth ) return false;

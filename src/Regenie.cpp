@@ -1232,6 +1232,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
   total_ram += params->nvs_stored * sizeof(struct snp);
   if( params->getCorMat ) total_ram += params->block_size * params->block_size * sizeof(double);
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
+  if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
   total_ram /= 1024.0 * 1024.0; 
   if( total_ram > 1000 ) {
     total_ram /= 1024.0; 
@@ -1396,6 +1397,15 @@ std::string print_scsv(const vector<string>& vlist){
 
   return buffer.str();
 
+}
+
+Eigen::ArrayXi get_true_indices(const Ref<const ArrayXb>&  bool_arr){
+
+  ArrayXi v_indices ( bool_arr.count() );
+  for(int i = 0, j = 0; i < bool_arr.size(); i++)
+    if(bool_arr(i)) v_indices(j++) = i;
+
+  return v_indices;
 }
 
 // get logp from chisq(1)
