@@ -188,37 +188,38 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_skat = (vc_test>>1)&15;
-  int jcol, n_pheno = yres.cols(), bs = mat.cols(), nnz;
+  int jcol, n_pheno = yres.cols(), nnz;
   double c1 = sqrt(1 - rho);
-  ArrayXd D, w_mask;
+  ArrayXd D;
   VectorXd lambdas;
-  MatrixXd Qs, Qb, Svals, Kmat, sum_stats, pvals, pv_mask;
+  MatrixXd Qs, Qb, Svals, Kmat, sum_stats, pvals;
 
-  Svals.resize(n_pheno, bs); // PxM
-  Kmat.resize(bs, bs); // MxM
+  ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
+  int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+
+  // slice sparse matrix (cannot use indexing)
+  SpMat Jstar (Jmat.rows(), bs); // Mall x M
+  Jstar.reserve(bs);
+  for(int i = 0; i < bs; i++)
+    Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+  SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
 
   // get score stats & kernel matrices
-  compute_vc_mats_qt(Svals, Kmat, X, yres, mat, weights);
-  mat.resize(0,0); // not needed anymore
+  Svals.resize(n_pheno, bs); // PxM
+  Kmat.resize(bs, bs); // MxM
+  compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
+  mat2.resize(0,0); // not needed anymore
 
   // SKAT for all masks & traits
-  Qs = Svals.array().square().matrix(); // PxM
-  // if using acat-v, get single variant p-values
-  if(with_acatv) {
-    pvals.resize(bs, n_pheno); // MxP
-    get_single_pvs(pvals, (Qs * (weights!=0).select(1/Kmat.diagonal().array(),1).matrix().asDiagonal()).transpose()); 
-  }
-  Qs *= Jmat.cast<double>(); // P x Km
-
-  // burden
-  Qb = (Svals * Jmat.cast<double>()).array().square().matrix();
-  if(debug) cerr << "Q_SKAT for all masks:\n" << Qs << "\nQ_BURDEN for all masks:\n" << Qb << "\n";
+  compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
 
   // for now don't parallelize this as it causes issues with qfc lib
   // but should be ok since dimensions don't depend on N
   for(size_t imask = 0; imask < all_snps_info.size(); imask++){
 
     variant_block* block_info = &(all_snps_info[imask]);
+    if(debug) cerr << "Mask : " << block_info->mask_name << "\n";
     if(block_info->sum_stats_vc.size()>0) block_info->sum_stats_vc.clear();
     if(block_info->skip_for_vc) continue;
     sum_stats = MatrixXd::Constant(n_pheno, 2, -1); // chisq & logp
@@ -230,28 +231,23 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     nnz = Jvec.count();
     if(nnz == 0) continue;
 
-    // get kernel matrix
-    SpMat Jstar (nnz, Kmat.rows()); // KmxM
-    Jstar.reserve(nnz);
-    for(int i = 0, j = 0; i < Jvec.size(); i++)
-      if(Jvec(i)) Jstar.insert(j++, i) = 1;
+    // subset to variants kept in mask
+    ArrayXi m_indices = get_true_indices(Jvec(snp_indices)); // across markers kept in skat tests
+    ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
     // ACAT-V 
     if(with_acatv){
-      pv_mask = Jstar * pvals; // KmxP
-      w_mask = (Jstar * weights_acat.matrix()).array(); // Kmx1
-      if(debug) cerr << "SV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
       for(int ph = 0; ph < n_pheno; ph++)
-        get_logp(get_acat(pv_mask.col(ph).array(), w_mask), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin);
+        get_acatv_pv( ph, pvals(m_indices, ph), weights_acat(mall_indices), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin, debug); 
       block_info->sum_stats_vc["ACATV"] = sum_stats;
       sum_stats.array() = -1; // reset
     }
     if(!with_skat) continue;
 
     // get eigen values of Rsqrt*V*Rsqrt
-    get_lambdas(lambdas, get_RsKRs(Jstar * (Kmat * Jstar.transpose()), rho, c1), skat_lambda_tol);
+    get_lambdas(lambdas, get_RsKRs(Kmat(m_indices, m_indices), rho, c1), skat_lambda_tol);
     if(lambdas.size() == 0) continue;
-    if(debug) cerr << "L:" << lambdas.transpose() << "\n";
+    if(debug) cerr << "L:" << lambdas.head(min(150, nnz)).transpose() << "\n";
 
     // compute test statistic & p-value
     for(int ph = 0; ph < n_pheno; ph++)
@@ -273,52 +269,45 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_skato_int = CHECK_BIT(vc_test,2);
   bool with_skato_acat = CHECK_BIT(vc_test,3);
   bool with_acato = CHECK_BIT(vc_test,4);
-  int jcol, n_pheno = yres.cols(), bs = mat.cols(), nnz, nrho = rho_vec.size();
+  int jcol, n_pheno = yres.cols(), nnz, nrho = rho_vec.size();
   double minp, gamma1, gamma2, gamma3;
-  ArrayXd D, w_mask, p_acato, flip_rho_sqrt;
-  VectorXd lambdas, ZtZ_rsum;
-  MatrixXd XtG, ZtZ, Qs, Qb, Qopt, Svals, Kmat, cvals, sum_stats, pvals, pv_mask, r_outer_sum;
+  ArrayXd D, p_acato, flip_rho_sqrt;
+  VectorXd lambdas;
+  MatrixXd Qs, Qb, Qopt, Svals, Kmat, cvals, sum_stats, pvals, r_outer_sum;
   MatrixXd pvs_skato, chisq_skato, pvs_skato_acat, chisq_skato_acat, pvs_acato, chisq_acato;
-  SpMat Gw;
 
-  Svals.resize(n_pheno, bs); // PxM
-  Kmat.resize(bs, bs); // MxM
   cvals.resize(nrho, 5);
   skato_Qmin_rho.resize(nrho, 1);
   if(with_acato) p_acato.resize(nrho+1);
   flipped_skato_rho = 1 - rho_vec;
   flip_rho_sqrt = flipped_skato_rho.sqrt();
 
-  // project covariates
-  Gw = mat  * weights.matrix().asDiagonal(); // NxM - sparse
-  XtG = X.transpose() * Gw; // CxM
+  ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
+  int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
 
-  // get score stats
-  // need to use Gresid (must have yres centered) - avoid storing dense NxM matrices
-  Svals = yres.transpose() * Gw - (yres.transpose() * X) * XtG; // PxM
-  mat.resize(0,0); // not needed anymore
+  // slice sparse matrix (cannot use indexing)
+  SpMat Jstar (Jmat.rows(), bs); // Mall x M
+  Jstar.reserve(bs);
+  for(int i = 0; i < bs; i++)
+    Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+  SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
 
-  // get kernel & resid matrices
-  Kmat = Gw.transpose() * Gw - XtG.transpose() * XtG; // ZtZ
+  // get score stats & kernel matrices
+  Svals.resize(n_pheno, bs); // PxM
+  Kmat.resize(bs, bs); // MxM
+  compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
+  mat2.resize(0,0); // not needed anymore
 
   // SKAT for all masks & traits
-  Qs = Svals.array().square().matrix(); // PxM
-  // if using acat-v, get single variant p-values
-  if(with_acatv) {
-    pvals.resize(bs, n_pheno); // MxP
-    get_single_pvs(pvals, (Qs * (weights!=0).select(1/Kmat.diagonal().array(),1).matrix().asDiagonal()).transpose()); 
-  }
-  Qs *= Jmat.cast<double>(); // P x Km
-
-  // burden
-  Qb = (Svals * Jmat.cast<double>()).array().square().matrix();
-  if(debug) cerr << "Q_SKAT for all masks:\n" << Qs << "\nQ_BURDEN for all masks:\n" << Qb << "\n";
+  compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
 
   // for now don't parallelize this as it causes issues with qfc lib
   // but should be ok since dimensions don't depend on N
   for(size_t imask = 0; imask < all_snps_info.size(); imask++){
 
     variant_block* block_info = &(all_snps_info[imask]);
+    if(debug) cerr << "Mask : " << block_info->mask_name << "\n";
     if(block_info->sum_stats_vc.size()>0) block_info->sum_stats_vc.clear();
     if(block_info->skip_for_vc) continue;
     pvs_skato = MatrixXd::Constant(n_pheno, nrho, -1);
@@ -341,34 +330,21 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     if(debug) cerr << "#sites in mask=" << nnz << "\n";
     if(nnz == 0) continue;
 
-    // to get variants in mask
-    SpMat Jstar (nnz, Kmat.rows()); // KmxM
-    Jstar.reserve(nnz);
-    for(int i = 0, j = 0; i < Jvec.size(); i++)
-      if(Jvec(i)) Jstar.insert(j++, i) = 1;
+    // subset to variants kept in mask
+    ArrayXi m_indices = get_true_indices(Jvec(snp_indices)); // across markers kept in skat tests
+    ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
     // ACAT-V 
     if(with_acatv){
-      pv_mask = Jstar * pvals; // KmxP
-      w_mask = (Jstar * weights_acat.matrix()).array(); // Kmx1
-      if(debug) cerr << "SV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
       for(int ph = 0; ph < n_pheno; ph++)
-        get_logp(get_acat(pv_mask.col(ph).array(), w_mask), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin);
+        get_acatv_pv( ph, pvals(m_indices, ph), weights_acat(mall_indices), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin, debug); 
       block_info->sum_stats_vc["ACATV"] = sum_stats;
       sum_stats.array() = -1; // reset
     }
     if(!with_omnibus) continue;
 
     // get eigen values of Zt(I-U)Z
-    ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
-    ZtZ_rsum = ZtZ.rowwise().sum();//Kmx1
-    r_outer_sum = ZtZ_rsum.rowwise().replicate(nnz) + ZtZ_rsum.transpose().colwise().replicate(nnz);
-    gamma1 = ZtZ_rsum.sum();
-    gamma2 = ZtZ_rsum.squaredNorm();
-    gamma3 = ZtZ_rsum.dot( ZtZ * ZtZ_rsum);
-    get_lambdas(skato_lambdas, ZtZ - ZtZ_rsum * (ZtZ_rsum/gamma1).transpose(), skat_lambda_tol);
-    if(skato_lambdas.size() == 0) continue;
-    if(debug) cerr << "L:\n" << skato_lambdas.transpose() << "\n";
+    if(!get_ztz_evals(Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
 
     if(nnz > 1)
       get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
@@ -379,7 +355,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     for(int j = 0; j < nrho; j++){
 
       // get eigen values of Rsqrt*ZtZ*Rsqrt
-      get_lambdas(lambdas, get_RsKRs(ZtZ, r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
+      get_lambdas(lambdas, get_RsKRs(Kmat(m_indices, m_indices), r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
       //if(debug) cerr << "rho:" << rho_vec(j) << "-> L:" << lambdas.transpose() << "\n";
       if(lambdas.size() == 0) break; // SKAT & SKAT-O failed
 
@@ -464,17 +440,46 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
 }
 
-void compute_vc_mats_qt(Ref<MatrixXd> Svals, Ref<MatrixXd> Kmat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, Ref<SpMat> Gmat, const Ref<const ArrayXd>& weights){
+void compute_vc_mats_qt(Ref<MatrixXd> Svals, Ref<MatrixXd> Kmat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, Ref<SpMat> GW){
 
   // project covariates
-  MatrixXd GtX = Gmat.transpose() * X; // MxK
+  MatrixXd WGtX = GW.transpose() * X; // MxK
 
   // get test statistics (PxM matrix)
   // need to use Gresid (must have yres centered)
-  Svals = ( yres.transpose() * Gmat - (yres.transpose() * X) * GtX.transpose() ) * weights.matrix().asDiagonal();
+  Svals = yres.transpose() * GW - (yres.transpose() * X) * WGtX.transpose(); // 2nd term: PxK * KxM
 
   // get kernel matrix (MxM matrix)
-  Kmat = weights.matrix().asDiagonal() * (Gmat.transpose() * Gmat - GtX * GtX.transpose()) * weights.matrix().asDiagonal();
+  Kmat = -WGtX * WGtX.transpose();
+  Kmat += GW.transpose() * GW;
+
+}
+
+void compute_skat_q(MatrixXd& Qs, MatrixXd& Qb, Ref<MatrixXd> Svals, const Ref<const MatrixXd>& Kmat, MatrixXd& pvals, const Ref<const ArrayXb>& mask_w, const Ref<const MatrixXb>& Jmat, bool const& w_acatv, bool const& debug){
+
+  Qs = Svals.array().square().matrix(); // PxM
+  // if using acat-v, get single variant p-values
+  if(w_acatv) {
+    pvals.resize(Svals.cols(), Svals.rows()); // MxP
+    get_single_pvs(pvals, (Qs * mask_w.select(1/Kmat.diagonal().array(),1).matrix().asDiagonal()).transpose()); 
+  }
+  Qs *= Jmat.cast<double>(); // P x Km
+
+  // burden
+  Qb = (Svals * Jmat.cast<double>()).array().square().matrix();
+  if(debug) cerr << "Q_SKAT for all masks:\n" << Qs << "\nQ_BURDEN for all masks:\n" << Qb << "\n";
+
+}
+
+void get_acatv_pv(int const& ph, const Ref<const MatrixXd>& pvals, const Ref<const ArrayXd>& weights, double& logp, double& chisq, double const& nl_dbl_dmin, bool const& debug){
+
+  if(debug && (ph==0)) {
+    int bs = pvals.rows(), nmax = min(150, bs); // avoid over-printing 
+    cerr << "SV log10p:\n" << pvals.col(0).transpose().array().head(nmax) << 
+    "\nWsq:\n" << weights.head(nmax).matrix().transpose() << "\n\n";
+  }
+
+  get_logp(get_acat(pvals.array(), weights), logp, chisq, nl_dbl_dmin);
 
 }
 
@@ -508,8 +513,8 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   double c1 = sqrt(1 - rho);
   VectorXd lambdas, Qs, Qb;
   ArrayXb masked_sites;
-  ArrayXd Svals, Rvec_sqrt, w_mask, pvals;
-  MatrixXd Kraw, Kmat, Kmask, GtWX, sum_stats, pv_mask;
+  ArrayXd Svals, Rvec_sqrt, pvals;
+  MatrixXd Kmat, GtWX, sum_stats;
   SpMat GWs;
 
   MatrixXd pvs_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
@@ -517,6 +522,19 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   MatrixXd pvs_m_a = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
   MatrixXd chisq_m_a = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);
   sum_stats = MatrixXd::Constant(n_pheno, 2, -1); // chisq & logp
+
+  ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
+  int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+
+  // slice sparse matrix (cannot use indexing)
+  SpMat Jstar (Jmat.rows(), bs); // M x Mall
+  Jstar.reserve(bs);
+  for(int i = 0; i < bs; i++)
+    Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+  SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  Svals.resize(bs, 1); // Mx1
+  Kmat.resize(bs, bs); // MxM
 
   for(int ph = 0; ph < n_pheno; ph++) { 
     if( !params.pheno_pass(ph) ) continue;
@@ -527,70 +545,55 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     MapcMatXd XWsqrt (m_ests.X_Gamma[ph].data(), yraw.rows(), m_ests.X_Gamma[ph].cols());
     MapcArXd phat (m_ests.Y_hat_p.col(ph).data(), yraw.rows());
 
-    // multiply by sqrt(p(1-p)) and mask entries (NxM)
-    GWs = (Wsqrt * mask.cast<double>()).matrix().asDiagonal() * mat; // NxM
-
-    // get score stats for all variants (Mx1)
-    Svals = (GWs.transpose() * yres.col(ph)).array();
-
-    // kernel matrix for all variants (MxM)
-    GtWX = XWsqrt.transpose() * GWs ; // KxM
-    Kraw = GWs.transpose() * GWs - GtWX.transpose() * GtWX;
+    // get score stats & kernel matrices
+    compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), mat2, GWs, GtWX);
 
     // apply firth/spa corrections (set R=0 if failed)
-    masked_sites = (weights > 0);
+    masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kraw, mat, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
-      get_single_pvs_bt(pvals, masked_sites.select(Svals.square() / Kraw.diagonal().array(),1)); 
+      get_single_pvs_bt(pvals, masked_sites.select(Svals.square() / Kmat.diagonal().array(),1)); 
     }
 
     // SKAT for all masks (Kmx1)
-    Qs = Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).square().matrix();
-    // burden
-    Qb = (Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).matrix()).array().square().matrix();
-    if(debug) cerr << "Q_SKAT for all masks:\n" << Qs.transpose() << "\nQ_BURDEN for all masks:\n" << Qb.transpose() << "\n";
-
-    // apply weights
-    Kmat = weights.matrix().asDiagonal() * Kraw * weights.matrix().asDiagonal();
+    compute_skat_q(Qs, Qb, masked_sites.select(Svals, 0), Kmat, Jmat(snp_indices, all), debug);
 
     for(size_t imask = 0; imask < all_snps_info.size(); imask++){
 
       variant_block* block_info = &(all_snps_info[imask]);
+      if(debug) cerr << "Mask : " << block_info->mask_name << "\n";
       if(block_info->skip_for_vc) continue;
 
       // get index of mask in Jmat
       jcol = block_info->col_jmat_skat;
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
-      int npass = (Jvec && masked_sites).count();
+      int npass = (Jvec(snp_indices) && masked_sites).count();
+      if(debug) cerr << "sites in mask=" << npass << "\n";
       if(npass == 0) continue;
 
-      // extract rows/columns
-      SpMat Jstar (npass, Kmat.rows()); // KmxM
-      Jstar.reserve(npass);
-      for(int i = 0, j = 0; i < Jvec.size(); i++)
-        if(Jvec(i) && masked_sites(i)) Jstar.insert(j++, i) = 1;
+      // subset to variants kept in mask
+      ArrayXi m_indices = get_true_indices(Jvec(snp_indices) && masked_sites); // across markers kept in skat tests
+      ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
       // ACAT-V 
-      if(with_acatv){
-        pv_mask = Jstar * pvals.matrix(); // Kmx1
-        w_mask = (Jstar * weights_acat.matrix()).array(); // Kmx1
-        if(debug) cerr << "SV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
-        get_logp(get_acat(pv_mask.col(0).array(), w_mask), pvs_m_a(ph, imask), chisq_m_a(ph, imask), nl_dbl_dmin);
-      }
+      if(with_acatv)
+        get_acatv_pv( ph, pvals(m_indices).matrix(), weights_acat(mall_indices), pvs_m_a(ph, imask), chisq_m_a(ph, imask), nl_dbl_dmin, debug); 
+
       if(!with_skat) continue;
 
       // correct using burden test
-      Kmask = Jstar * (Kmat * Jstar.transpose());
+      double rfrac = 1;
       if(apply_correction)
-        if(!correct_vcov_burden(ph, Qb(jcol), Kmask, (Jvec && masked_sites).select(weights, 0), mat, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
+        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
           continue; // failed to correct with burden mask
 
     // get eigen values of Rsqrt*V*Rsqrt
-      get_lambdas(lambdas, get_RsKRs(Kmask, rho, c1), skat_lambda_tol);
+      get_lambdas(lambdas, get_RsKRs(rfrac * Kmat(m_indices, m_indices), rho, c1), skat_lambda_tol);
       if(lambdas.size() == 0) continue;
       //cerr << lambdas << "\n\n";
 
@@ -617,8 +620,6 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     }
   }
 
-  mat.resize(0,0); // not needed anymore
-
 }
 
 void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXd>& rho_vec, double const& skat_lambda_tol, double const& nl_dbl_dmin, bool const& apply_correction, uint const& vc_test, bool const& debug, struct param const& params){
@@ -630,10 +631,10 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_acato = CHECK_BIT(vc_test,4);
   int jcol, n_pheno = yres.cols(), nrho = rho_vec.size();
   double minp, gamma1, gamma2, gamma3;
-  VectorXd lambdas, Qs, Qb, Qopt, ZtZ_rsum;
+  VectorXd lambdas, Qs, Qb, Qopt;
   ArrayXb masked_sites;
-  ArrayXd Svals, Rvec_sqrt, pvs_skato, chisq_skato, w_mask, pvals, p_acato, flip_rho_sqrt;
-  MatrixXd ZtZ, Kraw, Kmat, GtWX, cvals, sum_stats, pv_mask, r_outer_sum;
+  ArrayXd Svals, Rvec_sqrt, pvs_skato, chisq_skato, pvals, p_acato, flip_rho_sqrt;
+  MatrixXd Kmat, GtWX, cvals, sum_stats, r_outer_sum;
   SpMat GWs;
 
   MatrixXd pvs_m = MatrixXd::Constant( n_pheno, all_snps_info.size(), -1);//skat
@@ -655,6 +656,19 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   flipped_skato_rho = 1 - rho_vec;
   flip_rho_sqrt = flipped_skato_rho.sqrt();
 
+  ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
+  int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+
+  // slice sparse matrix (cannot use indexing)
+  SpMat Jstar (Jmat.rows(), bs); // M x Mall
+  Jstar.reserve(bs);
+  for(int i = 0; i < bs; i++)
+    Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+  SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  Svals.resize(bs, 1); // Mx1
+  Kmat.resize(bs, bs); // MxM
+
   for(int ph = 0; ph < n_pheno; ph++) { 
     if( !params.pheno_pass(ph) ) continue;
 
@@ -664,78 +678,54 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     MapcMatXd XWsqrt (m_ests.X_Gamma[ph].data(), yraw.rows(), m_ests.X_Gamma[ph].cols());
     MapcArXd phat (m_ests.Y_hat_p.col(ph).data(), yraw.rows());
 
-    // multiply by sqrt(p(1-p)) and mask entries (NxM)
-    GWs = (Wsqrt * mask.cast<double>()).matrix().asDiagonal() * mat; // NxM
-
-    // get score stats for all variants (Mx1)
-    Svals = (GWs.transpose() * yres.col(ph)).array();
-
-    // kernel matrix for all variants (MxM)
-    GtWX = XWsqrt.transpose() * GWs ; // CxM
-    Kraw = GWs.transpose() * GWs - GtWX.transpose() * GtWX; // ZtZ
+    // get score stats & kernel matrices
+    compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), mat2, GWs, GtWX);
 
     // apply firth/spa corrections (set R=0 if failed)
-    masked_sites = (weights > 0);
+    masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kraw, mat, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
-      get_single_pvs_bt(pvals, masked_sites.select(Svals.square() / Kraw.diagonal().array(),1)); 
+      get_single_pvs_bt(pvals, masked_sites.select(Svals.square() / Kmat.diagonal().array(),1)); 
     }
 
     // SKAT for all masks (Kmx1)
-    Qs = Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).square().matrix();
-    // burden
-    Qb = (Jmat.transpose().cast<double>() * masked_sites.select(Svals * weights, 0).matrix()).array().square().matrix();
-    if(debug) cerr << "Q_SKAT for all masks:\n" << Qs.transpose() << "\nQ_BURDEN for all masks:\n" << Qb.transpose() << "\n";
-
-    // apply weights
-    Kmat = weights.matrix().asDiagonal() * Kraw * weights.matrix().asDiagonal();
+    compute_skat_q(Qs, Qb, masked_sites.select(Svals, 0), Kmat, Jmat(snp_indices, all), debug);
 
     for(size_t imask = 0; imask < all_snps_info.size(); imask++){
 
       variant_block* block_info = &(all_snps_info[imask]);
+      if(debug) cerr << "Mask : " << block_info->mask_name << "\n";
       if(block_info->skip_for_vc) continue;
 
       // get index of mask in Jmat
       jcol = block_info->col_jmat_skat;
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
-      int npass = (Jvec && masked_sites).count();
+      int npass = (Jvec(snp_indices) && masked_sites).count();
       if(debug) cerr << "sites in mask=" << npass << "\n";
       if(npass == 0) continue;
 
-      // extract rows/columns
-      SpMat Jstar (npass, Kmat.rows()); // KmxM
-      Jstar.reserve(npass);
-      for(int i = 0, j = 0; i < Jvec.size(); i++)
-        if(Jvec(i) && masked_sites(i)) Jstar.insert(j++, i) = 1;
+      // subset to variants kept in mask
+      ArrayXi m_indices = get_true_indices(Jvec(snp_indices) && masked_sites); // across markers kept in skat tests
+      ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
       // ACAT-V 
-      if(with_acatv){
-        pv_mask = Jstar * pvals.matrix(); // Kmx1
-        w_mask = (Jstar * weights_acat.matrix()).array(); // Kmx1
-        if(debug) cerr << "SV log10p:\n" << pv_mask.col(0).transpose() << "\nWsq:\n" << w_mask.matrix().transpose() << "\n\n";
-        get_logp(get_acat(pv_mask.col(0).array(), w_mask), pvs_m_a(ph, imask), chisq_m_a(ph, imask), nl_dbl_dmin);
-      }
+      if(with_acatv)
+        get_acatv_pv( ph, pvals(m_indices).matrix(), weights_acat(mall_indices), pvs_m_a(ph, imask), chisq_m_a(ph, imask), nl_dbl_dmin, debug); 
       if(!with_omnibus) continue;
 
       // correct using burden test
-      ZtZ = Jstar * (Kmat * Jstar.transpose()); // KmxKm
+      double rfrac = 1;
       if(apply_correction)
-        if(!correct_vcov_burden(ph, Qb(jcol), ZtZ, (Jvec && masked_sites).select(weights, 0), mat, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
+        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
           continue; // failed to correct with burden mask
 
-    // get eigen values of Zt(I-U)Z
-      ZtZ_rsum = ZtZ.rowwise().sum();//Kmx1
-      r_outer_sum = ZtZ_rsum.rowwise().replicate(npass) + ZtZ_rsum.transpose().colwise().replicate(npass);
-      gamma1 = ZtZ_rsum.sum();
-      gamma2 = ZtZ_rsum.squaredNorm();
-      gamma3 = ZtZ_rsum.dot( ZtZ * ZtZ_rsum);
-      get_lambdas(skato_lambdas, ZtZ - ZtZ_rsum * (ZtZ_rsum/gamma1).transpose(), skat_lambda_tol);
-      if(skato_lambdas.size() == 0) continue;
-      if(debug) cerr << "L:\n" << skato_lambdas.transpose() << "\n";
+      // get eigen values of Zt(I-U)Z
+      if(!get_ztz_evals(rfrac * Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
 
       if(npass > 1)
         get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
@@ -746,7 +736,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       for(int j = 0; j < nrho; j++){
 
         // get eigen values of Rsqrt*ZtZ*Rsqrt
-        get_lambdas(lambdas, get_RsKRs(ZtZ, r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
+        get_lambdas(lambdas, get_RsKRs(rfrac * Kmat(m_indices, m_indices), r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
         if(lambdas.size() == 0) continue;
         //if(rho_vec(j) >0.9) cerr << "rho=" << rho_vec(j) << "\nL:"<<lambdas.matrix().transpose() << "\n";
 
@@ -836,7 +826,30 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     }
   }
 
-  mat.resize(0,0); // not needed anymore
+}
+
+void compute_vc_mats_bt(Ref<ArrayXd> Svals, Ref<MatrixXd> Kmat, const Ref<const MatrixXd>& XWsqrt, const Ref<const ArrayXd>& Wsqrt, const Ref<const MatrixXd>& yres, Ref<SpMat> Gmat, SpMat& GWs, MatrixXd& GtWX){
+
+  // multiply by sqrt(p(1-p)) and mask entries (NxM)
+  GWs = Wsqrt.matrix().asDiagonal() * Gmat; // NxM
+  GtWX = XWsqrt.transpose() * GWs ; // CxM
+
+  // get score stats for all variants (Mx1)
+  Svals = (GWs.transpose() * yres).array();
+
+  // kernel matrix for all variants (MxM)
+  Kmat = - GtWX.transpose() * GtWX;
+  Kmat += GWs.transpose() * GWs; // ZtZ
+
+}
+
+void compute_skat_q(VectorXd& Qs, VectorXd& Qb, const Ref<const ArrayXd>& Svals, Ref<MatrixXd> Kmat, const Ref<const MatrixXb>& Jmat, bool const& debug){
+
+    Qs = Jmat.transpose().cast<double>() * Svals.square().matrix();
+    // burden
+    Qb = (Jmat.transpose().cast<double>() * Svals.matrix()).array().square().matrix();
+
+    if(debug) cerr << "Q_SKAT for all masks:\n" << Qs.transpose() << "\nQ_BURDEN for all masks:\n" << Qb.transpose() << "\n";
 
 }
 
@@ -847,9 +860,10 @@ void correct_vcov(int const& ph, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sq
   // apply correction factor
   Kmat = Rvec_sqrt.matrix().asDiagonal() * Kmat * Rvec_sqrt.matrix().asDiagonal();
   masked_sites = (Rvec_sqrt > 0);
-  if(params.debug) cerr << "Rsqrt:" << Rvec_sqrt.matrix().transpose() << "\n" << 
-    "Chisq quantiles:" << masked_sites.select(score_stats.square() / Kmat.diagonal().array(),0).matrix().transpose() << "\n";
-
+  if(params.debug) {
+    int bs = Rvec_sqrt.size();
+    cerr << "Rsqrt:" << Rvec_sqrt.head(min(150, bs)).matrix().transpose() << "\n";
+  }
 }
 
 // correcting for high cc imbalance
@@ -917,23 +931,22 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 
 }
 
-bool correct_vcov_burden(int const& ph, double const& qb, Ref<MatrixXd> Kmat, const Ref<const ArrayXd>& w, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const VectorXd>& yres, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
+bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double const& var_sb, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const VectorXd>& yres, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
 
   bool test_fail = true;
-  double chisq, pv, sb, var_sb, rfrac;
+  double chisq, pv, sb;
   if(qb == 0) return true; // no need to apply it
 
   // build burden mask
-  SpVec g_burden = (Gsparse * w.matrix()).sparseView(); // Nx1
-  VectorXd gw = GWs * w.matrix(); // Nx1
+  SpVec g_burden; //(Gsparse.rowwise().sum()).sparseView(); // Nx1 - not needed
+  VectorXd gw = GWs * VectorXd::Ones(GWs.cols()); // Nx1
   sb = gw.dot(yres);
-  var_sb = Kmat.sum(); 
   //if(params.debug) cerr << "sb^2: " << sb*sb << " vs qb:" << qb << "\n";
 
   double tstat_cur = sb / sqrt(var_sb);
   //if(params.debug) cerr << "T_burden=" << tstat_cur << "\n";
 
-  VectorXd g_res = gw - XWsqrt * (GtWX * w.matrix()); // get mask residuals
+  VectorXd g_res = gw - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
   //cerr << "w=" << w.matrix().transpose() << "\nGburden:" << g_burden.transpose().head(5) << "\nGres=" << g_res.transpose().head(5) << "\n";
 
   // apply firth (leads to better calibration than SPA for burden mask)
@@ -954,9 +967,6 @@ bool correct_vcov_burden(int const& ph, double const& qb, Ref<MatrixXd> Kmat, co
   // need to make variance bigger (so bigger p-values) so take max
   rfrac = max(1.0, tstat_cur * tstat_cur / chisq );
   if(params.debug) cerr << "R_factor_burden:" << rfrac << "\n";
-
-  // apply correction factor
-  Kmat.array() *= rfrac;
 
   return true;
 }
@@ -1239,6 +1249,23 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas){
 
   if((pv <= 0) || (pv > 1)) return -1;
   return pv;
+}
+
+bool get_ztz_evals(const Ref<const MatrixXd>& Kmat, MatrixXd& outer_sum, double& gamma1, double& gamma2, double& gamma3, double const& skat_lambda_tol, bool const& debug){
+
+  VectorXd ZtZ_rsum = Kmat.rowwise().sum();//Kmx1
+  outer_sum = ZtZ_rsum.rowwise().replicate(Kmat.cols()) + ZtZ_rsum.transpose().colwise().replicate(Kmat.rows());
+  gamma1 = ZtZ_rsum.sum();
+  gamma2 = ZtZ_rsum.squaredNorm();
+  gamma3 = ZtZ_rsum.dot( Kmat * ZtZ_rsum);
+  get_lambdas(skato_lambdas, Kmat - ZtZ_rsum * (ZtZ_rsum/gamma1).transpose(), skat_lambda_tol);
+  if(skato_lambdas.size() == 0) return false;
+  if(debug) {
+    int bs = skato_lambdas.size();
+    cerr << "L:\n" << skato_lambdas.head(min(150,bs)).transpose() << "\n";
+  }
+
+  return true;
 }
 
 void get_skato_mom(double& mu, double& sc_fac, double& sd, double& df, ArrayXd& tau, const Ref<const VectorXd>& lambdas, double const& gamma1, double const& gamma2, double const& gamma3, const Ref<const ArrayXd>& rho, bool const& debug){
