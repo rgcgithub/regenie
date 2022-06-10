@@ -1431,6 +1431,7 @@ void get_logp(double& logp, const double& Tstat){
 
   boost::math::chi_squared chisq1(1);
 
+  if( (Tstat < 0) && (fabs(Tstat) < 1e-8)){logp = 0; return;} // num err
   double pv = cdf(complement(chisq1, Tstat));
 
   if(pv == 0) logp = log10(2) - 0.5 * log10( 2 * M_PI * Tstat ) - 0.5 * Tstat * M_LOG10E ;
