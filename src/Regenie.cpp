@@ -1398,26 +1398,23 @@ void check_inter_var(std::string& str, std::string& lvl, mstream& sout){
 
 // comma separated strings
 std::string print_csv(const vector<string>& vlist){
-
-  std::ostringstream buffer;
-
-  for(size_t i = 0; i < vlist.size(); i++)
-    buffer << vlist[i] << ((i+1) == vlist.size() ? "" : ",");
-
-  return buffer.str();
-
+  return print_sv(vlist, ",");
 }
 
 // semi-colon separated strings
 std::string print_scsv(const vector<string>& vlist){
+  return print_sv(vlist, ";");
+}
 
+template <typename T>
+std::string print_sv(const std::vector<T>& vlist, const string& delim)
+{
   std::ostringstream buffer;
-
-  for(size_t i = 0; i < vlist.size(); i++)
-    buffer << vlist[i] << ((i+1) == vlist.size() ? "" : ";");
-
+  if(!vlist.empty()) {
+    std::copy(std::begin(vlist), std::end(vlist) - 1, std::ostream_iterator<T>(buffer, delim.c_str()));
+    buffer << vlist.back(); // last element
+  }
   return buffer.str();
-
 }
 
 Eigen::ArrayXi get_true_indices(const Ref<const ArrayXb>&  bool_arr){

@@ -421,6 +421,8 @@ double convertNumLevel(const std::string&,std::map<std::string,int>&,struct para
 void check_inter_var(std::string&,std::string&,mstream&);
 std::string print_csv(const std::vector<std::string>&);
 std::string print_scsv(const std::vector<std::string>&);
+template <typename T>
+std::string print_sv(const std::vector<T>&,const std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
