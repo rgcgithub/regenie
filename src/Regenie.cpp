@@ -303,6 +303,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     //AllOptions.parse_positional({"htp"});
     auto vm = AllOptions.parse(argc, argv);
     auto arguments = vm.arguments();
+    map<string, bool> valid_args;
+    for(const auto &kv: arguments)
+      valid_args[ kv.key() ] = true;
 
     // help menu
     if (vm.count("help")){
@@ -336,7 +339,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     // Print output to file and to stdout
     // print command line arguments
-    start_log(arguments, files->out_file, mt, sout);
+    start_log(files->out_file, mt, sout);
     vector< string > tmp_str_vec;
 
     if( (vm.count("bgen") + vm.count("bed")  + vm.count("pgen"))  != 1 )
@@ -427,6 +430,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->gzOut = true;
 # else
       sout << "WARNING: REGENIE was not compiled with Boost Iostream library so ignoring option '--gz'.\n";
+      valid_args[ "gz" ] = false;
 #endif
     }
 
@@ -654,7 +658,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         if(!params->trait_mode && !vm.count("skip-nnls")) params->burden.append(",nnls");
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
-    }
+    } else if(vm.count("rgc-gene-p")) valid_args[ "rgc-gene-p" ] = false; // option is ignored
+
     if( CHECK_BIT(params->vc_test, params->vc_tests_map["acato"]) ) {// acato
       BIT_SET(params->vc_test, params->vc_tests_map["acatv"]); // acatv
       params->skato_rho.resize(2,1); params->skato_rho << 0, 1; // skat & burden
@@ -685,13 +690,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       // loocv only used with out-of-sample predictions
       if(params->use_loocv && params->within_sample_l0) {
         sout << "WARNING: option --loocv cannot be used with option --within.\n" ;
-        params->use_loocv = false;
+        params->use_loocv = false; valid_args[ "loocv" ] = false;
       }
 
       // writing of level 0 predictions only available when using out-of-sample predictions
       if(params->write_l0_pred && params->within_sample_l0){
         sout << "WARNING: option --lowmem cannot be used with option --within.\n" ;
-        params->write_l0_pred = false;
+        params->write_l0_pred = false; valid_args[ "lowmem" ] = valid_args[ "lowmem-prefix" ] = false;
       }
 
       // user specified ridge parameters to use at l0
@@ -722,30 +727,32 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       // firth only done in test mode
       if(params->firth) params->firth = false;
       if(params->use_SPA) params->use_SPA = false;
+      valid_args[ "firth" ] = valid_args[ "spa" ] = valid_args[ "approx" ] = false;
+
       params->test_type = 0;
       if( vm.count("range") ) {
-        params->set_range = false; 
+        params->set_range = false; valid_args[ "range" ] =false;
         sout << "WARNING: option --range only works for step 2.\n";
       }
       if(params->rm_or || params->keep_or){
         sout << "WARNING: Options --extract-or/--exclude-or only work in step 2.\n";
-        params->rm_or = params->keep_or = false;
+        params->rm_or = params->keep_or = false; valid_args[ "extract-or" ] = valid_args[ "exclude-or" ] = false;
       }
 
     } 
     if(params->firth && (params->trait_mode!=1)) {
       // firth correction is only applied to binary traits
       sout << "WARNING: option --firth will not be applied (it is only run with binary traits).\n";
-      params->firth = false;
+      params->firth = false; valid_args[ "firth" ] = valid_args[ "approx" ] = false;
     } 
     if(params->use_SPA && (params->trait_mode!=1)) {
       // SPA is only applied to binary traits
       sout << "WARNING: option --spa will not be applied (it is only run with binary traits).\n";
-      params->use_SPA = false;
+      params->use_SPA = false; valid_args[ "spa" ] = false;
     }
 
 
-    if(params->test_mode && params->use_loocv) params->use_loocv = false;
+    if(params->test_mode && params->use_loocv) {params->use_loocv = false;valid_args[ "loocv" ] = false;}
 
     if( (vm.count("write-samples") || vm.count("write-mask")) && vm.count("bgen") && !vm.count("sample") )
       throw "must specify sample file (using --sample) if writing sample IDs to file.";
@@ -794,11 +801,15 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->mask_loo_name = tmp_str_vec[cstart];
         params->mbins.resize(1);
         params->mbins[0] = tmp_str_vec[cstart+1]; // either singleton or AAF cutoff
-
+        if(params->vc_test){
+          if(params->mbins[0] == "all") params->vc_maxAAF = 1;
+          else if(params->mbins[0] != "singleton") params->vc_maxAAF = convertDouble( params->mbins[0], params, sout);
+        }
         if(params->write_masks){
           sout << "WARNING: cannot use --write-mask with --mask-lovo.\n";
-          params->write_masks = false;
+          params->write_masks = false; valid_args[ "write-mask" ] = false;
         }
+        valid_args[ "vc-maxAAF" ] = valid_args[ "aaf-bins" ] = false;
       }
 
       if( vm.count("mask-lodo") ) {
@@ -812,10 +823,15 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         params->mask_loo_name = tmp_str_vec[1];
         params->mbins.resize(1);
         params->mbins[0] = tmp_str_vec[2]; // either singleton or AAF cutoff
+        if(params->vc_test){
+          if(params->mbins[0] == "all") params->vc_maxAAF = 1;
+          else if(params->mbins[0] != "singleton") params->vc_maxAAF = convertDouble( params->mbins[0], params, sout);
+        }
         if(params->write_masks){
           sout << "WARNING: cannot use --write-mask with --mask-lodo.\n";
-          params->write_masks = false;
+          params->write_masks = false; valid_args[ "write-mask" ] = false;
         }
+        valid_args[ "vc-maxAAF" ] = valid_args[ "aaf-bins" ] = false;
       }
 
       params->snp_set = true;
@@ -823,19 +839,20 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     }
 
-    if(!params->build_mask && params->write_masks) params->write_masks = false;
-    if(!params->build_mask && params->check_mask_files) params->check_mask_files = false;
-    if(!params->build_mask && params->strict_check_burden) params->strict_check_burden = false;
-    if(!params->build_mask && params->write_mask_snplist) params->write_mask_snplist = false;
-    if(!params->write_masks && params->skip_test) params->skip_test = false;
+    if(!params->build_mask && params->write_masks) {params->write_masks = false; valid_args[ "write-mask" ] = false;}
+    if(!params->build_mask && params->check_mask_files) {params->check_mask_files = false; valid_args[ "check-burden-files" ] = false;}
+    if(!params->build_mask && params->strict_check_burden) {params->strict_check_burden = false; valid_args[ "strict-check-burden" ] = false;}
+    if(!params->build_mask && params->write_mask_snplist) {params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;}
+    if(!params->write_masks && params->skip_test) {params->skip_test = false; valid_args[ "skip-test" ] = false;}
     if(!params->w_interaction) params->gwas_condtl = false;
     if(!params->write_masks && params->write_setlist) {
       sout << "WARNING: must use --write-setlist with --write-mask.\n";
-      params->write_setlist = false;
+      params->write_setlist = false; valid_args[ "write-setlist" ] = false;
     }
+    if((vm.count("1") || vm.count("cc12")) && (params->trait_mode != 1)) valid_args[ "1" ] = valid_args[ "cc12" ] = false;
     if( vm.count("write-mask-snplist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
       sout << "WARNING: cannot use --write-mask-snplist with LOVO/LODO.\n";
-      params->write_mask_snplist = false;
+      params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;
     }
 
     if( params->snp_set && !vm.count("set-list") )
@@ -848,25 +865,25 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if(!params->test_mode && params->setMinMAC){
       sout << "WARNING: option --minMAC only works in step 2 of REGENIE.\n";
-      params->setMinMAC = false;
+      params->setMinMAC = false; valid_args[ "minMAC" ] = false;
     }
     if(params->test_mode && params->min_MAC < 0.5)
       throw "minimum MAC must be at least 0.5.";
     if(!params->test_mode && params->setMinINFO){
       sout << "WARNING: option --minINFO only works in step 2 of REGENIE.\n";
-      params->setMinINFO = false;
+      params->setMinINFO = false; valid_args[ "minINFO" ] = false;
     }
     if( !params->split_by_pheno && params->w_interaction){
       sout << "WARNING: option --no-split does not work for interaction tests.\n";
-      params->split_by_pheno = true;
+      params->split_by_pheno = true; valid_args[ "no-split" ] = false;
     }
     if( !params->split_by_pheno && params->nnls_out_all){
       sout << "WARNING: option --no-split does not work with --nnls-verbose.\n";
-      params->split_by_pheno = true;
+      params->split_by_pheno = true; valid_args[ "no-split" ] = false;
     }
     if( (!params->test_mode || (params->trait_mode!=1) || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
-      params->af_cc = false;
+      params->af_cc = false; valid_args[ "af-cc" ] = false;
     }
     if(params->rm_snps && params->keep_snps )
       sout << "WARNING: only variants which satisfy both extract/exclude options will be kept.\n";
@@ -890,10 +907,12 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
       sout << "WARNING: options --split-l0/--run-l0/--run-l1 only work in step 1.\n";
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
+      valid_args[ "split-l0" ] = valid_args[ "run-l0" ] = valid_args[ "run-l1" ] = false;
     } else if( vm.count("nb") && 
         (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) {
       sout << "WARNING: options --split-l0/--run-l0/--run-l1 cannot be used with --nb.\n";
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
+      valid_args[ "split-l0" ] = valid_args[ "run-l0" ] = valid_args[ "run-l1" ] = false;
     }
     if( vm.count("run-l0") || vm.count("run-l1") ) 
       check_file(files->split_file, "run-l0/l1");
@@ -901,7 +920,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     // set Firth as default if both Firth and SPA are specified
     if(params->use_SPA && params->firth) {
       sout << "WARNING: only one of --firth/--spa can be used. Only Firth will be used.\n";
-      params->use_SPA = false;
+      params->use_SPA = false; valid_args[ "spa" ] = false;
     }
     params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set;
     params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set;
@@ -963,7 +982,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "rho values for SKAT-O must be in [0,1]";
     if(params->singleton_carriers && params->aaf_file_wSingletons){
       sout << "WARNING: Ignoring option --singleton-carrier when using --set-singletons.\n";
-      params->singleton_carriers = false;
+      params->singleton_carriers = false; valid_args[ "singleton-carrier" ] = false;
     }
 
     params->use_max_bsize = params->mask_loo;
@@ -979,7 +998,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(vm.count("write-null-firth") && 
         ( (params->test_mode && !params->firth_approx) || (!params->test_mode && (params->trait_mode!=1)) ) ) {
       sout << "WARNING: option --write-null-firth only works for BTs with approximate Firth test.\n";
-      params->write_null_firth = false;
+      params->write_null_firth = false; valid_args[ "write-null-firth" ] = false;
     }
     if( (filters->cov_colKeep_names.size() > 0) && !vm.count("covarFile") )
       throw "you specified covariates without specifying a covariate file (using --covarFile).";
@@ -1086,15 +1105,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       }
     }
 
+    print_args(arguments, valid_args, sout);
+
   } catch (const cxxopts::OptionException& e) {
-    if (!sout.coss.is_open()) {
-      print_header(cerr);
-      cerr << "ERROR: " << e.what() << endl << params->err_help << "\n";
-    } else {
+    if (sout.coss.is_open())
       print_header(sout.coss);
-      print_header(cout);
-      sout << "ERROR: " << e.what() << endl << params->err_help << "\n";
-    }
+    print_header(cout);
+    sout << "ERROR: " << e.what() << endl << params->err_help << "\n";
     exit(EXIT_FAILURE);
   } catch (const std::string& msg) {// after opening sout
     sout <<  "ERROR: " <<  msg << "\n" <<  params->err_help << "\n";
@@ -1128,14 +1145,13 @@ void check_file(string const& infile, vector<string> const& suffixes, string con
 }
 
 
-template <typename T> 
-void start_log(T arguments, const string& out_file, MeasureTime* mt, mstream& sout){
+void start_log(const string& out_file, MeasureTime* mt, mstream& sout){
 
   string log_name = out_file + ".log";
   sout.coss.open(log_name.c_str(), ios::out | ios::trunc); 
   if (!sout.coss.is_open()) {
-    print_header(cerr);
-    cerr << "ERROR: Cannot write log file '" << log_name << "'\n" ;
+    print_header(cout);
+    cout << "ERROR: Cannot write log file '" << log_name << "'\n" ;
     exit(EXIT_FAILURE);
   } 
 
@@ -1145,20 +1161,25 @@ void start_log(T arguments, const string& out_file, MeasureTime* mt, mstream& so
   print_header(cout);
   sout << "Log of output saved in file : " << log_name << endl<< endl;
 
-  // print options
-  sout << "Options in effect:" << endl ;
-  for(size_t counter=1;counter<arguments.size();counter++){	  
-    //if( trimmed_str[0] == '-') sout << "\\" << endl << "  ";
-    sout << "  --" << arguments[counter-1].key() << " ";
-    if( arguments[counter-1].value() == "true" ) {sout << "\\\n"; continue;}
-    sout << arguments[counter-1].value() << " \\" << endl;
-  }
-  // last option (skip \ at the end)
-  sout << "  --" << arguments.back().key() << " ";
-  if( arguments.back().value() != "true" ) 
-    sout << arguments.back().value();
+}
 
-  sout << "\n\n";
+template <typename T> 
+void print_args(T arguments, map<string,bool>& amap, mstream& sout){
+
+  // print options
+  sout << "Options in effect:\n";
+
+  for(size_t counter = 0; counter < arguments.size(); counter++){	  
+    if(!amap[arguments[counter].key()]) continue;
+
+    sout << "  --" << arguments[counter].key();
+    if(arguments[counter].value() != "true") sout << " " << arguments[counter].value(); 
+
+    if(counter < (arguments.size() - 1)) sout << " \\";
+    sout << "\n";
+  }
+
+  sout << "\n";
 
 }
 

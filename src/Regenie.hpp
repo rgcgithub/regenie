@@ -402,8 +402,9 @@ struct filter {
 
 };
 
+void start_log(const std::string&,MeasureTime*,mstream&);
 template <typename T> 
-void start_log(T,const std::string&,MeasureTime*,mstream&);
+void print_args(T,std::map<std::string,bool>&,mstream&);
 
 void print_help(bool const&);
 void read_params_and_check(int& argc,char *argv[],struct param*,struct in_files*,struct filter*,MeasureTime*,mstream&);
