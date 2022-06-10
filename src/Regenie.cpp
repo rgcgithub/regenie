@@ -298,11 +298,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
   try
   {
+    bool acato_use_all_rhos = false;
+
     //AllOptions.parse_positional({"htp"});
     auto vm = AllOptions.parse(argc, argv);
     auto arguments = vm.arguments();
-    bool acato_use_all_rhos = false;
-
 
     // help menu
     if (vm.count("help")){
@@ -322,7 +322,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.unmatched().size() > 0 ) {
       std::cout << "\nERROR: There are unmatched arguments:\n";
       for(auto cn :  vm.unmatched())
-        cerr << "'" << cn << "'\n";
+        cout << "'" << cn << "' ";
       std::cout << "(Make sure there are no spaces in the options arguments)\n";
       exit(EXIT_FAILURE);
     }

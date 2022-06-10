@@ -2896,7 +2896,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
     // at least 4 columns: set name | set chr | set position | variant list 
     if( tmp_str_vec.size() < 4 )
-      throw "incorrectly formatted file at line " + to_string( lineread+1 ) ;
+      throw "incorrectly formatted file at line " + to_string( lineread+1 ) + " (has " + to_string(tmp_str_vec.size()) + " columns)";
 
     // name of set
     tmp_set.ID = tmp_str_vec[0];

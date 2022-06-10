@@ -104,4 +104,6 @@ extern double skato_upper;
 extern int skato_state; // positive if integration failed
 void integrate(double f(double*),double&,int const&,bool const&);
 
+void check_sizes(SpMat const&, SpMat const&, const Eigen::Ref<const MatrixXb>&);
+
 #endif

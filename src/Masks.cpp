@@ -81,21 +81,21 @@ void GenoMask::setBins(struct param* params, mstream& sout){
       }
     } else tmpv.push_back( default_aaf );
 
-      if(w_vc_tests) tmpv.push_back( vc_aaf );
+    if(w_vc_tests) tmpv.push_back( vc_aaf );
 
-      // sort and retain unique values
-      std::sort(tmpv.begin(), tmpv.end());
-      tmpv.erase( unique( tmpv.begin(), tmpv.end() ), tmpv.end() );
-      // store in eigen object
-      aafs = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(tmpv.data(), tmpv.size());
+    // sort and retain unique values
+    std::sort(tmpv.begin(), tmpv.end());
+    tmpv.erase( unique( tmpv.begin(), tmpv.end() ), tmpv.end() );
+    // store in eigen object
+    aafs = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(tmpv.data(), tmpv.size());
 
-      // check validity
-      if( ( (aafs.array() < minAAF) || (aafs.array() > 1) ).any() && !w_vc_tests )
-        throw "must specify values for --aaf-bins in [" + to_string( minAAF ) + ", 1]";
-      else if( (aafs.array()>= 0.5).any() && !w_vc_tests )
-        sout << "WARNING: For computational efficiency, it is recommended that AAF cutoffs < 0.5\n";
+    // check validity
+    if( ( (aafs.array() < minAAF) || (aafs.array() > 1) ).any() && !w_vc_tests )
+      throw "must specify values for --aaf-bins in [" + to_string( minAAF ) + ", 1]";
+    else if( (aafs.array()>= 0.5).any() && !w_vc_tests )
+      sout << "WARNING: For computational efficiency, it is recommended that AAF cutoffs < 0.5\n";
 
-      max_aaf = aafs.tail(1)(0);
+    max_aaf = aafs.tail(1)(0);
   }
 
   n_aaf_bins = aafs.size();
@@ -488,7 +488,7 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
     // first mask AAF
     int index_mask = i * n_aaf_bins;
     double ds;
-    bool column_set = (Gtmp.col(index_mask).array() != -3).count() > 0;
+    bool column_set = (Gtmp.col(index_mask).array() != -3).any();
     colset(index_mask) = column_set;
 
     // don't parallelize inner loop (cumulative updates)
@@ -496,7 +496,7 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
 
       int index_start = index_mask + j;
       // check if there are variants in mask
-      if(colset(index_start-1) || ((Gtmp.col(index_start).array() != -3).count() > 0)) 
+      if(colset(index_start-1) || (Gtmp.col(index_start).array() != -3).any()) 
         colset(index_start) = true;
 
       if( !colset(index_start) ) continue;

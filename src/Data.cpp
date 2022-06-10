@@ -2690,16 +2690,17 @@ void Data::set_groups_for_testing() {
 void Data::get_sum_stats(int const& chrom, int const& varset, vector<variant_block>& all_snps_info){
 
   auto t1 = std::chrono::high_resolution_clock::now();
+  vset* set_info = &(jt.setinfo[chrom - 1][varset]);
 
   vector< vector < uchar > > snp_data_blocks;
   vector< uint32_t > insize, outsize;
 
   // read in markers and if applicable build masks
-  if(!params.build_mask) readChunk(jt.setinfo[chrom - 1][varset].snp_indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
+  if(!params.build_mask) readChunk(set_info->snp_indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
   else {
     getMask(chrom, varset, snp_data_blocks, insize, outsize, all_snps_info);
     // update size with new masks
-    int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size();
+    int n_snps = set_info->snp_indices.size();
     //cerr << "M=" << n_snps << endl;
     if(params.skip_test || (n_snps == 0)) return;
 
@@ -2709,7 +2710,7 @@ void Data::get_sum_stats(int const& chrom, int const& varset, vector<variant_blo
   }
 
   // analyze using openmp
-  compute_tests_mt(chrom, jt.setinfo[chrom - 1][varset].snp_indices, snp_data_blocks, insize, outsize, all_snps_info);
+  compute_tests_mt(chrom, set_info->snp_indices, snp_data_blocks, insize, outsize, all_snps_info);
 
   auto t2 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
@@ -2752,10 +2753,11 @@ void Data::readChunk(vector<uint64>& indices, int const& chrom, vector< vector <
 void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar > >& snp_data_blocks, vector<uint32_t>& insize, vector<uint32_t>& outsize, vector<variant_block>& all_snps_info){
 
   auto t1 = std::chrono::high_resolution_clock::now();
+  vset* set_info = &(jt.setinfo[chrom - 1][varset]);
 
   // do it in chunks to reduce memory usage
   bool last_chunk = false;
-  int n_snps = jt.setinfo[chrom - 1][varset].snp_indices.size(), nvar_read = 0;
+  int n_snps = set_info->snp_indices.size(), nvar_read = 0;
   int nchunks, bsize; 
   ArrayXd vc_weights, vc_weights_acat;
   SpMat vc_sparse_gmat;
@@ -2771,14 +2773,14 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   if(params.verbose) sout << nchunks << " chunks";
   sout << "\n     -reading in genotypes" << ( params.vc_test ? ", computing gene-based tests" : "" ) << " and building masks..." << flush;
 
-  bm.prepMasks(params.n_samples, jt.setinfo[chrom - 1][varset].ID);  
+  bm.prepMasks(params.n_samples, set_info->ID);  
   allocate_mat(Gblock.Gmat, params.n_samples, bsize);
   if(params.vc_test) {
-    jt.setinfo[chrom - 1][varset].Jmat = MatrixXb::Constant(n_snps + bm.nmasks_total, bm.nmasks_total, false); // MxKm (last S rows are for ultra-rare masks)
-    jt.setinfo[chrom - 1][varset].ultra_rare_ind = ArrayXb::Constant(n_snps, false); // identify which vars are rare
-    jt.setinfo[chrom - 1][varset].vc_rare_mask.resize(params.n_samples, bm.nmasks_total); // identify which vars are rare
-    jt.setinfo[chrom - 1][varset].vc_rare_mask.setZero();
-    jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing = MatrixXb::Constant(params.n_samples, bm.nmasks_total, false); // distinguish 0 from missing
+    set_info->Jmat = MatrixXb::Constant(n_snps + bm.nmasks_total, bm.nmasks_total, false); // MxKm (last S rows are for ultra-rare masks)
+    set_info->ultra_rare_ind = ArrayXb::Constant(n_snps, false); // identify which vars are rare
+    set_info->vc_rare_mask.resize(params.n_samples, bm.nmasks_total); // identify which vars are rare
+    set_info->vc_rare_mask.setZero();
+    set_info->vc_rare_mask_non_missing = MatrixXb::Constant(params.n_samples, bm.nmasks_total, false); // distinguish 0 from missing
     vc_sparse_gmat.resize(params.n_samples, n_snps + bm.nmasks_total); // store wG
     vc_sparse_gmat.setZero();
     vc_weights = ArrayXd::Zero(n_snps + bm.nmasks_total, 1);
@@ -2794,7 +2796,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
       allocate_mat(Gblock.Gmat, params.n_samples, bsize);
     }
 
-    vector<uint64> indices (jt.setinfo[chrom - 1][varset].snp_indices.begin() + nvar_read, jt.setinfo[chrom - 1][varset].snp_indices.begin() + nvar_read + bsize);
+    vector<uint64> indices (set_info->snp_indices.begin() + nvar_read, set_info->snp_indices.begin() + nvar_read + bsize);
     readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
 
     // build genotype matrix
@@ -2818,29 +2820,29 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
 
     // update mask (taking max/sum)
     if(params.mask_loo)
-      bm.updateMasks_loo(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+      bm.updateMasks_loo(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, *set_info, snpinfo, sout);
     else
-      bm.updateMasks(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+      bm.updateMasks(nvar_read, bsize, &params, &in_filters, pheno_data.masked_indivs, &Gblock, all_snps_info, *set_info, snpinfo, sout);
 
     if(params.vc_test) // get w*G
-      update_vc_gmat(vc_sparse_gmat, vc_weights, vc_weights_acat, jt.setinfo[chrom - 1][varset].ultra_rare_ind, nvar_read, bsize, params, in_filters.ind_in_analysis, Gblock.Gmat, all_snps_info, jt.setinfo[chrom - 1][varset].Jmat);
+      update_vc_gmat(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->ultra_rare_ind, nvar_read, bsize, params, in_filters.ind_in_analysis, Gblock.Gmat, all_snps_info, set_info->Jmat);
 
     nvar_read += bsize;
   }
 
   // check mask and store in setinfo & snpinfo
   if(params.mask_loo)
-    bm.computeMasks_loo(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+    bm.computeMasks_loo(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, *set_info, snpinfo, sout);
   else
-    bm.computeMasks(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, jt.setinfo[chrom - 1][varset], snpinfo, sout);
+    bm.computeMasks(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, *set_info, snpinfo, sout);
 
   if(params.vc_test) {
-    compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, jt.setinfo[chrom - 1][varset].vc_rare_mask, jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, jt.setinfo[chrom - 1][varset].Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
+    compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, set_info->Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
 
-    jt.setinfo[chrom - 1][varset].Jmat.resize(0,0);
-    jt.setinfo[chrom - 1][varset].ultra_rare_ind.resize(0);
-    jt.setinfo[chrom - 1][varset].vc_rare_mask.resize(0,0); // identify which vars are rare
-    jt.setinfo[chrom - 1][varset].vc_rare_mask_non_missing.resize(0,0); // distinguish 0 from missing
+    set_info->Jmat.resize(0,0);
+    set_info->ultra_rare_ind.resize(0);
+    set_info->vc_rare_mask.setZero(); set_info->vc_rare_mask.resize(0,0); set_info->vc_rare_mask.data().squeeze();
+    set_info->vc_rare_mask_non_missing.resize(0,0);
   }
 
 

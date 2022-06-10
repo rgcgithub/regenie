@@ -85,16 +85,16 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
     double maf;
 
     if(Jmat.row(start + i).any()){ // if variant is in at least one mask
-      // flip if af is above 0.5
-      if( all_snps_info[i].af1 > 0.5 ) Gvec = (Gvec == -3).select(-3, 2 - Gvec);
-      maf = min(all_snps_info[i].af1, 1 - all_snps_info[i].af1);
-
       // check if ultra-rare (if so set to 0)
       if(ur_ind(start + i)){
         Jmat.row(start+i).array() = false; // ignore variant for all sets
         Gvec = 0; // don't store the variant
         continue;
       }
+
+      // flip if af is above 0.5
+      if( all_snps_info[i].af1 > 0.5 ) Gvec = (Gvec == -3).select(-3, 2 - Gvec);
+      maf = min(all_snps_info[i].af1, 1 - all_snps_info[i].af1);
 
       // impute missing with mean
       Gvec = (Gvec == -3).select(2 * maf, Gvec);
@@ -116,6 +116,8 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
 void compute_vc_masks(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, SpMat& vc_rare_mask, Ref<MatrixXb> vc_rare_non_miss, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres,  const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, MatrixXb& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXb>& in_analysis, struct param const& params){
 
   prep_ultra_rare_mask(mat, weights, weights_acat, vc_rare_mask, vc_rare_non_miss, Jmat, in_analysis, params);
+
+  //if(params.debug) check_sizes(mat, vc_rare_mask, Jmat);
 
   if(params.trait_mode==0)
     compute_vc_masks_qt(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params);
@@ -203,13 +205,14 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   for(int i = 0; i < bs; i++)
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
-  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
+  Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
 
   // get score stats & kernel matrices
   Svals.resize(n_pheno, bs); // PxM
   Kmat.resize(bs, bs); // MxM
   compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
-  mat2.resize(0,0); // not needed anymore
+  mat2.setZero(); mat2.resize(0,0); mat2.data().squeeze(); // not needed anymore
 
   // SKAT for all masks & traits
   compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
@@ -291,13 +294,14 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   for(int i = 0; i < bs; i++)
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
-  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
+  Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
 
   // get score stats & kernel matrices
   Svals.resize(n_pheno, bs); // PxM
   Kmat.resize(bs, bs); // MxM
   compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
-  mat2.resize(0,0); // not needed anymore
+  mat2.setZero(); mat2.resize(0,0); mat2.data().squeeze(); // not needed anymore
 
   // SKAT for all masks & traits
   compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
@@ -532,7 +536,8 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   for(int i = 0; i < bs; i++)
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
-  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
+  Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
   Svals.resize(bs, 1); // Mx1
   Kmat.resize(bs, bs); // MxM
 
@@ -665,7 +670,8 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   for(int i = 0; i < bs; i++)
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
-  mat.resize(0,0); Jstar.resize(0,0); // not needed anymore
+  mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
+  Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
   Svals.resize(bs, 1); // Mx1
   Kmat.resize(bs, bs); // MxM
 
@@ -1469,3 +1475,13 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
 
 }
 
+void check_sizes(SpMat const& Gmat_sp, SpMat const& Gmat_sp_urm, 
+    //const Ref<const MatrixXd>& Gmat, 
+    const Ref<const MatrixXb>& Jmat){
+
+  cerr << "Printing sizes of SKAT objects\n" <<
+    "-Gsparse = " << sizeof(double) * Gmat_sp.nonZeros() / 1024.0 / 1024.0 << "MB\n" <<
+    "-Jmat = " << sizeof(Jmat(0,0)) * Jmat.size() / 1024.0 / 1024.0 << "MB\n" <<
+    "-Gmat_sp_ur = " << sizeof(double) * Gmat_sp_urm.nonZeros() / 1024.0 / 1024.0 << "MB\n";
+
+}
