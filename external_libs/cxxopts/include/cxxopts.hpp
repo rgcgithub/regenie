@@ -51,9 +51,14 @@ THE SOFTWARE.
 #  include <regex>
 #endif  // CXXOPTS_NO_REGEX
 
-#ifdef __cpp_lib_optional
-#include <optional>
-#define CXXOPTS_HAS_OPTIONAL
+// Nonstandard before C++17, which is coincidentally what we also need for <optional>
+#ifdef __has_include
+#  if __has_include(<optional>)
+#    include <optional>
+#    ifdef __cpp_lib_optional
+#      define CXXOPTS_HAS_OPTIONAL
+#    endif
+#  endif
 #endif
 
 #if __cplusplus >= 201603L
@@ -974,6 +979,12 @@ namespace cxxopts
     void
     parse_value(const std::string& text, std::vector<T>& value)
     {
+      if (text.empty()) {
+        T v;
+        parse_value(text, v);
+        value.emplace_back(std::move(v));
+        return;
+      }
       std::stringstream in(text);
       std::string token;
       while(!in.eof() && std::getline(in, token, CXXOPTS_VECTOR_DELIMITER)) {
@@ -1276,6 +1287,13 @@ namespace cxxopts
       return m_long;
     }
 
+    CXXOPTS_NODISCARD
+    const std::string&
+    essential_name() const
+    {
+      return m_long.empty() ? m_short : m_long;
+    }
+
     size_t
     hash() const
     {
@@ -1355,7 +1373,7 @@ namespace cxxopts
     {
       return m_count;
     }
-    
+
 #if defined(CXXOPTS_NULL_DEREF_IGNORE)
 #pragma GCC diagnostic pop
 #endif
@@ -1446,20 +1464,94 @@ namespace cxxopts
   class ParseResult
   {
     public:
+    class Iterator
+    {
+      public:
+      using iterator_category = std::forward_iterator_tag;
+      using value_type = KeyValue;
+      using difference_type = void;
+      using pointer = const KeyValue*;
+      using reference = const KeyValue&;
+
+      Iterator() = default;
+      Iterator(const Iterator&) = default;
+
+      Iterator(const ParseResult *pr, bool end=false)
+      : m_pr(pr)
+      , m_iter(end? pr->m_defaults.end(): pr->m_sequential.begin())
+      {
+      }
+
+      Iterator& operator++()
+      {
+        ++m_iter;
+        if(m_iter == m_pr->m_sequential.end())
+        {
+          m_iter = m_pr->m_defaults.begin();
+          return *this;
+        }
+        return *this;
+      }
+
+      Iterator operator++(int)
+      {
+        Iterator retval = *this;
+        ++(*this);
+        return retval;
+      }
+
+      bool operator==(const Iterator& other) const
+      {
+        return m_iter == other.m_iter;
+      }
+
+      bool operator!=(const Iterator& other) const
+      {
+        return !(*this == other);
+      }
+
+      const KeyValue& operator*()
+      {
+        return *m_iter;
+      }
+
+      const KeyValue* operator->()
+      {
+        return m_iter.operator->();
+      }
+
+      private:
+      const ParseResult* m_pr;
+      std::vector<KeyValue>::const_iterator m_iter;
+    };
 
     ParseResult() = default;
     ParseResult(const ParseResult&) = default;
 
-    ParseResult(NameHashMap&& keys, ParsedHashMap&& values, std::vector<KeyValue> sequential, std::vector<std::string>&& unmatched_args)
+    ParseResult(NameHashMap&& keys, ParsedHashMap&& values, std::vector<KeyValue> sequential, 
+            std::vector<KeyValue> default_opts, std::vector<std::string>&& unmatched_args)
     : m_keys(std::move(keys))
     , m_values(std::move(values))
     , m_sequential(std::move(sequential))
+    , m_defaults(std::move(default_opts))
     , m_unmatched(std::move(unmatched_args))
     {
     }
 
     ParseResult& operator=(ParseResult&&) = default;
     ParseResult& operator=(const ParseResult&) = default;
+
+    Iterator
+    begin() const
+    {
+      return Iterator(this);
+    }
+
+    Iterator
+    end() const
+    {
+      return Iterator(this, true);
+    }
 
     size_t
     count(const std::string& o) const
@@ -1512,10 +1604,32 @@ namespace cxxopts
       return m_unmatched;
     }
 
+    const std::vector<KeyValue>&
+    defaults() const
+    {
+      return m_defaults;
+    }
+
+    const std::string
+    arguments_string() const
+    {
+      std::string result;
+      for(const auto& kv: m_sequential)
+      {
+        result += kv.key() + " = " + kv.value() + "\n";
+      }
+      for(const auto& kv: m_defaults)
+      {
+        result += kv.key() + " = " + kv.value() + " " + "(default)" + "\n";
+      }
+      return result;
+    }
+
     private:
     NameHashMap m_keys{};
     ParsedHashMap m_values{};
     std::vector<KeyValue> m_sequential{};
+    std::vector<KeyValue> m_defaults{};
     std::vector<std::string> m_unmatched{};
   };
 
@@ -1596,6 +1710,7 @@ namespace cxxopts
     const PositionalList& m_positional;
 
     std::vector<KeyValue> m_sequential{};
+    std::vector<KeyValue> m_defaults{};
     bool m_allow_unrecognised;
 
     ParsedHashMap m_parsed{};
@@ -1717,6 +1832,11 @@ namespace cxxopts
     const HelpGroupDetails&
     group_help(const std::string& group) const;
 
+    const std::string& program() const
+    {
+      return m_program;
+    }
+
     private:
 
     void
@@ -1754,9 +1874,6 @@ namespace cxxopts
 
     //mapping from groups to help options
     std::map<std::string, HelpGroupDetails> m_help{};
-
-    std::list<OptionDetails> m_option_list{};
-    std::unordered_map<std::string, decltype(m_option_list)::iterator> m_option_map{};
   };
 
   class OptionAdder
@@ -2042,6 +2159,7 @@ OptionParser::parse_default(const std::shared_ptr<OptionDetails>& details)
   // TODO: remove the duplicate code here
   auto& store = m_parsed[details->hash()];
   store.parse_default(details);
+  m_defaults.emplace_back(details->essential_name(), details->value().get_default_value());
 }
 
 inline
@@ -2065,7 +2183,7 @@ OptionParser::parse_option
   auto& result = m_parsed[hash];
   result.parse(value, arg);
 
-  m_sequential.emplace_back(value->long_name(), arg);
+  m_sequential.emplace_back(value->essential_name(), arg);
 }
 
 inline
@@ -2232,6 +2350,7 @@ OptionParser::parse(int argc, const char* const* argv)
           {
             if (m_allow_unrecognised)
             {
+              unmatched.push_back(std::string("-") + s[i]);
               continue;
             }
             //error
@@ -2338,7 +2457,7 @@ OptionParser::parse(int argc, const char* const* argv)
 
   finalise_aliases();
 
-  ParseResult parsed(std::move(m_keys), std::move(m_parsed), std::move(m_sequential), std::move(unmatched));
+  ParseResult parsed(std::move(m_keys), std::move(m_parsed), std::move(m_sequential), std::move(m_defaults), std::move(unmatched));
   return parsed;
 }
 
@@ -2392,11 +2511,6 @@ Options::add_option
   {
     add_one_option(l, option);
   }
-
-  m_option_list.push_front(*option.get());
-  auto iter = m_option_list.begin();
-  m_option_map[s] = iter;
-  m_option_map[l] = iter;
 
   //add the help details
   auto& options = m_help[group];
