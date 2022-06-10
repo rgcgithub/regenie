@@ -336,7 +336,7 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
   setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
 #endif
-  for(int i = 0; i < colset.size(); i++){
+  for(int i = 0; i < bs; i++){
     if(!colset(i)) continue;
 
     ArrayXb colkeep_loo = colset;
@@ -347,15 +347,12 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
     int ix = colset.head(i).count(); // new index among unmasked snps
     MapArXd maskvec (Gtmp.col(ix).data(), Gtmp.rows(), 1);
 
-    for(int k = 0; k < Gtmp.rows(); k++){
-      if( !filters->ind_in_analysis(k) ) continue;
+    if(take_max){ // max rule to combine variants across sites
+      maskvec = filters->ind_in_analysis.select(maskvec.max(gblock->Gmat(all, get_true_indices(colkeep_loo)).rowwise().maxCoeff().array()), maskvec);
+    } else for(int k = 0; k < Gtmp.rows(); k++){ // sum rule (ignore missing)
+        if( !filters->ind_in_analysis(k) ) continue;
 
-      if(take_max){ // max rule to combine variants across sites
-        ds = max( maskvec(k), (colkeep_loo).select(gblock->Gmat.row(k).transpose().array(),-3).maxCoeff());
-      } else {
-
-        // sum rule (ignore missing)
-        ds = 0;
+        ds = 0, has_non_missing = false;
         for(int l = 0; l < colkeep_loo.size(); l++)
           if(colkeep_loo(l) && (gblock->Gmat(k,l) != -3)) {
             has_non_missing = true;
@@ -365,72 +362,19 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
         if(maskvec(k) != -3) ds += maskvec(k);
         else if( (ds == 0) && !has_non_missing ) ds = -3;
 
-      }
-
       maskvec(k) = ds;
-
     }
 
     if(w_vc_tests) // track variants in mask
       Jmat.col(ix) = colkeep_loo.matrix();
 
   }
-
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
 
-
-  // for vc tests
-  if(w_vc_tests && setinfo.ultra_rare_ind.any()) {
-    // flip to minor
-    for(int i = 0; i < colset.size(); i++){
-      if(!colset(i) || !setinfo.ultra_rare_ind(i) ||
-          (all_snps_info[start+i].af1 <= 0.5) ) continue;
-      MapArXd garr (gblock->Gmat.col(i).data(), params->n_samples, 1);
-      garr = (garr == -3).select(-3, 2 - garr);
-    }
-
-    // get ultra-rare masks
-#if defined(_OPENMP)
-    setNbThreads(1);
-#pragma omp parallel for schedule(dynamic)
-#endif
-    for(int i = 0; i < colset.size(); i++){
-      if(!colset(i)) continue;
-      ArrayXb colkeep_loo = colset;
-      colkeep_loo(i) = false; // mask snp
-      ArrayXd garr = ArrayXd::Zero(params->n_samples,1);
-
-      double ds;
-      int ix = colset.head(i).count(); // new index among unmasked snps
-
-      for(int k = 0; k < Gtmp.rows(); k++){
-        if( !filters->ind_in_analysis(k) ) continue;
-        ds = (colkeep_loo && setinfo.ultra_rare_ind).select(gblock->Gmat.row(k).transpose().array(),-3).maxCoeff();
-        setinfo.vc_rare_mask_non_missing(k, ix) = (ds>=0);
-        if(ds > 0) garr(k) = ds;
-      }
-      if((garr>0).any())
-        rare_mask_tmp[ix] = garr.matrix().sparseView();
-    }
-#if defined(_OPENMP)
-    setNbThreads(params->threads);
-#endif
-
-    int jx; // new index among unmasked snps
-    for(int i = 0; i < colset.size(); i++){
-      jx = colset.head(i).count(); // new index among unmasked snps
-      if(colset(i) && setinfo.vc_rare_mask_non_missing.col(jx).any()){
-        setinfo.vc_rare_mask.col(jx) = rare_mask_tmp[jx];
-      }
-    }
-
-  }
-
-  MatrixXd tmp_v;
   // compute full mask
-  for(int i = 0; i < colset.size(); i++){
+  for(int i = 0; i < bs; i++){
     if(!colset(i)) continue;
 
     bool has_non_missing;
@@ -438,46 +382,90 @@ void GenoMask::updateMasks_loo(int const& start, int const& bs, struct param con
     int ix = colset.head(i).count(); // new index among unmasked snps
     MapArXd maskvec (Gtmp.rightCols(1).data(), Gtmp.rows(), 1); // in last column
     maskvec = Gtmp.col(ix); // start from LOO mask of 1st unmasked site
-    if(w_vc_tests && setinfo.ultra_rare_ind.any()){ // for ur mask in vc tests
-      tmp_v = setinfo.vc_rare_mask.col(ix);
-      setinfo.vc_rare_mask_non_missing.rightCols(1) = setinfo.vc_rare_mask_non_missing.col(ix);
-    }
 
-    for(int k = 0; k < Gtmp.rows(); k++){
+    if(take_max) maskvec = filters->ind_in_analysis.select( maskvec.max(gblock->Gmat.col(i).array()), maskvec );
+    else for(int k = 0; k < Gtmp.rows(); k++){// sum rule (ignore missing)
       if( !filters->ind_in_analysis(k) ) continue;
 
-      if(take_max) ds = max( maskvec(k), gblock->Gmat(k, i));
-      else {
-        // sum rule (ignore missing)
-        ds = 0;
-        if(gblock->Gmat(k,i) != -3) {
-          has_non_missing = true;
-          ds += gblock->Gmat(k,i);
-        }
+      has_non_missing = (gblock->Gmat(k,i) != -3);
+      if(has_non_missing) ds = gblock->Gmat(k,i);
+      else ds = 0;
 
-        if(maskvec(k) != -3) ds += maskvec(k);
-        else if( (ds == 0) && !has_non_missing ) ds = -3;
-      }
+      if(maskvec(k) != -3) ds += maskvec(k);
+      else if( !has_non_missing ) ds = -3;
+
       maskvec(k) = ds;
-
-      // get ultra-rare mask if using VC test (take max)
-      if(w_vc_tests && setinfo.ultra_rare_ind(i)){
-        ds = gblock->Gmat(k, i);
-        setinfo.vc_rare_mask_non_missing.rightCols(1)(k) = setinfo.vc_rare_mask_non_missing(k, ix) || (ds>=0);
-        if(all_snps_info[i].af1 > 0.5) ds = ds == -3 ? 0 : 2 - ds;
-        tmp_v(k, 0) = max(ds, tmp_v(k, 0));
-      }
     }
     // cerr << endl << Gtmp.col(ix).head(3) << "\n\n" << gblock->Gmat.col(i).head(3) << "\n\n" << maskvec.head(3) << endl;
 
-    if(w_vc_tests){ // track variants in mask
-      Jmat.rightCols(1) = Jmat.col(ix);
-      Jmat.rightCols(1)(i) = true; 
-      if(setinfo.ultra_rare_ind.any()) 
-        setinfo.vc_rare_mask.rightCols(1) = tmp_v.sparseView();
+    break;
+  }
+
+// for vc tests
+  if(w_vc_tests && setinfo.ultra_rare_ind.any()) {
+
+    int n_ur = (colset && setinfo.ultra_rare_ind).count();
+    MatrixXb ur_miss(params->n_samples, n_ur);
+    ArrayXi ur_indices = ArrayXi::Constant(bs, -1);
+    SpMat ur_sp_mat (params->n_samples, n_ur);
+    SpVec ur_mask_all(params->n_samples,1); ur_mask_all.setZero();
+
+    // store the ur variants in spmat & keep track of index/missingness
+    int m = 0;
+    for (auto const& i : get_true_indices( colset && setinfo.ultra_rare_ind )) {
+      MapArXd garr (gblock->Gmat.col(i).data(), params->n_samples, 1);
+
+      // flip if necessary (missing set to 0)
+      if(all_snps_info[i].af1 > 0.5) ur_sp_mat.col(m) = (garr == -3).select(0, 2 - garr).matrix().sparseView();
+      else ur_sp_mat.col(m) = garr.max(0).matrix().sparseView();
+      // track missingness
+      ur_miss.col(m) = (garr != -3);
+      // track max across sites
+      ur_mask_all = ur_mask_all.cwiseMax(ur_sp_mat.col(m));
+      // store the index
+      ur_indices(i) = m++;
     }
 
-    break;
+    // get ultra-rare masks
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(int i = 0; i < bs; i++){
+      if(!colset(i)) continue;
+      ArrayXb colkeep_loo = colset;
+      colkeep_loo(i) = false; // mask snp
+
+      int ix = colset.head(i).count(); // new index among unmasked snps
+
+      // if not ur site, set to max across ur sites
+      if(!setinfo.ultra_rare_ind(i)) {
+        rare_mask_tmp[ix] = ur_mask_all;
+        setinfo.vc_rare_mask_non_missing.col(ix) = ur_miss.rowwise().any();
+        continue;
+      }
+
+      // otherwise, take max using lovo
+      SpVec gv(params->n_samples,1); gv.setZero();
+      for (auto const& j : get_true_indices( colkeep_loo && setinfo.ultra_rare_ind )) {
+        gv = gv.cwiseMax(ur_sp_mat.col(ur_indices(j)));
+        setinfo.vc_rare_mask_non_missing.col(ix).array() = setinfo.vc_rare_mask_non_missing.col(ix).array() || ur_miss.col(ur_indices(j)).array() ;
+      }
+      rare_mask_tmp[ix] = gv;
+    }
+#if defined(_OPENMP)
+    setNbThreads(params->threads);
+#endif
+
+    for(int i = 0; i < bs; i++){
+      m = colset.head(i).count(); // new index among unmasked snps
+      if(colset(i))
+        setinfo.vc_rare_mask.col(m) = rare_mask_tmp[m];
+    }
+
+    setinfo.vc_rare_mask.rightCols(1) = ur_mask_all;
+    setinfo.vc_rare_mask_non_missing.rightCols(1) = ur_miss.rowwise().any();
+    Jmat.rightCols(1) = colset;
   }
 
   if(!take_max && !take_comphet) {
