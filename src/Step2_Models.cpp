@@ -702,7 +702,8 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     }
 
     // stopping criterion using modified score function
-    if( mod_score.abs().maxCoeff() < tol ) break;
+    // edit 5.31.12 for edge cases with approx Firth
+    if( (mod_score.abs().maxCoeff() < tol) && !((niter_cur < 2) && (nc == 1)) ) break;
 
     // force absolute step size to be less than maxstep for each entry of beta
     mx = step_size.abs().maxCoeff() / maxstep_firth;
