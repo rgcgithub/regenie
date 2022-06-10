@@ -182,11 +182,32 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
   // identify which snps are in each aaf bin
   set_snp_aafs(start, bs, params->set_aaf, all_snps_info, setinfo, snpinfo, sout);
 
-  MatrixXb Jmat;
+  MatrixXb Jmat, ur_miss;
   MatrixXd rare_mask_tmp;
+  SpMat ur_sp_mat;
+  ArrayXi ur_indices;
   if(w_vc_tests) {
     Jmat = MatrixXb::Constant(bs, nmasks_total, false);
-    if(setinfo.ultra_rare_ind.any()) rare_mask_tmp = setinfo.vc_rare_mask; // not safe to update SpMat in parallel (not many columns)
+    if(setinfo.ultra_rare_ind.segment(start, bs).any()) {
+      int n_ur = setinfo.ultra_rare_ind.segment(start, bs).count();
+      rare_mask_tmp = setinfo.vc_rare_mask; // not safe to update SpMat in parallel (not many columns)
+      ur_indices = ArrayXi::Constant(bs, -1);
+      ur_sp_mat.resize(params->n_samples, n_ur);
+      ur_miss.resize(params->n_samples, n_ur);
+
+      // store the ur variants in spmat & keep track of index/missingness
+      for(int i = 0, j = 0; i < bs; i++){
+        if(!setinfo.ultra_rare_ind(start+i)) continue;
+        MapArXd garr (gblock->Gmat.col(i).data(), params->n_samples, 1);
+        // flip if necessary
+        if(all_snps_info[start+i].af1 > 0.5) ur_sp_mat.col(j) = (garr == -3).select(0, 2 - garr).matrix().sparseView();
+        else ur_sp_mat.col(j) = (garr == -3).select(0, garr).matrix().sparseView();
+        ur_miss.col(j) = (garr != -3);
+        // store the index
+        ur_indices(i) = j++;
+      }
+    }
+
   }
 
   // update each mask 
@@ -218,7 +239,7 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
 
       if(take_max) {
 
-        SpMat gv, mv;
+        SpVec gv, mv;
         mv = maskvec.matrix().sparseView();
         for(int k = 0; k < colkeep.size(); k++){
           if(!colkeep(k)) continue;
@@ -257,16 +278,11 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
 
       // get ultra-rare mask if using VC test (take max)
       if(w_vc_tests && setinfo.ultra_rare_ind.segment(start, bs).any() && ((j == 0) || ( aafs(j-1) <= vc_aaf )) ) {
-        SpMat gv, mv;
-        mv = setinfo.vc_rare_mask.col(index_start);
+        SpVec mv = setinfo.vc_rare_mask.col(index_start);
         for(int k = 0; k < colkeep.size(); k++){
           if(!colkeep(k) || !setinfo.ultra_rare_ind(start+k)) continue;
-          MapArXd garr (gblock->Gmat.col(k).data(), params->n_samples, 1);
-          // flip if necessary
-          if(all_snps_info[start+k].af1 > 0.5) gv = (garr == -3).select(0, 2 - garr).matrix().sparseView();
-          else gv = garr.matrix().sparseView();
-          mv = gv.cwiseMax(mv);
-          setinfo.vc_rare_mask_non_missing.col(index_start).array() = setinfo.vc_rare_mask_non_missing.col(index_start).array() || (garr != -3);
+          mv = mv.cwiseMax( ur_sp_mat.col(ur_indices(k)) );
+          setinfo.vc_rare_mask_non_missing.col(index_start).array() = setinfo.vc_rare_mask_non_missing.col(index_start).array() || ur_miss.col( ur_indices(k) ).array();
         }
         rare_mask_tmp.col(index_start) = mv;
       } 
