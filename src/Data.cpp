@@ -2773,6 +2773,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   if(params.verbose) sout << nchunks << " chunks";
   sout << "\n     -reading in genotypes" << ( params.vc_test ? ", computing gene-based tests" : "" ) << " and building masks..." << flush;
 
+  if(params.debug) sout << "(1)" << print_mem() << "...";
   bm.prepMasks(params.n_samples, set_info->ID);  
   allocate_mat(Gblock.Gmat, params.n_samples, bsize);
   if(params.vc_test) {
@@ -2786,6 +2787,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
     vc_weights = ArrayXd::Zero(n_snps + bm.nmasks_total, 1);
     vc_weights_acat = ArrayXd::Zero(n_snps + bm.nmasks_total, 1);
   }
+  if(params.debug) sout << "(2)" << print_mem() << "...";
 
 
   for(int i = 0; i < nchunks; i++){
@@ -2835,6 +2837,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
     bm.computeMasks_loo(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, *set_info, snpinfo, sout);
   else
     bm.computeMasks(&params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, *set_info, snpinfo, sout);
+  if(params.debug) sout << "(3)" << print_mem() << "...";
 
   if(params.vc_test) {
     compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, set_info->Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
@@ -2844,6 +2847,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
     set_info->vc_rare_mask.setZero(); set_info->vc_rare_mask.resize(0,0); set_info->vc_rare_mask.data().squeeze();
     set_info->vc_rare_mask_non_missing.resize(0,0);
   }
+  if(params.debug) sout << "(4)" << print_mem() << "...";
 
 
   sout << "done";

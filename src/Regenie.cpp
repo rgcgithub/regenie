@@ -1443,6 +1443,35 @@ std::string print_mat_dims(MatrixXd const& mat){
   return buffer.str();
 }
 
+int parseLine(char* line){
+    // This assumes that a digit will be found and the line ends in " Kb".
+    int i = strlen(line);
+    const char* p = line;
+    while (*p <'0' || *p > '9') p++;
+    line[i-3] = '\0';
+    i = atoi(p);
+    return i;
+}
+
+int get_mem(){ // in MB
+    FILE* file = fopen("/proc/self/status", "r");
+    double result = -1;
+    char line[128];
+
+    while (fgets(line, 128, file) != NULL){
+        if (strncmp(line, "VmRSS:", 6) == 0){
+            result = parseLine(line) / 1024.0;
+            break;
+        }
+    }
+    fclose(file);
+    return result;
+}
+
+std::string print_mem(){
+  return "memory usage=" + to_string( get_mem() ) + "MB";
+}
+
 void set_threads(struct param* params) {
 
 #if defined(_OPENMP)

@@ -425,6 +425,10 @@ void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
 void allocate_mat(Eigen::MatrixXd&,int const&,int const&);
 std::string print_mat_dims(Eigen::MatrixXd const&);
+int parseLine(char*);
+int get_mem();
+std::string print_mem();
+
 void set_threads(struct param*);
 
 template <typename KEY, typename VALUE> 
