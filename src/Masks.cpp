@@ -1245,3 +1245,13 @@ void GenoMask::closeFiles(){
   if(write_snplist) snplist_out.closeFile();
 }
 
+// make seq(0,n-1) removing i-th entry
+ArrayXi get_index_vec_loo(int const& i, int const& n){
+
+  ArrayXi iseq ( n -1 );
+  for(int j = 0, k = 0; j < n; j++){
+    if(j != i) iseq(k++) = j;
+  }
+
+  return iseq;
+}

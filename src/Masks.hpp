@@ -101,4 +101,6 @@ class GenoMask {
 
 };
 
+Eigen::ArrayXi get_index_vec_loo(int const&,int const&);
+
 #endif
