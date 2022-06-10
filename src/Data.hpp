@@ -27,6 +27,7 @@
 #ifndef DATA_H
 #define DATA_H
 
+
 class Data {
 
   public:
@@ -128,6 +129,12 @@ class Data {
     void readChunk(std::vector<uint64>&,int const&,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
     void getMask(int const&,int const&,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
 
+    // step 2 with multi-trait tests
+    MTests mt;
+    void test_multitrait();
+    void analyze_block_multitrait(int const&,int const&,tally*,std::vector<variant_block>&);
+    void compute_tests_mt_multitrait(int const&,std::vector<uint64>,std::vector<std::vector <uchar>>&,std::vector<uint32_t>,std::vector<uint32_t>&,std::vector<variant_block>&);
+    void prep_multitrait(); 
 
     Data();
     ~Data();

@@ -46,6 +46,7 @@
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
+#include "MultiTrait_Tests.hpp"
 #include "HLM.hpp"
 #include "SKAT.hpp"
 #include "Interaction.hpp"
@@ -123,6 +124,7 @@ void Data::run_step2(){
   Gblock.thread_data.resize(params.neff_threads);
 
   if( params.snp_set ) test_joint();
+  else if (params.trait_set) test_multitrait();
   else test_snps_fast();
 
 }
@@ -2856,3 +2858,201 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   sout << " (" << duration.count() << "ms) "<< endl;
 
 }
+
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////    Testing mode (multi-trait tests)
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+void Data::test_multitrait() 
+{
+  sout << "Association testing mode (multi-trait tests)";
+
+  std::chrono::high_resolution_clock::time_point t1, t2;
+  string out;
+  vector<string> out_split, tmp_str;
+  // output files
+  Files ofile;
+  // use pointer to class since it contains non-copyable elements
+  vector <std::shared_ptr<Files>> ofile_split;
+
+#if defined(_OPENMP)
+  sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
+#endif
+  sout << endl;
+
+  // Set up 
+  file_read_initialization(); // set up files for reading
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, &Gblock, sout);   // read phenotype and covariate files
+  prep_run(&files, &in_filters, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
+  set_blocks_for_testing();   // set number of blocks
+  print_usage_info(&params, &files, sout);
+  print_test_info();
+  setup_output(&ofile, out, ofile_split, out_split); // result files
+  sout << endl;
+
+  // Set up mt
+  prep_multitrait();
+
+  // Loop 1: start analyzing each chromosome
+  bool block_init_pass = false;
+  int block = 0, chrom_nsnps, chrom_nb, bs;
+  tally snp_tally;
+  vector< variant_block > block_info;
+  /* initialize_thread_data(Gblock.thread_data, params); */
+
+  for(auto const& chrom : files.chr_read) {
+    if( !in_map(chrom, chr_map) ) continue;
+
+    chrom_nsnps = chr_map[chrom][0];
+    chrom_nb = chr_map[chrom][1];
+    if(chrom_nb == 0) continue;
+
+    // If specified starting block
+    if(!block_init_pass && (params.start_block > (block + chrom_nb)) ) {
+      snp_tally.snp_count += chrom_nsnps;
+      block += chrom_nb;
+      continue;
+    }
+
+    sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
+
+    // read polygenic effect predictions from step 1
+    blup_read_chr(false, chrom, m_ests, files, in_filters, pheno_data, params, sout);
+
+    // compute phenotype residual (adjusting for BLUP)
+    if(params.trait_mode == 0) {
+      compute_res();
+    } else {
+      throw std::runtime_error("multi-trait tests only for QTs");
+    }
+
+    // analyze by blocks of SNPs
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+      get_block_size(params.block_size, chrom_nsnps, bb, bs);
+
+      // If specified starting block
+      if(!block_init_pass && (params.start_block > (block+1)) ) {
+        snp_tally.snp_count += bs;
+        block++;
+        continue;
+      } else {
+        if(!block_init_pass) block_init_pass = true;
+      }
+
+      sout << " block [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
+
+      allocate_mat(Gblock.Gmat, params.n_samples, bs);
+      block_info.resize(bs);
+
+      // read SNP, impute missing & compute association test statistic
+      analyze_block_multitrait(chrom, bs, &snp_tally, block_info);
+
+      // print the results
+      if(params.split_by_pheno) {
+        throw std::runtime_error("test_multitrait: split_by_pheno");
+      }
+
+      for (auto const& snp_data : block_info){
+        if( snp_data.ignored ) {
+          snp_tally.n_ignored_snps++;
+          continue;
+        }
+        snp_tally.n_ignored_tests += snp_data.ignored_trait.count();
+
+        /* size_t n_trait_sets = 1; */
+        size_t j = 0;
+        ofile << snp_data.sum_stats_mt[j]; // add test info
+      }
+
+      snp_tally.snp_count += bs;
+      block++;
+    }
+
+  }
+
+  sout << print_summary(&ofile, out, ofile_split, out_split, n_corrected, snp_tally, files, firth_est, params);
+}
+
+// test SNPs in block for multi-trait tests
+void Data::analyze_block_multitrait(int const& chrom, int const& n_snps, tally* snp_tally, vector<variant_block> &all_snps_info){
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+  const int start = snp_tally->snp_count;
+  vector< vector < uchar > > snp_data_blocks;
+  vector< uint32_t > insize, outsize;
+
+  vector<uint64> indices(n_snps);
+  std::iota(indices.begin(), indices.end(), start);
+
+  readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
+
+  // analyze using openmp
+  /* compute_tests_mt(chrom, indices, snp_data_blocks, insize, outsize, all_snps_info); */
+  compute_tests_mt_multitrait(chrom, indices, snp_data_blocks, insize, outsize, all_snps_info);
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << "done (" << duration.count() << "ms) "<< endl;
+}
+
+void Data::compute_tests_mt_multitrait(int const& chrom, vector<uint64> indices,vector< vector < uchar > >& snp_data_blocks, vector< uint32_t > insize, vector< uint32_t >& outsize, vector<variant_block> &all_snps_info){
+  size_t const bs = indices.size();
+  ArrayXb err_caught = ArrayXb::Constant(bs, false);
+
+  // start openmp for loop
+#if defined(_OPENMP)
+  setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for(size_t isnp = 0; isnp < bs; isnp++) {
+    uint32_t const snp_index = indices[isnp];
+
+    int thread_num = 0;
+#if defined(_OPENMP)
+    thread_num = omp_get_thread_num();
+#endif
+
+    // to store variant information
+    variant_block* block_info = &(all_snps_info[isnp]);
+    reset_thread(&(Gblock.thread_data[thread_num]), params);
+
+    parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+
+    // for QTs: project out covariates & scale
+    residualize_geno(isnp, thread_num, block_info, false, pheno_data.new_cov, &Gblock, &params);
+
+    // skip SNP if fails filters
+    if( block_info->ignored ) continue;
+    
+    reset_stats(block_info, params);
+
+    try {
+      // run multi-trait tests & save summary stats
+      mt.apply_tests_snp(isnp, Gblock, res, p_sd_yres, params);
+      string tmp_str = mt.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params);
+      block_info->sum_stats_mt[0].append(tmp_str);
+    } catch (...) {
+      err_caught(isnp) = true;
+      block_info->sum_stats[0] = boost::current_exception_diagnostic_information();
+      continue;
+    }
+  }
+
+#if defined(_OPENMP)
+  setNbThreads(params.threads);
+#endif
+
+  // check no errors
+  if(err_caught.any())
+    for(int i = 0; i < err_caught.size(); i++)
+      if(err_caught(i)) throw all_snps_info[i].sum_stats[0];
+
+}
+
+void Data::prep_multitrait()
+{
+  mt.Neff = pheno_data.Neff;
+}
+

@@ -34,6 +34,7 @@
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
+#include "MultiTrait_Tests.hpp"
 #include "Masks.hpp"
 #include "HLM.hpp"
 #include "Data.hpp"
@@ -293,6 +294,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
     ("debug", "more verbose screen output for debugging purposes")
+    ("mt", "run multi-trait tests")
     ;
 
 
@@ -397,6 +399,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("force-ltco") ) params->w_ltco = true;
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
+    if( vm.count("mt") ) params->trait_set = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
@@ -1023,6 +1026,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if(params->test_mode && (params->file_type == "pgen") && !params->fastMode)
       throw "cannot use --nostream with PGEN format.";
+
+    // check multi-trait settings
+    if(params->trait_set) {
+      if(!params->strict_mode) 
+        throw "--strict mode is required for multi-trait tests";
+      if(params->split_by_pheno) 
+        throw "--no-split mode is required for multi-trait tests";
+    }
 
     // check input files
     if(params->file_type == "bgen") {

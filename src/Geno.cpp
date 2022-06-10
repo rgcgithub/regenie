@@ -2644,8 +2644,15 @@ void reset_stats(variant_block* snp_data, struct param const& params){
       snp_data->test_fail_inter = ArrayXb::Constant(params.n_pheno, true);
     }
     if( params.joint_test ) snp_data->pval_log = ArrayXd::Zero(params.n_pheno);
+
     snp_data->sum_stats.resize( params.n_pheno );
     std::fill(snp_data->sum_stats.begin(), snp_data->sum_stats.end(), "");
+
+    // multi-trait test results
+    if(params.trait_set) {
+      snp_data->sum_stats_mt.resize(1); // current only 1 trait set
+      std::fill(snp_data->sum_stats_mt.begin(), snp_data->sum_stats_mt.end(), "");
+    }
 
 }
 

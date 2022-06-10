@@ -119,6 +119,8 @@ struct variant_block {
   bool skip_int, fitHLM;
   ArrayXb is_corrected_inter; // for firth
   ArrayXb test_fail_inter; // for firth
+  // multi-trait tests
+  std::vector<std::string> sum_stats_mt;
   // association test info
   std::vector<std::string> sum_stats;
 };

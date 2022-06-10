@@ -341,6 +341,8 @@ struct param {
   int skat_collapse_MAC = 10;
   Eigen::ArrayXd skato_rho; // rho parameter from skat-o
 
+  // multi-trait tests 
+  bool trait_set = false; 
 };
 
 struct geno_file_info {

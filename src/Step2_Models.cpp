@@ -32,6 +32,7 @@
 #include "Step2_Models.hpp"
 #include "HLM.hpp"
 #include "Pheno.hpp"
+#include "MultiTrait_Tests.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
 
