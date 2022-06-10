@@ -447,8 +447,9 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   col_incl = Xmat.cols();
 
   // with firth approx. => trial 1: use maxstep_null
-  // trial=1+ => use fallback options (update maxstep & niter)
-  for(int trial = 0; trial < 2; trial++){
+  // trial=1+ => start at 0 (update maxstep & niter)
+  // trial=2+ => use fallback options (update maxstep & niter)
+  for(int trial = 0; trial < 3; trial++){
 
     // starting values
     if(set_start){
@@ -468,9 +469,11 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
     if(!params->fix_maxstep_null) { // don't retry with user-given settings
       if( !success ){ // if failed to converge
         cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").";
-        maxstep /= 5;
-        niter *= 5;
-        if(params->debug && (trial == 0)) cerr << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
+        if( trial == 1 ){
+          maxstep /= 5;
+          niter *= 5;
+          if(params->debug) cerr << "Retrying with fallback parameters: (maximum step size=" << maxstep <<";maximum number of iterations=" << niter<<").\n";
+        }
         if(params->use_adam) set_start = false;
         continue;
       }
@@ -726,13 +729,13 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       qr.compute(XtWX);
       dev_new -= qr.logAbsDeterminant();
 
-      //cerr << "["<<niter_cur << " - " << niter_search <<"]  denum =" << denum << ";Lnew= " << dev_new << " vs L0="<< dev_old << ";score_max="<< mod_score.abs().maxCoeff()<< "\n";
+      if(params->debug) cerr << "["<<niter_cur << " - " << niter_search <<"]  denum =" <<denum << ";Lnew= " << setprecision(16)<< dev_new << " vs L0="<< dev_old<< "\n";
       if( dev_new < dev_old ) break;
       denum *= 2;
     }
     if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
 
-    if(params->debug && (niter_cur%10==0)) cerr << "Niter = " << niter_cur << " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
+    if(params->debug) cerr << "Niter = " << niter_cur <<setprecision(16)<< " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
 
 
     if(cols_incl < nc)  
@@ -742,7 +745,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     dev_old = dev_new;
 
   }
-  if(params->debug) cerr << "Niter_total=" << niter_cur << ";Firth ending beta = " << betavec.matrix().transpose() << "\nscore_max=" << mod_score.abs().maxCoeff() << "\n";
+  if(params->debug) cerr << "Niter_total=" << niter_cur<<setprecision(16) << ";Firth ending beta = " << betavec.matrix().transpose() << "\nscore_max=" << mod_score.abs().maxCoeff() << "\n";
 
   // If didn't converge
   if( niter_cur > niter_firth ) return false;
