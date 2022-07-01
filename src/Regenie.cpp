@@ -754,6 +754,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->use_SPA = false; valid_args[ "spa" ] = false;
     }
 
+    if(vm.count("covarExcludeList") && !vm.count("covarFile")) {
+      params->select_covs_rm = false; valid_args[ "covarExcludeList" ] = false;
+    }
 
     if(params->test_mode && params->use_loocv) {params->use_loocv = false;valid_args[ "loocv" ] = false;}
 
