@@ -262,7 +262,7 @@ In practice, the parameter $\rho$ is chosen to maximize the power
 [**regenie** uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
 and set the weights $w_i = Beta(MAF_i,1,25)$].
 
-To obtain the p-value from a mixture of chi-square distributions, **regenie** uses Davies' exact method[@RN524] by default.
+To obtain the p-value from a linear combination of chi-squared variables, **regenie** uses Davies' exact method[@RN524] by default.
 Following Wu et al (2016)[@RN514], **regenie** uses Kuonen's saddlepoint approximation method[@RN526] when the Davies' p-value
 is below 1e-5 and if that fails, it uses Davies' method with more stringent convergence parameters (lim=1e5,acc=1e-9). 
 
