@@ -661,9 +661,9 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
       if( filters->cov_colKeep_names[ covar_names[i] ] ) { // qCovar so copy column
 
-        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov))  
-          inter_cov_matrix = inter_cov_column.matrix();
-        else
+        if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (covar_names[i] == filters->interaction_cov)) { 
+          inter_cov_matrix = inter_cov_column.matrix(); continue; 
+        } else
           full_covarMat.col(full_col) = pheno_data->new_cov.col(raw_col);
 
       } else { // cCovar
