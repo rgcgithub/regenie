@@ -153,7 +153,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
         if(print_stats) sum_stats_str[joint_tests_map["gates"]][ph] = print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
       } 
       if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
-        if(run_tests) compute_nnls(pheno_data->masked_indivs.col(ph), yres); 
+        if(run_tests) compute_nnls(pheno_data->masked_indivs.col(ph), yres, true); 
 
         if(apply_single_p || !nnls_verbose_out) { 
           // default output
@@ -387,7 +387,7 @@ void JTests::compute_ftest(const Eigen::Ref<const MatrixXb>& mask, const Eigen::
 }
 
 
-void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::Ref<const Eigen::MatrixXd>& ymat){
+void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::Ref<const Eigen::MatrixXd>& ymat, bool const& print_extra){
 
   if( df_test == 0 ) {
     reset_vals();
@@ -420,7 +420,7 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
   else reset_vals();
 
   // print extra NNLS information if requested
-  if(nnls_verbose_out) {
+  if(nnls_verbose_out && print_extra) {
     string fname = out_file_prefix + "_nnls.info";
     ofstream file_info(fname);
     
@@ -594,7 +594,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     if( CHECK_BIT(test_list, joint_tests_map["nnls"]) ) {
       compute_qr_G(mask, gblock);
       pval_nnls_pos = -1; pval_nnls_neg = -1;
-      compute_nnls(mask, yres); 
+      compute_nnls(mask, yres, false); 
       if((pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
           (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) ) {
         get_pv(pval_nnls_pos);overall_p_m1["NNLS_POS"] = plog;
