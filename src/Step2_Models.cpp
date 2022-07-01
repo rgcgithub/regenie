@@ -436,7 +436,7 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   int col_incl;
   int maxstep = params->maxstep_null;
   int niter = params->niter_max_firth_null;
-  double tol = 10*params->numtol;
+  double tol = 50*params->numtol;
   double dev, lrt;
 
   ArrayXd betaold, se, etavec, pivec;
@@ -735,7 +735,10 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       if( dev_new < dev_old ) break;
       denum *= 2;
     }
-    if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
+    if( niter_search > params->niter_max_line_search ) {
+      if( comp_lrt ) step_size(0) += 1e-6;
+      else return false; // step-halving failed
+    }
 
     if(params->debug) cerr << "Niter = " << niter_cur <<setprecision(16)<< " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
 
