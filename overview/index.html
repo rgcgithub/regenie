@@ -396,7 +396,7 @@ So setting $\rho=0$ corresponds to SKAT and $\rho=1$ to the burden test.
 In practice, the parameter $\rho$ is chosen to maximize the power 
 [<strong>regenie</strong> uses a default grid of 8 values {$0, 0.1^2, 0.2^2, 0.3^2, 0.4^2, 0.5^2, 0.5, 1$}
 and set the weights $w_i = Beta(MAF_i,1,25)$].</p>
-<p>To obtain the p-value from a mixture of chi-square distributions, <strong>regenie</strong> uses Davies' exact method<sup id="fnref:11"><a class="footnote-ref" href="#fn:11">11</a></sup> by default.
+<p>To obtain the p-value from a linear combination of chi-squared variables, <strong>regenie</strong> uses Davies' exact method<sup id="fnref:11"><a class="footnote-ref" href="#fn:11">11</a></sup> by default.
 Following Wu et al (2016)<sup id="fnref:12"><a class="footnote-ref" href="#fn:12">12</a></sup>, <strong>regenie</strong> uses Kuonen's saddlepoint approximation method<sup id="fnref:13"><a class="footnote-ref" href="#fn:13">13</a></sup> when the Davies' p-value
 is below 1e-5 and if that fails, it uses Davies' method with more stringent convergence parameters (lim=1e5,acc=1e-9). </p>
 <p>The original SKATO method uses numerical integration when maximizing power across the 
