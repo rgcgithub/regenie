@@ -178,6 +178,7 @@ rgcmd="--step 2 \
   --covarFile ${mntpt}example/covariates_wBin.txt \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --bsize 200 \
+  --force-qt \
   --ignore-pred \
   --covarColList V1,V5 \
   --catCovarList V5 \
@@ -201,6 +202,7 @@ rgcmd="--step 2 \
   --phenoFile ${mntpt}example/phenotype_bin.txt${fsuf} \
   --bsize 200 \
   --ignore-pred \
+  --force-qt \
   --interaction-snp 1 \
   --out ${mntpt}test/test_bin_out_inter"
 
@@ -231,6 +233,7 @@ basecmd="--step 2 \
   --phenoColList Y2 \
   --bsize 100 \
   --test dominant \
+  --force-qt \
   --ignore-pred"
 rgcmd="$basecmd \
   --chrList 2,3 \
@@ -262,6 +265,7 @@ fi
 echo -e "==>Running test #$i"
 # Next test
 rgcmd="$basecmd \
+  --force-qt \
   --catCovarList V4 \
   --extract ${mntpt}test/test_out.snplist \
   --out ${mntpt}test/test_out_extract"
@@ -290,6 +294,7 @@ rgcmd="--step 2 \
   --remove ${mntpt}example/fid_iid_to_remove.txt \
   --bsize 10 \
   --ignore-pred \
+  --force-qt \
   --htp TEST \
   --out ${mntpt}test/test_out_masks_V1"
 # run regenie
@@ -310,6 +315,7 @@ rgcmd="--step 2 \
   --mask-def ${mntpt}example/example_3chr.masks \
   --write-mask \
   --write-setlist ${mntpt}example/example_3chr.write_sets \
+  --force-qt \
   --bsize 15 \
   --aaf-bins 0.2 \
   --chrList 1,3 \
@@ -355,6 +361,7 @@ rgcmd="--step 2 \
   --anno-file ${mntpt}example/example_3chr.annotations \
   --mask-def ${mntpt}example/example_3chr.masks \
   --mask-lovo SET1,M1,0.2 \
+  --force-qt \
   --htp TEST \
   --out ${mntpt}test/test_out_masks_loo"
 
@@ -383,6 +390,7 @@ rgcmd="--step 2 \
   --anno-file ${mntpt}example/example_3chr.annotationsV2 \
   --mask-def ${mntpt}example/example_3chr.masks \
   --check-burden-files \
+  --force-qt \
   --bsize 20 \
   --aaf-bins 0.2 \
   --out ${mntpt}test/test_out_masks_V3"
@@ -443,6 +451,7 @@ rgcmd="--step 2 \
   --anno-file ${mntpt}example/example_3chr.annotations \
   --mask-def ${mntpt}example/example_3chr.masks \
   --vc-tests skat \
+  --force-qt \
   --bsize 15 \
   --aaf-bins 0.2 \
   --write-mask-snplist \
