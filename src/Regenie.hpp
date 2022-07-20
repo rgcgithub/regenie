@@ -179,7 +179,7 @@ struct param {
   bool keep_snps = false, keep_or = false; // user specify to keep select snps in analysis
   bool rm_snps = false, rm_or = false; // user specify to remove snps from analysis
   bool mk_snp_map = false, keep_snp_map = false;
-  bool select_phenos = false, select_phenos_rm = false; // user specify which phenotype columns to use
+  bool select_phenos = false, select_phenos_rm = false, force_qt_run = false; // user specify which phenotype columns to use
   bool select_covs = false, select_covs_rm = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
   int max_cat_levels = 10; // maximum number of categories of categorical covars
   bool select_chrs = false; // user specify which chromosomes to test

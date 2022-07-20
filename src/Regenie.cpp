@@ -228,6 +228,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("skip-test", "skip computing association tests after building masks")
     ("check-burden-files", "check annotation file, set list file and mask file for consistency")
     ("strict-check-burden", "to exit early if the annotation, set list and mask definition files don't agree")
+    ("force-qt", "force QT run for traits with few unique values")
     ("par-region", "build code to identify PAR region boundaries on chrX", cxxopts::value<std::string>(params->build_code),"STRING(=hg38)")
     ;
 
@@ -414,6 +415,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("skip-test") ) params->skip_test = true;
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
+    if( vm.count("force-qt") ) params->force_qt_run = true;
     if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
     if( vm.count("condition-list") ) { params->condition_snps = true;params->rm_snps = true;}
     if( vm.count("force-robust") ) params->force_robust = true;
