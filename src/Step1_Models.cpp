@@ -1111,7 +1111,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
         return false;
       }
 
-      if(params->debug &&( (niter_cur % 2) == 1)) cerr << "Iter #" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "-->" << fn_end << "\n";
+      if(params->debug) cerr << "#" << niter_cur << "(#" << niter_search << "): " << setprecision(16) << fn_start << "->" << fn_end << "\n";
 
       if( fn_end < (fn_start + params->numtol) ) break;
       // adjusted step size
@@ -1121,7 +1121,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
     score -= lambda * betanew;
-    if(params->debug &&( (niter_cur % 2) == 1)) cerr << "Iter #" << niter_cur << ": score max = " <<  score.abs().maxCoeff() << "\n";
+    if(params->debug) cerr << "#"<< niter_cur << ": score max = " << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << abs(fn_end - fn_start)/(.01 + abs(fn_end)) << "\n";
 
     dev_conv = (abs(fn_end - fn_start)/(.01 + abs(fn_end)) < params->tol); // fractional change - same as glm
     if( score.abs().maxCoeff() < params->l1_ridge_tol ) 
@@ -1136,8 +1136,6 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 
   if( !dev_conv && (niter_cur > params->niter_max_ridge) )
     return false;
-
-  if(params->debug) cerr << "Done (#"<< niter_cur << "): score max = " << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << abs(fn_end - fn_start)/(.01 + abs(fn_end)) << "\n";
 
   betaold = betanew;
   return true;
