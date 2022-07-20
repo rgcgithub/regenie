@@ -79,9 +79,10 @@ void read_prs(Eigen::Ref<Eigen::ArrayXd>,struct in_files*,struct param*,Eigen::R
 void check_phenos(Eigen::Ref<ArrayXb>,std::vector<std::string> const&,std::string const&,mstream&);
 void write_ids(struct in_files const*,struct param*,struct phenodt const*,mstream&);
 void check_str(std::string&);
+void pheno_impute_miss(struct phenodt*,const Eigen::Ref<const ArrayXb>&,struct param const*);
 void apply_rint(struct phenodt*,struct param const*);
 void set_pheno_pass(struct in_files const*,struct param*);
-void rint_pheno(Eigen::Ref<Eigen::MatrixXd>,Eigen::Ref<ArrayXb>);
+void rint_pheno(Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const ArrayXb>&);
 bool cmp_rank_pair(struct rank_pair&,struct rank_pair&);
 
 #endif

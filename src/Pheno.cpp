@@ -97,6 +97,9 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
     apply_rint(pheno_data, params);
   }
 
+  // impute missing
+  pheno_impute_miss(pheno_data, filters->ind_in_analysis, params);
+
   // print case-control counts per trait
   if(params->trait_mode==1)
     print_cc_info(params, files, pheno_data, sout);
@@ -109,7 +112,6 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
   uint32_t indiv_index;
   bool all_miss;
-  double mean;
   string line;
   std::vector< string > tmp_str_vec;
   ArrayXb keep_cols;
@@ -163,10 +165,6 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   pheno_data->masked_indivs = MatrixXb::Constant(params->n_samples, params->n_pheno, true);
   if(params->trait_mode)  
     pheno_data->phenotypes_raw = MatrixXd::Zero(params->n_samples, params->n_pheno);
-
-  VectorXd total, ns;
-  total.setZero(params->n_pheno);
-  ns.setZero(params->n_pheno);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -228,11 +226,9 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
       }
 
-      if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double ) {
-        total(i_pheno) +=  pheno_data->phenotypes(indiv_index, i_pheno);
-        ns(i_pheno) +=  1;
+      if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double )
         all_miss = false;
-      } else {
+      else {
         if( params->test_mode && params->rm_missing_qt ) pheno_data->masked_indivs(indiv_index, i_pheno) = false;
         if( params->strict_mode ) {
           pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
@@ -261,22 +257,6 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   // ignore traits with fewer than the specified minimum case count
   if(params->trait_mode==1)
     rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
-
-  if((params->trait_mode==0) || !params->test_mode){
-
-    if(params->trait_mode==0) // impute missing with mean
-      for(int j = 0; j < params->n_pheno; j++) 
-        pheno_data->phenotypes.col(j).array() = ( pheno_data->phenotypes.col(j).array() != params->missing_value_double ).select( pheno_data->phenotypes.col(j).array(), total(j) / ns(j));
-    else 
-      for(int j = 0; j < params->n_pheno; j++) {
-        mean = pheno_data->masked_indivs.col(j).array().select( pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).count();
-        pheno_data->phenotypes.col(j).array() = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array(), mean);
-      }
-
-    // apply masking
-    pheno_data->phenotypes.array() *= pheno_data->masked_indivs.array().cast<double>();
-
-  }
 
   // number of phenotyped individuals 
   sout <<  "   -number of phenotyped individuals " <<
@@ -436,28 +416,6 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
   // ignore traits with fewer than the specified minimum case count
   if(params->trait_mode==1)
     rm_phenoCols(ind_in_pheno_and_geno, files, params, pheno_data, sout); 
-
-  if((params->trait_mode==0) || !params->test_mode){
-    double mean;
-
-    for(int j = 0; j < params->n_pheno; j++) {
-
-      if(params->trait_mode==0){
-        // impute missing with mean
-        mean = ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).select( pheno_data->phenotypes.col(j).array(), 0).sum();
-        mean /= ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).count();
-        pheno_data->phenotypes.col(j).array() = ( ind_in_pheno_and_geno && (pheno_data->phenotypes.col(j).array() != params->missing_value_double) ).select( pheno_data->phenotypes.col(j).array() - mean, 0);
-      } else {
-        mean = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array(), 0).sum() / pheno_data->masked_indivs.col(j).count();
-        pheno_data->phenotypes.col(j).array() = pheno_data->masked_indivs.col(j).array().select(pheno_data->phenotypes.col(j).array() - mean, 0);
-      }
-
-    }
-  }
-
-  // apply masking
-  pheno_data->phenotypes.array() *= pheno_data->masked_indivs.array().cast<double>();
-  //cerr <<endl<<pheno_data->phenotypes.topRows(5) << endl; exit(-1);
 
   // number of phenotyped individuals 
   sout <<  "   -number of phenotyped individuals " <<
@@ -1545,12 +1503,41 @@ void check_str(string& mystring ){
 
 }
 
+void pheno_impute_miss(struct phenodt* pheno_data, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct param const* params){
+
+  if((params->trait_mode==0) || !params->test_mode){
+    double total, ns;
+
+    // for each trait, impute missing with mean
+    for(int j = 0; j < params->n_pheno; j++)
+      if( params->pheno_pass(j) ){
+
+        MapArXd Y (pheno_data->phenotypes.col(j).data(), params->n_samples, 1);
+        MapArXb mask (pheno_data->masked_indivs.col(j).data(), params->n_samples, 1);
+
+        if(params->trait_mode==0){ // impute missing with mean
+          total = ( Y != params->missing_value_double ).select(Y, 0).sum();
+          ns = ( ind_in_analysis && (Y != params->missing_value_double) ).count();
+          Y = ( Y != params->missing_value_double ).select(Y, total / ns);
+        } else { // mask tracks missingness
+          total = mask.select(Y, 0).sum() / mask.count();
+          Y = mask.select(Y, total);
+        }
+      }
+
+    // apply masking
+    pheno_data->phenotypes.array() *= pheno_data->masked_indivs.array().cast<double>();
+
+  }
+
+}
+
 void apply_rint(struct phenodt* pheno_data, struct param const* params){
 
   // for each trait, apply rank-inverse normal transformation
   for(int ph = 0; ph < params->n_pheno; ph++)
     if( params->pheno_pass(ph) )
-      rint_pheno(pheno_data->phenotypes.col(ph), pheno_data->masked_indivs.col(ph).array());
+      rint_pheno(pheno_data->phenotypes.col(ph), (pheno_data->phenotypes.col(ph).array() != params->missing_value_double) && pheno_data->masked_indivs.col(ph).array());
 
 }
 
@@ -1558,7 +1545,6 @@ void set_pheno_pass(struct in_files const* files, struct param* params){
 
   bool select_phenos = params->select_pheno_l1.size() > 0;
   params->pheno_pass = ArrayXb::Constant(params->n_pheno, false);
-  // for each trait, apply rank-inverse normal transformation
   for(int ph = 0; ph < params->n_pheno; ph++)
     if( select_phenos )
       params->pheno_pass(ph) = in_map( files->pheno_names[ph], params->select_pheno_l1 );
@@ -1571,7 +1557,7 @@ void set_pheno_pass(struct in_files const* files, struct param* params){
 
 }
 
-void rint_pheno(Ref<MatrixXd> Y, Ref<ArrayXb> mask){
+void rint_pheno(Ref<MatrixXd> Y, const Eigen::Ref<const ArrayXb>& mask){
 
   int nvals = mask.count();
   vector<rank_pair> yvals;
