@@ -228,6 +228,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("skip-test", "skip computing association tests after building masks")
     ("check-burden-files", "check annotation file, set list file and mask file for consistency")
     ("strict-check-burden", "to exit early if the annotation, set list and mask definition files don't agree")
+    ("par-region", "build code to identify PAR region boundaries on chrX", cxxopts::value<std::string>(params->build_code),"STRING(=hg38)")
     ;
 
 
@@ -893,6 +894,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
       params->af_cc = false; valid_args[ "af-cc" ] = false;
     }
+    if(params->test_mode) check_build_code(params);
     if(params->rm_snps && params->keep_snps )
       sout << "WARNING: only variants which satisfy both extract/exclude options will be kept.\n";
 
@@ -1356,6 +1358,26 @@ vector<string> check_name(string const& str, mstream& sout){
   }
 
   return strout;
+}
+
+void check_build_code(struct param* params){
+  vector<string> valid_codes = { "b36", "b37", "b38", "hg18", "hg19", "hg38"};
+
+  if (std::find(valid_codes.begin(), valid_codes.end(), params->build_code) == valid_codes.end()){ // format: <end_par1>,<start_par2>
+    int min_npar, max_npar;
+    if((sscanf( params->build_code.c_str(), "%d,%d", &min_npar, &max_npar ) != 2) || (min_npar < 1) || (max_npar < 1) || (max_npar < min_npar)) 
+      throw "invalid build code given (valid ones are '" + print_sv(valid_codes, "|") + "' or [start,end] position of the non-par region)"; 
+    params->par1_max_bound = min_npar - 1;
+    params->par2_min_bound = max_npar + 1;
+
+  } else if((params->build_code == "b36") || (params->build_code == "hg18")){
+    params->par1_max_bound = 2709520, params->par2_min_bound = 154584238;
+  } else if ((params->build_code == "b37") || (params->build_code == "hg19")){
+    params->par1_max_bound = 2699520, params->par2_min_bound = 154931044;
+  } else{
+    params->par1_max_bound = 2781479, params->par2_min_bound = 155701383;
+  }
+
 }
 
 double convertDouble(const string& val, struct param const* params, mstream& sout){

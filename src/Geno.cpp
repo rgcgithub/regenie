@@ -1834,6 +1834,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
   for(int snp = 0; snp < bs; snp++) {
 
     variant_block* snp_data = &(all_snps_info[snp]);
+    struct snp const* snp_info = &(snpinfo[indices[snp]]);
     MapArXd Geno (gblock->Gmat.col(snp).data(), params->n_samples, 1);
 
     // reset variant info
@@ -1842,13 +1843,14 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 
     hc_val = 0, index = 0, ncarriers = 0, nmales = 0;
     total = 0, mac = 0, info_num = 0;
+    bool non_par = in_non_par(chrom, snp_info->physpos, params);
 
     // set to correct position
-    gblock->bgen.jumpto( snpinfo[ indices[snp] ].offset );
+    gblock->bgen.jumpto( snp_info->offset );
     gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
     gblock->bgen.read_probs( &probs ) ;
-    //sout << "["<< chrom << "]SNPid stored ("<< snpinfo[indices[snp].chrom <<") = " << snpinfo[indices[snp]].ID<< "/ SNPIDread ("<<chromosome<<")= " << rsid << endl; exit(-1);
-    assert( snpinfo[indices[snp]].ID == rsid );
+    //sout << "["<< chrom << "]SNPid stored ("<< snp_info->chrom <<") = " << snp_info->ID<< "/ SNPIDread ("<<chromosome<<")= " << rsid << endl; exit(-1);
+    assert( snp_info->ID == rsid );
     //assert(chrStrToInt(chromosome, params->nChrom) == chrom);
 
     for( std::size_t i = 0; i < probs.size(); ++i ) {
@@ -1866,7 +1868,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
           // sex is 1 for males and 0 o.w.
           lval = 0, mval = ds;
-          if(params->test_mode && (chrom == params->nChrom)) {
+          if(params->test_mode && non_par) {
             lval = (params->sex(i) == 1);
             mval = ds * 0.5 * (2 - lval);
           }
@@ -1891,7 +1893,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // get genotype counts (convert to hardcall)
           if( params->htp_out ) {
             // counts for males are 0/2
-            if(params->test_mode && (chrom == params->nChrom) && (lval>0)) 
+            if(params->test_mode && non_par && (lval>0)) 
               hc_val = (ds < 1 ? 0 : 2);
             else
               hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
@@ -1907,7 +1909,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 
     // check MAC
     if( params->test_mode){
-      compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, snpinfo[indices[snp]].MAC_fail_if_checked, snp_data, params);
+      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_data, params);
       if(snp_data->ignored) continue;
     }
 
@@ -2088,6 +2090,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
+  bool non_par = in_non_par(chrom, infosnp->physpos, params);
   int hc_val, lval, ncarriers = 0, nmales = 0;
   double prob0, prob1, prob2, total = 0, mac = 0, mval, ival, info_num = 0, sum_pos;
 
@@ -2122,7 +2125,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
       // sex is 1 for males and 0 o.w.
       lval = 0, mval = Geno(index);
-      if(params->test_mode && (chrom == params->nChrom)) {
+      if(params->test_mode && non_par) {
         lval = (params->sex(i) == 1);
         mval =  Geno(index) * 0.5 * (2 - lval);
       }
@@ -2147,7 +2150,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // get genotype counts (convert to hardcall)
       if( params->htp_out ) {
         // counts for males are 0/2
-        if(params->test_mode && (chrom == params->nChrom) && (lval>0)) 
+        if(params->test_mode && non_par && (lval>0)) 
           hc_val = (Geno(index) < 1 ? 0 : 2);
         else
           hc_val = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
@@ -2161,7 +2164,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 
   // check MAC
   if( params->test_mode){
-    compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
     if(snp_data->ignored) return;
   }
 
@@ -2232,6 +2235,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed_data, struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, const snp* infosnp, struct geno_block* gblock, variant_block* snp_data){
 
   int hc, lval, ncarriers = 0, nmales;
+  bool non_par = in_non_par(chrom, infosnp->physpos, params);
   uint32_t const nmax = filters->ind_ignore.size();
   uint32_t i, index ;
   double total, mac, mval, sum_pos;
@@ -2263,7 +2267,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
         // sex is 1 for males and 0 o.w.
         lval = 0, mval = hc;
-        if(params->test_mode && (chrom == params->nChrom)) {
+        if(params->test_mode && non_par) {
           lval = (params->sex(i) == 1);
           mval = hc * 0.5 * (2 - lval);
         }
@@ -2292,7 +2296,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 
   // check MAC
   if( params->test_mode){
-    compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
     if(snp_data->ignored) return;
   }
 
@@ -2351,16 +2355,18 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     ArrayXb keep_index;
 
     variant_block* snp_data = &(all_snps_info[j]);
+    struct snp const* snp_info = &(snpinfo[ indices[j] ]);
     MapArXd Geno (gblock->Gmat.col(j).data(), params->n_samples, 1);
 
     // reset variant info
     prep_snp_stats(snp_data, params);
 
     mac = 0, index = 0, nmales = 0;
+    bool non_par = in_non_par(chrom, snp_info->physpos, params);
     if( params->dosage_mode ) eij2 = 0;
 
     // read genotype data
-    cur_index = snpinfo[ indices[j] ].offset;
+    cur_index = snp_info->offset;
     if( params->dosage_mode )
       gblock->pgr.Read(Geno.data(), Geno.size(), thread_num, cur_index, 1);
     else
@@ -2372,7 +2378,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     keep_index = filters->ind_in_analysis && (Geno != -3.0);
     total = keep_index.select(Geno,0).sum();
     snp_data->ns1 = keep_index.count();
-    //cerr << "ID: " << snpinfo[ indices[j] ].ID << "\nG bounds: " << 
+    //cerr << "ID: " << snp_info->ID << "\nG bounds: " << 
     //  (Geno * keep_index.cast<double>()).minCoeff() << " - " << (Geno * keep_index.cast<double>()).maxCoeff() << "\n\n";
 
     for (int i = 0; i < filters->ind_ignore.size(); i++) {
@@ -2381,10 +2387,10 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
       if( filters->ind_ignore(i) ) continue;
 
       if( keep_index(index) ){
-        // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
+        // compute MAC using 0.5*g for males for variants on sex chr non-PAR (males coded as diploid)
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
-        if(params->test_mode && (chrom == params->nChrom)) {
+        if(params->test_mode && non_par) {
           lval = (params->sex(i) == 1);
           mval *= 0.5 * (2 - lval);
         }
@@ -2401,7 +2407,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // get genotype counts
         if( params->htp_out ) {
           // counts for males are 0/2
-          if(params->test_mode && (chrom == params->nChrom) && (lval>0)) 
+          if(params->test_mode && non_par && (lval>0)) 
             hc = (Geno(index) < 1 ? 0 : 2);
           else
             hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
@@ -2416,7 +2422,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     // check MAC
     if( params->test_mode){
       ncarriers = (keep_index && (Geno >= 0.5)).count(); // check carriers
-      compute_mac(chrom != params->nChrom, mac, total, nmales, ncarriers, snpinfo[indices[j]].MAC_fail_if_checked, snp_data, params);
+      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_data, params);
       if(snp_data->ignored) continue;
     }
 
@@ -2472,7 +2478,6 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 }
 
 bool in_chrList(const int& snp_chr, struct filter const* filters){
-
   return in_map(snp_chr, filters->chrKeep_test);
 }
 
@@ -2489,7 +2494,7 @@ string bgi_chrList(struct filter* filters, const int& nChrom){// for --chr/--chr
     if(itr->first < 10){ // add X and 0X format
       fmt = "'0" + to_string(itr->first) + "'";
       clist.push_back( fmt );
-    } else if(itr->first == nChrom){ // add XY, X, Y
+    } else if(itr->first == nChrom){ // add XY, X, PARs
       clist.push_back( "'X'" );
       clist.push_back( "'XY'" );
       clist.push_back( "'PAR1'" );
@@ -2538,6 +2543,20 @@ bool in_range(int const& snp_chr, uint32_t const& snp_pos, struct param const* p
       (snp_pos > params->range_max) )
     return false;
 
+  return true; 
+}
+
+bool in_non_par(int const& snp_chr, uint32_t const& snp_pos, struct param const* params){
+
+  // if not on chrX, return false
+  if(snp_chr != params->nChrom) return false;
+
+  // in par1 or par2
+  if( (snp_pos <= params->par1_max_bound) || 
+      (snp_pos >= params->par2_min_bound) )
+    return false;
+
+  // in non-par chrX
   return true; 
 }
 
@@ -2941,31 +2960,32 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
       // get index in geno file
       snp_index = filters->snpID_to_ind[ tmp_str_vec[i] ];
+      struct snp* snp_info = &(snpinfo[ snp_index ]);
 
       // check chromosome
-      if( tmp_set.chrom != snpinfo[ snp_index ].chrom )
+      if( tmp_set.chrom != snp_info->chrom )
         same_chr = false;
 
       if( params->build_mask ){
         // check annotation for set has been given for variant
         // else, assign to default annotation category 0
-        if (!in_map(tmp_set.ID, snpinfo[ snp_index ].anno)) {
+        if (!in_map(tmp_set.ID, snp_info->anno)) {
           all_w_anno = false;
           if(params->check_mask_files) set_problem.push_back(tmp_str_vec[i]);
-          snpinfo[ snp_index ].anno[ tmp_set.ID ] = ainfo_null;
+          snp_info->anno[ tmp_set.ID ] = ainfo_null;
         }
 
         // check that variant has category in at least one of the masks
-        if( (snpinfo[snp_index].anno[tmp_set.ID].id & all_masks) == 0 )  
+        if( (snp_info->anno[tmp_set.ID].id & all_masks) == 0 )  
           continue;
       }
 
       // if AAF is user defined, check it has been given for the variants
       if(params->set_aaf) {
-        if(snpinfo[ snp_index ].aaf < 0) // don't add variant to set
+        if(snp_info->aaf < 0) // don't add variant to set
         { no_AAF=true; continue;}
         // check that variant has AAF < max mask AAF (unless singleton)
-        else if( (mask_max_aaf > 0) && (snpinfo[ snp_index ].aaf > mask_max_aaf) ) 
+        else if( (mask_max_aaf > 0) && (snp_info->aaf > mask_max_aaf) ) 
           continue;
       }
 
@@ -3244,10 +3264,11 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
       lineread++; continue;
     }
     snp_pos = filters->snpID_to_ind[ sname ];
+    struct snp* snp_info = &(snpinfo[ snp_pos ]);
 
     // set name
     gname = tmp_str_vec[1];
-    if (!params->w_regions && in_map(gname, snpinfo[ snp_pos ].anno)) 
+    if (!params->w_regions && in_map(gname, snp_info->anno)) 
       throw "duplicate variant annotations at line " + to_string( lineread+1 ) + ".";
 
     // check if matches with LOVO gene
@@ -3304,19 +3325,19 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
     // with multiple regions for same variant & gene
     // annotation must be the same
-    if (params->w_regions && in_map(gname, snpinfo[ snp_pos ].anno) && 
-        (snpinfo[ snp_pos ].anno[gname].id != anno_map[ tmp_str_vec[col_cat] ].id) ) 
+    if (params->w_regions && in_map(gname, snp_info->anno) && 
+        (snp_info->anno[gname].id != anno_map[ tmp_str_vec[col_cat] ].id) ) 
       throw "inconsistent variant annotation at line " + to_string( lineread+1 ) +  ".";
 
     // set bit for category
     ainfo.id |= anno_map[ tmp_str_vec[col_cat] ].id;
 
     //insert in snpinfo
-    if (in_map(gname, snpinfo[ snp_pos ].anno)) 
-      snpinfo[ snp_pos ].anno[gname].regionid |= ainfo.regionid;
+    if (in_map(gname, snp_info->anno)) 
+      snp_info->anno[gname].regionid |= ainfo.regionid;
     else
-      snpinfo[ snp_pos ].anno[ gname ] = ainfo;
-    //if(lineread <5) cerr << snpinfo[ snp_pos ].ID << "--" << ainfo.id << " " << (int) ainfo.regionid <<  endl; 
+      snp_info->anno[ gname ] = ainfo;
+    //if(lineread <5) cerr << snp_info->ID << "--" << ainfo.id << " " << (int) ainfo.regionid <<  endl; 
 
     n_anno_read++, lineread++;
   }

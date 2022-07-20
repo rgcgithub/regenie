@@ -304,6 +304,8 @@ struct param {
   bool set_range = false;
   int range_chr; 
   double range_min, range_max; // use genomic region to filter variants
+  std::string build_code = "hg38"; // to identify chrX PAR region bounds
+  uint32_t par1_max_bound, par2_min_bound;
 
   // snp sets (masks/joint tests)
   bool snp_set = false; 
@@ -418,6 +420,7 @@ void set_ridge_params(int const&,Eigen::ArrayXd&,mstream&);
 void print_usage_info(struct param const*,struct in_files*,mstream&);
 int chrStrToInt(const std::string&, const int&);
 std::vector<std::string> check_name(std::string const&,mstream&);
+void check_build_code(struct param*);
 double convertDouble(const std::string&,struct param const*,mstream&);
 double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param const*,mstream&);
 void check_inter_var(std::string&,std::string&,mstream&);

@@ -202,6 +202,7 @@ std::string bgi_chrList(struct filter*,const int&);
 std::string bgi_chrList(const int&,const int&);
 std::string bgi_rsidList(std::map <std::string, uint64>&);
 bool in_range(int const&,uint32_t const&,struct param const*);
+bool in_non_par(int const&,uint32_t const&,struct param const*);
 findID getIndivIndex(const std::string&,const std::string&,struct param*,mstream&);
 
 
