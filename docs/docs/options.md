@@ -275,6 +275,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|
+|`--par-region` | STRING | Optional | specify build code to determine bounds for PAR1/PAR2 regions (can be 'b36/b37/b38/hg18/hg19/hg38' or 'start,end' bp bounds of non-PAR region) [default=hg38]|
 |`--threads`| INT | Optional| number of computational threads to use [default=all-1]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
 |`--verbose`| FLAG | Optional| verbose screen output|
@@ -350,6 +351,12 @@ all analyzed samples.
 
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
+
+When using `--par-region`, the default boundaries used for the chrX PAR regions are:
+
+* b36/hg18: 2709520 and 154584238
+* b37/hg19: 2699520 and 154931044
+* b38/hg38: 2781479 and 155701383
 
 
 ## Gene-based testing
