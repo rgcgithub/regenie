@@ -279,6 +279,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ("minHOMs", "minimum number of homozygote ALT carriers in recessive test", cxxopts::value<double>(params->minHOMs),"FLOAT(=0)")
+    ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
     ("no-robust", "don't use robust SEs or HLM for GxE test")
@@ -387,6 +388,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("print-pheno") ) params->print_pheno_name = true;
     if( vm.count("early-exit") ) params->early_exit = true;
     if( vm.count("force-step1") ) params->force_run = true;
+    if( (params->run_mode == 1) && vm.count("bt") && vm.count("loocv") && vm.count("l1-full") ) params->l1_full_samples = true;
     if( vm.count("lowmem") ) params->write_l0_pred = true;
     if( vm.count("keep-l0") ) params->rm_l0_pred = false;
     if( vm.count("split-l0") ) params->split_l0 = true;
