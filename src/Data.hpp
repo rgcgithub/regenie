@@ -89,6 +89,7 @@ class Data {
     void make_predictions(int const&,int const&);
     void make_predictions_loocv(int const&,int const&);
     void make_predictions_binary(int const&,int const&);
+    void make_predictions_binary_loocv_full(int const&,int const&);
     void make_predictions_binary_loocv(int const&,int const&);
     void make_predictions_count(int const&,int const&);
     void make_predictions_count_loocv(int const&,int const&);

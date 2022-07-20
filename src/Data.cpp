@@ -954,7 +954,9 @@ void Data::output() {
       else 
         make_predictions(ph, min_index);
     } else if(params.trait_mode == 1){
-      if(params.use_loocv) 
+      if(params.l1_full_samples) 
+        make_predictions_binary_loocv_full(ph, min_index);
+      else if(params.use_loocv) 
         make_predictions_binary_loocv(ph, min_index);
       else 
         make_predictions_binary(ph, min_index);
@@ -1067,7 +1069,7 @@ void Data::make_predictions(int const& ph, int const& val) {
 
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
-  string outname, in_pheno;
+  string outname;
   ofstream ofile;
 
   MatrixXd X1, X2, beta_l1, beta_avg;
@@ -1140,7 +1142,6 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
 
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
-  string in_pheno;
   MatrixXd Xmat_chunk, Yvec_chunk,  Z1, Z2, b0, xtx;
   VectorXd w1, w2, Vw2, zvec;
   RowVectorXd calFactor;
@@ -1213,7 +1214,6 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
 
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
-  string in_pheno;
   ArrayXd etavec, pivec, wvec, zvec, score;
   MatrixXd betaold, betanew, XtW, XtWX, XtWZ;
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
@@ -1288,6 +1288,60 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
   sout << " (" << duration.count() << "ms) "<< endl << endl;
 }
 
+void Data::make_predictions_binary_loocv_full(int const& ph, int const& val) {
+
+  sout << "  * making predictions (using all samples)..." << flush;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  int bs_l1 = params.total_n_block * params.n_ridge_l0;
+  int ph_eff = params.write_l0_pred ? 0 : ph;
+
+  ArrayXd beta, pivec, wvec;
+  MatrixXd XtWX, V1;
+
+  uint64 max_bytes = params.chunk_mb * 1e6;
+  // amount of RAM used < max_mb [ creating (bs_l1 * target_size) matrix ]
+  int nchunk = ceil( params.cv_folds * bs_l1 * sizeof(double) * 1.0 / max_bytes );
+  int target_size = params.cv_folds / nchunk;
+
+  // read in level 0 predictions from file
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
+
+  MapArXd Y (pheno_data.phenotypes_raw.col(ph).data(), pheno_data.phenotypes_raw.rows());
+  MapMatXd X (l1_ests.test_mat_conc[ph_eff].data(), pheno_data.phenotypes_raw.rows(), bs_l1);
+  MapArXd offset (m_ests.offset_nullreg.col(ph).data(), pheno_data.phenotypes_raw.rows());
+  MapArXb mask (pheno_data.masked_indivs.col(ph).data(), pheno_data.phenotypes_raw.rows());
+
+  // fit logistic on whole data again for optimal ridge param
+  beta = ArrayXd::Zero(bs_l1);
+  run_log_ridge_loocv(params.tau[0](val), target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
+
+  // use estimates from this model directly
+  // compute predictor for each chr
+  int ctr = 0, chr_ctr = 0;
+  int nn;
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    int chrom = files.chr_read[itr];
+    if( !in_map(chrom, chr_map) ) continue;
+
+    nn = chr_map[chrom][1] * params.n_ridge_l0;
+
+    if(nn > 0) {
+      predictions[0].col(chr_ctr) = l1_ests.test_mat_conc[ph_eff].middleCols(ctr, nn) * beta.segment(ctr, nn).matrix();
+      chr_ctr++;
+      ctr += nn;
+    }
+  }
+
+  write_predictions(ph);
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl << endl;
+}
 
 void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 
@@ -1297,7 +1351,6 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
   double v2;
-  string in_pheno;
 
   ArrayXd beta, pivec, wvec;
   MatrixXd XtWX, V1, beta_final;
@@ -1387,7 +1440,6 @@ void Data::make_predictions_count(int const& ph, int const& val) {
 
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
-  string in_pheno;
   ArrayXd etavec, pivec, zvec, score;
   MatrixXd betaold, betanew, XtW, XtWX, XtWZ;
   MatrixXd ident_l1 = MatrixXd::Identity(bs_l1,bs_l1);
@@ -1438,7 +1490,6 @@ void Data::make_predictions_count_loocv(int const& ph, int const& val) {
   int bs_l1 = params.total_n_block * params.n_ridge_l0;
   int ph_eff = params.write_l0_pred ? 0 : ph;
   double v2;
-  string in_pheno;
 
   ArrayXd beta, pivec;
   MatrixXd XtWX, V1, beta_final;
