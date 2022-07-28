@@ -118,3 +118,5 @@ to install a Ubuntu distribution so that you will be able to run REGENIE
 from a Linux terminal.
 You can download pre-compiled REGENIE binaries from the [Github repository](https://github.com/rgcgithub/regenie/releases) 
 (note that you will need to install the `libgomp1` library).
+
+Note: from your Windows command prompt, you can run REGENIE using `wsl regenie`.
