@@ -768,6 +768,18 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]</td>
 </tr>
 <tr>
+<td><code>--par-region</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>specify build code to determine bounds for PAR1/PAR2 regions (can be 'b36/b37/b38/hg18/hg19/hg38' or 'start,end' bp bounds of non-PAR region) [default=hg38]</td>
+</tr>
+<tr>
+<td><code>--force-qt</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>force QT run for traits with fewer than 10 unique values</td>
+</tr>
+<tr>
 <td><code>--threads</code></td>
 <td>INT</td>
 <td>Optional</td>
@@ -862,6 +874,12 @@ will be generated in ‘file.regenie.Ydict’. Note that allele frequency, sampl
 all analyzed samples.</p>
 <p>If option <code>--write-samples</code> was used, IDs of samples used for each trait will be written in files
 <code>file_&lt;phenotype1_name&gt;.regenie.ids,...,file_&lt;phenotypeP_name&gt;.regenie.ids</code> (tab separated, no header).</p>
+<p>When using <code>--par-region</code>, the default boundaries used for the chrX PAR regions are:</p>
+<ul>
+<li>b36/hg18: 2709520 and 154584238</li>
+<li>b37/hg19: 2699520 and 154931044</li>
+<li>b38/hg38: 2781479 and 155701383</li>
+</ul>
 <h2 id="gene-based-testing">Gene-based testing</h2>
 <p>Starting from version 3.0, Step 2 of <strong>regenie</strong> provides a complimentary set of gene-based test 
 in addition to the burden testing functionality introduced in version 2.0.

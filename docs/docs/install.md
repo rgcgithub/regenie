@@ -46,13 +46,13 @@ You can compile the binary using CMake version >=3.13 (instead of `make` as abov
 ```
 mkdir -p build
 cd build
-cmake ..
+BGEN_PATH=<path_to_bgen_lib> cmake ..
 make
 ```
 This will generate the binary in the `build/` subdirectory. 
 To use with Boost Iostreams and/or Intel MKL library,
 add the corresponding flags before the `cmake` command on line 3
-(e.g. `HAS_BOOST_IOSTREAM=1 cmake ..`).
+(e.g. `BGEN_PATH=<path_to_bgen_lib> HAS_BOOST_IOSTREAM=1 cmake ..`).
 
 ### With Docker
 Alternatively, you can use a Docker image to run **regenie**. 
@@ -110,3 +110,11 @@ using multithreading through [OpenMP](https://www.openmp.org).
 
 When running the SKAT/ACAT gene-based tests, we recommend to use at most 2 threads and 
 instead parallelize the runs over partitions of the genome (e.g. groups of genes).
+
+### For Windows platforms
+
+If you are on a Windows machine, we recommend to use [Windows Subsystem for Linux](https://docs.microsoft.com/en-us/windows/wsl/install) (WSL)
+to install a Ubuntu distribution so that you will be able to run REGENIE
+from a Linux terminal.
+You can download pre-compiled REGENIE binaries from the [Github repository](https://github.com/rgcgithub/regenie/releases) 
+(note that you will need to install the `libgomp1` library).

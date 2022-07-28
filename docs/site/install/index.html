@@ -166,6 +166,8 @@
                 
             <li class="second-level"><a href="#threading">Threading</a></li>
                 
+            <li class="second-level"><a href="#for-windows-platforms">For Windows platforms</a></li>
+                
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
@@ -209,13 +211,13 @@ to the installed MKL library path.</p>
 <p>You can compile the binary using CMake version &gt;=3.13 (instead of <code>make</code> as above).</p>
 <pre><code>mkdir -p build
 cd build
-cmake ..
+BGEN_PATH=&lt;path_to_bgen_lib&gt; cmake ..
 make
 </code></pre>
 <p>This will generate the binary in the <code>build/</code> subdirectory. 
 To use with Boost Iostreams and/or Intel MKL library,
 add the corresponding flags before the <code>cmake</code> command on line 3
-(e.g. <code>HAS_BOOST_IOSTREAM=1 cmake ..</code>).</p>
+(e.g. <code>BGEN_PATH=&lt;path_to_bgen_lib&gt; HAS_BOOST_IOSTREAM=1 cmake ..</code>).</p>
 <h3 id="with-docker">With Docker</h3>
 <p>Alternatively, you can use a Docker image to run <strong>regenie</strong>. 
 A guide to using docker is available on 
@@ -255,7 +257,13 @@ efficient linear algebra operations and this uses threading where possible.</p>
 500K imputed data), step 2 of <strong>regenie</strong> has been optimized by 
 using multithreading through <a href="https://www.openmp.org">OpenMP</a>.</p>
 <p>When running the SKAT/ACAT gene-based tests, we recommend to use at most 2 threads and 
-instead parallelize the runs over partitions of the genome (e.g. groups of genes).</p></div>
+instead parallelize the runs over partitions of the genome (e.g. groups of genes).</p>
+<h3 id="for-windows-platforms">For Windows platforms</h3>
+<p>If you are on a Windows machine, we recommend to use <a href="https://docs.microsoft.com/en-us/windows/wsl/install">Windows Subsystem for Linux</a> (WSL)
+to install a Ubuntu distribution so that you will be able to run REGENIE
+from a Linux terminal.
+You can download pre-compiled REGENIE binaries from the <a href="https://github.com/rgcgithub/regenie/releases">Github repository</a> 
+(note that you will need to install the <code>libgomp1</code> library).</p></div>
         
         
     </div>
