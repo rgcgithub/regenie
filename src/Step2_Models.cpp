@@ -234,12 +234,12 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
   if( params.strict_mode ) {
 
     if(params.skip_blups && dt_thr->is_sparse) // Gsparse is on raw scale (must have yres centered)
-      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / (sqrt( params.n_analyzed - params.ncov ));
+      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / (sqrt( params.n_analyzed - params.ncov_analyzed ));
     else
-      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / sqrt( params.n_analyzed - params.ncov );
+      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / sqrt( params.n_analyzed - params.ncov_analyzed );
 
     // estimate
-    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( sqrt(params.n_analyzed - params.ncov) * gsc );
+    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( sqrt(params.n_analyzed - params.ncov_analyzed) * gsc );
 
   } else {
 
@@ -439,13 +439,15 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   double tol = 50*params->numtol;
   double dev, lrt;
 
-  ArrayXd betaold, se, etavec, pivec;
+  ArrayXd betaold, se, etavec, pivec, offset;
 
   MapcArXd Y (pheno_data->phenotypes_raw.col(ph).data(), pheno_data->phenotypes_raw.rows());
   MapcMatXd Xmat (pheno_data->new_cov.data(), pheno_data->new_cov.rows(), pheno_data->new_cov.cols());
-  MapcArXd offset (m_ests->blups.col(ph).data(), m_ests->blups.rows());
   MapcArXb mask (pheno_data->masked_indivs.col(ph).data(), pheno_data->masked_indivs.rows());
   col_incl = Xmat.cols();
+
+  if(params->blup_cov) offset = ArrayXd::Zero(m_ests->blups.rows()); // if step 1 is covariate
+  else offset = m_ests->blups.col(ph).array();
 
   // with firth approx. => trial 1: use maxstep_null
   // trial=1+ => start at 0 (update maxstep & niter)
@@ -509,25 +511,30 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
 
   // fit null firth (in parallel for MT mode)
 #if defined(_OPENMP)
-  if(params->n_pheno>2) setNbThreads(1); // for < 3, mt in eigen should be similar
-#pragma omp parallel for schedule(dynamic) if(params->n_pheno>2)
+  if((params->n_pheno>2) && !params->blup_cov) setNbThreads(1); // for < 3, mt in eigen should be similar
+#pragma omp parallel for schedule(dynamic) if((params->n_pheno>2) && !params->blup_cov)
 #endif
   for( int i = 0; i < params->n_pheno; ++i ) {
     if( !params->pheno_pass(i) ) continue;
+
+    if(params->blup_cov) // add step 1 predictions as a covariate (skip multithreading)
+      pheno_data->new_cov.rightCols(1) = m_ests->blups.col(i);
 
     MapArXd bvec (firth_est->beta_null_firth.col(i).data(), firth_est->beta_null_firth.rows());
     has_converged(i) = fit_approx_firth_null(chrom, i, pheno_data, m_ests, bvec, params);
     if(!has_converged(i)) continue; // cannot use break
 
-    if(params->test_mode)
-      firth_est->cov_blup_offset.col(i) = pheno_data->new_cov * bvec.head(pheno_data->new_cov.cols()).matrix() + m_ests->blups.col(i); // store offset used for approx firth 
+    if(params->test_mode){
+      firth_est->cov_blup_offset.col(i) = pheno_data->new_cov * bvec.head(pheno_data->new_cov.cols()).matrix(); // store offset used for approx firth
+     if(!params->blup_cov) firth_est->cov_blup_offset.col(i) += m_ests->blups.col(i); // if offset  
+    }
 
     if(params->write_null_firth)
       (*firth_est->firth_est_files[i]) << chrom << " " << bvec.head(params->ncov).matrix().transpose().format(Fmt) << endl;
 
   }
 #if defined(_OPENMP)
-  if(params->n_pheno>2) setNbThreads(params->threads);
+  if((params->n_pheno>2) && !params->blup_cov) setNbThreads(params->threads);
 #endif
 
   // check if some did not converge
@@ -552,6 +559,8 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
     params->pheno_pass = has_converged;
 
   }
+  if(params->blup_cov)
+    pheno_data->new_cov.rightCols(1).array() = 0;
 
   if(silent || !params->firth) return;
 

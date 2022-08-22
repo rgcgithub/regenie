@@ -1535,6 +1535,8 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
 
 bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, const double& tol){
 
+  wvec = mask.select(pivec*(1-pivec), 1); // get_pvec below causes wvec to be at least 9.999800003056407e-06
+  /*
   wvec = ArrayXd::Ones( mask.size() );// set all entries to 1
   // avoid 0 weights by setting w to eps when p is within eps of 0/1
   // (strategy used in glmnet)
@@ -1551,6 +1553,7 @@ bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, con
 
   }
   //wvec = masks.col(ph).array().select(pivec * (1 - pivec), 1);
+  */
 
   return (wvec == 0).any();
 }
@@ -1558,6 +1561,12 @@ bool get_wvec(ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXb>& mask, con
 void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, const Ref<const ArrayXd>& offset, const Ref<const MatrixXd>& Xmat, double const& eps){
 
   etavec = offset + (Xmat * beta.matrix()).array();
+  get_pvec(pivec, etavec, eps);
+
+}
+
+void get_pvec(ArrayXd& pivec, const Ref<const ArrayXd>& etavec, double const& eps){
+
   // strategy used in glm
   pivec = (etavec > ETAMAXTHR).select( 1 /(1+eps),
       (etavec < ETAMINTHR).select( eps/(1+eps), 1 - 1/(etavec.exp() + 1) ) );

@@ -281,6 +281,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ("minHOMs", "minimum number of homozygote ALT carriers in recessive test", cxxopts::value<double>(params->minHOMs),"FLOAT(=0)")
+    ("prs-cov", "include step 1 predictions as covariate rather than offset")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
@@ -365,6 +366,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("use-relative-path") ) params->use_rel_path = true;
     if( vm.count("ignore-pred") ) params->skip_blups = true;
     if( vm.count("use-prs") ) params->use_prs = true;
+    if( vm.count("prs-cov") ) params->blup_cov = true;
     if( vm.count("force-impute") ) params->rm_missing_qt = false;
     if( vm.count("no-split") ) params->split_by_pheno = false;
     if( vm.count("approx") ) params->firth_approx = true;
@@ -1032,6 +1034,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     }
     if(vm.count("sex-specific") && (params->file_type == "bgen") && !params->bgenSample)
       throw "must specifying sample file using --sample for sex-specific analyses";
+    if(params->blup_cov && (!(params->use_prs || !params->skip_blups) || !params->test_mode || (params->firth && !params->firth_approx) )){
+      params->blup_cov = false; valid_args[ "prs-cov" ] = false;
+    }
 
     if(params->test_mode && (params->file_type == "pgen") && !params->fastMode)
       throw "cannot use --nostream with PGEN format.";

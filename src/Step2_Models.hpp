@@ -29,7 +29,7 @@
 
 struct f_ests {
 
-  Eigen::MatrixXd covs_firth, cov_blup_offset;
+  Eigen::MatrixXd cov_blup_offset;
   Eigen::MatrixXd beta_null_firth;
   std::vector<std::shared_ptr<Files>> firth_est_files;
   double deviance_logistic;

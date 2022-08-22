@@ -1890,7 +1890,7 @@ void Data::print_test_info(){
     default:
       throw "unrecognized test value";
   }
-  wgr_string = ( params.skip_blups && !params.interaction_prs ?  "" : "-WGR" );
+  wgr_string = ( params.skip_blups && !params.interaction_prs && !params.blup_cov ?  "" : "-WGR" );
 
 
   if(params.htp_out){
@@ -2113,9 +2113,7 @@ void Data::set_nullreg_mat(){
 
   // for firth  approx
   if(params.firth_approx || (params.use_SPA && params.vc_test) ){ // for vc tests with spa, firth is used to correct skato-burden
-    firth_est.covs_firth = MatrixXd::Zero(params.n_samples, pheno_data.new_cov.cols() + 1);
-    firth_est.covs_firth.leftCols(pheno_data.new_cov.cols()) = pheno_data.new_cov;
-    firth_est.beta_null_firth = MatrixXd::Zero(firth_est.covs_firth.cols(), params.n_pheno);
+    firth_est.beta_null_firth = MatrixXd::Zero(pheno_data.new_cov.cols() + 1, params.n_pheno);
     if(params.test_mode) firth_est.cov_blup_offset = MatrixXd::Zero(params.n_samples, params.n_pheno);
 
     // open streams to write firth null estimates
@@ -2331,11 +2329,13 @@ void Data::analyze_block(int const& chrom, int const& n_snps, tally* snp_tally, 
 
 void Data::compute_res(){
 
-  res = pheno_data.phenotypes - m_ests.blups;
+  if(params.blup_cov) // blup as covariate
+    get_lm_resid(res, m_ests.blups, pheno_data.phenotypes); 
+  else res = pheno_data.phenotypes - m_ests.blups;
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
   p_sd_yres = res.colwise().norm();
-  p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov);
+  p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov_analyzed); // if blup is cov
   res.array().rowwise() /= p_sd_yres.array();
 
   if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 

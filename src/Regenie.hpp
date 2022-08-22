@@ -211,7 +211,7 @@ struct param {
   uint32_t n_samples = 0, n_analyzed = 0; // number of samples
   int n_pheno = 0; // number of phenotypes
   int n_cov = 0; // number of covariates
-  int ncov, ncov_interaction; // number of linearly independent covariates
+  int ncov, ncov_analyzed, ncov_interaction; // number of linearly independent covariates
   uint32_t n_variants = 0, nvs_stored = 0; // number of variants in genotype file
   std::map <std::string, uint32_t> FID_IID_to_ind;
   std::vector< std::vector<std::string> > FIDvec; // store FID/IID separately (for write-samples option)
@@ -263,7 +263,7 @@ struct param {
   bool fastMode = true; // use fast version of step 2 
   bool dosage_mode = false; // track if dosages are present for step 2
   bool split_by_pheno = true; // specify whether to write testing result in separate phenotype files
-  bool skip_blups = false;
+  bool skip_blups = false, blup_cov = false;
   bool with_flip = true; // can flip to minor allele for all variants
   bool use_prs = false; // adjust for whole genome PRS (no LOCO)
   double min_MAC = 5, min_MAC_mask, minHOMs = 0; // minimum MAC of SNPs in testing mode

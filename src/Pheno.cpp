@@ -956,7 +956,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
       //cerr << pheno_data->interaction_cov_res.topRows(5) << "\n\n";
 
       // remove covariate effects
-      if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_X, params, pheno_data, sout))
+      if(!residualize_matrix(pheno_data->interaction_cov_res, pheno_data->scl_inter_X, pheno_data->new_cov.leftCols( params->ncov + (params->blup_cov && (params->trait_mode == 1) ? -1 : 0)), params->n_analyzed, params->numtol))
         throw "Var=0 for the interaction risk factor.";
 
     }
@@ -975,6 +975,9 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   // residualize phenotypes (skipped for nonQTs when testing)
   if( !params->getCorMat && (!params->test_mode || (params->trait_mode==0)) ) 
     residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
+
+  // if using step 1 preds as covariate
+  check_cov_blup(pheno_data, params);
 
   // store indices for ADAM
   if(params->use_adam && params->adam_mini){
@@ -1409,6 +1412,19 @@ void check_sd(const Eigen::Ref<const Eigen::MatrixXd>& mat, int const& n, double
 
 }
 
+// only in step 2
+void check_cov_blup(struct phenodt* pheno_data, struct param* params) {
+
+  params->ncov_analyzed = params->ncov + (int) params->blup_cov;
+
+  // for BTs, add extra column for LOCO PRS
+  if((params->trait_mode==1) && params->blup_cov){
+    pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + 1);
+    params->ncov = pheno_data->new_cov.cols();
+    params->ncov_analyzed = params->ncov;
+  }
+
+}
 
 void residualize_phenotypes(struct param const* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
   sout << "   -residualizing and scaling phenotypes...";
@@ -1435,22 +1451,29 @@ void residualize_phenotypes(struct param const* params, struct phenodt* pheno_da
   sout << " (" << duration.count() << "ms) "<< endl;
 }
 
-bool residualize_matrix(MatrixXd& mat, ArrayXd& scf, struct param const* params, struct phenodt* pheno_data, mstream& sout) {
+bool residualize_matrix(MatrixXd& mat, ArrayXd& scf, const Eigen::Ref<const Eigen::MatrixXd>& X, size_t const& N, double const& numtol) {
 
   // residuals (centered) 
-  MatrixXd beta = mat.transpose() * pheno_data->new_cov;
-  mat -= pheno_data->new_cov * beta.transpose();
+  MatrixXd beta = mat.transpose() * X;
+  mat -= X * beta.transpose();
 
-  scf = mat.colwise().norm().array() / sqrt(params->n_analyzed - params->ncov);
+  scf = mat.colwise().norm().array() / sqrt(N - X.cols());
 
   // check sd is not 0 
-  if(scf.minCoeff() < params->numtol)
+  if(scf.minCoeff() < numtol)
     return false;
 
   // scale
   mat.array().rowwise() /= scf.matrix().transpose().array();
 
   return true;
+}
+
+void get_lm_resid(MatrixXd& res, const Eigen::Ref<const Eigen::MatrixXd>& step1_preds, const Eigen::Ref<const Eigen::MatrixXd>& Y) {
+
+  ArrayXd beta = (1 / step1_preds.colwise().squaredNorm().array()) * (step1_preds.array() * Y.array()).colwise().sum();
+  res = Y - step1_preds * beta.matrix().asDiagonal();
+
 }
 
 void apply_QR(MatrixXd& mat, struct param const* params, bool const& scale){

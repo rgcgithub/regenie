@@ -79,7 +79,7 @@ void get_interaction_terms(const int& isnp, const int& thread, struct phenodt* p
   //if(isnp==0) cerr << iMat.topRows(10) << endl; 
 
   // remove covariate effects
-  snp_data->skip_int = !residualize_matrix(iMat, pheno_data->scf_i[thread], params, pheno_data, sout);
+  snp_data->skip_int = !residualize_matrix(iMat, pheno_data->scf_i[thread], pheno_data->new_cov.leftCols( params->ncov + (params->blup_cov && (params->trait_mode == 1) ? -1 : 0)), params->n_analyzed, params->numtol);
   if(snp_data->skip_int) return;
 
   // start filling matrix with C*G terms (if not condtl, also add residual of G_E)
@@ -156,7 +156,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
 
     // using sandwich estimator
     if(params->no_robust) // model-based
-      Vmat = e_sq.col(i).sum() / (pheno_data->Neff(i) - params->ncov - Z.cols()) * Z; // s^2*(XtX)^-1
+      Vmat = e_sq.col(i).sum() / (pheno_data->Neff(i) - params->ncov_analyzed - Z.cols()) * Z; // s^2*(XtX)^-1
     else if(params->force_hc4 && (snp_data->mac(i) <= params->rareMAC_inter)) // HC4
       Vmat = Z * pheno_data->Hmat[thread].transpose() * (e_sq.col(i).array() / hc4).matrix().asDiagonal() * pheno_data->Hmat[thread] * Z;
     else // HC3
@@ -445,7 +445,8 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
   // fill rest of matrix [ G, C*G ]
   // remove covariate effects (not done for marginal test)
   // use projection from linear regression so only needs to be done once for all traits
-  residualize_geno(isnp, thread, snp_data, true, pheno_data->new_cov, gblock, params);
+  // with step 1 preds as cov, ignore last column of X
+  residualize_geno(isnp, thread, snp_data, true, pheno_data->new_cov.leftCols( params->ncov + (params->blup_cov ? -1 : 0)), gblock, params);
   pheno_data->Hmat[thread].col(beg) = gblock->Gmat.col(isnp);
   //cerr << pheno_data->Hmat[thread].topRows(3) << endl;
 
@@ -459,7 +460,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
   if(!params->htp_out) head = print_sum_stats_head(index, snpinfo);
 
   // for logistic regression
-  ArrayXd bhat, etavec, pivec, offset, hvec;
+  ArrayXd bhat, etavec, pivec, hvec;
   MatrixXd WX, Vmat, XWX_inv, V_robust;
 
   for(int i = 0; i < params->n_pheno; ++i ){
@@ -471,12 +472,12 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
     MapArXd Y (pheno_data->phenotypes_raw.col(i).data(), pheno_data->phenotypes_raw.rows());
     MapArXb mask (pheno_data->masked_indivs.col(i).data(), pheno_data->masked_indivs.rows());
-    offset = m_ests->blups.col(i).array() + (pheno_data->new_cov * m_ests->bhat_start.col(i)).array();
+    MapcArXd offset (m_ests->offset_nullreg.col(i).data(), m_ests->offset_nullreg.rows());
 
     // starting values
     bhat = ArrayXd::Zero(np+beg);
-    etavec = offset;
-    pivec = mask.select(1 - 1 / (etavec.exp() + 1), 0.5) ;
+    etavec = mask.select(offset, 0);
+    get_pvec(pivec, etavec, params->numtol_eps);
 
     if(!fit_logistic(Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, params, sout))
       continue; // no results for trait
@@ -674,14 +675,12 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
 
   // for firth regression
   double dev, dev_s, se_val;
-  ArrayXd bhat, bhat_s, se, se_s, etavec, pivec, offset;
+  ArrayXd bhat, bhat_s, se, se_s, etavec, pivec;
   std::ostringstream buffer, buffer_joint;
 
   MapArXd Y (pheno_data->phenotypes_raw.col(ipheno).data(), pheno_data->phenotypes_raw.rows());
   MapArXb mask (pheno_data->masked_indivs.col(ipheno).data(), pheno_data->masked_indivs.rows());
-
-  offset = m_ests->blups.col(ipheno).array();
-  offset += (pheno_data->new_cov * firth_est->beta_null_firth.block(0,ipheno,pheno_data->new_cov.cols(),1)).array();
+  MapcArXd offset (firth_est->cov_blup_offset.col(ipheno).data(), firth_est->cov_blup_offset.rows());
 
   // fit full model with G & C*G
   // starting values

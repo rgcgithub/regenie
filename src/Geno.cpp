@@ -2849,7 +2849,7 @@ void residualize_geno(int const& isnp, int const& thread_num, variant_block* snp
 
     // scale
     snp_data->scale_fac = gblock->Gmat.col(isnp).norm();
-    snp_data->scale_fac /= sqrt( params->n_analyzed - params->ncov );
+    snp_data->scale_fac /= sqrt( params->n_analyzed - X.cols() );
 
     if( snp_data->scale_fac < params->numtol ) {
       snp_data->ignored = true;
