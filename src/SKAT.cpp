@@ -1359,6 +1359,7 @@ double SKATO_integral_fn(double* x){ // variables used beside x are global
   chi_squared chisq1( 1 );
 
   if(skato_state == 1) return 0; // skip if failed for other x values
+  if(*x == 0) {skato_state = 1; return 0;} // failed
 
   // get first term in integral (1-cdf)
   if( val > (skato_muQ * 1e4) ) S = 0; // value check from SKAT R package
@@ -1387,6 +1388,7 @@ double SKATO_integral_fn_liu(double* x){ // variables used beside x are global
   chi_squared chisq1( 1 );
 
   if(skato_state == 1) return 0; // skip if failed for other x values
+  if(*x == 0) {skato_state = 1; return 0;} // failed
 
   chi_squared chisqL( skato_dfQ );
 
