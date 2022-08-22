@@ -158,7 +158,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     betavec = betanew;
     dev_old = dev_new;
   }
-  if(params->debug) cerr << "Log. reg iter#" << niter_cur << ": beta\n" << betanew.matrix().transpose() << "\nscore_max=" << score.abs().maxCoeff() << ";dev_diff=" << 
+  if(params->debug) cerr << "Log. reg iter#" << niter_cur << ": beta=" << betanew.matrix().transpose() << "; score_max=" << score.abs().maxCoeff() << ";dev_diff=" << 
    setprecision(16) << abs(dev_new - dev_old)/(0.1 + abs(dev_new)) << "\n";
 
   // If didn't converge (check frac. change in deviances)
@@ -949,6 +949,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   double v2, pred, p1;
   string in_pheno;
   ifstream infile;
+  ofstream ofile;
 
   ArrayXd beta, pivec, wvec;
   MatrixXd XtWX, V1, b_loo;
@@ -962,6 +963,8 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   int nchunk = ceil( params->cv_folds * bs_l1 * sizeof(double) * 1.0 / max_bytes );
   int j_start, chunk, size_chunk, target_size = params->cv_folds / nchunk;
   sout << (params->verbose ? to_string(nchunk) + " chunks..." : "" ) << endl;
+  if(params->debug && (params->n_pheno == 1) )
+    openStream(&ofile, files->out_file + "_beta.l1.txt", ios::out, sout);
 
   for(int ph = 0; ph < params->n_pheno; ++ph ) {
     if( !params->pheno_pass(ph) ) continue;
@@ -987,7 +990,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
     // starting values for each trait
     beta = ArrayXd::Zero(bs_l1);
     for(int j = 0; j < params->n_ridge_l1; ++j ) {
-      if(params->debug) cerr << "Ridge param #" << j+1 << "\n";
+      if(params->debug) cerr << "Ridge param #" << j+1 << " (=" << params->tau[0](j) << ")\n";
 
       // using warm starts (i.e. set final beta of previous ridge param 
       // as initial beta for current ridge param)
@@ -998,6 +1001,10 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         sout << "WARNING: Ridge logistic regression did not converge! (Increase --niter)\n";
         l1->pheno_l1_not_converged(ph) = true;
         break;
+      }
+      if(params->debug && (params->n_pheno == 1) ){
+        IOFormat Fmt(FullPrecision, DontAlignCols, " ", "\n", "", "","","");
+        ofile << beta.matrix().transpose().format(Fmt) << "\n";
       }
 
       // compute Hinv
@@ -1055,6 +1062,9 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
+
+  if(params->debug && (params->n_pheno == 1) )
+    ofile.close();
 
   sout << endl;
 }
