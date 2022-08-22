@@ -55,4 +55,3 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 [Version 3.0](https://github.com/rgcgithub/regenie/releases/tag/v3.0) (New gene-based tests: SKAT, SKATO, ACATV, ACATO and NNLS [Non-Negative Least Square test]; New GxE and GxG interaction testing functionality; New conditional analysis functionality; see [release page](https://github.com/rgcgithub/regenie/releases/tag/v3.0) for minor additions)
 
 For past releases, see [here](RELEASE_LOG.md).
-
