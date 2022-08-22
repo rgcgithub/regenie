@@ -52,6 +52,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
   ArrayXd betaold, etavec, pivec, loco_offset, wvec;
   MatrixXd XtW;
   if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
+  if(params->w_interaction) m_ests->offset_nullreg.resize(pheno_data->new_cov.rows(), params->n_pheno);
   betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
 
   for(int i = 0; i < params->n_pheno; ++i ){
@@ -61,7 +62,11 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     MapArXd Y (pheno_data->phenotypes_raw.col(i).data(), pheno_data->phenotypes_raw.rows());
     MapArXb mask (pheno_data->masked_indivs.col(i).data(), pheno_data->masked_indivs.rows());
 
-    if(params->test_mode) loco_offset = m_ests->blups.col(i).array() * mask.cast<double>();
+    if(params->blup_cov) {
+      pheno_data->new_cov.rightCols(1) = (m_ests->blups.col(i).array() * mask.cast<double>()).matrix();
+      loco_offset = ArrayXd::Zero(Y.size(), 1);
+    } else if(params->test_mode) 
+      loco_offset = m_ests->blups.col(i).array() * mask.cast<double>();
     else loco_offset = ArrayXd::Zero(Y.size(), 1);
 
     // starting values
@@ -84,6 +89,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
       getBasis(m_ests->X_Gamma[i], params);
       if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.col(i) = betaold.matrix();
+      if(params->w_interaction) m_ests->offset_nullreg.col(i) = etavec;
     } else m_ests->offset_nullreg.col(i) = etavec;
 
     /*
