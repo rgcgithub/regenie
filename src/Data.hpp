@@ -83,6 +83,7 @@ class Data {
     void setmem();
     void calc_cv_matrices(struct ridgel0*);
     void level_0_calculations();
+    void write_l1_inputs(); 
     void exit_early();
     // output of step 1
     void output();

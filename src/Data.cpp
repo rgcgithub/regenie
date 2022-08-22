@@ -102,6 +102,8 @@ void Data::run_step1(){
   setmem();
   // level 0
   level_0_calculations();
+  // print y, offset used for level 1 
+  if(params.debug && params.use_loocv) write_l1_inputs();
   // level 1 ridge
   if(params.trait_mode == 0){ // QT
     if(params.use_loocv) ridge_level_1_loocv(&files, &params, &pheno_data, &l1_ests, sout);
@@ -820,6 +822,27 @@ void Data::prep_parallel_l1(){
 
   infile.close();
 
+}
+
+
+void Data::write_l1_inputs(){
+
+  // write Y
+  IOFormat Fmt(FullPrecision, DontAlignCols, " ", "\n", "", "","","");
+  ofstream ofile;
+  openStream(&ofile, files.out_file + "_y.txt", ios::out, sout);
+  if(params.trait_mode == 0)
+    ofile << pheno_data.phenotypes.format(Fmt) << "\n";
+  else
+    ofile << pheno_data.phenotypes_raw.format(Fmt) << "\n";
+  ofile.close();
+
+  // write offset
+  if(params.trait_mode != 0){
+    openStream(&ofile, files.out_file + "_offset.txt", ios::out, sout);
+    ofile << m_ests.offset_nullreg.format(Fmt) << "\n";
+    ofile.close();
+  }
 }
 
 void Data::exit_early(){
