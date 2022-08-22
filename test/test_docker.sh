@@ -172,6 +172,7 @@ rgcmd="--step 2 \
   --covarColList V1,V5 \
   --catCovarList V5 \
   --interaction V5 \
+  --force-qt \
   --out ${mntpt}test/test_bin_out_inter"
 
 # run regenie
@@ -199,6 +200,7 @@ rgcmd="$basecmd \
   --chrList 2,3 \
   --write-samples \
   --print-pheno \
+  --force-qt \
   --out ${mntpt}test/test_out"
 
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
@@ -224,6 +226,7 @@ echo -e "==>Running test #$i"
 # Next test
 rgcmd="$basecmd \
   --catCovarList V4 \
+  --force-qt \
   --extract ${mntpt}test/test_out.snplist \
   --out ${mntpt}test/test_out_extract"
 
@@ -251,6 +254,7 @@ rgcmd="--step 2 \
   --bsize 10 \
   --ignore-pred \
   --htp TEST \
+  --force-qt \
   --out ${mntpt}test/test_out_masks_V1"
 # run regenie
 docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
@@ -274,6 +278,7 @@ rgcmd="--step 2 \
   --aaf-bins 0.2 \
   --chrList 1,3 \
   --htp TEST \
+  --force-qt \
   --out ${mntpt}test/test_out_masks_V2"
 
 # run regenie
@@ -313,6 +318,7 @@ rgcmd="--step 2 \
   --mask-def ${mntpt}example/example_3chr.masks \
   --mask-lovo SET1,M1,0.2 \
   --htp TEST \
+  --force-qt \
   --out ${mntpt}test/test_out_masks_loo"
 
 # run regenie
@@ -342,6 +348,7 @@ rgcmd="--step 2 \
   --check-burden-files \
   --bsize 20 \
   --aaf-bins 0.2 \
+  --force-qt \
   --out ${mntpt}test/test_out_masks_V3"
 
 # run regenie
@@ -365,6 +372,7 @@ echo -e "==>Running test #$i"
 rgcmd="${basecmd/_3chr/} \
   --condition-list ${mntpt}example/snplist_rm.txt \
   --sex-specific female \
+  --force-qt \
   --out ${mntpt}test/test_out_cond"
 
 # run regenie
@@ -373,6 +381,7 @@ docker run -v ${REGENIE_PATH}:${mntpt} --rm $DOCKER_IMAGE regenie $rgcmd
 rgcmd="${basecmd/_3chr/} \
   --condition-list ${mntpt}example/snplist_rm.txt \
   --condition-file pgen,${mntpt}example/example \
+  --force-qt \
   --out ${mntpt}test/test_out_cond2"
 
 # run regenie
@@ -404,6 +413,7 @@ rgcmd="--step 2 \
   --bsize 15 \
   --aaf-bins 0.2 \
   --write-mask-snplist \
+  --force-qt \
   --out ${mntpt}test/test_out_vc"
 
 # run regenie
