@@ -919,7 +919,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
 
   // orthonormal basis (save number of lin. indep. covars.)
   params->ncov = getBasis(pheno_data->new_cov, params);
-  if(params->ncov > params->n_samples)
+  if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
 
   // compute offset for nonQT (only in step 1)
