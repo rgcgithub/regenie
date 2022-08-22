@@ -99,8 +99,9 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
 
   }
 
-  ncovars = params->ncov;
+  ncovars = params->ncov_analyzed;
   apply_single_p = params->apply_gene_pval_strategy;
+  if(apply_single_p) check_class_genep(params->genep_mask_sets_file, params->mask_map);
   debug_mode = params->debug;
 
   return with_flip;
@@ -114,6 +115,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
   sum_stats_str.resize(joint_tests_map.size());
   for (size_t i = 0; i < joint_tests_map.size(); i++)
     sum_stats_str[i].resize(params->n_pheno); // store sum stats for each test/phenotype
+  std::map <std::string, std::map <std::string, bool>>::iterator itr;
 
   for(int ph = 0; ph < params->n_pheno; ++ph) {
 
@@ -134,7 +136,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
     if( CHECK_BIT(test_list,joint_tests_map["acat"]) ) { // ACAT
       if(run_tests) {
         compute_acat(bs, ph, block_info);
-        if(apply_single_p && (plog >= 0)) overall_p["BURDEN-ACAT"] = plog;
+        if(apply_single_p && genep_all_masks && (plog >= 0)) overall_p["BURDEN-ACAT"] = plog;
       }
       if(print_stats) sum_stats_str[joint_tests_map["acat"]][ph] = print_output(joint_tests_map["acat"], ph+1, chrom, block, pheno_name, params);
     } 
@@ -153,28 +155,23 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
         if(print_stats) sum_stats_str[joint_tests_map["gates"]][ph] = print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
       } 
       if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
-        if(run_tests) compute_nnls(pheno_data->masked_indivs.col(ph), yres, true); 
+        if(run_tests && ((apply_single_p && genep_all_masks) || !apply_single_p)) compute_nnls(pheno_data->masked_indivs.col(ph), yres, true); 
 
-        if(apply_single_p || !nnls_verbose_out) { 
-          // default output
-          if(print_stats) sum_stats_str[joint_tests_map["nnls"]][ph] = print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
-        } 
-        if(apply_single_p || nnls_verbose_out) { 
+        if( ((apply_single_p && genep_all_masks) || !nnls_verbose_out) && print_stats) // default output
+          sum_stats_str[joint_tests_map["nnls"]][ph] = print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
+        if((apply_single_p && genep_all_masks) || nnls_verbose_out) { 
           // verbose output with NNLS pos & neg split into two 
           // 1. NNLS pos (test code 5)
-          if(run_tests && (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1)) get_pv(pval_nnls_pos);
+          if(run_tests && valid_pval(pval_nnls_pos)) get_pv(pval_nnls_pos);
           else reset_vals();
           if(print_stats) sum_stats_str[joint_tests_map["nnls_pos"]][ph] = print_output(joint_tests_map["nnls_pos"], ph+1, chrom, block, pheno_name, params);
           // 2. NNLS neg (test code 6)
-          if(run_tests && (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1)) get_pv(pval_nnls_neg);
+          if(run_tests && valid_pval(pval_nnls_neg)) get_pv(pval_nnls_neg);
           else reset_vals();
           if(print_stats) sum_stats_str[joint_tests_map["nnls_neg"]][ph] = print_output(joint_tests_map["nnls_neg"], ph+1, chrom, block, pheno_name, params);
         }
 
-        if( run_tests && apply_single_p &&
-            (pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
-            (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) 
-          ) {
+        if( run_tests && apply_single_p && genep_all_masks && valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg) ) {
           get_pv(pval_nnls_pos);overall_p["NNLS_POS"] = plog;
           get_pv(pval_nnls_neg);overall_p["NNLS_NEG"] = plog;
         }
@@ -185,11 +182,10 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
     // should at least have burden-acat p-value
     if(apply_single_p) {
       if(run_tests) run_single_p_acat(bs, chrom, block, ph, pheno_name, block_info, overall_p, gblock, yres, pheno_data->masked_indivs.col(ph), sum_stats_str, params);
-      // in case printing to single file
-      else if(!params->split_by_pheno) {
-        sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", "", ph+1, chrom, block, pheno_name, params);
-        sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
-      }
+      // in case printing to single file and test failed
+      else if(!params->split_by_pheno) 
+        for (itr = gene_p_tests.begin(); itr !=  gene_p_tests.end(); ++itr) 
+          sum_stats_str[joint_tests_map["gene_p"]][ph].append(print_gene_output("GENE_P" + itr->first, "", ph+1, chrom, block, pheno_name, params));
     }
 
   }
@@ -538,99 +534,123 @@ double JTests::get_me(const Ref<const MatrixXd>& ldmat){
 
 void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block, int const& ph, const string& pheno_name, std::vector<variant_block>& block_info, std::map<std::string, double>& overall_p, struct geno_block const* gblock, const Eigen::Ref<const Eigen::MatrixXd>& yres, const Eigen::Ref<const MatrixXb>& mask, vector<vector<string>>& sum_stats_str, struct param const* params){
 
-  int ip;
   double max_logp = -1, pv; 
-  string mname, max_logp_mask = "NA";
+  string mname, max_logp_mask = "";
   vector<string> keep_tests = { "ACATV", "SKATO-ACAT" };
   ArrayXd pvals_gene;
-  std::map <std::string, double> overall_p_m1;
-  std::map <std::string, double>::iterator itr;
 
-  // overall
-  good_vars = false;
-  for(int isnp = 0; isnp < bs; isnp++){
-
-    if(block_info[isnp].skip_for_vc) continue; 
-    mname = block_info[isnp].mask_name;
-
-    // identify M1 masks
-    good_vars(isnp) = (mname == "M1") || (mname == "pLoF");
-
-    for(auto const& extract_test : keep_tests)
-      if(in_map(extract_test, block_info[isnp].sum_stats_vc)){
-        pv = block_info[isnp].sum_stats_vc[extract_test](ph,1); 
-        if(pv>=0){
-          overall_p[extract_test + "." + mname] = pv;
-          if(pv>max_logp){
-            max_logp_mask = mname;
-            max_logp = pv;
+  // gene_p combining all masks
+  if( genep_all_masks ){
+    // get SKATO/ACATV p-values as well as top mask
+    for(int imask = 0; imask < bs; imask++){
+      if(block_info[imask].skip_for_vc) continue; 
+      mname = block_info[imask].mask_name;
+      for(auto const& extract_test : keep_tests)
+        if(in_map(extract_test, block_info[imask].sum_stats_vc)){
+          pv = block_info[imask].sum_stats_vc[extract_test](ph,1); 
+          if(pv>=0){
+            overall_p[extract_test + "." + mname] = pv;
+            if(pv>max_logp){
+              max_logp_mask = mname;
+              max_logp = pv;
+            }
           }
-          if(good_vars(isnp)) overall_p_m1[extract_test + "." + mname] = pv; // have m1 signal
         }
-      }
-
-  }
-
-  // combine all p-values and pass through acat
-  if(overall_p.size()>0){
-    df_test = overall_p.size();
-    pvals_gene.resize( df_test );
-    ip = 0;
-    for (itr = overall_p.begin(); itr !=  overall_p.end(); ++itr) 
-      pvals_gene(ip++) = itr->second;
-    get_pv( get_acat(pvals_gene) );
-    sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", max_logp_mask, ph+1, chrom, block, pheno_name, params);
-  } else if(!params->split_by_pheno){
-    reset_vals();
-    sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", "", ph+1, chrom, block, pheno_name, params);
-  }
-
-  // for M1 masks
-  if(good_vars.any()){
-    // run acat only on M1 signals
-    compute_acat(bs, ph, block_info);
-    if(plog >= 0) overall_p_m1["BURDEN-ACAT"] = plog;
-    // run nnls only on M1 signals
-    if( CHECK_BIT(test_list, joint_tests_map["nnls"]) ) {
-      compute_qr_G(mask, gblock);
-      pval_nnls_pos = -1; pval_nnls_neg = -1;
-      compute_nnls(mask, yres, false); 
-      if((pval_nnls_pos >= 0) && (pval_nnls_pos <= 1) &&
-          (pval_nnls_neg >= 0) && (pval_nnls_neg <= 1) ) {
-        get_pv(pval_nnls_pos);overall_p_m1["NNLS_POS"] = plog;
-        get_pv(pval_nnls_neg);overall_p_m1["NNLS_NEG"] = plog;
-      }; 
     }
-    // apply acat to all p for M1
-    if(overall_p_m1.size()>0){
-      df_test = overall_p_m1.size();
-      pvals_gene.resize( df_test );
-      ip = 0;
-      for (itr = overall_p_m1.begin(); itr !=  overall_p_m1.end(); ++itr) 
-        pvals_gene(ip++) = itr->second;
+    // combine all p-values and pass through acat
+    if(overall_p.size()>0){
+      map_to_vec(df_test, overall_p, pvals_gene);
       get_pv( get_acat(pvals_gene) );
-      sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+      sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", max_logp_mask, ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
       reset_vals();
-      sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+      sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P", "", ph+1, chrom, block, pheno_name, params);
+    }
+  }
+
+  // go through each set of masks
+  std::map <std::string, std::map <std::string, bool>>::iterator itr;
+  for (itr = gene_p_tests.begin(); itr !=  gene_p_tests.end(); ++itr) { 
+
+    std::map <std::string, double> overall_p_set;
+    good_vars = false;
+    max_logp = -1;
+    max_logp_mask = "";
+    bool get_top_mask = itr->second.size() > 1;
+
+    // identify all the masks in the set
+    for(int imask = 0; imask < bs; imask++){
+      mname = block_info[imask].mask_name;
+      good_vars(imask) = in_map(mname, itr->second);
+      if(!good_vars(imask)) continue;
+      if(block_info[imask].skip_for_vc) continue; 
+      for(auto const& extract_test : keep_tests)
+        if( in_map(extract_test, block_info[imask].sum_stats_vc) ){
+          pv = block_info[imask].sum_stats_vc[extract_test](ph,1); 
+          if(pv>=0){
+            overall_p_set[extract_test + "." + mname] = pv;
+            if(get_top_mask && (pv > max_logp)){
+              max_logp_mask = mname;
+              max_logp = pv;
+            }
+          }
+        }
     }
 
-  } else if(!params->split_by_pheno){
-    reset_vals();
-    sum_stats_str[joint_tests_map["gene_m1_p"]][ph] = print_gene_output("GENE_M1_P", "", ph+1, chrom, block, pheno_name, params);
+    if(good_vars.any()){
+      // run acat
+      compute_acat(bs, ph, block_info);
+      if(plog >= 0) {
+        overall_p_set["BURDEN-ACAT"] = plog;
+        sum_stats_str[joint_tests_map["acat"]][ph].append(print_output(joint_tests_map["acat"], itr->first, ph+1, chrom, block, pheno_name, params));
+      }
+      // run nnls
+      if( CHECK_BIT(test_list, joint_tests_map["nnls"]) ) {
+        compute_qr_G(mask, gblock);
+        pval_nnls_pos = -1; pval_nnls_neg = -1;
+        compute_nnls(mask, yres, false); 
+        if(valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg)) {
+          sum_stats_str[joint_tests_map["nnls"]][ph].append(print_output(joint_tests_map["nnls"], itr->first, ph+1, chrom, block, pheno_name, params));
+          get_pv(pval_nnls_pos);overall_p_set["NNLS_POS"] = plog;
+          sum_stats_str[joint_tests_map["nnls_pos"]][ph].append(print_output(joint_tests_map["nnls_pos"], itr->first, ph+1, chrom, block, pheno_name, params));
+          get_pv(pval_nnls_neg);overall_p_set["NNLS_NEG"] = plog;
+          sum_stats_str[joint_tests_map["nnls_neg"]][ph].append(print_output(joint_tests_map["nnls_neg"], itr->first, ph+1, chrom, block, pheno_name, params));
+        } 
+      }
+      // apply acat to all p
+      if(overall_p_set.size()>0){
+        map_to_vec(df_test, overall_p_set, pvals_gene);
+        get_pv( get_acat(pvals_gene) );
+        sum_stats_str[joint_tests_map["gene_p"]][ph].append(print_gene_output("GENE_P" + itr->first, max_logp_mask, ph+1, chrom, block, pheno_name, params));
+      } else if(!params->split_by_pheno){
+        reset_vals();
+        sum_stats_str[joint_tests_map["gene_p"]][ph].append(print_gene_output("GENE_P" + itr->first, "", ph+1, chrom, block, pheno_name, params));
+      }
+
+    } else if(!params->split_by_pheno){
+      reset_vals();
+      sum_stats_str[joint_tests_map["gene_p"]][ph].append(print_gene_output("GENE_P" + itr->first, "", ph+1, chrom, block, pheno_name, params));
+    }
   }
 
 }
 
 string JTests::print_output(const int& ttype, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
 
-  if(!params->htp_out) return print_sum_stats(ttype, ipheno, chrom, block, params);
-  else return print_sum_stats_htp(ttype, chrom, block, pheno_name, params);
+  if(!params->htp_out) return print_sum_stats(test_names[ttype], ipheno, chrom, block, params);
+  else return print_sum_stats_htp(test_names[ttype], chrom, block, pheno_name, params);
+
+}
+
+string JTests::print_output(const int& ttype, string const& tsuf, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
+
+  if(!params->htp_out) return print_sum_stats(test_names[ttype] + tsuf, ipheno, chrom, block, params);
+  else return print_sum_stats_htp(test_names[ttype] + tsuf, chrom, block, pheno_name, params);
 
 }
 
 // normal regenie format
-std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const int& chrom, const int& block, struct param const* params){
+std::string JTests::print_sum_stats(const string& tname, const int& ipheno, const int& chrom, const int& block, struct param const* params){
 
   std::ostringstream buffer;
 
@@ -641,7 +661,7 @@ std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const i
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
     // n test
-    buffer << "NA " << burden_str << test_names[ttype] << " ";
+    buffer << "NA " << burden_str << tname << " ";
   }
 
   //beta se
@@ -667,7 +687,7 @@ std::string JTests::print_sum_stats(const int& ttype, const int& ipheno, const i
 
 
 // htpv4 format
-std::string JTests::print_sum_stats_htp(const int& ttype, const int& chrom, const int& block, const string& yname, struct param const* params){
+std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, const int& block, const string& yname, struct param const* params){
 
   std::ostringstream buffer;
   bool test_pass = (pval != -9);
@@ -678,7 +698,7 @@ std::string JTests::print_sum_stats_htp(const int& ttype, const int& chrom, cons
   // SNP info
   buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tNA\tNA\t";
   // trait, cohort, test name
-  buffer << yname << "\t" << params->cohort_name << "\t" << burden_model << test_names[ttype];
+  buffer << yname << "\t" << params->cohort_name << "\t" << burden_model << tname;
 
   // bhat & 95 CI
   buffer << "\tNA\tNA\tNA\t" ;
@@ -801,6 +821,65 @@ void JTests::get_variant_names(int const& chrom, int const& block, vector<snp> c
 
 }
 
+void JTests::check_class_genep(string const& mask_set_file, std::map<std::string, bool> const& mask_map){
+
+  if(mask_set_file == ""){
+    vector<string> tmp_vec = {"M1"};//plof only
+    add_class("_M1", tmp_vec, mask_map);
+    tmp_vec[0] = "pLoF";//plof only
+    add_class("_pLoF", tmp_vec, mask_map);
+    tmp_vec[0] = "LoF";//plof only
+    add_class("_LoF", tmp_vec, mask_map);
+
+  } else {
+
+    genep_all_masks = false;
+    string line;
+    std::vector< string > tmp_str_vec;
+    ifstream mfile;
+    mfile.open( mask_set_file, ios::in );
+
+    while( getline(mfile, line) ){
+      tmp_str_vec = string_split(line," \t");
+      if(tmp_str_vec.size() < 2)
+        throw "invalid line = '" + line + "'";
+      add_class("_" + tmp_str_vec[0], string_split(tmp_str_vec[1],","), mask_map);
+    }
+    mfile.close();
+
+    if(gene_p_tests.size() == 0)
+      throw "no valid mask sets were specified in '--rgc-gene-def' file";
+  }
+}
+
+void JTests::add_class(string const& sfx_test, vector<string> const& mask_vec, std::map<std::string, bool> const& mask_map){
+  
+  std::map <std::string, bool> tmp_map;// keep track of masks in genep class
+
+  // check it is a valid mask
+  for(auto const& mask : mask_vec) 
+    if(in_map(mask, mask_map))
+      tmp_map[mask] = true;
+
+  if(in_map(sfx_test, gene_p_tests))
+    throw "GENE_P'" + sfx_test + "' has already been defined (check for duplicates in the `--rgc-gene-def` file).";
+
+  // check it has at least one mask
+  if(tmp_map.size()>0)
+    if(tmp_map.size() == mask_map.size()) genep_all_masks = true;
+    else gene_p_tests[sfx_test] = tmp_map;
+
+}
+
+void map_to_vec(int& nvals, std::map <std::string, double>& map_pvals, ArrayXd& vec_pvals){
+  std::map <std::string, double>::iterator itr;
+  nvals = map_pvals.size();
+  vec_pvals.resize( nvals );
+  int i = 0;
+  for (itr = map_pvals.begin(); itr !=  map_pvals.end(); ++itr) 
+    vec_pvals(i++) = itr->second;
+}
+
 void JTests::reset_vals(){
   pval = -9, plog = -9, zval = -9;
 }
@@ -815,3 +894,6 @@ void JTests::get_pv(const double& pv){
 
 }
 
+bool valid_pval(double const& pv){
+  return (pv >= 0) && (pv <= 1);
+}

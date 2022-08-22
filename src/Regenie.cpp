@@ -293,6 +293,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("interaction-prs", "perform interaction testing with the full PRS from step 1")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene (all masks/M1-only)")
+    ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-nnls", "skip running NNLS test for --rgc-gene-p")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
@@ -668,7 +669,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         if(!params->trait_mode && !vm.count("skip-nnls")) params->burden.append(",nnls");
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
-    } else if(vm.count("rgc-gene-p")) valid_args[ "rgc-gene-p" ] = false; // option is ignored
+        if(vm.count("rgc-gene-def")) check_file (params->genep_mask_sets_file, "rgc-gene-def");
+    } else if(vm.count("rgc-gene-p") || vm.count("rgc-gene-def")) {
+      valid_args[ "rgc-gene-p" ] = false; // option is ignored
+      valid_args[ "rgc-gene-def" ] = false; // option is ignored
+    }
 
     if( CHECK_BIT(params->vc_test, params->vc_tests_map["acato"]) ) {// acato
       BIT_SET(params->vc_test, params->vc_tests_map["acatv"]); // acatv

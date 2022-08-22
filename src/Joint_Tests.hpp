@@ -31,8 +31,10 @@
 class JTests {
 
   public:
-    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6}, {"gene_m1_p", 7}, {"gene_p", 8} };
-    std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG","GENE_M1_P","GENE_P"};
+    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"nnls", 3}, {"acat", 4}, {"nnls_pos", 5}, {"nnls_neg", 6}, {"gene_p", 7} };
+    std::vector<std::string> test_names = {"MINP","F","GATES","NNLS","ACAT","NNLS_POS","NNLS_NEG", "GENE_P"};
+    std::map <std::string, std::map <std::string, bool>> gene_p_tests;
+    bool genep_all_masks = true;
     uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
 
     // store variant set info (for each chr)
@@ -74,6 +76,8 @@ class JTests {
     double get_me(const Eigen::Ref<const Eigen::MatrixXd>&);
 
     // final acat round
+    void check_class_genep(std::string const&,std::map<std::string,bool> const&);
+    void add_class(std::string const&,std::vector<std::string> const&,std::map<std::string,bool> const&);
     void run_single_p_acat(int const&,const int&,const int&,int const&,const std::string&,std::vector<variant_block>&,std::map<std::string, double>&,struct geno_block const*,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,std::vector<std::vector<std::string>>&,struct param const*);
     std::string print_gene_output(const std::string&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
     std::string print_sum_stats_gene(const std::string&,const std::string&,const int&,const int&,const int&,struct param const*);
@@ -81,8 +85,9 @@ class JTests {
 
     // print results
     std::string print_output(const int&,const int&,const int&,const int&,const std::string&,struct param const*);
-    std::string print_sum_stats(const int&,const int&,const int&,const int&,struct param const*);
-    std::string print_sum_stats_htp(const int&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_output(const int&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_sum_stats(const std::string&,const int&,const int&,const int&,struct param const*);
+    std::string print_sum_stats_htp(const std::string&,const int&,const int&,const std::string&,struct param const*);
 
     void get_variant_names(int const&,int const&,std::vector<snp> const&);
     void reset_vals();
@@ -94,5 +99,7 @@ class JTests {
 
 double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&);
 double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&); // uniform weights
+bool valid_pval(double const&);
+void map_to_vec(int&,std::map<std::string,double>&,Eigen::ArrayXd&);
 
 #endif

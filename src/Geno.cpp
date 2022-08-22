@@ -3520,6 +3520,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
     // save mask
     mask_out.push_back(mask_str);
     minfo.push_back(tmp_mask);
+    params->mask_map[ tmp_mask.name ] = true;
 
     // take union across all categories read
     all_masks |= id;

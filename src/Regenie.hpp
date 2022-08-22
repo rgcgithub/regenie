@@ -313,6 +313,8 @@ struct param {
   std::map<std::string, uint> vc_tests_map = { {"acatv", 0}, {"skat", 1}, {"skato", 2}, {"skato-acat", 3}, {"acato", 4} };
   uint vc_test = 0;
   bool apply_gene_pval_strategy = false;
+  std::string genep_mask_sets_file = "";
+  std::map<std::string, bool> mask_map;
   double vc_maxAAF = 1; // max AAF for variants in SKAT/ACAT gene-based tests
   bool w_anno_lab = false;
   bool check_mask_files = false, strict_check_burden = false, fail_check = false;
