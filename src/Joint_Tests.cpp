@@ -865,9 +865,10 @@ void JTests::add_class(string const& sfx_test, vector<string> const& mask_vec, s
     throw "GENE_P'" + sfx_test + "' has already been defined (check for duplicates in the `--rgc-gene-def` file).";
 
   // check it has at least one mask
-  if(tmp_map.size()>0)
+  if( tmp_map.size() > 0 ){
     if(tmp_map.size() == mask_map.size()) genep_all_masks = true;
     else gene_p_tests[sfx_test] = tmp_map;
+  }
 
 }
 
