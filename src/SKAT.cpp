@@ -147,7 +147,8 @@ void prep_ultra_rare_mask(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights
     gv = rare_mask_mat.col(iset).cwiseProduct(in_analysis.matrix().cast<double>());
 
     // check if any UR variants were included
-    Jmat(bs+iset, iset) = Jmat.col(iset).any() && (gv>0).count();
+    Jmat(bs+iset, iset) = (gv>0).any();
+    //cerr << "#" << iset << " " << Jmat.col(iset).any() << "/"<< (gv>0).count() << "\n";
     if(!Jmat(bs+iset, iset)) continue;
     rare_mask_non_miss.col(iset).array() = rare_mask_non_miss.col(iset).array() && in_analysis; 
 

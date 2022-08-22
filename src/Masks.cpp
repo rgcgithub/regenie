@@ -546,9 +546,11 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
       if( w_vc_tests && ( aafs(j-1) <= vc_aaf ) && rare_mask_tmp.col(index_start-1).nonZeros() ){
         rare_mask_tmp.col(index_start) = rare_mask_tmp.col(index_start).cwiseMax(rare_mask_tmp.col(index_start-1));
         vc_rare_mask_non_missing.col(index_start).array() = vc_rare_mask_non_missing.col(index_start).array() || vc_rare_mask_non_missing.col(index_start-1).array();
-        if( aafs(j-1) < vc_aaf ){ // remove data as not needed anymore
-          rare_mask_tmp.col(index_start-1) *= 0;
-          vc_rare_mask_non_missing.col(index_start-1).array() = false;
+        if( aafs(j-1) == vc_aaf ){
+         for( int k = 1; k <= j; k++){ // remove data not needed anymore
+          rare_mask_tmp.col(index_start-k).array() = 0;
+          vc_rare_mask_non_missing.col(index_start-k).array() = false;
+         }
         }
       }
       
