@@ -982,8 +982,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "can only use --interaction with --covarFile in step 2.";
       if( (vm.count("interaction") + vm.count("interaction-prs") + vm.count("interaction-snp")) > 1 ) 
         throw "must only specify single interacting variable";
-      if(vm.count("spa"))
-        throw "cannot use --interaction with Firth or SPA tests.";
+      if(params->use_SPA)
+        throw "cannot use --interaction with SPA test.";
       if(vm.count("interaction-snp") && vm.count("use-prs"))
         throw "cannot use --interaction-snp with full PRS.";
       if(vm.count("firth") && !vm.count("approx")){
