@@ -1282,6 +1282,8 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
 
       if( tmp_str_vec.size() < 1 )
         throw "incorrectly formatted file.";
+      if( in_map(tmp_str_vec[0], params->extract_vars_order) ) 
+        continue; // ignore duplicates
 
       if( in_map(tmp_str_vec[0], map_ID) ) 
         mask( map_ID[ tmp_str_vec[0] ] ) = true;
