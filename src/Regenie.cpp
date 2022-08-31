@@ -203,6 +203,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("interaction-file", "optional genotype file which contains the variant for GxG interaction test", cxxopts::value<std::string>(),"FORMAT,FILE")
     ("interaction-file-sample", "sample file accompanying BGEN file with the interacting variant", cxxopts::value<std::string>(files->interaction_snp_info.sample),"FILE")
     ("interaction-file-reffirst", "use the first allele as the reference for the BGEN or PLINK file with the interacting variant [default assumes reference is last]")
+    ("interaction-prs", "perform interaction testing with the full PRS from step 1")
     ("force-condtl", "to also condition on interacting SNP in the marginal GWAS test")
     ("no-condtl", "to print out all main effects in GxE interaction test")
     ("rare-mac", "minor allele count (MAC) threshold below which to use HLM for interaction testing with QTs", cxxopts::value<double>(params->rareMAC_inter),"FLOAT(=1000)")
@@ -256,6 +257,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("starting-block", "start run at a specific block/set number for step 2", cxxopts::value<int>(params->start_block),"INT")
     ("force-step1", "run step 1 for more than 1M variants (not recommended)")
     ("write-mask-snplist", "file with list of variants that went into each mask")
+    ("minHOMs", "minimum number of homozygote ALT carriers in recessive test", cxxopts::value<double>(params->minHOMs),"FLOAT(=0)")
     ("skat-params", "a1,a2 values for variant weights computed from Beta(MAF,a1,a2) used in gene-based tests", cxxopts::value<std::string>(),"FLOAT,FLOAT(=1,25)")
     ("skato-rho", "comma-separated list of rho values used for SKATO", cxxopts::value<std::string>(),"FLOAT,..,FLOAT")
     ("vc-MACthr", "MAC threshold below which to collapse variants for gene-based tests", cxxopts::value<int>(params->skat_collapse_MAC),"INT(=10)")
@@ -280,21 +282,19 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
-    ("minHOMs", "minimum number of homozygote ALT carriers in recessive test", cxxopts::value<double>(params->minHOMs),"FLOAT(=0)")
     ("prs-cov", "include step 1 predictions as covariate rather than offset")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
     ("no-robust", "don't use robust SEs or HLM for GxE test")
     ("write-setlist", "file with list of masks to combine as sets", cxxopts::value<std::string>(files->new_sets),"FILE")
-    ("nnls-napprox", "number of random draws to use for approximate NNLS test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
-    ("nnls-verbose", "To output detailed NNLS test results")
+    ("sbat-napprox", "number of random draws to use for approximate SBAT test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
+    ("sbat-verbose", "To output detailed SBAT test results")
     ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,1)")
-    ("interaction-prs", "perform interaction testing with the full PRS from step 1")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene (all masks/M1-only)")
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
-    ("skip-nnls", "skip running NNLS test for --rgc-gene-p")
+    ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
@@ -419,7 +419,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("force-qt") ) params->force_qt_run = true;
-    if( vm.count("nnls-verbose") ) params->nnls_out_all = true;
+    if( vm.count("sbat-verbose") ) params->nnls_out_all = true;
     if( vm.count("condition-list") ) { params->condition_snps = true;params->rm_snps = true;}
     if( vm.count("force-robust") ) params->force_robust = true;
     if( vm.count("force-hc4") ) params->force_robust = params->force_hc4 = true;
@@ -666,7 +666,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         if(!vm.count("vc-maxAAF")) params->vc_maxAAF = 0.01;
         if(params->burden != "") params->burden.append(",");
         params->burden.append("acat");
-        if(!params->trait_mode && !vm.count("skip-nnls")) params->burden.append(",nnls");
+        if(!params->trait_mode && !vm.count("skip-sbat")) params->burden.append(",sbat");
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
         if(vm.count("rgc-gene-def")) check_file (params->genep_mask_sets_file, "rgc-gene-def");
@@ -779,8 +779,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
       if( vm.count("test") ) 
         throw "cannot use --test with --joint.";
-      else if ( vm.count("nnls-napprox") && params->nnls_napprox < 1 )
-        throw "must pass positive integer for --nnls-napprox.";
+      else if ( vm.count("sbat-napprox") && params->nnls_napprox < 1 )
+        throw "must pass positive integer for --sbat-napprox.";
       params->snp_set = true;
     }
     if( vm.count("write-null-firth") && vm.count("use-prs") )
@@ -896,7 +896,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->split_by_pheno = true; valid_args[ "no-split" ] = false;
     }
     if( !params->split_by_pheno && params->nnls_out_all){
-      sout << "WARNING: option --no-split does not work with --nnls-verbose.\n";
+      sout << "WARNING: option --no-split does not work with --sbat-verbose.\n";
       params->split_by_pheno = true; valid_args[ "no-split" ] = false;
     }
     if( (!params->test_mode || (params->trait_mode!=1) || params->htp_out || !params->split_by_pheno) && params->af_cc ) {

@@ -82,8 +82,8 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
     else if( input_test == "ftest" ){
       if(params->trait_mode) sout << "WARNING: Joint F-test only for QTs.\n";
       else BIT_SET(test_list, joint_tests_map[input_test]);
-    } else if( input_test == "nnls" ){
-      if(params->trait_mode) sout << "WARNING: Joint NNLS test only for QTs.\n";
+    } else if( input_test == "sbat" ){
+      if(params->trait_mode) sout << "WARNING: Joint SBAT test only for QTs.\n";
       else { 
         BIT_SET(test_list, joint_tests_map[input_test]); 
         nnls_napprox = params->nnls_napprox; 
@@ -154,26 +154,26 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
         if(run_tests) compute_gates(ph, block_info);
         if(print_stats) sum_stats_str[joint_tests_map["gates"]][ph] = print_output(joint_tests_map["gates"], ph+1, chrom, block, pheno_name, params);
       } 
-      if( CHECK_BIT(test_list,joint_tests_map["nnls"]) ) { // NNLS
+      if( CHECK_BIT(test_list,joint_tests_map["sbat"]) ) { // SBAT (NNLS)
         if(run_tests && ((apply_single_p && genep_all_masks) || !apply_single_p)) compute_nnls(pheno_data->masked_indivs.col(ph), yres, true); 
 
         if( ((apply_single_p && genep_all_masks) || !nnls_verbose_out) && print_stats) // default output
-          sum_stats_str[joint_tests_map["nnls"]][ph] = print_output(joint_tests_map["nnls"], ph+1, chrom, block, pheno_name, params);
+          sum_stats_str[joint_tests_map["sbat"]][ph] = print_output(joint_tests_map["sbat"], ph+1, chrom, block, pheno_name, params);
         if((apply_single_p && genep_all_masks) || nnls_verbose_out) { 
           // verbose output with NNLS pos & neg split into two 
           // 1. NNLS pos (test code 5)
           if(run_tests && valid_pval(pval_nnls_pos)) get_pv(pval_nnls_pos);
           else reset_vals();
-          if(print_stats) sum_stats_str[joint_tests_map["nnls_pos"]][ph] = print_output(joint_tests_map["nnls_pos"], ph+1, chrom, block, pheno_name, params);
+          if(print_stats) sum_stats_str[joint_tests_map["sbat_pos"]][ph] = print_output(joint_tests_map["sbat_pos"], ph+1, chrom, block, pheno_name, params);
           // 2. NNLS neg (test code 6)
           if(run_tests && valid_pval(pval_nnls_neg)) get_pv(pval_nnls_neg);
           else reset_vals();
-          if(print_stats) sum_stats_str[joint_tests_map["nnls_neg"]][ph] = print_output(joint_tests_map["nnls_neg"], ph+1, chrom, block, pheno_name, params);
+          if(print_stats) sum_stats_str[joint_tests_map["sbat_neg"]][ph] = print_output(joint_tests_map["sbat_neg"], ph+1, chrom, block, pheno_name, params);
         }
 
         if( run_tests && apply_single_p && genep_all_masks && valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg) ) {
-          get_pv(pval_nnls_pos);overall_p["NNLS_POS"] = plog;
-          get_pv(pval_nnls_neg);overall_p["NNLS_NEG"] = plog;
+          get_pv(pval_nnls_pos);overall_p["sbat_POS"] = plog;
+          get_pv(pval_nnls_neg);overall_p["sbat_NEG"] = plog;
         }
 
       }
@@ -182,8 +182,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
     // should at least have burden-acat p-value
     if(apply_single_p) {
       if(run_tests) run_single_p_acat(bs, chrom, block, ph, pheno_name, block_info, overall_p, gblock, yres, pheno_data->masked_indivs.col(ph), sum_stats_str, params);
-      // in case printing to single file and test failed
-      else if(!params->split_by_pheno) 
+      else if(!params->split_by_pheno) // when printing to single file and test failed
         for (itr = gene_p_tests.begin(); itr !=  gene_p_tests.end(); ++itr) 
           sum_stats_str[joint_tests_map["gene_p"]][ph].append(print_gene_output("GENE_P" + itr->first, "", ph+1, chrom, block, pheno_name, params));
     }
@@ -412,17 +411,20 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
   pval_nnls_neg = nnls.fit_neg.pval;
 
   // pvalue
-  if((pval_min2 >= 0) & (pval_min2 <= 1)) get_pv( pval_min2 );
+  if(valid_pval(pval_min2)) {
+    pval_min2 = min(1.0, 2 * pval_min2); // apply bonferroni correction
+    get_pv( pval_min2 );
+  }
   else reset_vals();
 
   // print extra NNLS information if requested
   if(nnls_verbose_out && print_extra) {
-    string fname = out_file_prefix + "_nnls.info";
+    string fname = out_file_prefix + "_sbat.info";
     ofstream file_info(fname);
     
     // v1: tabular format
     // header
-    file_info << "ID SEL BETA_NNLS BETA_OLS " << endl;
+    file_info << "ID SEL BETA_SBAT BETA_OLS " << endl;
     // variant results per line
     for(int i = 0; i < df_test; i++) {
       unsigned int k = indices_vars[i]; 
@@ -605,16 +607,16 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
         sum_stats_str[joint_tests_map["acat"]][ph].append(print_output(joint_tests_map["acat"], itr->first, ph+1, chrom, block, pheno_name, params));
       }
       // run nnls
-      if( CHECK_BIT(test_list, joint_tests_map["nnls"]) ) {
+      if( CHECK_BIT(test_list, joint_tests_map["sbat"]) ) {
         compute_qr_G(mask, gblock);
         pval_nnls_pos = -1; pval_nnls_neg = -1;
         compute_nnls(mask, yres, false); 
         if(valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg)) {
-          sum_stats_str[joint_tests_map["nnls"]][ph].append(print_output(joint_tests_map["nnls"], itr->first, ph+1, chrom, block, pheno_name, params));
-          get_pv(pval_nnls_pos);overall_p_set["NNLS_POS"] = plog;
-          sum_stats_str[joint_tests_map["nnls_pos"]][ph].append(print_output(joint_tests_map["nnls_pos"], itr->first, ph+1, chrom, block, pheno_name, params));
-          get_pv(pval_nnls_neg);overall_p_set["NNLS_NEG"] = plog;
-          sum_stats_str[joint_tests_map["nnls_neg"]][ph].append(print_output(joint_tests_map["nnls_neg"], itr->first, ph+1, chrom, block, pheno_name, params));
+          sum_stats_str[joint_tests_map["sbat"]][ph].append(print_output(joint_tests_map["sbat"], itr->first, ph+1, chrom, block, pheno_name, params));
+          get_pv(pval_nnls_pos);overall_p_set["SBAT_POS"] = plog;
+          sum_stats_str[joint_tests_map["sbat_pos"]][ph].append(print_output(joint_tests_map["sbat_pos"], itr->first, ph+1, chrom, block, pheno_name, params));
+          get_pv(pval_nnls_neg);overall_p_set["SBAT_NEG"] = plog;
+          sum_stats_str[joint_tests_map["sbat_neg"]][ph].append(print_output(joint_tests_map["sbat_neg"], itr->first, ph+1, chrom, block, pheno_name, params));
         } 
       }
       // apply acat to all p
@@ -810,7 +812,7 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
 void JTests::get_variant_names(int const& chrom, int const& block, vector<snp> const& snpinfo){
 
   // only for NNLS (for now)
-  if( !(CHECK_BIT(test_list, joint_tests_map["nnls"]) && nnls_verbose_out) ) return;
+  if( !(CHECK_BIT(test_list, joint_tests_map["sbat"]) && nnls_verbose_out) ) return;
 
   vector<uint64> *indices =  &(setinfo[chrom - 1][block].snp_indices);
   int bs = indices->size();
