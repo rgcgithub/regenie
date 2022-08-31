@@ -594,9 +594,17 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
       // correct using burden test
       double rfrac = 1;
-      if(apply_correction)
-        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
+      if(apply_correction && (npass > 1)) {// no need if M=1
+
+        // to slice sparse matrix (cannot use indexing)
+        SpMat Jtmp (bs, npass); // Mall x Mpass
+        Jtmp.reserve(npass);
+        for(int i = 0; i < npass; i++)
+          Jtmp.insert(m_indices(i), i) = 1;
+
+        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), GtWX(all, m_indices), XWsqrt, GWs * Jtmp, Wsqrt, phat, Y, mask, fest.cov_blup_offset, params))
           continue; // failed to correct with burden mask
+      }
 
     // get eigen values of Rsqrt*V*Rsqrt
       get_lambdas(lambdas, get_RsKRs(rfrac * Kmat(m_indices, m_indices), rho, c1), skat_lambda_tol);
@@ -727,9 +735,17 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
       // correct using burden test
       double rfrac = 1;
-      if(apply_correction)
-        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, yres.col(ph), Y, mask, fest, params))
+      if(apply_correction && (npass > 1)) {// no need if M=1
+
+        // to slice sparse matrix (cannot use indexing)
+        SpMat Jtmp (bs, npass); // Mall x Mpass
+        Jtmp.reserve(npass);
+        for(int i = 0; i < npass; i++)
+          Jtmp.insert(m_indices(i), i) = 1;
+
+        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), GtWX(all, m_indices), XWsqrt, GWs * Jtmp, Wsqrt, phat, Y, mask, fest.cov_blup_offset, params))
           continue; // failed to correct with burden mask
+      }
 
       // get eigen values of Zt(I-U)Z
       if(!get_ztz_evals(rfrac * Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
@@ -937,37 +953,38 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 
 }
 
-bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double const& var_sb, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const VectorXd>& yres, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
+bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double const& var_qb, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, const Ref<const MatrixXd>& offset, struct param const& params){
 
-  bool test_fail = true;
-  double chisq, pv, sb;
   if(qb == 0) return true; // no need to apply it
 
-  // build burden mask
-  SpVec g_burden; //(Gsparse.rowwise().sum()).sparseView(); // Nx1 - not needed
-  VectorXd gw = GWs * VectorXd::Ones(GWs.cols()); // Nx1
-  sb = gw.dot(yres);
-  //if(params.debug) cerr << "sb^2: " << sb*sb << " vs qb:" << qb << "\n";
+  // check T_burden
+  double tstat_cur = sqrt(qb / var_qb);
+  if(fabs(tstat_cur) <= params.z_thr) return true; // no need to apply it
 
-  double tstat_cur = sb / sqrt(var_sb);
+  SpVec g_burden; // not needed since not using fastSPA
+  bool test_fail = true;
+  double chisq, pv;
 
-  VectorXd g_res = gw - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
-  //cerr << "w=" << w.matrix().transpose() << "\nGburden:" << g_burden.transpose().head(5) << "\nGres=" << g_res.transpose().head(5) << "\n";
+  // get residuals for burden mask
+  VectorXd g_res = GWs * VectorXd::Ones(GWs.cols()) - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
 
-  // apply firth (leads to better calibration than SPA for burden mask)
-  apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
-  /*if(params.debug && !test_fail) 
-    cerr << "Firth // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
-      ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
-
-  if(test_fail){ // SPA as fallback
-    run_SPA_test_snp(chisq, pv, tstat_cur, var_sb, false, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
-  /*if(params.debug && !test_fail) 
+  // use SPA by default
+  run_SPA_test_snp(chisq, pv, tstat_cur, var_qb, false, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
+  /*if(params.debug && !test_fail)
     cerr << "SPA // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
+    ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
+
+  if( test_fail && params.firth ){ // use firth as fallback if spa failed
+    apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, offset.col(ph).array(), mask, params);
+    /*if(params.debug && !test_fail)
+      cerr << "Firth // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
       ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
   }
 
-  if( test_fail || (chisq == 0) ) return false;
+  if( test_fail || (chisq == 0) ) {
+    if(params.debug) cerr << "WARNING: failed to correct T_burden.";
+    return false;
+  }
 
   // need to make variance bigger (so bigger p-values) so take max
   rfrac = max(1.0, tstat_cur * tstat_cur / chisq );
