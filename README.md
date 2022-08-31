@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2) (Bug fix for SKAT/SKATO when testing on binary traits using Firth/SPA; Switched name of NNLS joint test to SBAT test altering name of corresponding options and applied Bonferroni correction before reporting its p-value [correcting for minP of 2 tests])
+
 [Version 3.1.4](https://github.com/rgcgithub/regenie/releases/tag/v3.1.4) (New option `--par-region` to specify build to determine bounds for chrX PAR regions; new option `--force-qt` to force QT runs for traits with fewer than 10 values [otherwise will throw an error]; phenotype imputation for missing values is now applied after RINTing when using `--apply-rint`; several bug fixes)
 
 [Version 3.1.2](https://github.com/rgcgithub/regenie/releases/tag/v3.1.2) (Reduction in memory usage for SKAT/SKATO tests; Bug fix for LOVO with SKAT/ACAT tests; Improvements for null Firth logistic algorithm to address reported convergence issues)
