@@ -2272,6 +2272,8 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         if(params->test_mode && non_par) {
           lval = (params->sex(i) == 1);
           mval = hc * 0.5 * (2 - lval);
+          // check if not 0/2
+          if( (lval == 1) && (hc == 1) ) cerr << "WARNING: genotype is 1 for a male on chrX at " << infosnp->ID << " (males should coded as diploid).";
         }
 
         // check if carrier
@@ -2395,6 +2397,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         if(params->test_mode && non_par) {
           lval = (params->sex(i) == 1);
           mval *= 0.5 * (2 - lval);
+          // check if not 0/2
+          if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
+            cerr << "WARNING: genotype is 1 for a male on chrX at " << snp_info->ID << " (males should coded as diploid).";
         }
 
         if( params->dosage_mode ) ival = Geno(index) * Geno(index);
