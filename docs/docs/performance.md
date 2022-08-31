@@ -119,9 +119,9 @@ Using whole exome sequencing data, we constructed variant sets incorporating fun
 using a score based on 5 in-silico algorithms), 
 as well as allele frequency thresholds focusing on rarer variation (1%, 0.1% and 0.01%).
 The SKAT/ACAT tests were applied only to variant sets using a 1% or 0.01% AAF threshold and 
-NNLS and BURDEN-ACAT joint tests combined all burden mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
+SBAT and BURDEN-ACAT joint tests combined all burden mask signals from the 1%, 0.1%, 0.01% and singleton thresholds.
 1000 genes on even chromosomes were randonly selected and tested for association (causal variants were on odd chromosomes).
-The QQ plots below show the distribution p-values for each test across the different annotation categories (ran in Regenie v3.1).
+The QQ plots below show the distribution p-values for each test across the different annotation categories (ran in Regenie v3.2).
 
 #### Quantitative traits
 Using a 1% allele frequency cutoff for the SKAT/ACAT tests.

@@ -291,10 +291,10 @@ where unlike the original ACATO test, we only use one set of the weights $w_i$.
 Alternatively, we augment the test to include an extended set of SKATO models beyond SKAT and Burden
 (which correspond to $\rho$ of 0 and 1 in SKATO respectively) and use the default SKATO grid of 8 values for $\rho$.
 
-#### Non-Negative Least Square test
+#### Sparse Burden Association Test
 **regenie** can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Non-Negative Least Square (NNLS) test[@RN491] combines these burden masks
+thresholds. The Sparse Burden Association Test (SBAT)[@RN491] combines these burden masks
 in a joint model imposing constraints of same direction of effects
 $$
 \mu = \sum_{\text{mask }i} M_i\gamma_i
@@ -305,9 +305,9 @@ $$
 \text{ subject to } \gamma_i \ge 0 \text{ for all } i
 $$
 
-The NNLS method tests the hypothesis $H_0: \gamma_i=0$ for all $i$ vs.
+The SBAT method tests the hypothesis $H_0: \gamma_i=0$ for all $i$ vs.
 $H_1: \gamma_i > 0$ for some $i$.
-By using this joint model, the NNLS test accounts for the correlation structure between the burden masks 
+By using this joint model, the SBAT test accounts for the correlation structure between the burden masks 
 and with the non-negative constraints,
 it can lead to boost in power performance when multiple burden masks are causal and have concordant effects.
 This test has the nice property that it combines 

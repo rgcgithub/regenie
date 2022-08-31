@@ -541,11 +541,11 @@ generated using different annotation classes as well as AAF thresholds.
 | :----- |:--------------: |:---: |:---: | :---: |:---: |
 | Minimum P-value    | minp | $\checkmark$ | $\checkmark$ | $\times$ | $\times$       |
 | ACAT |acat  | $\checkmark$|$\checkmark$|$\checkmark$|$\times$        |
-| NNLS |nnls  | $\checkmark$|$\times$|$\checkmark$|$\checkmark$        |
+| SBAT |sbat  | $\checkmark$|$\times$|$\checkmark$|$\checkmark$        |
 
 The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
 (see ref. 14 [here](../overview/#fn:14)).
-The NNLS test is described into more detail [here](../overview/#non-negative-least-square-test).
+The SBAT test is described into more detail [here](../overview/#sparse-burden-association-test).
 
 
 #### LOVO/LODO schemes
