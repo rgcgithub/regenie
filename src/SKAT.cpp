@@ -863,14 +863,14 @@ void compute_skat_q(VectorXd& Qs, VectorXd& Qb, const Ref<const ArrayXd>& Svals,
 void correct_vcov(int const& ph, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sqrt, const Ref<const ArrayXd>& score_stats, Ref<MatrixXd> Kmat, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
 
   apply_correction_cc(ph, Rvec_sqrt, score_stats, Kmat.diagonal().array(), Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
-
-  // apply correction factor
-  Kmat = Rvec_sqrt.matrix().asDiagonal() * Kmat * Rvec_sqrt.matrix().asDiagonal();
-  masked_sites = (Rvec_sqrt > 0);
   if(params.debug) {
     int bs = Rvec_sqrt.size();
     cerr << "Rsqrt:" << Rvec_sqrt.head(min(150, bs)).matrix().transpose() << "\n";
   }
+
+  // apply correction factor
+  Kmat = Rvec_sqrt.matrix().asDiagonal() * Kmat * Rvec_sqrt.matrix().asDiagonal();
+  masked_sites = (Rvec_sqrt > 0);
 }
 
 // correcting for high cc imbalance
@@ -884,11 +884,10 @@ void apply_correction_cc(int const& ph, Ref<ArrayXd> Rvec, const Ref<const Array
 #pragma omp parallel for schedule(dynamic)
 #endif
   for (int i = 0; i < Rvec.size(); i++) {
+    if(Rvec(i) == 0) continue;
 
     bool test_fail = true;
     double chisq, pv, corrected_var;
-
-    if(Rvec(i) == 0) continue;
 
     // if Tstat < threshold, no correction done (R=1)
     double tstat_cur = score_stats(i) / sqrt(var_score(i));
@@ -951,7 +950,6 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
   //if(params.debug) cerr << "sb^2: " << sb*sb << " vs qb:" << qb << "\n";
 
   double tstat_cur = sb / sqrt(var_sb);
-  //if(params.debug) cerr << "T_burden=" << tstat_cur << "\n";
 
   VectorXd g_res = gw - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
   //cerr << "w=" << w.matrix().transpose() << "\nGburden:" << g_burden.transpose().head(5) << "\nGres=" << g_res.transpose().head(5) << "\n";
@@ -973,7 +971,7 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
 
   // need to make variance bigger (so bigger p-values) so take max
   rfrac = max(1.0, tstat_cur * tstat_cur / chisq );
-  if(params.debug) cerr << "R_factor_burden:" << rfrac << "\n";
+  if(params.debug) cerr << "T_burden=" << tstat_cur << ";R_factor_burden:" << rfrac << "\n";
 
   return true;
 }
