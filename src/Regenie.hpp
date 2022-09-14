@@ -93,6 +93,7 @@ typedef Eigen::Map<const Eigen::MatrixXd > MapcMatXd;
 typedef Eigen::Map<ArrayXb> MapArXb;
 typedef Eigen::Map<const ArrayXb> MapcArXb;
 typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
+typedef Eigen::Array<uint64,Eigen::Dynamic,1> ArrayXui;
 typedef Eigen::SparseMatrix<double> SpMat;
 typedef Eigen::SparseMatrix<bool> SpMatb;
 typedef Eigen::SparseVector<double> SpVec;
