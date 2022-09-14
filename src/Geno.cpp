@@ -1822,7 +1822,7 @@ void check_bgen(const string& bgen_file, string const& file_type, bool& zlib_com
 
 
 // for step 2 (using BGEN library API)
-void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, vector<snp> const& snpinfo, struct param const* params, struct geno_block* gblock, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info, mstream& sout) {
+void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, vector<snp> const& snpinfo, struct param const* params, Ref<MatrixXd> Gmat, BgenParser& bgen, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info, mstream& sout) {
 
   int const bs = indices.size();
   int hc_val, lval, ncarriers, nmales;
@@ -1837,7 +1837,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 
     variant_block* snp_data = &(all_snps_info[snp]);
     struct snp const* snp_info = &(snpinfo[indices[snp]]);
-    MapArXd Geno (gblock->Gmat.col(snp).data(), params->n_samples, 1);
+    MapArXd Geno (Gmat.col(snp).data(), params->n_samples, 1);
 
     // reset variant info
     Geno = 0;
@@ -2338,7 +2338,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 
 
 // step 2
-void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, struct param const* params, struct filter const* filters, struct geno_block* gblock, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<snp> const& snpinfo, vector<variant_block> &all_snps_info){
+void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, struct param const* params, struct filter const* filters, Ref<MatrixXd> Gmat, PgenReader& pgr, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<snp> const& snpinfo, vector<variant_block> &all_snps_info){
 
   int const bs = indices.size();
   ArrayXb oob_err = ArrayXb::Constant(bs, false);
@@ -2360,7 +2360,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 
     variant_block* snp_data = &(all_snps_info[j]);
     struct snp const* snp_info = &(snpinfo[ indices[j] ]);
-    MapArXd Geno (gblock->Gmat.col(j).data(), params->n_samples, 1);
+    MapArXd Geno (Gmat.col(j).data(), params->n_samples, 1);
 
     // reset variant info
     prep_snp_stats(snp_data, params);
@@ -2372,9 +2372,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     // read genotype data
     cur_index = snp_info->offset;
     if( params->dosage_mode )
-      gblock->pgr.Read(Geno.data(), Geno.size(), thread_num, cur_index, 1);
+      pgr.Read(Geno.data(), Geno.size(), thread_num, cur_index, 1);
     else
-      gblock->pgr.ReadHardcalls(Geno.data(), Geno.size(), thread_num, cur_index, 1);
+      pgr.ReadHardcalls(Geno.data(), Geno.size(), thread_num, cur_index, 1);
 
     oob_err(j) = ((Geno < -3) || (Geno > 2)).any();
     if(oob_err(j)) continue;

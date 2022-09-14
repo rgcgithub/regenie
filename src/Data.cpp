@@ -1909,8 +1909,8 @@ void Data::print_test_info(){
   params.with_flip = params.with_flip && !params.build_mask && params.trait_mode && (params.test_type == 0);
 
   if( params.joint_test ) {
-    params.with_flip = jt.get_test_info(&params, test_string, sout) && params.with_flip;
     jt.out_file_prefix = files.out_file;
+    params.with_flip = jt.get_test_info(&params, test_string, sout) && params.with_flip;
     sout << " * list of joint tests run on burden masks: " << get_test_list(jt.test_list, jt.joint_tests_map) << "\n";
   }
 
@@ -2300,9 +2300,9 @@ void Data::analyze_block(int const& chrom, int const& n_snps, tally* snp_tally, 
     readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, offsets);
 
   } else if((params.file_type == "bgen") && !params.streamBGEN) 
-    readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
+    readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, Gblock.Gmat, Gblock.bgen, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
   else if(params.file_type == "pgen") 
-    readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
+    readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, Gblock.Gmat, Gblock.pgr, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
   else if(params.file_type == "bed"){
 
     snp_data_blocks.resize( n_snps );
@@ -2604,7 +2604,7 @@ void Data::test_joint() {
       get_sum_stats(chrom, bb, block_info);
 
       // update number of variants (if masks were built)
-      bs = jt.setinfo[chrom - 1][bb].snp_indices.size();
+      bs = block_info.size();
       jt.nvars = bs;
 
       if(params.skip_test) { // skip assoc tests
@@ -2809,9 +2809,9 @@ void Data::readChunk(vector<uint64>& indices, int const& chrom, vector< vector <
     readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, offsets);
 
   } else if((params.file_type == "bgen") && !params.streamBGEN) 
-    readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, &Gblock, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
+    readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, Gblock.Gmat, Gblock.bgen, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
   else if(params.file_type == "pgen") 
-    readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, &Gblock, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
+    readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, Gblock.Gmat, Gblock.pgr, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
   else {
 
     snp_data_blocks.resize( n_snps );
