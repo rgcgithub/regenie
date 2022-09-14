@@ -56,6 +56,8 @@ double skato_sdQ = 0;
 double skato_dfQ = 0;
 double skato_upper = 0;
 int skato_state = 0;
+// for LOVO with BTs
+MatrixXd vc_Rvec_start;
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -67,13 +69,13 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
 
   beta_distribution<>  dist(params.skat_a1, params.skat_a2);
 
-  if(params.mask_loo){ // update dimensions
+  /*if(params.mask_loo){ // update dimensions
     mat.resize(mat.rows(), bs + Jmat.cols());
     mat.setZero();
     weights = ArrayXd::Zero(bs + Jmat.cols(), 1);
     weights_acat = weights;
     if(params.debug) cerr << "Updating VC gmat...";
-  }
+  }*/
 
 #if defined(_OPENMP)
       setNbThreads(1);
@@ -111,6 +113,49 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
 #endif
 
   mat.middleCols(start, bs) = Gmat.sparseView();
+}
+
+// with lovo
+void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, SpMat const& Gmat_sp, const Ref<const ArrayXb>& ur_ind, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& mafs, const Ref<const ArrayXb>& in_analysis, struct param const& params){
+
+  beta_distribution<>  dist(params.skat_a1, params.skat_a2);
+  int bs = Gmat_sp.cols(), bsize = 256, start = 0;
+  int nchunks = ceil( bs * 1.0 / bsize );
+
+  for (int j = 0; j < nchunks; ++j) {
+    if( j == (nchunks-1) ) bsize = bs - j * bsize;
+    MatrixXd Gmat = MatrixXd::Zero(Gmat_sp.rows(), bsize); // no mt with spmat
+
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for (int i = 0; i < bsize; ++i) {
+      if(ur_ind(start + i)) continue; // check if ultra-rare
+
+      MapArXd Gvec (Gmat.col(i).data(), Gmat.rows(), 1);
+      Gvec = Gmat_sp.col(start + i);
+      if(!(Gvec>0).any()) continue; // not used
+
+      // flip if af is above 0.5
+      if( to_flip(start + i) ) Gvec = (Gvec == -3).select(Gvec, 2 - Gvec);
+
+      // impute missing with mean
+      Gvec = (Gvec == -3).select(2 * mafs(start + i), Gvec);
+      // mask individuals
+      Gvec *= in_analysis.cast<double>();
+      // store SKAT weight
+      weights(start + i) = pdf(dist, mafs(start + i));
+      weights_acat(start + i) = weights(start + i) * weights(start + i) * mafs(start + i) * (1-mafs(start + i)); // for acatv
+
+    }
+#if defined(_OPENMP)
+    setNbThreads(params.threads);
+#endif
+    mat.middleCols(start, bsize) = Gmat.sparseView();
+    start += bsize;
+  }
+
 }
 
 void compute_vc_masks(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, SpMat& vc_rare_mask, Ref<MatrixXb> vc_rare_non_miss, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres,  const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, MatrixXb& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXb>& in_analysis, struct param const& params){
@@ -558,7 +603,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, snp_indices, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -700,7 +745,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, snp_indices, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -876,9 +921,9 @@ void compute_skat_q(VectorXd& Qs, VectorXd& Qb, const Ref<const ArrayXd>& Svals,
 
 }
 
-void correct_vcov(int const& ph, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sqrt, const Ref<const ArrayXd>& score_stats, Ref<MatrixXd> Kmat, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
+void correct_vcov(int const& ph, const Ref<const ArrayXi>& indices, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sqrt, const Ref<const ArrayXd>& score_stats, Ref<MatrixXd> Kmat, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
 
-  apply_correction_cc(ph, Rvec_sqrt, score_stats, Kmat.diagonal().array(), Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+  apply_correction_cc(ph, indices, Rvec_sqrt, score_stats, Kmat.diagonal().array(), Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, true);
   if(params.debug) {
     int bs = Rvec_sqrt.size();
     cerr << "Rsqrt:" << Rvec_sqrt.head(min(150, bs)).matrix().transpose() << "\n";
@@ -889,9 +934,51 @@ void correct_vcov(int const& ph, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sq
   masked_sites = (Rvec_sqrt > 0);
 }
 
-// correcting for high cc imbalance
-void apply_correction_cc(int const& ph, Ref<ArrayXd> Rvec, const Ref<const ArrayXd>& score_stats, const Ref<const ArrayXd>& var_score, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
+// when using lovo with bts
+void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, struct param const& params){
 
+  // if no correction, return 
+  if(!(params.firth || params.use_SPA)) return;
+
+  vc_Rvec_start.resize(weights.size(), params.n_pheno);
+  vc_Rvec_start.array().colwise() = (weights > 0).cast<double>();
+
+  ArrayXi indices;
+  ArrayXd Svals, varS;
+  MatrixXd GtWX, Kmat;
+  SpMat GWs;
+  Svals.resize(weights.size(), 1); // Mx1
+  Kmat.resize(weights.size(), weights.size()); // MxM
+
+  // loop over each trait
+  for(int ph = 0; ph < params.n_pheno; ph++) { 
+    if( !params.pheno_pass(ph) ) continue;
+
+    MapcArXd Y (yraw.col(ph).data(), yraw.rows());
+    MapcArXb mask (masked_indivs.col(ph).data(), yraw.rows());
+    MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(ph).data(), yraw.rows());
+    MapcMatXd XWsqrt (m_ests.X_Gamma[ph].data(), yraw.rows(), m_ests.X_Gamma[ph].cols());
+    MapcArXd phat (m_ests.Y_hat_p.col(ph).data(), yraw.rows());
+
+    // get test stats with no correction
+    compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), Gsparse, GWs, GtWX);
+    varS = Kmat.diagonal().array();
+
+    // apply correction and store Rvecs
+    apply_correction_cc(ph, indices, vc_Rvec_start.col(ph).array(), Svals, varS, Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, false);
+  }
+
+  if(params.debug) {
+    int bs = vc_Rvec_start.rows();
+    cerr << "Rsqrt_start:" << vc_Rvec_start.block(0, 0, min(150, bs), 1).transpose() << "\n";
+  }
+
+}
+
+// correcting for high cc imbalance
+void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, Ref<ArrayXd> Rvec, const Ref<const ArrayXd>& score_stats, const Ref<const ArrayXd>& var_score, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params, bool const& check_rvec_start){
+
+  bool use_rvec_start = check_rvec_start && (vc_Rvec_start.size() > 0);
   int npass = Rvec.sum();
 
   // loop over the markers
@@ -901,6 +988,15 @@ void apply_correction_cc(int const& ph, Ref<ArrayXd> Rvec, const Ref<const Array
 #endif
   for (int i = 0; i < Rvec.size(); i++) {
     if(Rvec(i) == 0) continue;
+    
+    // if already pre-computed
+    if( use_rvec_start ){
+      int ix = indices(i); // match indices (in mask vs in set)
+      if( ix < vc_Rvec_start.rows() ) { // ignore ur masks
+        Rvec(i) = vc_Rvec_start(ix, ph);
+        continue;
+      }
+    }
 
     bool test_fail = true;
     double chisq, pv, corrected_var;

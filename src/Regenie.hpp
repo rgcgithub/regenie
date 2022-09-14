@@ -350,7 +350,7 @@ struct param {
   bool mask_loo = false, mask_lodo = false;
   bool use_max_bsize = false; // set bsize to max set size
   bool p_joint_only = false;
-  std::string mask_loo_name, mask_loo_set, mask_loo_region; // for LOO with masks
+  std::string mask_loo_name, mask_loo_set, mask_loo_region, masks_loo_snpfile; // for LOO with masks
   double mask_loo_aaf;
   bool nnls_out_all = false;
   int nnls_napprox = 10;

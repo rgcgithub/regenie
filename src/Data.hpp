@@ -130,6 +130,7 @@ class Data {
     void get_sum_stats(int const&,int const&,std::vector<variant_block>&);
     void readChunk(std::vector<uint64>&,int const&,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
     void getMask(int const&,int const&,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
+    void getMask_loo(int const&,int const&,std::vector<std::vector<uchar>>&,std::vector<uint32_t>&,std::vector<uint32_t>&,std::vector<variant_block>&);
 
     // step 2 with multi-trait tests
     MTests mt;

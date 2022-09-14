@@ -261,6 +261,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("skat-params", "a1,a2 values for variant weights computed from Beta(MAF,a1,a2) used in gene-based tests", cxxopts::value<std::string>(),"FLOAT,FLOAT(=1,25)")
     ("skato-rho", "comma-separated list of rho values used for SKATO", cxxopts::value<std::string>(),"FLOAT,..,FLOAT")
     ("vc-MACthr", "MAC threshold below which to collapse variants for gene-based tests", cxxopts::value<int>(params->skat_collapse_MAC),"INT(=10)")
+    ("lovo-snplist", "list of variants to generate LOVO masks for", cxxopts::value<std::string>(params->masks_loo_snpfile),"FILE")
     ("joint-only", "only output p-values from joint tests")
     ("force-ltco", "use a Leave-Two-Chromosome-Out (LTCO) scheme by specifying additional chromosome to exclude from step 1 LOCO predictions", cxxopts::value<int>(params->ltco_chr),"INT")
     ("niter", "maximum number of iterations for logistic regression", cxxopts::value<int>(params->niter_max),"INT(=50)")
@@ -827,8 +828,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
           sout << "WARNING: cannot use --write-mask with --mask-lovo.\n";
           params->write_masks = false; valid_args[ "write-mask" ] = false;
         }
+        if(params->joint_test)
+          throw "cannot use --joint with --mask-lovo";
         valid_args[ "vc-maxAAF" ] = valid_args[ "aaf-bins" ] = false;
-      }
+      } else if (vm.count("lovo-snplist"))
+        throw "cannot use --lovo-snplist without --mask-lovo";
 
       if( vm.count("mask-lodo") ) {
         tmp_str_vec = string_split(vm["mask-lodo"].as<string>(),",");
@@ -871,6 +875,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("write-mask-snplist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
       sout << "WARNING: cannot use --write-mask-snplist with LOVO/LODO.\n";
       params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;
+    }
+    if( vm.count("write-setlist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
+      sout << "WARNING: cannot use --write-setlist with LOVO/LODO.\n";
+      params->write_setlist = false; valid_args[ "write-setlist" ] = false;
     }
 
     if( params->snp_set && !vm.count("set-list") )
@@ -1004,7 +1012,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->singleton_carriers = false; valid_args[ "singleton-carrier" ] = false;
     }
 
-    params->use_max_bsize = params->mask_loo;
+    //params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
       throw "cannot use interaction tests with count phenotypes.";
     if( params->interaction_prs && !(vm.count("use-prs") || vm.count("pred")) )
@@ -1134,6 +1142,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         check_file(files->interaction_snp_info.file, suffs, "interaction-file");
       }
     }
+    if(vm.count("lovo-snplist")) check_file(params->masks_loo_snpfile, "lovo-snplist");
 
     print_args(arguments, valid_args, sout);
 

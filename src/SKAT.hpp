@@ -29,6 +29,7 @@
 
 // SKAT
 void update_vc_gmat(SpMat&,Eigen::ArrayXd&,Eigen::ArrayXd&,ArrayXb&,const int&,const int&,struct param const&,const Eigen::Ref<const ArrayXb>&,Eigen::Ref<Eigen::MatrixXd>,std::vector<variant_block>&,const Eigen::Ref<MatrixXb>);
+void update_vc_gmat(SpMat&,Eigen::ArrayXd&,Eigen::ArrayXd&,SpMat const&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 void compute_vc_masks(SpMat&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::ArrayXd>,SpMat&,Eigen::Ref<MatrixXb>,const Eigen::Ref<const Eigen::MatrixXd>&, struct ests const&,struct f_ests const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,MatrixXb&,std::vector<variant_block>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 void prep_ultra_rare_mask(SpMat&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::ArrayXd>,SpMat&,Eigen::Ref<MatrixXb>,MatrixXb&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 void compute_vc_masks_qt(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,std::vector<variant_block>&,struct param const&);
@@ -65,8 +66,8 @@ double get_spa_pv(const double&,const double&,const Eigen::Ref<const Eigen::Arra
 void compute_vc_mats_bt(Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,Eigen::Ref<SpMat>,SpMat&,Eigen::MatrixXd&);
 void compute_skat_q(Eigen::VectorXd&,Eigen::VectorXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const MatrixXb>&,bool const&);
 
-void correct_vcov(const int&,Eigen::Ref<ArrayXb>,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,SpMat const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct f_ests const&,struct param const&);
-void apply_correction_cc(const int&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,SpMat const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct f_ests const&,struct param const&);
+void correct_vcov(const int&,const Eigen::Ref<const Eigen::ArrayXi>&,Eigen::Ref<ArrayXb>,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,SpMat const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct f_ests const&,struct param const&);
+void apply_correction_cc(const int&,const Eigen::Ref<const Eigen::ArrayXi>&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,SpMat const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct f_ests const&,struct param const&,bool const&);
 void apply_firth_snp(bool&,double&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 bool correct_vcov_burden(const int&,double&,double const&,double const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,SpMat const&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct param const&);
 bool get_ztz_evals(const Eigen::Ref<const Eigen::MatrixXd>&,Eigen::MatrixXd&,double&,double&,double&,double const&,bool const&);
@@ -103,6 +104,10 @@ extern double skato_dfQ;
 extern double skato_upper;
 extern int skato_state; // positive if integration failed
 void integrate(double f(double*),double&,int const&,bool const&);
+
+// for lovo with bts
+extern Eigen::MatrixXd vc_Rvec_start;
+void check_cc_correction(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct ests const&,struct f_ests const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,struct param const&);
 
 void check_sizes(SpMat const&, SpMat const&, const Eigen::Ref<const MatrixXb>&);
 
