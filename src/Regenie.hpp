@@ -131,8 +131,8 @@ class mstream
 class MeasureTime {
 
   public:
-    std::chrono::steady_clock::time_point begin;
-    std::chrono::steady_clock::time_point end;
+    std::chrono::steady_clock::time_point begin, end;
+    std::chrono::high_resolution_clock::time_point ms_begin;
     time_t start_time_info, end_time_info;
 
     void init() {
@@ -145,6 +145,18 @@ class MeasureTime {
       auto endtime = std::chrono::system_clock::now(); 
       end_time_info = std::chrono::system_clock::to_time_t( endtime ); 
       end = std::chrono::steady_clock::now();
+    }
+
+    void start_ms() {
+      ms_begin = std::chrono::high_resolution_clock::now(); // wall clock
+    }
+
+    std::string stop_ms(){
+      auto ms_end = std::chrono::high_resolution_clock::now(); // wall clock
+      auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ms_end - ms_begin);
+      std::ostringstream buffer;
+      buffer << "done (" << duration.count() << "ms)";
+      return buffer.str();
     }
 
     MeasureTime(void);
