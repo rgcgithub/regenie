@@ -1848,9 +1848,9 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
     bool non_par = in_non_par(chrom, snp_info->physpos, params);
 
     // set to correct position
-    gblock->bgen.jumpto( snp_info->offset );
-    gblock->bgen.read_variant( &chromosome, &position, &rsid, &alleles );
-    gblock->bgen.read_probs( &probs ) ;
+    bgen.jumpto( snp_info->offset );
+    bgen.read_variant( &chromosome, &position, &rsid, &alleles );
+    bgen.read_probs( &probs ) ;
     //sout << "["<< chrom << "]SNPid stored ("<< snp_info->chrom <<") = " << snp_info->ID<< "/ SNPIDread ("<<chromosome<<")= " << rsid << endl; exit(-1);
     assert( snp_info->ID == rsid );
     //assert(chrStrToInt(chromosome, params->nChrom) == chrom);
