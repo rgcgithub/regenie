@@ -779,7 +779,7 @@ void extract_interaction_snp(struct param* params, struct in_files* files, struc
   if(params->interaction_file) {// from external file
     Gcov = extract_from_genofile("interaction", mean_impute, ind_in_cov_and_geno, filters, files, params, sout).col(0).array();
   } else { // from input file
-    read_snp(mean_impute, params->interaction_snp_offset, Gcov, ind_in_cov_and_geno, filters, files, gblock, params);
+    read_snp(mean_impute, params->interaction_snp_offset, Gcov, ind_in_cov_and_geno, filters->ind_ignore, files, gblock->pgr, params, true);
     /*
        cerr << params->interaction_snp_offset << " " << ind_in_cov_and_geno.count() <<  "\n\n"
        << endl << pheno_data->interaction_cov.topRows(5)
@@ -812,7 +812,7 @@ void extract_condition_snps(struct param* params, struct in_files* files, struct
 
     Gcov.resize(params->n_samples, filters->condition_snp_names.size());
     for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr, count++) 
-      read_snp(mean_impute, itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters, files, gblock, params);
+      read_snp(mean_impute, itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters->ind_ignore, files, gblock->pgr, params, true);
 
   }
   

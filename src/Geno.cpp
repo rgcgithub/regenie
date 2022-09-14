@@ -3552,28 +3552,30 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
 
 
 // read a single variant
-void read_snp(bool const& mean_impute,uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct geno_block* gblock, struct param* params){
+void read_snp(bool const& mean_impute, uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, const Eigen::Ref<const ArrayXb>& ind_ignore, struct in_files* files, PgenReader& pgr, struct param* params, bool const& check_miss){
 
   Geno = 0;
   if(params->file_type == "bed")
-    read_snp_bed(offset, Geno, mask, filters, files, params);
+    read_snp_bed(offset, Geno, mask, ind_ignore, files, params);
   else if(params->file_type == "pgen")
-    read_snp_pgen(offset, Geno, mask, gblock, params);
+    read_snp_pgen(offset, Geno, mask, pgr, params->dosage_mode);
   else
-    read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 0);
+    read_snp_bgen(offset, Geno, mask, ind_ignore, files->bgen_file, params->ref_first, 0);
 
-  // mask missing or impute with mean
-  if(mean_impute) {
-    double meanG = (mask && (Geno != -3)).select(Geno,0).sum() / (mask && (Geno != -3)).count();
-    Geno = (mask && (Geno == -3)).select(meanG, Geno); 
-  } else  mask = (Geno != -3).select(mask, false);
+  if(check_miss){
+    // mask missing or impute with mean
+    if(mean_impute) {
+      double meanG = (mask && (Geno != -3)).select(Geno,0).sum() / (mask && (Geno != -3)).count();
+      Geno = (mask && (Geno == -3)).select(meanG, Geno); 
+    } else  mask = (Geno != -3).select(mask, false);
+  }
 
 }
 
-void read_snp_bed(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params){
+void read_snp_bed(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, const Eigen::Ref<const ArrayXb>& ind_ignore, struct in_files* files, struct param* params){
 
   int hc;
-  uint32_t const nmax = filters->ind_ignore.size();
+  uint32_t const nmax = ind_ignore.size();
   uint32_t i = 0, index = 0;
   ArrayXd geno4; // genotype values for 4 samples at a time
 
@@ -3591,7 +3593,7 @@ void read_snp_bed(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, st
       if(i >= nmax) break;
 
       // skip samples that were ignored from the analysis
-      if( filters->ind_ignore(i) ) continue;
+      if( ind_ignore(i) ) continue;
 
       if(mask(index)){
         hc = geno4(bit_start);
@@ -3605,13 +3607,13 @@ void read_snp_bed(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, st
 
 }
 
-void read_snp_pgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct geno_block* gblock, struct param* params){
+void read_snp_pgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, PgenReader& pgr, bool const& dosage_mode){
 
   // read genotype data
-  if( params->dosage_mode )
-    gblock->pgr.Read(Geno.data(), Geno.size(), 0, offset, 1);
+  if( dosage_mode )
+    pgr.Read(Geno.data(), Geno.size(), 0, offset, 1);
   else
-    gblock->pgr.ReadHardcalls(Geno.data(), Geno.size(), 0, offset, 1);
+    pgr.ReadHardcalls(Geno.data(), Geno.size(), 0, offset, 1);
 
   Geno *= mask.cast<double>();
 
@@ -3619,7 +3621,7 @@ void read_snp_pgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, s
 
 // using bgen library API
 // ttype is 0: add, 1:dom, 2:rec
-void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, struct filter* filters, string const& bgen_file, struct param* params, int const& ttype){
+void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, const Eigen::Ref<const ArrayXb>& ind_ignore, string const& bgen_file, bool const& ref_first, int const& ttype){
 
   uint32_t index = 0;
   double ds;
@@ -3637,7 +3639,7 @@ void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, s
 
   for( std::size_t i = 0; i < probs.size(); ++i ) {
     // skip samples that were ignored from the analysis
-    if( filters->ind_ignore(i) ) continue;
+    if( ind_ignore(i) ) continue;
 
     if(mask(index)){
 
@@ -3648,11 +3650,11 @@ void read_snp_bgen(uint64 const& offset, Ref<ArrayXd> Geno, Ref<ArrayXb> mask, s
       // coding
       if(ds!= -3){
         if(ttype == 1) //dominant
-          ds = params->ref_first ? (probs[i][1] + probs[i][2]) : (probs[i][0] + probs[i][1]);
+          ds = ref_first ? (probs[i][1] + probs[i][2]) : (probs[i][0] + probs[i][1]);
         else if(ttype == 2) //recessive
-          ds = params->ref_first ? probs[i][2] : probs[i][0];
+          ds = ref_first ? probs[i][2] : probs[i][0];
         else // additive
-          ds = params->ref_first ? ds : (2 - ds); // if ref-first, no need to switch
+          ds = ref_first ? ds : (2 - ds); // if ref-first, no need to switch
       }
 
       Geno(index) = ds;
@@ -3680,7 +3682,7 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
   if(ttype == "dom"){ // dominant
 
     if(params->file_type == "bgen")
-      read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 1);
+      read_snp_bgen(offset, Geno, mask, filters->ind_ignore, files->bgen_file, params->ref_first, 1);
     else {
 
       if((params->file_type == "pgen") && params->dosage_mode)
@@ -3693,7 +3695,7 @@ void code_snp(MatrixXd& Gcov, Ref<ArrayXb> mask, uint64 const& offset, struct fi
   } else if(ttype == "rec"){ //recessive
 
     if(params->file_type == "bgen")
-      read_snp_bgen(offset, Geno, mask, filters, files->bgen_file, params, 2);
+      read_snp_bgen(offset, Geno, mask, filters->ind_ignore, files->bgen_file, params->ref_first, 2);
     else {
 
       if((params->file_type == "pgen") && params->dosage_mode)

@@ -51,7 +51,7 @@ class JTests {
     double pval_nnls_pos, pval_nnls_neg;
     double tol = 1e-6, qr_tol = 1e-7, nnls_tol = 1e-10; // qr threshold used in R
     double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
-    std::string burden_type, burden_str, burden_model;
+    std::string burden_type, burden_str, burden_model, genep_all_sfx = "";
     std::string out_file_prefix; // prefix of output files
     Eigen::ArrayXi colKeep; // keep track of linearly independent columns in Gmat
     Eigen::MatrixXd Gtmp;
@@ -71,7 +71,7 @@ class JTests {
     void compute_minp();
     void compute_acat(const int&,const int&,const std::vector<variant_block>&);
     void compute_ftest(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
-    void compute_nnls(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,bool const&);
+    void compute_nnls(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,std::string const&);
     void compute_gates(const int&,const std::vector<variant_block>&);
     double get_me(const Eigen::Ref<const Eigen::MatrixXd>&);
 

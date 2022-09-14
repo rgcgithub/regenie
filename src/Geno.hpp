@@ -238,10 +238,10 @@ void read_aafs(const double,const struct in_files*,struct filter*,std::vector<sn
 bool check_singleton_column(std::string const&);
 void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
 
-void read_snp(bool const&,uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct geno_block*,struct param*);
-void read_snp_bed(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*);
-void read_snp_pgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct geno_block*,struct param*);
-void read_snp_bgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,struct filter*,std::string const&,struct param*,int const&);
+void read_snp(bool const&,uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,const Eigen::Ref<const ArrayXb>&,struct in_files*,PgenReader&,struct param*,bool const&);
+void read_snp_bed(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,const Eigen::Ref<const ArrayXb>&,struct in_files*,struct param*);
+void read_snp_pgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,PgenReader&,bool const&);
+void read_snp_bgen(uint64 const&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<ArrayXb>,const Eigen::Ref<const ArrayXb>&,std::string const&,bool const&,int const&);
 void code_snp(Eigen::MatrixXd&,Eigen::Ref<ArrayXb>,uint64 const&,struct filter*,struct in_files*,struct param*,mstream&);
 
 // for conditional analyses

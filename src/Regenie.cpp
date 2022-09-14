@@ -292,7 +292,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("sbat-verbose", "To output detailed SBAT test results")
     ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,1)")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
-    ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene (all masks/M1-only)")
+    ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene")
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
     ("use-adam", "use ADAM to fit penalized logistic models")
