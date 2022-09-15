@@ -1531,6 +1531,15 @@ int parseLine(char* line){
     return i;
 }
 
+void print_obj(const Ref<const MatrixXd>& mat, string const& fname){
+  // write obj to file
+  IOFormat Fmt(FullPrecision, DontAlignCols, " ", "\n", "", "","","");
+  ofstream ofile;
+  ofile.open(fname);
+  ofile << mat.format(Fmt) << "\n";
+  ofile.close();
+}
+
 int get_mem(){ // in MB
     FILE* file = fopen("/proc/self/status", "r");
     double result = -1;
