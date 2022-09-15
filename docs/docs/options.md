@@ -602,6 +602,7 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--joint`| STRING| Optional| comma-separated list of joint tests to apply on the generated burden masks|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
+|`--lovo-snplist`| FILE| Optional| File with list of variants for which to compute LOVO masks|
 |`--mask-lodo`| FLAG| Optional| to perform LODO scheme|
 |`--write-mask-snplist`| FLAG| Optional| to write list of variants that went into each mask to file|
 |`--check-burden-files`| FLAG| Optional| to check the concordance between annotation, set list and mask files [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
