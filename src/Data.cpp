@@ -2948,7 +2948,7 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
   int n_snps = orig_indices.size();
 
   // read in variants in chunks storing as sparse matrix
-  sout << "\n     -reading in genotypes" << flush;
+  sout << "\n     -reading in genotypes..." << flush;
   mt.start_ms();
   if(params.debug) sout << "(0)" << print_mem() << "...";
   uint64 snp_index; 
