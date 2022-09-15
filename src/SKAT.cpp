@@ -603,7 +603,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, snp_indices, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -745,7 +745,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
-      correct_vcov(ph, snp_indices, masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+      correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -921,9 +921,9 @@ void compute_skat_q(VectorXd& Qs, VectorXd& Qb, const Ref<const ArrayXd>& Svals,
 
 }
 
-void correct_vcov(int const& ph, const Ref<const ArrayXi>& indices, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sqrt, const Ref<const ArrayXd>& score_stats, Ref<MatrixXd> Kmat, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
+void correct_vcov(int const& ph, const Ref<const ArrayXi>& indices, const Ref<const ArrayXd>& weights, Ref<ArrayXb> masked_sites, Ref<ArrayXd> Rvec_sqrt, const Ref<const ArrayXd>& score_stats, Ref<MatrixXd> Kmat, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params){
 
-  apply_correction_cc(ph, indices, Rvec_sqrt, score_stats, Kmat.diagonal().array(), Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, true);
+  apply_correction_cc(ph, indices, weights, Rvec_sqrt, score_stats, Kmat.diagonal().array(), Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, true);
   if(params.debug) {
     int bs = Rvec_sqrt.size();
     cerr << "Rsqrt:" << Rvec_sqrt.head(min(150, bs)).matrix().transpose() << "\n";
@@ -965,7 +965,7 @@ void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, cons
     varS = Kmat.diagonal().array();
 
     // apply correction and store Rvecs
-    apply_correction_cc(ph, indices, vc_Rvec_start.col(ph).array(), Svals, varS, Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, false);
+    apply_correction_cc(ph, indices, weights, vc_Rvec_start.col(ph).array(), Svals, varS, Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, false);
   }
 
   if(params.debug) {
@@ -976,7 +976,7 @@ void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, cons
 }
 
 // correcting for high cc imbalance
-void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, Ref<ArrayXd> Rvec, const Ref<const ArrayXd>& score_stats, const Ref<const ArrayXd>& var_score, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params, bool const& check_rvec_start){
+void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, const Ref<const ArrayXd>& weights, Ref<ArrayXd> Rvec, const Ref<const ArrayXd>& score_stats, const Ref<const ArrayXd>& var_score, SpMat const& Gsparse, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, struct f_ests const& fest, struct param const& params, bool const& check_rvec_start){
 
   bool use_rvec_start = check_rvec_start && (vc_Rvec_start.size() > 0);
   int npass = Rvec.sum();
@@ -1012,9 +1012,10 @@ void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, Ref<A
     run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
     //cerr << "wSPA\n" ;
 
-    // use firth as fallback if spa failed
+    // use firth as fallback if spa failed 
+    // remove skat weights as it can lead to different model fit for ur masks
     if(params.firth && test_fail){
-      apply_firth_snp(test_fail, chisq, Gres.cwiseQuotient(Wsqrt.matrix()), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
+      apply_firth_snp(test_fail, chisq, Gres.cwiseQuotient(Wsqrt.matrix()) / weights(i), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
       //cerr << "wFirth\n" ;
     }
 
