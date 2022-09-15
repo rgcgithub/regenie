@@ -27,6 +27,8 @@
 #ifndef TEST_MODELS_H
 #define TEST_MODELS_H
 
+#define MAX_EXP_LIM 708
+
 struct f_ests {
 
   Eigen::MatrixXd cov_blup_offset;

@@ -1149,7 +1149,7 @@ void run_SPA_test_snp(double& chisq, double& pv, const double& stats, const doub
   if(test_fail) {return;}
 
   // get quantile
-  //cerr << stats << ":" << pval1 << " " << pval2 << "\n";
+  //cerr << "\nstats: " << stats << ":" << pval1 << " " << pval2 << "\n";
   if( (pval1 + pval2) > 1 ){
     test_fail = true;
     return;
@@ -1178,6 +1178,7 @@ double solve_K1_snp(const double& tval, const double& denum, SpVec const& Gspars
   while( niter_cur++ < niter_max ){
 
     hess = spa_df.fastSPA ? compute_K2_fast_snp(lambda * t_old, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, Gamma_sqrt, mask) : compute_K2_snp(lambda * t_old, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, Gamma_sqrt, mask);
+    if(hess == 0) return missing_value_double;
     t_new = t_old - f_old / hess;
     f_new = spa_df.fastSPA ? compute_K1_fast_snp(lambda * t_new, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K1_snp(lambda * t_new, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
     f_new *= lambda;
@@ -1262,7 +1263,9 @@ double compute_K1_fast_snp(const double& t, const double& b, const double& c, co
 
 double compute_K2_snp(const double& t, const double& a, const double& c, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask){
 
-  double val = mask.select( ( Gmod.square() * Gamma_sqrt.square() / (c*c) * ( -t / c * Gmod).exp()) / ( phat + (1 - phat) * ( -t / c * Gmod ).exp() ).square(), 0).sum();
+  ArrayXd Vexp = -t / c * Gmod;
+  if((mask && (Vexp > MAX_EXP_LIM)).any()) { return 0; }
+  double val = mask.select( ( Gmod.square() * Gamma_sqrt.square() / (c*c) * Vexp.exp()) / ( phat + (1 - phat) * Vexp.exp() ).square(), 0).sum();
 
   return val;
 }
@@ -1270,14 +1273,16 @@ double compute_K2_snp(const double& t, const double& a, const double& c, const R
 double compute_K2_fast_snp(const double& t, const double& b, const double& c, const double& d, const double& denum, SpVec const& Gsparse, const Ref<const ArrayXd>& Gmod, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Gamma_sqrt, const Ref<const ArrayXb>& mask){
 
   uint32_t index_j;
-  double val = 0, denum_v;
+  double val = 0, denum_v, vexp;
 
   for (SpVec::InnerIterator it(Gsparse); it; ++it) {
     index_j = it.index();
     if(!mask(index_j)) continue;
-
-    denum_v = phat(index_j) + (1 - phat(index_j)) * exp( -t / c * Gmod(index_j));
-    val += ( Gmod(index_j) * Gmod(index_j) * Gamma_sqrt(index_j) * Gamma_sqrt(index_j) * exp( -t / c * Gmod(index_j)) / (c*c) ) / (denum_v * denum_v);
+    vexp = -t / c * Gmod(index_j);
+    if(vexp > MAX_EXP_LIM) { return 0; }
+    denum_v = phat(index_j) + (1 - phat(index_j)) * exp( vexp );
+    val += ( Gmod(index_j) * Gmod(index_j) * Gamma_sqrt(index_j) * Gamma_sqrt(index_j) * exp( vexp ) / (c*c) ) / (denum_v * denum_v);
+    //cerr << "phat:" << phat(index_j) << "; t:"<< t << "; c:" << c << ";G:"<< Gmod(index_j)<< " ;denum:" << denum_v <<"\n";
   }
   val += b / denum;
 
@@ -1292,9 +1297,14 @@ void get_SPA_pvalue_snp(const double& root, const double& tval, double& pv, bool
 
   kval = spa_df.fastSPA ? compute_K_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, mask) : compute_K_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, mask);
   k2val = spa_df.fastSPA ? compute_K2_fast_snp(lambda * root, spa_df.val_b, spa_df.val_c, spa_df.val_d, denum, Gsparse, spa_df.Gmod, phat, Gamma_sqrt, mask) : compute_K2_snp(lambda * root, spa_df.val_a, spa_df.val_c, spa_df.Gmod, phat, Gamma_sqrt, mask);
+  if(k2val == 0) {
+    test_fail = true;
+    return;
+  }
 
   wval = sgn(root) * sqrt( 2 * ( root * tval - kval ) );
   vval = root * sqrt( k2val );
+  //cerr << " root:" << root << " kval:" << kval << " k2val:" << k2val << " wval:" << wval << " vval:" << vval << " ";
   if(vval == 0) { // root is 0 so s=0 (K'(0)=0)
     pv = 0.5;
   } else {
