@@ -79,6 +79,7 @@ One of the output files from these two commands is included in `example/test_bin
 |`--tpheno-file`| STRING| Optional| to use a phenotype file in transposed format (e.g. BED format)|
 |`--tpheno-indexCol`| INT| Optional| index of phenotype name column in transposed phenotype file|
 |`--tpheno-ignoreCols`| INT| Optional| indexes of columns to ignore in transposed phenotype file|
+|`--iid-only`| FLAG | Optional| to specify if header in transposed phenotype file only contains sample IID (assume FID=IID)|
 
 Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. `--covarCol PC{1:10}`).
 Also, multiple files can be specified for `--extract/--exclude/--keep/--remove` by using a comma-separated list.
@@ -228,7 +229,8 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 | Option | Argument | Type | Description|
 |---|-------|------|----|
 |`--step`| INT| Required| specify step for the regenie run (see Overview) [argument can be `1` or `2`] |
-|`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)|
+|`--qt`| FLAG| Optional| specify that traits are quantitative (this is the default so can be ommitted)|
+|`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing|
 |`-1,--cc12`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
 |`--bsize`| INT| Required| size of the genotype blocks|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
@@ -257,6 +259,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--approx`|FLAG | Optional| flag to use approximate Firth LRT for computational speedup (only works when option `--firth` is used)|
 |`--firth-se`| FLAG | Optional | flag to compute SE based on effect size and LRT p-value when using Firth correction (instead of based on Hessian of unpenalized log-likelihood)|
 |`--write-null-firth`| FLAG| Optional| to write the null estimates for approximate Firth [can be used in step 1 or 2] |
+|`--compute-all`| FLAG| Optional| to write the null Firth estimates for all chromosomes (regardless of the genotype file) |
 |`--use-null-firth`| FILE| Optional| to use stored null estimates for approximate Firth in step 2 |
 |`--spa`| FLAG | Optional| specify to use Saddlepoint approximation as fallback for p-values less than threshold|
 |`--pThresh`| FLOAT | Optional| P-value threshold below which to apply Firth/SPA correction [default is 0.05]
@@ -280,6 +283,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--threads`| INT | Optional| number of computational threads to use [default=all-1]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
 |`--verbose`| FLAG | Optional| verbose screen output|
+|`--version`| FLAG | Optional| print version number and exit|
 |`--help`| FLAG | Optional| Prints usage and options list to screen|
 
 When step 1 of **regenie** is run in low memory mode (i.e. using `--lowmem`), 
@@ -547,6 +551,8 @@ The ACAT test combines the p-values of the individual burden masks using the Cau
 (see ref. 14 [here](../overview/#fn:14)).
 The SBAT test is described into more detail [here](../overview/#sparse-burden-association-test).
 
+If you only want to output the results for the joint tests (ignore the marginal tests), use `--joint-only`.
+
 
 #### LOVO/LODO schemes
 
@@ -597,7 +603,7 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--vc-tests`| STRING| Optional| comma-separated list of SKAT/ACAT-type tests to run|
 |`--vc-maxAAF`| FLOAT| Optional| AAF upper bound to use for SKAT/ACAT-type tests [default is 100%]|
 |`--skat-params`| FLOAT,FLAT| Optional| a1,a2 values for the single variant weights computed from Beta(MAF,a1,a2) used in SKAT/ACAT-type tests [default is (1,25)]|
-|`--skat-rho`| FLOAT,...,FLOAT| Optional| comma-separated list of $\rho$ values used for SKATO models|
+|`--skato-rho`| FLOAT,...,FLOAT| Optional| comma-separated list of $\rho$ values used for SKATO models|
 |`--vc-MACthr`| FLOAT| Optional| MAC threshold below which to collapse variants in SKAT/ACAT-type tests [default is 10]|
 |`--joint`| STRING| Optional| comma-separated list of joint tests to apply on the generated burden masks|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
@@ -738,4 +744,5 @@ The conditioning variants will automatically be ignored from the analysis.
 |---|-------|------|----|
 |`--condition-list`| FILE| Required| file with list of variants to condition on|
 |`--condition-file `| FORMAT,FILE| Optional| get conditioning variants from external file (same argument format as `--interaction-file`)|
+|`--condition-file-sample `| FILE| Optional| accompagnying sample file for BGEN format|
 |`--max-condition-vars `| INT| Optional| maximum number of conditioning variants [default is 10,000]|
