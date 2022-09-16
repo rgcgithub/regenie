@@ -371,6 +371,12 @@ Firth logistic regression model</p>
 <td>Optional</td>
 <td>indexes of columns to ignore in transposed phenotype file</td>
 </tr>
+<tr>
+<td><code>--iid-only</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to specify if header in transposed phenotype file only contains sample IID (assume FID=IID)</td>
+</tr>
 </tbody>
 </table>
 <p>Note: Parameter expansion can be used when specifying phenotypes/covariates (e.g. <code>--covarCol PC{1:10}</code>).
@@ -486,10 +492,16 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>specify step for the regenie run (see Overview) [argument can be <code>1</code> or <code>2</code>]</td>
 </tr>
 <tr>
+<td><code>--qt</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>specify that traits are quantitative (this is the default so can be ommitted)</td>
+</tr>
+<tr>
 <td><code>--bt</code></td>
 <td>FLAG</td>
 <td>Optional</td>
-<td>specify that traits are binary with 0=control,1=case,NA=missing (default is quantitative)</td>
+<td>specify that traits are binary with 0=control,1=case,NA=missing</td>
 </tr>
 <tr>
 <td><code>-1,--cc12</code></td>
@@ -660,6 +672,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>to write the null estimates for approximate Firth [can be used in step 1 or 2]</td>
 </tr>
 <tr>
+<td><code>--compute-all</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to write the null Firth estimates for all chromosomes (regardless of the genotype file)</td>
+</tr>
+<tr>
 <td><code>--use-null-firth</code></td>
 <td>FILE</td>
 <td>Optional</td>
@@ -796,6 +814,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FLAG</td>
 <td>Optional</td>
 <td>verbose screen output</td>
+</tr>
+<tr>
+<td><code>--version</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>print version number and exit</td>
 </tr>
 <tr>
 <td><code>--help</code></td>
@@ -1129,6 +1153,7 @@ generated using different annotation classes as well as AAF thresholds.</p>
 <p>The ACAT test combines the p-values of the individual burden masks using the Cauchy combination method 
 (see ref. 14 <a href="../overview/#fn:14">here</a>).
 The SBAT test is described into more detail <a href="../overview/#sparse-burden-association-test">here</a>.</p>
+<p>If you only want to output the results for the joint tests (ignore the marginal tests), use <code>--joint-only</code>.</p>
 <h4 id="lovolodo-schemes">LOVO/LODO schemes</h4>
 <p>The leave-one-variant-out (LOVO) scheme takes all sites going into a mask,
 and builds LOVO masks 
@@ -1218,7 +1243,7 @@ listed last in the bim file).</p>
 <td>a1,a2 values for the single variant weights computed from Beta(MAF,a1,a2) used in SKAT/ACAT-type tests [default is (1,25)]</td>
 </tr>
 <tr>
-<td><code>--skat-rho</code></td>
+<td><code>--skato-rho</code></td>
 <td>FLOAT,...,FLOAT</td>
 <td>Optional</td>
 <td>comma-separated list of $\rho$ values used for SKATO models</td>
@@ -1474,6 +1499,12 @@ The conditioning variants will automatically be ignored from the analysis.</p>
 <td>FORMAT,FILE</td>
 <td>Optional</td>
 <td>get conditioning variants from external file (same argument format as <code>--interaction-file</code>)</td>
+</tr>
+<tr>
+<td><code>--condition-file-sample</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>accompagnying sample file for BGEN format</td>
 </tr>
 <tr>
 <td><code>--max-condition-vars</code></td>
