@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.2.1](https://github.com/rgcgithub/regenie/releases/tag/v3.2.1) (New option `--lovo-snplist` to only consider a subset of LOVO masks; Improve efficiency of LOVO for large sets to reduce memory usage; Bug fix for SPA with numerical overflow; For SKAT/ACAT tests with Firth correction, don't include SKAT weights when running Firth on single variants)
+
 [Version 3.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2) (Bug fix for SKAT/SKATO when testing on binary traits using Firth/SPA; Switched name of NNLS joint test to SBAT test altering name of corresponding options and applied Bonferroni correction before reporting its p-value [correcting for minP of 2 tests])
 
 [Version 3.1.4](https://github.com/rgcgithub/regenie/releases/tag/v3.1.4) (New option `--par-region` to specify build to determine bounds for chrX PAR regions; new option `--force-qt` to force QT runs for traits with fewer than 10 values [otherwise will throw an error]; phenotype imputation for missing values is now applied after RINTing when using `--apply-rint`; several bug fixes)
