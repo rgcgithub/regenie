@@ -1691,7 +1691,7 @@ void Data::write_predictions(int const& ph){
     for(int chr = 0; chr < params.nChrom; chr++) {
       // fit null approximate Firth 
       // use warm starts from previous chromosomes
-      if(!fit_firth(ph, Y, pheno_data.new_cov, pred.col(chr).array(), mask, pivec, etavec, bhat, se, params.ncov, dev, false, tstat, params.maxstep_null, params.niter_max_firth_null, params.numtol, &params)){
+      if(!fit_firth(ph, Y, pheno_data.new_cov, pred.col(chr).array(), mask, pivec, etavec, bhat, se, params.ncov, dev, false, tstat, params.maxstep_null, params.niter_max_firth_null, 50 * params.numtol, &params)){
         has_converged = false;
         break;
       }
