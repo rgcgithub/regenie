@@ -74,12 +74,32 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     etavec = mask.select( log(pivec/ (1-pivec)), 0);
     betaold = 0;
 
+    // check if model converged
     if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)) {
-      params->pheno_pass(i) = false; // phenotype will be ignored
-      if(!silent) sout << "\n     WARNING: logistic regression did not converge for phenotype '" << files->pheno_names[i] <<"'.";
-      continue;
-      // throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter or check the covariates.";
-    } else if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
+      bool skip_pheno = true;
+
+      // if not, get starting values by omitting loco offset (instead of at 0)
+      if(params->test_mode && !params->skip_blups && !params->blup_cov){
+        if(!silent) sout << "\n     WARNING: logistic regression did not converge for phenotype '" << files->pheno_names[i] <<"'. Retrying using starting beta from model without LOCO offset.";
+        ArrayXd loco_dummy = ArrayXd::Zero(Y.size(), 1);
+        pivec = ( 0.5 + Y ) / 2;
+        etavec = mask.select( log(pivec/ (1-pivec)), 0);
+        betaold = 0;
+        if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout) ){ 
+          get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
+          skip_pheno = !fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout);
+        }
+      }
+
+      if(skip_pheno){
+        params->pheno_pass(i) = false; // phenotype will be ignored
+        if(!silent) sout << "\n     WARNING: logistic regression did not converge for phenotype '" << files->pheno_names[i] <<"'.";
+        continue;
+        // throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter or check the covariates.";
+      }
+    } 
+    
+    if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
 
     if(params->test_mode){
