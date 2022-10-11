@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    
+    
+    
+    <link rel="shortcut icon" href="../img/favicon.ico">
+
+    
+    <title>F.A.Q. - regenie</title>
+    
+
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/all.css">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.12.0/css/v4-shims.css">
+    <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/hack-font@3.3.0/build/web/hack.min.css">
+    <link href='//rsms.me/inter/inter.css' rel='stylesheet' type='text/css'>
+    <link href='//fonts.googleapis.com/css?family=Open+Sans:300italic,400italic,700italic,400,300,600,700&subset=latin-ext,latin' rel='stylesheet' type='text/css'>
+    <link href="../css/bootstrap-custom.min.css" rel="stylesheet">
+    <link href="../css/base.min.css" rel="stylesheet">
+    <link href="../css/cinder.min.css" rel="stylesheet">
+
+    
+
+    <!-- HTML5 shim and Respond.js IE8 support of HTML5 elements and media queries -->
+    <!--[if lt IE 9]>
+            <script src="https://cdn.jsdelivr.net/npm/html5shiv@3.7.3/dist/html5shiv.min.js"></script>
+            <script src="https://cdn.jsdelivr.net/npm/respond.js@1.4.2/dest/respond.min.js"></script>
+        <![endif]-->
+
+    
+    <script>
+    (function(i, s, o, g, r, a, m) {
+        i['GoogleAnalyticsObject'] = r;
+        i[r] = i[r] || function() {
+            (i[r].q = i[r].q || []).push(arguments)
+        }, i[r].l = 1 * new Date();
+        a = s.createElement(o),
+        m = s.getElementsByTagName(o)[0];
+        a.async = 1;
+        a.src = g;
+        m.parentNode.insertBefore(a, m)
+    })(window, document, 'script', '//www.google-analytics.com/analytics.js', 'ga');
+
+    ga('create', 'UA-166859683-2', 'auto');
+    ga('send', 'pageview');
+    </script>
+    
+
+     
+</head>
+
+<body>
+
+    <div class="navbar navbar-default navbar-fixed-top" role="navigation">
+    <div class="container">
+
+        <!-- Collapsed navigation -->
+        <div class="navbar-header">
+            <!-- Expander button -->
+            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            
+
+            <!-- Main title -->
+
+            <a class="navbar-brand" href="..">regenie</a>
+        </div>
+
+        <!-- Expanded navigation -->
+        <div class="navbar-collapse collapse">
+                <!-- Main navigation -->
+                <ul class="nav navbar-nav">
+                
+                
+                    <li >
+                        <a href="..">Home</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../overview/">Overview</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../install/">Install</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../options/">Documentation</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../performance/">Performance</a>
+                    </li>
+                
+                
+                
+                    <li >
+                        <a href="../recommendations/">UKBB Analysis</a>
+                    </li>
+                
+                
+                
+                    <li class="active">
+                        <a href="./">F.A.Q.</a>
+                    </li>
+                
+                
+                </ul>
+
+            <ul class="nav navbar-nav navbar-right">
+                    <li>
+                        <a href="#" data-toggle="modal" data-target="#mkdocs_search_modal">
+                            <i class="fas fa-search"></i> Search
+                        </a>
+                    </li>
+                    <li >
+                        <a rel="prev" href="../recommendations/">
+                            <i class="fas fa-arrow-left"></i> Previous
+                        </a>
+                    </li>
+                    <li class="disabled">
+                        <a rel="next" >
+                            Next <i class="fas fa-arrow-right"></i>
+                        </a>
+                    </li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+    <div class="container">
+        
+        
+        <div class="col-md-3"><div class="bs-sidebar hidden-print affix well" role="complementary">
+    <ul class="nav bs-sidenav">
+        <li class="first-level active"><a href="#frequently-asked-questions">Frequently asked questions</a></li>
+            <li class="second-level"><a href="#general">General</a></li>
+                
+            <li class="second-level"><a href="#step-1">Step 1</a></li>
+                
+            <li class="second-level"><a href="#step-2">Step 2</a></li>
+                
+    </ul>
+</div></div>
+        <div class="col-md-9" role="main">
+
+<h2 id="frequently-asked-questions">Frequently asked questions</h2>
+<h3 id="general">General</h3>
+<ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> Why doesn’t <strong>regenie</strong> need a genetic relatedness matrix (GRM)? 
+</span></li>
+</ul>
+<p><strong>regenie</strong> performs whole genome regression using the following model</p>
+<p>
+<script type="math/tex; mode=display">Y = X\beta + \epsilon</script>
+</p>
+<p>where <script type="math/tex">Y_{N\times 1}</script> is a phenotype, <script type="math/tex">X_{N\times M}</script> is a genotype matrix, and <script type="math/tex">\epsilon_i\sim N(0,\sigma^2)</script>. 
+This model has close ties to a linear mixed model (LMM) based on an infinitesimal model </p>
+<p>
+<script type="math/tex; mode=display">Y = u + \epsilon</script>
+</p>
+<p>where <script type="math/tex">u\sim N(0,\sigma_u^2 K)</script> with <script type="math/tex">K_{N\times N}=XX^T/M</script> is referred to as the genetic relatedness matrix (GRM). In the LMM, the polygenic effects have been integrated out so that model only involves the GRM $K$ through a variance component in the covariance matrix of the trait.</p>
+<p>In <strong>regenie</strong>, we directly estimate the polygenic effects parameter <script type="math/tex">\beta</script> by using ridge regression, which corresponds to fitting a linear regression model with a L2 penalty to impose shrinkage. Hence, we bypass having to use the GRM <script type="math/tex">K</script> and use the polygenic effect estimates <script type="math/tex">X\hat{\beta}</script> to control for population structure when testing variants for association.</p>
+<p><br/></p>
+<ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> Can <strong>regenie</strong> be run on small sample sizes? 
+</span></li>
+</ul>
+<p>For quantitative traits, we have not obtained issues running <strong>regenie</strong> on small data sets.
+For binary traits, we have obtained successful runs of <strong>regenie</strong> (step 1 and 2) on data sets with as little as 300 samples. A few factors to consider:</p>
+<ol>
+<li>Convergence issues may occur in step 1 (all the more if a trait is highly unbalanced) <script type="math/tex">-</script> see below</li>
+<li>Similarly, convergence issues may occur in step 2 when using Firth approximation <script type="math/tex">-</script> see below </li>
+</ol>
+<p>Note: we have found that <strong>regenie</strong> can get conservative in more extreme relatedness scenarios so we recommend not to use it for smaller cohorts with high amounts of relatedness like founder populations where exact mixed-model methods can be used</p>
+<h3 id="step-1">Step 1</h3>
+<ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> What block size to use in step 1? 
+</span></li>
+</ul>
+<p>We recommend to use blocks of size 1000 as we have observed that it leads to a reasonable number of ridge predictors 
+at level 1 (e.g. 2,500 with 500K SNPs used and the default <strong>regenie</strong> parameters) and have noticed little change in the 
+final predictions when varying the block size.</p>
+<p><br/></p>
+<ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> How many variants to use in step 1? 
+</span></li>
+</ul>
+<p>We recommend to use a smaller set of about 500K directly genotyped SNPs in step 1, which should be sufficient to capture genome-wide polygenic effects. Note that using too many SNPs in Step 1 (e.g. &gt;1M) can lead to a high computational burden due to the resulting higher number of predictors in the level 1 models.</p>
+<p><br/></p>
+<ul>
+<li><span style="font-size: large; font-style: italic;color:#404040"> What do I do if I get the error "Uh-oh, SNP XX has low variance (=XX)" in step 1? 
+</span></li>
+</ul>
+<p>This is due to variants with very low minor allele count (MAC) being included in step 1. To avoid this, you should use a MAC filter to remove such variants in a pre-processing step before running Regenie.</p>
+<p>For example, in PLINK2 you would use the <code>--mac</code> option and obtain a list of variants that pass the MAC filter (note that if you are using <code>--keep/--remove</code> in Regenie, you should also use it in the PLINK2 command)</p>
+<pre><code>plink2 \
+  --bfile my_bed_file \
+  --mac 100 \
+  --write-snplist \
+  --out snps_pass
+</code></pre>
+<p>You would then use the output file in <strong>regenie</strong> as <code>--extract snps_pass.snplist</code> (and this would avoid having to make a new genotype file).</p>
+<p><br/></p>
+<ul>
+<li><span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 1 of <strong>regenie</strong> failed for a binary trait when fitting the penalized logsitic regression model? 
+</span></li>
+</ul>
+<p>This can occur when the sample size used to fit the model is small and/or if the trait is extremely unbalanced. </p>
+<ol>
+<li>If using K-fold CV, switch to LOOCV (option <code>--loocv</code>) to increase the size of the sample used to fit the model
+(note: LOOCV is now used by default when the sample size is below 5,000)</li>
+<li>If it is due to quasi-separation (i.e. <code>Var(Y)=0</code> occurred in model fitting), either increase the sample size using LOOCV or increase the MAF threshold for variants included in step 1 analysis </li>
+</ol>
+<h3 id="step-2">Step 2</h3>
+<ul>
+<li><span style="font-size: large;font-style: italic; color:#404040"> What to do if Step 2 of <strong>regenie</strong> fails when fitting the null model for the approximate Firth correction? 
+</span></li>
+</ul>
+<p>This can occur when the sample size used to fit the model is small and/or if the trait is extremely unbalanced. 
+We have implemented the same measures as in the <code>logistf</code> function in R to avoid convergence issues, which include the use of a step size threshold when performing a Newton step. </p>
+<ol>
+<li>We first try fitting the model with a step size threshold that is more liberal (=25) as well as a maximum number of iterations of 1,000 and if convergence fails, we retry the model fit using a more stringent step size threshold (=5) and a higher threshold for the number of iterations (=5,000), which will slow down convergence.</li>
+<li>The user can also specify a maximum step size threshold using <code>--maxstep-null</code> (use value &lt;5) as well as increase the maximum number of iterations using <code>--maxiter-null</code> (use value &gt;5000). In that case, no retries are perfomed if convergence fails.<ul>
+<li>We recommend to test chromosomes separately (using <code>--chr</code>) as these parameters may need to be altered when fitting the null model for each chromosome</li>
+</ul>
+</li>
+</ol>
+<p><br/></p>
+<ul>
+<li>
+<p><span style="font-size: large;font-style: italic; color:#404040"> What is reported in A1FREQ when building masks? 
+</span></p>
+<ul>
+<li>For the <code>max</code> and <code>comphet</code> rules, the resulting burden masks take on values in [0,2] just like single variants so we compute A1FREQ the same way as done for single variants (i.e. mean(G)/2 where G is a genotype vector).</li>
+<li>For the <code>sum</code> rule, A1FREQ is computed as the average of the effect allele frequencies across all sites included in the mask.</li>
+</ul>
+</li>
+</ul></div>
+        
+        
+    </div>
+
+    <footer class="col-md-12 text-center">
+        
+        <hr>
+        <p>
+        <small>REGENIE is licensed under the <a href='https://github.com/rgcgithub/regenie/blob/master/LICENSE'>MIT license</small><br>
+        
+        <small>Documentation built with <a href="http://www.mkdocs.org/">MkDocs</a>.</small>
+        </p>
+
+        
+        
+    </footer>
+    <script src="//ajax.googleapis.com/ajax/libs/jquery/1.12.4/jquery.min.js"></script>
+    <script src="../js/bootstrap-3.0.3.min.js"></script>
+    
+    <script>var base_url = ".."</script>
+    
+    <script src="../js/base.js"></script>
+    <script src="../search/main.js"></script>
+
+  <script type="text/javascript"
+          src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.0/MathJax.js?config=TeX-AMS_CHTML"></script>
+
+  <script type="text/x-mathjax-config">
+    MathJax.Hub.Config({
+tex2jax: {
+inlineMath: [['$','$'], ['\\(','\\)']],
+processEscapes: true},
+jax: ["input/TeX","input/MathML","input/AsciiMath","output/CommonHTML"],
+extensions: ["tex2jax.js","mml2jax.js","asciimath2jax.js","MathMenu.js","MathZoom.js","AssistiveMML.js", "[Contrib]/a11y/accessibility-menu.js"],
+TeX: {
+extensions: ["AMSmath.js","AMSsymbols.js","noErrors.js","noUndefined.js"],
+equationNumbers: {
+autoNumber: "AMS"
+}
+}
+});
+  </script>
+
+    <div class="modal" id="mkdocs_search_modal" tabindex="-1" role="dialog" aria-labelledby="searchModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <button type="button" class="close" data-dismiss="modal">
+                    <span aria-hidden="true">&times;</span>
+                    <span class="sr-only">Close</span>
+                </button>
+                <h4 class="modal-title" id="searchModalLabel">Search</h4>
+            </div>
+            <div class="modal-body">
+                <p>
+                    From here you can search these documents. Enter
+                    your search terms below.
+                </p>
+                <form>
+                    <div class="form-group">
+                        <input type="text" class="form-control" placeholder="Search..." id="mkdocs-search-query" title="Type search term here">
+                    </div>
+                </form>
+                <div id="mkdocs-search-results"></div>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div><div class="modal" id="mkdocs_keyboard_modal" tabindex="-1" role="dialog" aria-labelledby="keyboardModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4 class="modal-title" id="keyboardModalLabel">Keyboard Shortcuts</h4>
+                <button type="button" class="close" data-dismiss="modal"><span aria-hidden="true">&times;</span><span class="sr-only">Close</span></button>
+            </div>
+            <div class="modal-body">
+              <table class="table">
+                <thead>
+                  <tr>
+                    <th style="width: 20%;">Keys</th>
+                    <th>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="help shortcut"><kbd>?</kbd></td>
+                    <td>Open this help</td>
+                  </tr>
+                  <tr>
+                    <td class="next shortcut"><kbd>n</kbd></td>
+                    <td>Next page</td>
+                  </tr>
+                  <tr>
+                    <td class="prev shortcut"><kbd>p</kbd></td>
+                    <td>Previous page</td>
+                  </tr>
+                  <tr>
+                    <td class="search shortcut"><kbd>s</kbd></td>
+                    <td>Search</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="modal-footer">
+            </div>
+        </div>
+    </div>
+</div>
+    </body>
+
+
+</html>
