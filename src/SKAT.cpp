@@ -119,7 +119,7 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
 void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, SpMat const& Gmat_sp, const Ref<const ArrayXb>& ur_ind, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& mafs, const Ref<const ArrayXb>& in_analysis, struct param const& params){
 
   beta_distribution<>  dist(params.skat_a1, params.skat_a2);
-  int bs = Gmat_sp.cols(), bsize = 256, start = 0;
+  int bs = Gmat_sp.cols(), bsize = floor(1e9/8.0/params.n_samples), start = 0;
   int nchunks = ceil( bs * 1.0 / bsize );
 
   for (int j = 0; j < nchunks; ++j) {
@@ -1091,9 +1091,9 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
 }
 
 void get_single_pvs_bt(Ref<ArrayXd> pvals, const Ref<const ArrayXd>& chisq_vals){
+  //cerr << pvals.matrix().transpose() << "\n\n" << chisq_vals.matrix().transpose() << endl;
   for(int isnp = 0; isnp < pvals.rows(); isnp++)
     get_logp(pvals(isnp), chisq_vals(isnp));
-  //cerr << pvals.matrix().transpose() << "\n\n" << chisq_vals.matrix().transpose() << endl;
 }
 
 
