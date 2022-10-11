@@ -42,7 +42,7 @@ class JTests {
 
     // for testing
     int df_test, nvars, ncovars; // df, number of variants which passed filters,#covariates
-    bool nnls_verbose_out = false;
+    bool nnls_verbose_out = false, nnls_adaptive = false, nnls_mt_weights = false;
     bool nnls_normalize = true, nnls_strict = false;
     int nnls_napprox, nnls_verbose = 0;
     double acat_a1,acat_a2;
@@ -51,10 +51,12 @@ class JTests {
     double pval_nnls_pos, pval_nnls_neg;
     double tol = 1e-6, qr_tol = 1e-7, nnls_tol = 1e-10; // qr threshold used in R
     double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
+    std::mt19937_64* rng_rd;
     std::string burden_type, burden_str, burden_model, genep_all_sfx = "";
     std::string out_file_prefix; // prefix of output files
     Eigen::ArrayXi colKeep; // keep track of linearly independent columns in Gmat
     Eigen::MatrixXd Gtmp;
+    std::map<std::string, std::vector<Eigen::VectorXd>> nnls_weights;
     ArrayXb good_vars;
     Eigen::ArrayXd log10pv; 
     std::vector<int> indices_vars;
@@ -65,6 +67,7 @@ class JTests {
     bool get_test_info(const struct param*,const std::string&,mstream&);
     bool set_vars(const int&,const int&,std::vector<variant_block> const&);
     void compute_qr_G(const Eigen::Ref<const MatrixXb>&,struct geno_block const*);
+    void prep_nnls_weights(int const&);
 
     // assoc. tests
     std::vector<std::string> apply_joint_test(const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,std::vector<std::string> const&,struct param const*);

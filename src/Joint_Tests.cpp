@@ -100,6 +100,9 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
   }
 
   ncovars = params->ncov_analyzed;
+  rng_rd = params->rng_rd;
+  nnls_adaptive = params->nnls_adaptive && CHECK_BIT(test_list,joint_tests_map["sbat"]);
+  nnls_mt_weights = params->nnls_mt_weights && CHECK_BIT(test_list,joint_tests_map["sbat"]);
   apply_single_p = params->apply_gene_pval_strategy;
   if(apply_single_p) {
     check_class_genep(params->genep_mask_sets_file, params->mask_map);
@@ -127,6 +130,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
   for (size_t i = 0; i < joint_tests_map.size(); i++)
     sum_stats_str[i].resize(params->n_pheno); // store sum stats for each test/phenotype
   std::map <std::string, std::map <std::string, bool>>::iterator itr;
+  if( nnls_mt_weights ) prep_nnls_weights(gblock->Gmat.cols());
 
   for(int ph = 0; ph < params->n_pheno; ++ph) {
 
@@ -219,7 +223,7 @@ bool JTests::set_vars(const int& bs, const int& ph, std::vector<variant_block> c
   good_vars = ArrayXb::Constant(bs, false);
   log10pv = ArrayXd::Zero(bs);
 
-  if(debug_mode) cerr << "checking burden masks in set...";
+  //if(debug_mode) cerr << "checking burden masks in set...";
   for(int isnp = 0; isnp < bs; isnp++){
     good_vars(isnp) = !block_info[isnp].ignored && !block_info[isnp].ignored_trait(ph) && !block_info[isnp].test_fail(ph);
     if(!good_vars(isnp)) continue;
@@ -248,7 +252,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
   boost::math::beta_distribution<>  dist(acat_a1, acat_a2);
 
   df_test = good_vars.count();
-  if(debug_mode) cerr << "# burden masks for joint acat test = " << df_test << "\n";
+  //if(debug_mode) cerr << "# burden masks for joint acat test = " << df_test << "\n";
   if( df_test == 0 ) {reset_vals(); return;}
 
   // make array of weights
@@ -263,7 +267,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
       wts(isnp) = v_maf * (1-v_maf) * tmpd * tmpd;
     } else wts(isnp) = 1; // assume weight=1
   }
-  if(debug_mode) cerr << "done building acat weights\n";
+  //if(debug_mode) cerr << "done building acat weights\n";
 
   // get ACAT test stat
   get_pv( get_acat(log10pv, wts) );
@@ -403,8 +407,8 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
   }
 
   int ns = mask.col(0).array().cast<int>().sum() - ncovars;
-  int df_ur = ns - df_test;
-  double pval_min2; 
+  int df_ur = ns - df_test, adapt_napprox = 2;
+  double pval_min2, adapt_thr = 1e-3; 
   
   VectorXd y_tmp = ymat.col(0).array() * mask.col(0).array().cast<double>();
   
@@ -413,8 +417,35 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
 
   // initialize an object of NNLS class & pass parameters
   NNLS nnls(nnls_napprox, nnls_normalize, nnls_tol, nnls_strict, nnls_verbose);
-  // run the NNLS test: model fitting and inference
-  nnls.run(y_tmp, Gtmp, df_ur);
+  nnls.gen = rng_rd;
+
+  if(nnls_adaptive){ // run the NNLS test using adaptive strategy
+
+    nnls.napprox = adapt_napprox;
+
+    int p = Gtmp.cols();
+    MatrixXd XtX(MatrixXd(p, p).setZero().selfadjointView<Lower>().rankUpdate(Gtmp.adjoint()));
+    MatrixXd XtX_inv = XtX.llt().solve(MatrixXd::Identity(p, p));
+
+    nnls.pw_weights(XtX_inv);
+    if(nnls.nw > 0) nnls.pw_run(y_tmp, Gtmp, df_ur);
+
+    if((nnls.pval_min2 >= 0) && (nnls.pval_min2 < adapt_thr)) {
+      nnls.pw_weights(nnls_napprox);
+      // note: no need to refit the NNLS model; done above by nnls.pw_run(Y, X)
+      nnls.pw_calc_pvals();
+    }
+
+  } else if (nnls_mt_weights && nnls_weights[input_class][Gtmp.cols()-1].size() ) { // use pre-computed weights
+    nnls.wts = nnls_weights[input_class][Gtmp.cols()-1];
+    nnls.nw = nnls_weights[input_class][Gtmp.cols()-1].size();
+    nnls.pw_run(y_tmp, Gtmp, df_ur);
+  } else  // run the NNLS test: model fitting and inference
+    nnls.run(y_tmp, Gtmp, df_ur);
+
+  if (nnls_mt_weights && !nnls_weights[input_class][Gtmp.cols()-1].size() ) // store weights used
+    nnls_weights[input_class][Gtmp.cols()-1] = nnls.wts;
+
   // get the final p-value = min(NNLS with b>=0, NNLS with b<=0)
   // -1 value means that NNLS failed; check the error message
   pval_min2 = nnls.pval_min2; 
@@ -882,6 +913,18 @@ void JTests::add_class(string const& sfx_test, vector<string> const& mask_vec, s
       genep_all_sfx = sfx_test;
     } else gene_p_tests[sfx_test] = tmp_map;
   }
+
+}
+
+void JTests::prep_nnls_weights(int const& max_cols){
+  
+  std::vector<VectorXd> tmp_v(max_cols);
+  std::map <std::string, std::map <std::string, bool>>::iterator itr;
+
+  // for each gene-p class, fill with empty weight vectors
+  for (itr = gene_p_tests.begin(); itr !=  gene_p_tests.end(); ++itr)  
+    nnls_weights[itr->first] = tmp_v;
+  nnls_weights[ (genep_all_sfx == "" ? "ALL" : genep_all_sfx) ] = tmp_v;
 
 }
 

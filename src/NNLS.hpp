@@ -54,14 +54,14 @@ using namespace std;
 //   -- OLS: y = Xb + e
 //   -- NNLS positive: y = Xb + e with b >= 0
 //   -- NNLS negative: y = Xb + e with b <= 0
-double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
+double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, std::mt19937_64& gen,
   int df = 0, double tol = 1e-6, int n_approx = 100, bool 
   strict = false, int verbose = 0);
 
 // compute exact weights for the NNLS test
 Eigen::VectorXd jburden_wts(const Eigen::MatrixXd& V, int verbose = 0);
 // compute adaptive weights for the NNLS test
-int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
+int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out, std::mt19937_64& gen,
     int n_approx = 100, bool normalize = true, int verbose = 0);
 
 // compute CDF for MVN
@@ -71,13 +71,22 @@ double jburden_pnorm(const Eigen::MatrixXd& A,
 int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, 
   Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
   double tol = 1e-6, bool neg = false, int maxit = 1000, int maxit_inner = 500, int verbose = 0);
+// the active set algorithm for fitting NNLS
+int jburden_fit_nnls_cprod(const Eigen::VectorXd &Xty_, const Eigen::MatrixXd& XtX_,
+  Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
+  double tol = 1e-6, bool neg = false, int maxit = 1000, int maxit_inner = 500, int verbose = 0);
+// NNLS p-value 
+double jburden_pchisq_bar(double x, Eigen::VectorXd& wt);
+
 // the number of all set of k out of n
 int jburden_choose(int n, int k);
 // enumerate all sets of k out of n numbers
 int jburden_choose(int n, int k);
 double jburden_choose_boost(int n, int k);
 void jburden_nchoosek(int n, int k, std::list<std::vector<int>> &ll);
-void jburden_nchoosek_sample(int n, int k, int s, list<vector<int>> &ll);
+void jburden_nchoosek_sample(int n, int k, int s, list<vector<int>> &ll, std::mt19937_64& gen);
+// submatrix
+Eigen::MatrixXd jburden_subset_matrix(const Eigen::MatrixXd& V, vector<int> &rows, vector<int> &cols, int method = 1);
 
 struct FitNNLS 
 {
@@ -107,6 +116,9 @@ class NNLS
     int verbose;
     string msg_error;
 
+    // for random number generation
+    std::mt19937_64* gen;
+
     // 1. OLS
     int p; // number of independent variables in y ~ X model, i.e. p = ncol(X)
     int df;
@@ -115,8 +127,10 @@ class NNLS
     MatrixXd V;
     VectorXd bhat_ols;
     double stat_ols;
-    // 2. Positive-definite V
+    // 2a. fit(y, X): Positive-definite V 
     MatrixXd Vpd;
+    // 2b. fit(b, V): Inverse V
+    MatrixXd Vinv;
     // 3. Weights for NNLS test
     int nw;
     VectorXd wts;
@@ -129,11 +143,22 @@ class NNLS
 
     void set_defaults();
     void run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
+    void pw_run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
+    void ss_run(const Eigen::VectorXd &bhat_, const Eigen::MatrixXd& V_);
+    void ss_run(const Eigen::VectorXd &bhat_);
+    void ss_weights(const Eigen::MatrixXd& V_);
+    void pw_weights(const Eigen::MatrixXd& V_);
+    void pw_weights(int napprox_);
+    void pw_calc_pvals();
+
+    void compute_weights();
 
     void fit_ols(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
-    void compute_weights();
     void fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X);
     void fit_nnls_sign(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, bool neg, struct FitNNLS&);
+
+    void ss_fit_nnls();
+    void ss_fit_nnls_sign(const Eigen::VectorXd &Xty, const Eigen::MatrixXd& XtX, bool neg, struct FitNNLS& fit);
      
     void print_param() 
     { 

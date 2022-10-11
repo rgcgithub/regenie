@@ -66,6 +66,7 @@ void _complement(int n, const vector<int> &s1, vector<int> &s2)
   }
 }
 
+
 Eigen::MatrixXd _subset_matrix(const Eigen::MatrixXd& V, 
     vector<int> &rows, vector<int> &cols)
 {
@@ -79,6 +80,24 @@ Eigen::MatrixXd _subset_matrix(const Eigen::MatrixXd& V,
   }
 
   return(S);
+}
+
+inline Eigen::MatrixXd _subset_matrix1(const Eigen::MatrixXd& V, 
+    vector<int> &rows, vector<int> &cols)
+{
+  return(V(rows, cols));
+}
+
+Eigen::MatrixXd jburden_subset_matrix(const Eigen::MatrixXd& V, 
+    vector<int> &rows, vector<int> &cols, int method)
+{
+  if(method == 0) {
+    return(_subset_matrix(V, rows, cols));
+  } else if(method == 1) {
+    return(_subset_matrix1(V, rows, cols));
+  } else {
+    throw std::runtime_error("jburden_subset_matrix: unknown method"); 
+  }
 }
 
 void _wts_subset(const Eigen::MatrixXd &V, vector<int> &s1, double &w1, double &w2, int index)
@@ -558,6 +577,97 @@ inline void update_subsets(VectorXd &b, vector<bool> &P, vector<bool> &R)
 }
 
 // NNLS model fitting: active set algorithm 
+// - summary stat. level data b and V
+int jburden_fit_nnls_cprod(const Eigen::VectorXd &Xty_, const Eigen::MatrixXd& XtX_,
+  Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
+  double tol, bool neg, int maxit, int maxit_inner, int verbose)
+{
+  VectorXd Xty = Xty_;
+  MatrixXd XtX = XtX_;
+  const int p = Xty.size();
+
+  if(neg) {
+    Xty = -1 * Xty;
+  }
+
+  // A. Initialization
+  if(verbose > 2) cout << "A. Initialization" << endl;
+
+  vector<bool> P(p, false); // passive set P (empty)
+  vector<bool> R(p, true); // active set R (full)
+
+  VectorXd b(p); // vector b of effect sizes
+  b.setZero(); // initialize b with zeros
+
+  VectorXd w = Xty; // Lagrange multiplier 
+     
+  // B. Main loop
+  if(verbose > 2) cout << "B. Main loop" << endl;
+  
+  int cnt_main = 0, cnt_inner = 0;
+  int m; // index in R with the maximum w (R subset)
+  while((sum_bool(R) > 0) & (max_vec(w, R) > tol) & (cnt_main <= maxit)) {
+    if(verbose > 2) cout << " - it (main) " << cnt_main << endl;
+
+    m = which_max(w, R);
+    if(verbose > 2) cout << " - max(w) = " << max_vec(w, R) << endl;
+    P[m] = true;
+    R[m] = false;
+    if(verbose > 2) cout << " - sum(R) = " << sum_bool(R) << "; sum(P) = " << sum_bool(P) << endl;
+
+    VectorXd s = solve_s(Xty, XtX, P);
+    
+    // C. Inner loop
+    if(verbose > 2) cout << "C. Inner loop" << endl;
+
+    cnt_inner = 0;
+    while(min_vec(s, P) <= tol) {
+      if(verbose > 2) cout << " - it (inner) " << cnt_inner << endl;
+      
+      update_b(b, s, P, tol);
+      update_subsets(b, P, R);
+      if(verbose > 2) cout << " - sum(R) = " << sum_bool(R) << "; sum(P) = " << sum_bool(P) << endl;
+
+      s = solve_s(Xty, XtX, P);
+
+      cnt_inner++;
+
+      // early break from the inner loop:
+      // the set of variables included in the model is empty
+      // example: 
+      //   - 1st selected variable has b = 1e7, while tol = 1e-6
+      //   - so this only variable is removed from set P and P becomes empty.
+      if(sum_bool(P) == 0) break;
+      // added by JMb (02/16/2022): avoid cases where loops runs indefinitely
+      else if(cnt_inner >= maxit_inner) return(-1);
+    }
+    // early break from the main loop: see above
+    if(sum_bool(P) == 0) break;
+
+    if(verbose > 2) cout << "D. Store current results" << endl;
+    b = s;
+    w = Xty - XtX * b; // X' (y - X b) Lagrange multiplier 
+
+    cnt_main++;
+  }
+  
+  // check convergence
+  if(cnt_main >= maxit) {
+    return(-1);
+  }
+
+  // return
+  if(neg) {
+    b = -1 * b;
+  }
+  bhat_out = b;
+  selected_out = P; // passive set R (active constraints not applied)
+
+  return(0); // return success
+}
+
+// NNLS model fitting: active set algorithm 
+// - individual-level data y an X
 int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
   Eigen::VectorXd& bhat_out, vector<bool>& selected_out,
   double tol, bool neg, int maxit, int maxit_inner, int verbose)
@@ -718,13 +828,10 @@ double jburden_pchisq_bar(double x, Eigen::VectorXd& wt)
  * NNLS adaptive weights
 ***************************************/
 
-void _sample(int n, int k, vector<int> &l)
+void _sample(int n, int k, vector<int> &l, std::mt19937_64& gen)
 {
   unordered_set<int> sample;
   
-  std::random_device seed;
-  std::mt19937_64 gen(seed());
-
   for(int i = n - k; i < n; ++i) {
     std::uniform_int_distribution<int> distr(0, i);
     int s = distr(gen);
@@ -744,17 +851,17 @@ void _sample(int n, int k, vector<int> &l)
   sort(l.begin(), l.end());
 }
 
-void jburden_nchoosek_sample(int n, int k, int s, list<vector<int>> &ll)
+void jburden_nchoosek_sample(int n, int k, int s, list<vector<int>> &ll, std::mt19937_64& gen)
 {
   for(int i = 0; i < s; ++i) {
     vector<int> sample;
     sample.reserve(k);
-    _sample(n, k, sample);
+    _sample(n, k, sample, gen);
     ll.push_back(sample);
   }
 }
 
-int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
+int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out, std::mt19937_64& gen,
   int n_approx, bool normalize, int verbose)
 {
   int n = V.cols(); 
@@ -791,9 +898,12 @@ int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
     // (depreciated due to overflow) 
     // int n_sets = jburden_choose(n, i);
     double n_sets_numeric = jburden_choose_boost(n, i);
+    /* // skip this
     // check if n_set is not overflowed
     int max_int = std::numeric_limits<int>::max();
     bool overflow = (n_sets_numeric > (double)(max_int));
+    if(overflow) { throw std::runtime_error("jburden_wts_adapt: integer overflow for #sets"); }
+    */
 
     // approximate?
     bool approx = (n_approx > 0) & ((double)n_approx < n_sets_numeric);
@@ -802,7 +912,7 @@ int jburden_wts_adapt(const Eigen::MatrixXd& V, Eigen::VectorXd& wts_out,
     list<vector<int>> sets;
     if(approx) {
       // n_approx randomly sampled sets
-      jburden_nchoosek_sample(n, i, n_approx, sets);
+      jburden_nchoosek_sample(n, i, n_approx, sets, gen);
       ind_approx.push_back(i);
     } else {
       // all possible sets
@@ -967,7 +1077,7 @@ Eigen::MatrixXd _npd(const Eigen::MatrixXd& X, double eps = 1e-6)
 }
 
 // main function for the NNLS test
-double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
+double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, std::mt19937_64& gen,
   int df, double tol, int n_approx, bool strict, int verbose)
 {
   // dimensions
@@ -1027,7 +1137,7 @@ double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
   /* VectorXd w = jburden_wts(V); */
   // adaptive weights: the key argument is n_approx
   VectorXd w;
-  int ret = jburden_wts_adapt(Vpd, w, n_approx, true, verbose);
+  int ret = jburden_wts_adapt(Vpd, w, gen, n_approx, true, verbose);
   if(ret < 0) {
     if(strict) {
       std::cout << "ERROR: computing NNLS weights failed"
@@ -1094,7 +1204,9 @@ double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
  * Methods of class NLLS
 ***************************************/
 
-// initialization step
+//-------------------
+// NNLS constructors
+//-------------------
 NNLS::NNLS()
 {
   // assign
@@ -1133,6 +1245,45 @@ void NNLS::set_defaults()
   fit_neg.converged = false;
   pval_min2 = -1.0;
 }
+
+//-------------------
+// NNLS weights
+//-------------------
+
+void NNLS::compute_weights()
+{
+  if(verbose) cout << " NNLS: Weights step\n";
+
+  // check previous steps
+  if(p == 0) return;
+  if(V.cols() != p) return;
+
+  // assign Vpd
+  Vpd = V; // _npd(V);
+
+  VectorXd w;
+
+  int ret = jburden_wts_adapt(Vpd, w, *gen, napprox, normalize, verbose);
+  if(ret < 0) {
+    msg_error = "error in computing NNLS weights";
+
+    if(strict) {
+      std::cout << "ERROR: computing NNLS weights failed"
+        << " by jburden_wts_adapt\n";
+      exit(-1);
+    } else {
+      return;
+    }
+  }
+
+  // assign
+  wts = w;   
+  nw = wts.size();
+}
+
+//-------------------
+// NNLS fit (X, y)
+//-------------------
 
 // OLS step
 void NNLS::fit_ols(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, 
@@ -1173,38 +1324,25 @@ void NNLS::fit_ols(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
   /* double pval = jburden_pchisq(stat, p, false); */
 }
 
-void NNLS::compute_weights()
+// NNLS fit & inference step
+void NNLS::pw_calc_pvals()
 {
-  if(verbose) cout << " NNLS: Weights step\n";
-
-  // check previous steps
-  if(p == 0) return;
-  if(V.cols() != p) return;
-
-  // assign Vpd
-  Vpd = V; // _npd(V);
-
-  VectorXd w;
-
-  int ret = jburden_wts_adapt(Vpd, w, napprox, normalize, verbose);
-  if(ret < 0) {
-    msg_error = "error in computing NNLS weights";
-
-    if(strict) {
-      std::cout << "ERROR: computing NNLS weights failed"
-        << " by jburden_wts_adapt\n";
-      exit(-1);
-    } else {
-      return;
-    }
+  // assign min p-value if both fits are ok
+  if(fit_pos.converged & fit_neg.converged) {
+    // re-calculate pval_pos
+    VectorXd Vib = (1.0 / sigma2) * XX * fit_pos.bhat;
+    fit_pos.stat = fit_pos.bhat.adjoint() * Vib;
+    fit_pos.pval = jburden_pchisq_bar(fit_pos.stat, wts);
+    // re-calculate pval_neg
+    Vib = (1.0 / sigma2) * XX * fit_neg.bhat;
+    fit_neg.stat = fit_neg.bhat.adjoint() * Vib;
+    fit_neg.pval = jburden_pchisq_bar(fit_neg.stat, wts);
+    // pval min2
+    pval_min2 = min(fit_pos.pval, fit_neg.pval);
+    best_fit = (fit_pos.pval < fit_neg.pval); // 1 = pos, 0 = neg
   }
-
-  // assign
-  wts = w;   
-  nw = wts.size();
 }
 
-// NNLS fit & inference step
 void NNLS::fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X)
 {
   if(verbose) cout << " NNLS: Fit step\n";
@@ -1255,6 +1393,189 @@ void NNLS::fit_nnls_sign(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, boo
   VectorXd Vib = (1.0 / sigma2) * XX * bhat;
   fit.stat = bhat.adjoint() * Vib;
   fit.pval = jburden_pchisq_bar(fit.stat, wts);
+}
+
+//-------------------
+// NNLS fit (b, V)
+//-------------------
+
+// NNLS fit & inference step
+void NNLS::ss_fit_nnls()
+{
+  if(verbose) cout << " NNLS: Fit step\n";
+
+  VectorXd Xty = Vinv * bhat_ols;
+  MatrixXd XtX = Vinv;
+
+  // NNLS pos: b >= 0
+  ss_fit_nnls_sign(Xty, XtX, false, fit_pos);
+  // NNLS neg: b <= 0
+  ss_fit_nnls_sign(Xty, XtX, true, fit_neg);
+
+  // assign min p-value if both fits are ok
+  if(fit_pos.converged & fit_neg.converged) {
+    pval_min2 = min(fit_pos.pval, fit_neg.pval);
+    best_fit = (fit_pos.pval < fit_neg.pval); // 1 = pos, 0 = neg
+  }
+}
+
+void NNLS::ss_fit_nnls_sign(const Eigen::VectorXd &Xty, const Eigen::MatrixXd& XtX, bool neg, struct FitNNLS& fit)
+{
+  // check previous steps
+  if(p == 0) return;
+  if(nw == 0) return;
+  if(wts.size() != p + 1) return;
+
+  fit.executed = true;
+  VectorXd bhat;
+  vector<bool> selected;
+  int ret = jburden_fit_nnls_cprod(Xty, XtX, bhat, selected, tol, neg);
+  if(ret < 0) {
+    msg_error = "error in computing NNLS model fit";
+
+    if(strict) {
+      std::cout << "ERROR: computing NNLS model fit failed"
+        << " by jburden_fit_nnls_ss\n";
+      exit(-1);
+    } else {
+      fit.converged = false;
+      return;
+    }
+  }
+ 
+  // assign results of model fitting
+  fit.converged = true;
+  fit.bhat = bhat;
+  fit.selected = selected;
+
+  // compute test statistic & assign
+  fit.stat = bhat.adjoint() * Vinv * bhat;
+  fit.pval = jburden_pchisq_bar(fit.stat, wts);
+}
+
+
+//-------------------
+// NNLS main
+//-------------------
+
+void NNLS::pw_weights(int napprox_)
+{
+  // check dimensions
+  if(V.rows() == 0) { throw std::runtime_error("pw_weights: dimensions (nrows = 0)"); }
+  if(V.cols() == 0) { throw std::runtime_error("pw_weights: dimensions (ncols = 0)"); }
+  if(V.rows() != V.cols()) { throw std::runtime_error("pw_weights: dimensions"); }
+
+  // code copied from compute_weights() with input napprox_ instead of class member napprox
+  VectorXd w;
+
+  int ret = jburden_wts_adapt(V, w, *gen, napprox_, normalize, verbose);
+  if(ret < 0) { 
+    if(strict) { throw std::runtime_error("pw_weights: error in jburden_wts_adapt"); }
+    else { return; }
+  }
+
+  // assign
+  napprox = napprox_;
+  wts = w;   
+  nw = wts.size();
+}
+
+void NNLS::pw_weights(const Eigen::MatrixXd& V_)
+{
+  // check dimensions
+  if(V_.rows() == 0) { throw std::runtime_error("pw_weights: dimensions (nrows = 0)"); }
+  if(V_.cols() == 0) { throw std::runtime_error("pw_weights: dimensions (ncols = 0)"); }
+  if(V_.rows() != V_.cols()) { throw std::runtime_error("pw_weights: dimensions"); }
+
+  // code copied from compute_weights() with input V_ instead of class member V
+  VectorXd w;
+
+  int ret = jburden_wts_adapt(V_, w, *gen, napprox, normalize, verbose);
+  if(ret < 0) { 
+    if(strict) { throw std::runtime_error("pw_weights: error in jburden_wts_adapt"); }
+    else { return; }
+  }
+
+  // assign
+  wts = w;   
+  nw = wts.size();
+}
+
+void NNLS::ss_weights(const Eigen::MatrixXd& V_)
+{
+  if(verbose) print_param();
+
+  // assign
+  V = V_;
+  Vinv = _inverse(V);
+  p = V.rows();
+
+  // check dimensions
+  if(p == 0) { throw std::runtime_error("ss_set_V: dimensions (p = 0)"); }
+  if(V.rows() != V.cols()) { throw std::runtime_error("ss_set_V: dimensions"); }
+
+  compute_weights();
+}
+
+
+void NNLS::ss_run(const Eigen::VectorXd &bhat_)
+{
+  if(verbose) print_param();
+
+  // assign
+  bhat_ols = bhat_;
+  p = bhat_ols.size();
+
+  // check dimensions
+  if(p == 0) { throw std::runtime_error("ss_run: dimensions (p = 0)"); }
+  if(bhat_ols.size() != p) { throw std::runtime_error("ss_run: dimensions (bhat.size() != p)"); }
+  if(V.rows() == 0) { throw std::runtime_error("ss_run: dimensions (V.rows() = 0)"); }
+  if(Vinv.rows() == 0) { throw std::runtime_error("ss_run: dimensions (Vinv.rows() = 0)"); }
+  if(V.rows() != p) { throw std::runtime_error("ss_run: dimensions"); }
+  if(Vinv.rows() != p) { throw std::runtime_error("ss_run: dimensions"); }
+
+  // check weights are pre-computed
+  if(nw == 0) { throw std::runtime_error("ss_run: weights (nw == 0)"); }
+  if(nw != (p + 1)) { throw std::runtime_error("ss_run: weights (nw != p + 1"); }
+  if(wts.size() != nw) { throw std::runtime_error("ss_run: weights (wts.size() != nw"); }
+
+  // fit & get p-values
+  ss_fit_nnls(); 
+
+  if(verbose) print_results();
+}
+
+void NNLS::ss_run(const Eigen::VectorXd &bhat_, const Eigen::MatrixXd& V_)
+{
+  if(verbose) print_param();
+
+  // assign
+  bhat_ols = bhat_;
+  V = V_;
+  Vinv = _inverse(V);
+  p = bhat_ols.size();
+
+  // check dimensions
+  if(V.rows() != V.cols()) { throw std::runtime_error("ss_run: dimensions"); }
+  if(bhat_ols.size() != V.cols()) { throw std::runtime_error("ss_run: dimensions"); }
+
+  compute_weights();
+  ss_fit_nnls(); 
+
+  if(verbose) print_results();
+}
+
+void NNLS::pw_run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df)
+{
+  if(nw == 0) { throw std::runtime_error("pw_run: nw == 0"); }
+
+  if(verbose) print_param();
+
+  fit_ols(y, X, df);
+  /* compute_weights(); */
+  fit_nnls(y, X);
+
+  if(verbose) print_results();
 }
 
 void NNLS::run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df)
