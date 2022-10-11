@@ -219,6 +219,8 @@ struct param {
   bool use_adam = false, adam_mini = true; // use ADAM for log. reg.
   double adam_alpha = 0.001, adam_beta1 = 0.9, adam_beta2 = 0.999, adam_eps = 1e-7, adam_batch_size = 128;
   std::vector<Eigen::ArrayXi> adam_indices;
+  uint rng_seed;
+  std::mt19937_64* rng_rd;
 
   // for input data
   uint32_t n_samples = 0, n_analyzed = 0; // number of samples
@@ -352,7 +354,7 @@ struct param {
   bool p_joint_only = false;
   std::string mask_loo_name, mask_loo_set, mask_loo_region, masks_loo_snpfile; // for LOO with masks
   double mask_loo_aaf;
-  bool nnls_out_all = false;
+  bool nnls_out_all = false, nnls_adaptive = false, nnls_mt_weights = false;
   int nnls_napprox = 10;
   double acat_a1 = 1, acat_a2 = 25, skat_a1 = 1, skat_a2 = 25, skat_tol = 1e-5; // for ACAT & SKAT test
   int skat_collapse_MAC = 10;
@@ -451,6 +453,7 @@ std::string print_mat_dims(Eigen::MatrixXd const&);
 void print_obj(const Eigen::Ref<const Eigen::MatrixXd>&,std::string const&);
 int parseLine(char*);
 int get_mem();
+void check_seed(uint&,bool const&);
 std::string print_mem();
 
 void set_threads(struct param*);

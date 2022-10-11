@@ -27,6 +27,7 @@
 #include "cxxopts.hpp"
 #include <regex>
 #include <chrono>
+#include <time.h>
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
@@ -58,6 +59,10 @@ int main( int argc, char** argv ) {
   read_params_and_check(argc, argv, &data.params, &data.files, &data.in_filters, &data.runtime, data.sout);
 
   try {// after opening sout
+
+    // for rng
+    std::mt19937_64 rng_rd(data.params.rng_seed);
+    data.params.rng_rd = &rng_rd;
 
     data.run();
 
@@ -290,6 +295,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("no-robust", "don't use robust SEs or HLM for GxE test")
     ("write-setlist", "file with list of masks to combine as sets", cxxopts::value<std::string>(files->new_sets),"FILE")
     ("sbat-napprox", "number of random draws to use for approximate SBAT test", cxxopts::value<int>(params->nnls_napprox),"INT(=10)")
+    ("sbat-adapt", "use adaptive strategy to compute p-value using fewer weights (k=2)")
+    ("sbat-mtw", "re-use SBAT weights across all traits")
     ("sbat-verbose", "To output detailed SBAT test results")
     ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,1)")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
@@ -299,6 +306,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
+    ("seed", "specify seed for random number generation", cxxopts::value<uint>(params->rng_seed))
     ("debug", "more verbose screen output for debugging purposes")
     ("mt", "run multi-trait tests")
     ;
@@ -421,6 +429,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("force-qt") ) params->force_qt_run = true;
     if( vm.count("sbat-verbose") ) params->nnls_out_all = true;
+    if( vm.count("sbat-adapt") ) params->nnls_adaptive = true;
+    if( vm.count("sbat-mtw") ) params->nnls_mt_weights = true;
     if( vm.count("condition-list") ) { params->condition_snps = true;params->rm_snps = true;}
     if( vm.count("force-robust") ) params->force_robust = true;
     if( vm.count("force-hc4") ) params->force_robust = params->force_hc4 = true;
@@ -777,7 +787,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "must specify sample file (using --sample) if writing sample IDs to file.";
 
     if( !params->getCorMat && params->joint_test ){
-
       if( vm.count("test") ) 
         throw "cannot use --test with --joint.";
       else if ( vm.count("sbat-napprox") && params->nnls_napprox < 1 )
@@ -1144,6 +1153,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     }
     if(vm.count("lovo-snplist")) check_file(params->masks_loo_snpfile, "lovo-snplist");
 
+    check_seed(params->rng_seed, vm.count("seed"));
     print_args(arguments, valid_args, sout);
 
   } catch (const cxxopts::OptionException& e) {
@@ -1292,6 +1302,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
   total_ram += params->nvs_stored * sizeof(struct snp);
   if( params->getCorMat ) total_ram += params->block_size * params->block_size * sizeof(double);
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
+  if( params->mask_loo ) total_ram += 1e9; // at most 1GB
   if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
   total_ram /= 1024.0 * 1024.0; 
   if( total_ram > 1000 ) {
@@ -1319,6 +1330,9 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
     int ram_int = (int) ceil( total_ram );
     sout << "   -approximate disk space needed : " << ram_int << ram_unit << endl;
   }
+
+  if(params->debug)
+    sout << " * rng seed : " << params->rng_seed << "\n";
 }
 
 int chrStrToInt(const string& chrom, const int& nChrom) {
@@ -1568,4 +1582,12 @@ void set_threads(struct param* params) {
 #endif
   setNbThreads(params->threads);
 
+}
+
+void check_seed(uint& seed, bool const& skip_gen_seed) {
+  if(!skip_gen_seed) {
+    std::random_device rd;
+    seed = rd();
+  }
+  srand(seed);
 }
