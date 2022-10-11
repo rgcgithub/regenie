@@ -2964,6 +2964,7 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
     if( in_lovo_mask(snp) )
       rv_mat.col(j++) = Gvec.matrix().sparseView();
   }
+
   int n_snps_lovo = in_lovo_mask.count();
   ArrayXi col_indices_lovo_mask = get_true_indices( in_lovo_mask );
   // remove cols/entries not in any lovo masks
@@ -2974,14 +2975,14 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
   var_mafs.conservativeResize(n_snps_lovo, 1);
   ArrayXi col_indices_lovo_mask_non_ur = get_true_indices( !ur_variant );
 
-  if(params.debug) sout << "(1)" << print_mem() << "...";
+  if(params.debug) sout << n_snps_lovo << " variants...(1)" << print_mem() << "...";
   sout << mt.stop_ms() << "\n";
 
   // generate LOVO masks in chunks
   bool last_chunk = false;
   ArrayXi lovo_masks_indices = check_lovo_snplist(col_indices_lovo_mask, orig_indices, snpinfo, params.masks_loo_snpfile); // if computing a subset of the lovo masks
-  int neff_lovo = lovo_masks_indices.size();
-  int nchunks, bsize = 128, nvar_read = 0; // default number of SNPs to read at a time
+  int neff_lovo = lovo_masks_indices.size(), nchunks, bsize = 128, nvar_read = 0; // default number of SNPs to read at a time
+  bsize = floor(1e9/8.0/params.n_samples); bsize = min(neff_lovo, bsize); // at most 1gb
   nchunks = ceil( neff_lovo * 1.0 / bsize );
 
   sout << "     -splitting into " <<  nchunks << " chunk" << (nchunks > 1 ? "s" : "") << " of size " << bsize << " (" << neff_lovo << " LOVO masks in total)\n";
@@ -2991,6 +2992,8 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
   ArrayXd vc_weights, vc_weights_acat;
   SpMat vc_sparse_gmat; // contains single variants + ultra-rare masks (incl.for full mask)
   if(params.vc_test) {
+    MeasureTime mt_skat;
+    if(params.debug) mt_skat.start_ms();
     vc_sparse_gmat.resize(params.n_samples, n_snps_lovo); // store wG
     vc_sparse_gmat.setZero();
     vc_weights = ArrayXd::Zero(vc_sparse_gmat.cols());
@@ -2999,6 +3002,7 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
     update_vc_gmat(vc_sparse_gmat, vc_weights, vc_weights_acat, rv_mat, ur_variant, var_flip, var_mafs, in_filters.ind_in_analysis, params);
     if(params.trait_mode == 1) // if need to apply cc correction
       check_cc_correction(vc_sparse_gmat, vc_weights, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, params); 
+    if(params.debug) sout << "(0)skat prep..."<< mt_skat.stop_ms() << "\n";
   }
 
   for(int i = 0; i < nchunks; i++) {
@@ -3029,14 +3033,26 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
     ArrayXd ur_mask_excl_chunk = ArrayXd::Constant(params.n_samples, -3);
     if((!in_chunk).any())
       bm.collapse_mask_chunk(get_true_indices(!in_chunk), rv_mat, ur_variant, var_flip, mask_excl_chunk, ur_mask_excl_chunk, in_filters.ind_in_analysis);
+    if(params.debug) {
+      sout << mt_chunk.stop_ms() << "\n";
+      mt_chunk.start_ms();
+    }
 
     // update mask (taking max/sum)
     bm.updateMasks_loo(chunk_indices, last_chunk, rv_mat, ur_variant, var_flip, mask_excl_chunk, ur_mask_excl_chunk, in_filters.ind_in_analysis, *set_info, params.threads);
-    if(params.debug) sout << "(2)" << print_mem() << "..." << flush;
+    if(params.debug) {
+      sout << "(2)" << print_mem() << "..." << flush;
+      sout << mt_chunk.stop_ms() << "\n";
+      mt_chunk.start_ms();
+    }
 
     // check mask and store in setinfo & snpinfo
     bm.computeMasks_loo(col_indices_lovo_mask(chunk_indices), last_chunk, &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &Gblock, all_snps_info, *set_info, snpinfo, sout);
-    if(params.debug) sout << "(3)" << print_mem() << "..." << flush;
+    if(params.debug) {
+      sout << "(3)" << print_mem() << "..." << flush;
+      sout << mt_chunk.stop_ms() << "\n";
+      mt_chunk.start_ms();
+    }
 
     if(params.vc_test) {// run skat/acat
 
