@@ -71,6 +71,7 @@ class GenoMask {
     void updateMasks(const int&,const int&,struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
     void apply_rule(SpVec&,SpVec const&,const Eigen::Ref<const ArrayXb>&,bool const&);
     void apply_rule(Eigen::Ref<Eigen::ArrayXd>,SpVec const&,const Eigen::Ref<const ArrayXb>&,bool const&);
+    void apply_rule(Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const ArrayXb>&,bool const&);
     void collapse_mask_chunk(const Eigen::Ref<const Eigen::ArrayXi>&,SpMat const&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const ArrayXb>&);
     void updateMasks_loo(const Eigen::Ref<const Eigen::ArrayXi>&,bool const&,SpMat const&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,vset&,int const&);
     void tally_masks(struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,SpMat&,MatrixXb&);

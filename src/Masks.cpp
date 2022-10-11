@@ -346,6 +346,17 @@ void GenoMask::apply_rule(Ref<ArrayXd> out_mask, SpVec const& Gvec, const Ref<co
 
 }
 
+void GenoMask::apply_rule(Ref<ArrayXd> maskvec, const Ref<const MatrixXd>& Gmat, const Ref<const ArrayXb>& in_analysis, bool const& force_max) { 
+
+  if(take_max || force_max) { // max rule to combine variants across sites
+    maskvec = in_analysis.select(maskvec.max(Gmat.rowwise().maxCoeff().array()), maskvec);
+  } else { // sum rule (ignore missing) 
+    ArrayXb non_miss_G = in_analysis && (Gmat.array() >= 0).rowwise().any();
+    maskvec = non_miss_G.select( maskvec.max(0) + (Gmat.array() >= 0).select(Gmat.array(), 0).rowwise().sum(), maskvec);
+  }
+
+}
+
 // should only be called once
 void GenoMask::collapse_mask_chunk(const Ref<const ArrayXi>& indices, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, Ref<ArrayXd> out_mask, Ref<ArrayXd> out_ur_mask, const Ref<const ArrayXb>& in_analysis){ 
 
