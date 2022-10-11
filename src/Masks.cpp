@@ -385,78 +385,56 @@ void GenoMask::collapse_mask_chunk(const Ref<const ArrayXi>& indices, SpMat cons
 
 void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool const& comp_full_mask, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& excl_vars_mask, const Ref<const ArrayXd>& excl_vars_ur_mask, const Ref<const ArrayXb>& in_analysis, vset& setinfo, int const& nthreads){
 
-  bool with_ur = is_ultra_rare(indices_chunk).any();
+  bool with_ur = is_ultra_rare(indices_chunk).any() || (excl_vars_ur_mask > 0).any();
+  int bs = indices_chunk.size();
   Gtmp.resize(Gmat_sp.rows(), nmasks_total); // incl. full mask
 
   vector<SpVec> rare_mask_tmp;
   ArrayXb g_ur_nmiss;
   SpVec g_ur_start;
-  MatrixXd G_ur;
-  map<int,int> ind_to_ur_col;
 
-  if(w_vc_tests) { // for skat tests
+  // store matrix as dense (should be fairly small)
+  SpMat Jstar (Gmat_sp.cols(), bs); // Mall x M
+  Jstar.reserve(bs);
+  for(int i = 0; i < bs; i++)
+    Jstar.insert(indices_chunk(i), i) = 1;
+  MatrixXd Gmat_d = Gmat_sp * Jstar;
+
+  if(w_vc_tests && with_ur) { // for skat tests and ur vars present
     setinfo.vc_rare_mask.resize(Gtmp.rows(), Gtmp.cols());
-    if(with_ur) {
-      rare_mask_tmp.resize(Gtmp.cols());
-      setinfo.vc_rare_mask.resize(Gtmp.rows(), Gtmp.cols());
-      setinfo.vc_rare_mask_non_missing.resize(Gtmp.rows(), Gtmp.cols());
-
-      G_ur.resize(Gtmp.rows(), is_ultra_rare(indices_chunk).count());
-      for(int i = 0, j = 0; i < indices_chunk.size(); i++){
-        if(!is_ultra_rare(indices_chunk(i))) continue;
-        int icol = indices_chunk(i);
-        G_ur.col(j) = Gmat_sp.col(icol);
-        ind_to_ur_col[icol] = j;
-        if(to_flip(icol)){ // need to flip 
-          MapArXd Gvec (G_ur.col(j).data(), G_ur.rows(), 1);
-          Gvec = (in_analysis && (Gvec != -3)).select(2 - Gvec, -3);
-        }
-        j++;
-      }
-      g_ur_nmiss = excl_vars_ur_mask >= 0;
-      g_ur_start = excl_vars_ur_mask.max(0).matrix().sparseView();
-    }
+    setinfo.vc_rare_mask_non_missing.resize(Gtmp.rows(), Gtmp.cols());
+    g_ur_nmiss = excl_vars_ur_mask >= 0;
+    g_ur_start = excl_vars_ur_mask.max(0).matrix().sparseView();
+    setinfo.vc_rare_mask_non_missing.array().colwise() = g_ur_nmiss;
+    rare_mask_tmp.assign(Gtmp.cols(), g_ur_start);
   }
+  Gtmp.array().colwise() = excl_vars_mask;
 
   // start openmp for loop
 #if defined(_OPENMP)
   setNbThreads(1);
 #pragma omp parallel for schedule(dynamic)
 #endif
-  for(int i = 0; i < indices_chunk.size(); i++){
+  for(int i = 0; i < bs; i++){ // generate lovo mask
 
-    int ix = indices_chunk(i); 
-    MapArXd Gvec (Gtmp.col(i).data(), Gtmp.rows(), 1);
-    Gvec = excl_vars_mask;
-    if(w_vc_tests && with_ur) {
-      rare_mask_tmp[i] = g_ur_start;
-      setinfo.vc_rare_mask_non_missing.col(i) = g_ur_nmiss;
+    MapArXd maskvec (Gtmp.col(i).data(), Gtmp.rows(), 1);
+    ArrayXb in_loo_mask = ArrayXb::Constant(bs, true); in_loo_mask(i) = false;
+    ArrayXi in_loo_indices = get_true_indices(in_loo_mask);
+
+    if(in_loo_mask.any()){
+      // LOVO mask
+      if(take_max){ // max rule to combine variants across sites
+        maskvec = in_analysis.select(maskvec.max(Gmat_d(all, in_loo_indices).rowwise().maxCoeff().array()), maskvec);
+      } else {
+        ArrayXb non_miss_G = in_analysis && (Gmat_d(all, in_loo_indices).array() >= 0).rowwise().any();
+        maskvec = non_miss_G.select( maskvec.max(0) + (Gmat_d(all, in_loo_indices).array() >= 0).select(Gmat_d(all, in_loo_indices).array(), 0).rowwise().sum(), maskvec);
+      }
     }
 
-    // go through all the other variants
-    for(int j = 0; j < indices_chunk.size(); j++){
-      if(i==j) continue; // LOO
-      int jx = indices_chunk(j); // index in set
-
-      // if variant is ur, add to ur mask
-      if( w_vc_tests && is_ultra_rare(jx) ){
-        apply_rule(rare_mask_tmp[i], G_ur.col(ind_to_ur_col[jx]).cwiseMax(0).sparseView(), in_analysis, true);
-        setinfo.vc_rare_mask_non_missing.col(i).array() = setinfo.vc_rare_mask_non_missing.col(i).array() || (G_ur.col(ind_to_ur_col[jx]).array() >= 0);
-      } 
-
-      // add to burden mask for all other variants
-      apply_rule(Gvec, Gmat_sp.col(jx), in_analysis, false);
-    }
-
-    if( comp_full_mask && (i == (indices_chunk.size() -1)) ) { // compute full mask
-      Gtmp.rightCols(1) = Gvec; 
-      if( w_vc_tests && is_ultra_rare(ix) ){ // add to UR mask for full set
-        rare_mask_tmp.back() = rare_mask_tmp[i];
-        apply_rule(rare_mask_tmp.back(), G_ur.col(ind_to_ur_col[ix]).sparseView(), in_analysis, true);
-        setinfo.vc_rare_mask_non_missing.rightCols(1).array() = setinfo.vc_rare_mask_non_missing.col(i).array() || (G_ur.col(ind_to_ur_col[ix]).array() >= 0);
-      } 
+    if( comp_full_mask && (i == (bs-1)) ) { // compute full mask
+      Gtmp.rightCols(1) = Gtmp.col(i); 
       // add to burden mask for full set
-      apply_rule(Gtmp.rightCols(1).array(), Gmat_sp.col(ix), in_analysis, false);
+      apply_rule(Gtmp.rightCols(1).array(), Gmat_d.col(i).sparseView(), in_analysis, false);
     }
 
   }
@@ -464,10 +442,70 @@ void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool con
   setNbThreads(nthreads);
 #endif
 
-  // for vc tests
-  if(w_vc_tests && with_ur)
+  if(w_vc_tests && with_ur) { // for skat tests and ur vars present
+
+    // get spmat for ur variants only
+    int n_ur = is_ultra_rare(indices_chunk).count();
+    ArrayXi ur_indices = ArrayXi::Constant(bs, -1);
+    MatrixXb ur_miss; if(n_ur>0) ur_miss.resize(Gmat_d.rows(), n_ur);
+    SpMat ur_sp_mat; if(n_ur>0) ur_sp_mat.resize(Gmat_d.rows(), n_ur);
+    SpVec ur_mask_all = g_ur_start;
+
+    // store the ur variants in spmat & keep track of index/missingness
+    int m = 0;
+    for (int i = 0; i < bs; i++ ) {
+      if(!is_ultra_rare(indices_chunk(i))) continue;
+      MapArXd garr (Gmat_d.col(i).data(), Gmat_d.rows(), 1);
+      // flip if necessary (missing set to 0)
+      if(to_flip(indices_chunk(i))) ur_sp_mat.col(m) = (garr == -3).select(0, 2 - garr).matrix().sparseView();
+      else ur_sp_mat.col(m) = garr.max(0).matrix().sparseView();
+      // track missingness
+      ur_miss.col(m) = (garr != -3);
+      // track max across sites
+      ur_mask_all = ur_mask_all.cwiseMax(ur_sp_mat.col(m));
+      // store the index
+      ur_indices(i) = m++;
+    }
+
+    // start openmp for loop
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(int i = 0; i < bs; i++){
+
+      ArrayXb in_loo_mask = ArrayXb::Constant(bs, true); in_loo_mask(i) = false;
+
+      if(n_ur>0){
+        // if not ur site, set to max across ur sites
+        if(!is_ultra_rare(indices_chunk(i))) {
+          rare_mask_tmp[i] = ur_mask_all;
+          setinfo.vc_rare_mask_non_missing.col(i).array() = setinfo.vc_rare_mask_non_missing.col(i).array() || ur_miss.array().rowwise().any();
+        } else // otherwise, take max using lovo
+          for (auto const& j : get_true_indices( in_loo_mask && is_ultra_rare(indices_chunk) )) {
+            rare_mask_tmp[i] = rare_mask_tmp[i].cwiseMax(ur_sp_mat.col(ur_indices(j)));
+            setinfo.vc_rare_mask_non_missing.col(i).array() = setinfo.vc_rare_mask_non_missing.col(i).array() || ur_miss.col(ur_indices(j)).array() ;
+          }
+      }
+
+      if( comp_full_mask && (i == (bs-1)) ) { // compute full mask
+        rare_mask_tmp.back() = rare_mask_tmp[i];
+        setinfo.vc_rare_mask_non_missing.rightCols(1) = setinfo.vc_rare_mask_non_missing.col(i);
+        if(is_ultra_rare(indices_chunk(i))) { // if variant is UR
+          rare_mask_tmp.back() = rare_mask_tmp.back().cwiseMax(ur_sp_mat.col(ur_indices(i)));
+          setinfo.vc_rare_mask_non_missing.rightCols(1).array() = setinfo.vc_rare_mask_non_missing.rightCols(1).array() || ur_miss.col(ur_indices(i)).array();
+        }
+      }
+
+    }
+#if defined(_OPENMP)
+    setNbThreads(nthreads);
+#endif
+
     for(size_t j = 0; j < rare_mask_tmp.size(); j++)
       setinfo.vc_rare_mask.col(j) = rare_mask_tmp[j];
+
+  }
 
 }
 
