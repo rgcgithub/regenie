@@ -732,6 +732,7 @@ The suffix in the "TEST" column indicates which hypothesis is being tested:
 * "ADD-INT_SNP": test for main effect of tested SNP in the interaction model $-$ this corresponds to $H_0: \beta = 0$
 * "ADD-INT_SNPxVAR": test for interaction effect ("VAR" will be replaced by the name of the interacting variable) $-$ this corresponds to $H_0: \gamma = 0$
     * If the interacting variable is categorical, you will have separate lines for each level aside from the baseline level (e.g. "ADD-INT_SNPxBMI=25-30" and "ADD-INT_SNPxBMI=30+" where baseline level is "$<$25")
+        * With Firth correction, only the effect sizes for the interaction effect at each level will be reported and the LRT p-value will only be computed for the joint test on the interaction effects
 * "ADD-INT_$k$DF": joint test for main and interaction effect of tested variant ($k\ge2$ for categorical interacting variables) $-$ this corresponds to $H_0: \beta = \gamma = 0$
 
 
