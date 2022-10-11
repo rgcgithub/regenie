@@ -396,9 +396,10 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     // get eigen values of Zt(I-U)Z
     if(!get_ztz_evals(Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
 
-    if(nnz > 1)
+    if(nnz > 1){
       get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
-
+      if(skato_sdQ < 0) continue; // failed
+    }
     Qopt = Qs.col(jcol) * flipped_skato_rho.matrix().transpose() + Qb.col(jcol) * rho_vec.matrix().transpose(); // P x Nrho
     if(debug) cerr << "Q:" << Qopt.row(0) << "\n";
 
@@ -795,8 +796,10 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       // get eigen values of Zt(I-U)Z
       if(!get_ztz_evals(rfrac * Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
 
-      if(npass > 1)
+      if(npass > 1){
         get_skato_mom(skato_muQ, skato_fdavies, skato_sdQ, skato_dfQ, skato_tau, skato_lambdas, gamma1, gamma2, gamma3, rho_vec, debug);
+        if(skato_sdQ < 0) continue; // failed
+      }
 
       Qopt = (Qs(jcol) * flipped_skato_rho + Qb(jcol) * rho_vec).matrix(); // Nrho x 1
       if(debug) cerr << "Q:\n" << std::setprecision(10) << Qopt.transpose() << "\n";
@@ -1395,10 +1398,11 @@ void get_skato_mom(double& mu, double& sc_fac, double& sd, double& df, ArrayXd& 
   v0 = 2 * lambdas.squaredNorm();
   ve = 4 * (gamma3/gamma1 - gamma2*gamma2/gamma1/gamma1);
   vq = v0 + ve;
+  if(vq < 0){sd = -1; return;}
   sd = sqrt(vq);
   sc_fac = sqrt( v0 / vq );
   df = 0.5 * 0.5 * v0 * v0 / lambdas.array().pow(4).sum();
-  if(debug) cerr << "[muQ, scFac, sd, df]=" << mu << " " << sc_fac << " " << sd << " " << df << "\n";
+  if(debug) cerr << "[muQ, scFac, sd, df, v0, vq]= [" << mu << " " << sc_fac << " " << sd << " " << df << " " << v0 << " " << vq << " ]\n";
   tau = gamma1 * rho + gamma2/gamma1 * (1-rho);
   if(debug) cerr << "tau=" << tau.matrix().transpose() << "\n";
 
