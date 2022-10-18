@@ -878,7 +878,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(!params->build_mask && params->check_mask_files) {params->check_mask_files = false; valid_args[ "check-burden-files" ] = false;}
     if(!params->build_mask && params->strict_check_burden) {params->strict_check_burden = false; valid_args[ "strict-check-burden" ] = false;}
     if(!params->build_mask && params->write_mask_snplist) {params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;}
-    if(!params->write_masks && params->skip_test) {params->skip_test = false; valid_args[ "skip-test" ] = false;}
+    if(!(params->write_masks || params->write_mask_snplist) && params->skip_test) {params->skip_test = false; valid_args[ "skip-test" ] = false;}
     if(!params->w_interaction) params->gwas_condtl = false;
     if(!params->write_masks && params->write_setlist) {
       sout << "WARNING: must use --write-setlist with --write-mask.\n";
