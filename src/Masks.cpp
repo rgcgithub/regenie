@@ -54,6 +54,7 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   w_vc_tests = params.vc_test;
   vc_aaf = params.vc_maxAAF;
   vc_collapse_MAC = params.skat_collapse_MAC;
+  w_vc_cust_weights = params.vc_with_weights;
   write_masks = params.write_masks;
   write_snplist = params.write_mask_snplist;
   force_singleton = params.aaf_file_wSingletons;
@@ -174,7 +175,7 @@ void GenoMask::prepMasks(int const& ntotal, const string& setID) {
 
 }
 
-void GenoMask::updateMasks(int const& start, int const& bs, struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, struct geno_block* gblock, vector<variant_block> &all_snps_info, vset& setinfo, vector<snp>& snpinfo, mstream& sout){
+void GenoMask::updateMasks(int const& start, int const& bs, struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, struct geno_block* gblock, const Ref<const ArrayXd>& vc_weights, vector<variant_block> &all_snps_info, vset& setinfo, vector<snp>& snpinfo, mstream& sout){
 
   // identify which snps are in each mask
   set_snp_masks(start, bs, all_snps_info, setinfo, snpinfo, sout);
@@ -200,8 +201,10 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
         MapArXd garr (gblock->Gmat.col(i).data(), params->n_samples, 1);
         // flip if necessary
         if(all_snps_info[start+i].af1 > 0.5) ur_sp_mat.col(j) = (garr == -3).select(0, 2 - garr).matrix().sparseView();
-        else ur_sp_mat.col(j) = (garr == -3).select(0, garr).matrix().sparseView();
-        ur_miss.col(j) = (garr != -3);
+        else ur_sp_mat.col(j) = (garr < 0).select(0, garr).matrix().sparseView();
+        // if using custom user weights, rescale before collapsing ur variants 
+        ur_sp_mat.col(j) *= vc_weights(start+i);
+        ur_miss.col(j) = (garr >= 0);
         // store the index
         ur_indices(i) = j++;
       }
@@ -242,7 +245,7 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
         mv = maskvec.matrix().sparseView();
         for(int k = 0; k < colkeep.size(); k++){
           if(!colkeep(k)) continue;
-          gv = gblock->Gmat.col(k).sparseView();
+          gv = (vc_weights(start+k) * gblock->Gmat.col(k)).sparseView();
           mv = gv.cwiseMax(mv);
         }
         maskvec = MatrixXd(mv).array();
@@ -255,16 +258,16 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
 
         for(int k = 0; k < colkeep.size(); k++){
           if(!colkeep(k)) continue;
-          gv = gblock->Gmat.col(k).sparseView();
+          gv = (vc_weights(start+k) * gblock->Gmat.col(k)).sparseView();
 
           // sum rule (ignore -3)
           for (SparseVector<double>::InnerIterator it(gv); it; ++it) {
             l = it.index();
             ds = it.value();
 
-            if( !filters->ind_in_analysis(l) || (ds == -3)) continue;
+            if( !filters->ind_in_analysis(l) || (ds < 0)) continue;
 
-            if( maskvec(l) == -3 ) maskvec(l) = ds;
+            if( maskvec(l) < 0 ) maskvec(l) = ds;
             else maskvec(l) += ds;
           }
 
@@ -337,9 +340,9 @@ void GenoMask::apply_rule(Ref<ArrayXd> out_mask, SpVec const& Gvec, const Ref<co
       l = it.index();
       ds = it.value();
 
-      if( !in_analysis(l) || (ds == -3)) continue;
+      if( !in_analysis(l) || (ds<0)) continue;
 
-      if( out_mask(l) == -3 ) out_mask(l) = ds;
+      if( out_mask(l) < 0 ) out_mask(l) = ds;
       else if(ds > 0) out_mask(l) += ds;
     }
   }
@@ -358,32 +361,34 @@ void GenoMask::apply_rule(Ref<ArrayXd> maskvec, const Ref<const MatrixXd>& Gmat,
 }
 
 // should only be called once
-void GenoMask::collapse_mask_chunk(const Ref<const ArrayXi>& indices, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, Ref<ArrayXd> out_mask, Ref<ArrayXd> out_ur_mask, const Ref<const ArrayXb>& in_analysis){ 
+void GenoMask::collapse_mask_chunk(const Ref<const ArrayXi>& indices, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& vc_weights, Ref<ArrayXd> out_mask, Ref<ArrayXd> out_ur_mask, const Ref<const ArrayXb>& in_analysis){ 
 
   int nkept = indices.size(), icol;
+  double weight;
   if(nkept == 0) return;
 
   // collapse variants
   for(int i = 0; i < nkept; i++){
     icol = indices(i);
+    weight = vc_weights(icol); // apply custom user weight to ur variant
 
     if( w_vc_tests && is_ultra_rare(icol) ){ // collapse into a rare mask
       if( to_flip(icol) ){ // need to flip 
         ArrayXd Gvec = Gmat_sp.col(icol);
-        Gvec = (in_analysis && (Gvec != -3)).select(2 - Gvec, Gvec);
+        Gvec = (in_analysis && (Gvec >=0 )).select(2 - Gvec, Gvec);
         SpVec G_flip = Gvec.matrix().sparseView();
-        apply_rule(out_ur_mask, G_flip, in_analysis, true);
+        apply_rule(out_ur_mask, weight * G_flip, in_analysis, true);
       } else
-        apply_rule(out_ur_mask, Gmat_sp.col(icol), in_analysis, true);
+        apply_rule(out_ur_mask, weight * Gmat_sp.col(icol), in_analysis, true);
     }  
     // for lovo mask
-    apply_rule(out_mask, Gmat_sp.col(icol), in_analysis, false);
+    apply_rule(out_mask, weight * Gmat_sp.col(icol), in_analysis, false);
 
   }
 
 }
 
-void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool const& comp_full_mask, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& excl_vars_mask, const Ref<const ArrayXd>& excl_vars_ur_mask, const Ref<const ArrayXb>& in_analysis, vset& setinfo, int const& nthreads){
+void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool const& comp_full_mask, SpMat const& Gmat_sp, const Ref<const ArrayXb>& is_ultra_rare, const Ref<const ArrayXb>& to_flip, const Ref<const ArrayXd>& vc_weights, const Ref<const ArrayXd>& excl_vars_mask, const Ref<const ArrayXd>& excl_vars_ur_mask, const Ref<const ArrayXb>& in_analysis, vset& setinfo, int const& nthreads){
 
   bool with_ur = is_ultra_rare(indices_chunk).any() || (excl_vars_ur_mask > 0).any();
   int bs = indices_chunk.size();
@@ -424,17 +429,17 @@ void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool con
     if(in_loo_mask.any()){
       // LOVO mask
       if(take_max){ // max rule to combine variants across sites
-        maskvec = in_analysis.select(maskvec.max(Gmat_d(all, in_loo_indices).rowwise().maxCoeff().array()), maskvec);
+        maskvec = in_analysis.select(maskvec.max((Gmat_d(all, in_loo_indices) * vc_weights(indices_chunk(in_loo_indices)).matrix().asDiagonal()).rowwise().maxCoeff().array()), maskvec);
       } else {
         ArrayXb non_miss_G = in_analysis && (Gmat_d(all, in_loo_indices).array() >= 0).rowwise().any();
-        maskvec = non_miss_G.select( maskvec.max(0) + (Gmat_d(all, in_loo_indices).array() >= 0).select(Gmat_d(all, in_loo_indices).array(), 0).rowwise().sum(), maskvec);
+        maskvec = non_miss_G.select( maskvec.max(0) + (Gmat_d(all, in_loo_indices).array() >= 0).select((Gmat_d(all, in_loo_indices) * vc_weights(indices_chunk(in_loo_indices)).matrix().asDiagonal()).array(), 0).rowwise().sum(), maskvec);
       }
     }
 
     if( comp_full_mask && (i == (bs-1)) ) { // compute full mask
       Gtmp.rightCols(1) = Gtmp.col(i); 
       // add to burden mask for full set
-      apply_rule(Gtmp.rightCols(1).array(), Gmat_d.col(i).sparseView(), in_analysis, false);
+      apply_rule(Gtmp.rightCols(1).array(), (vc_weights(indices_chunk(i)) * Gmat_d.col(i)).sparseView(), in_analysis, false);
     }
 
   }
@@ -457,10 +462,11 @@ void GenoMask::updateMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool con
       if(!is_ultra_rare(indices_chunk(i))) continue;
       MapArXd garr (Gmat_d.col(i).data(), Gmat_d.rows(), 1);
       // flip if necessary (missing set to 0)
-      if(to_flip(indices_chunk(i))) ur_sp_mat.col(m) = (garr == -3).select(0, 2 - garr).matrix().sparseView();
+      if(to_flip(indices_chunk(i))) ur_sp_mat.col(m) = (garr<0).select(0, 2 - garr).matrix().sparseView();
       else ur_sp_mat.col(m) = garr.max(0).matrix().sparseView();
+      ur_sp_mat.col(m) *= vc_weights(indices_chunk(i)); // apply custom user weight to ur variant
       // track missingness
-      ur_miss.col(m) = (garr != -3);
+      ur_miss.col(m) = (garr >= 0);
       // track max across sites
       ur_mask_all = ur_mask_all.cwiseMax(ur_sp_mat.col(m));
       // store the index
@@ -524,7 +530,7 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
     // first mask AAF
     int index_mask = i * n_aaf_bins;
     double ds;
-    bool column_set = (Gtmp.col(index_mask).array() != -3).any();
+    bool column_set = (Gtmp.col(index_mask).array() >= 0).any();
     colset(index_mask) = column_set;
 
     // don't parallelize inner loop (cumulative updates)
@@ -532,7 +538,7 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
 
       int index_start = index_mask + j;
       // check if there are variants in mask
-      if(colset(index_start-1) || (Gtmp.col(index_start).array() != -3).any()) 
+      if(colset(index_start-1) || (Gtmp.col(index_start).array() >= 0).any()) 
         colset(index_start) = true;
 
       if( !colset(index_start) ) continue;
@@ -562,9 +568,9 @@ void GenoMask::tally_masks(struct param const* params, struct filter const* filt
           int l = it.index();
           ds = it.value();
 
-          if( !filters->ind_in_analysis(l) || (ds == -3)) continue;
+          if( !filters->ind_in_analysis(l) || (ds < 0)) continue;
 
-          if( maskvec(l) == -3 ) maskvec(l) = ds;
+          if( maskvec(l) < 0 ) maskvec(l) = ds;
           else maskvec(l) += ds;
 
         }
@@ -941,10 +947,10 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
 
       ds = maskvec(index);
       // distinguish missing from 0 for sum rule
-      if(!w_loo && !take_max && (ds == -3) && non_missing(index,isnp)) 
+      if(!w_loo && !take_max && (ds < 0) && non_missing(index,isnp)) 
         ds = 0;
 
-      if( ds != -3 ){
+      if( ds >= 0 ){
         lval = 0, mval = ds;
         if(params->test_mode && (chrom == params->nChrom)) {
           lval = (params->sex(i) == 1);
@@ -1029,7 +1035,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
     snp_data->flipped = ((!take_max && !take_comphet) || (params->test_type > 0)) ? false : (total > 1); // skip for DOM/REC test
 
     if(snp_data->flipped){
-      maskvec = ( maskvec != -3.0 ).select( 2 -  maskvec, maskvec);
+      maskvec = ( maskvec >= 0 ).select( 2 -  maskvec, maskvec);
       total = 2 - total;
     }
   }
@@ -1045,7 +1051,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       maskvec = (maskvec >= 1).select(maskvec - 1, maskvec);
     }
 
-    sum_pos = ((maskvec != -3) && filters->ind_in_analysis).select(maskvec, 0).sum();
+    sum_pos = ((maskvec >= 0) && filters->ind_in_analysis).select(maskvec, 0).sum();
     if((params->test_type == 2) && (sum_pos < params->minHOMs)) { // filter on homALT carriers
       snp_data->ignored = true;
       return;

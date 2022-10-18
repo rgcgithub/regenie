@@ -331,7 +331,8 @@ struct param {
   std::string genep_mask_sets_file = "";
   std::map<std::string, bool> mask_map;
   double vc_maxAAF = 1; // max AAF for variants in SKAT/ACAT gene-based tests
-  bool w_anno_lab = false;
+  bool w_anno_lab = false, vc_with_weights = false, vc_multiply_weights = false;
+  int vc_weight_col;
   bool check_mask_files = false, strict_check_burden = false, fail_check = false;
   bool skip_test = false; // skip computing tests
   bool joint_test = false; // for step 2 joint testing

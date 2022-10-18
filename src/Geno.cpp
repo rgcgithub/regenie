@@ -2952,7 +2952,6 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
       continue;
     }
 
-
     // position of set
     tmp_set.physpos = std::stoul( tmp_str_vec[2],nullptr,0);
 
@@ -3228,6 +3227,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
   uint32_t snp_pos, ncat = 0, n_anno_read = 0;
   uint64 null_id = 0ULL;
   uint16_t null_region = 0ULL;
+  double set_weight = 0;
   anno_name new_anno;
   annoinfo ainfo;
   std::vector< string > tmp_str_vec ;
@@ -3243,6 +3243,8 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
   sout << left << std::setw(20) << " * annotations " << ": [" << files->anno_file << "] " << endl;
   myfile.openForRead (files->anno_file, sout);
+  if(params->vc_with_weights && (params->vc_weight_col < 4))
+   throw "invalid column index specified for user-defined weights (=" + to_string( params->vc_weight_col );
 
   while (myfile.readLine(line)) {
 
@@ -3253,15 +3255,17 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
     if(lineread == 0) {
       // for LOVO with region
       if((params->mask_loo || params->mask_lodo) && params->w_regions && (tmp_str_vec.size() != 4))
-        throw "annotation file is not in 4-column format for LOVO.";
-
-      params->w_regions = (tmp_str_vec.size() == 4);
+        throw "annotation file has fewer than 4 columns for LOVO.";
+      params->w_regions = !params->vc_with_weights && (tmp_str_vec.size() == 4);
       //cerr << std::boolalpha << params->w_regions << endl;
       if(params->w_regions)  col_cat = 3; // set label column
     }
 
     // variants | set_name | region (optional) | annotation (unique)
-    if( (!params->w_regions && tmp_str_vec.size() != 3) || (params->w_regions && tmp_str_vec.size() != 4) ) 
+    if( (!params->w_regions && !params->vc_with_weights && (tmp_str_vec.size() != 3)) || 
+        (params->w_regions && (tmp_str_vec.size() != 4)) || 
+        (params->vc_with_weights && ((int)tmp_str_vec.size() < params->vc_weight_col)) 
+        ) 
       throw "incorrectly formatted file at line " + to_string(lineread+1);
 
     // name of variant
@@ -3346,6 +3350,13 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
       snp_info->anno[ gname ] = ainfo;
     //if(lineread <5) cerr << snp_info->ID << "--" << ainfo.id << " " << (int) ainfo.regionid <<  endl; 
 
+    // if using custom weights in VC tests
+    if( params->vc_with_weights ){
+        set_weight = convertDouble(tmp_str_vec[params->vc_weight_col - 1], params, sout);
+        if( set_weight < 0 ) throw "weight = " + tmp_str_vec[params->vc_weight_col - 1] + " for variant " + sname  + " in set " + gname;
+        snp_info->set_weight[ gname ] = set_weight;
+    }
+    
     n_anno_read++, lineread++;
   }
 

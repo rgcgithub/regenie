@@ -226,6 +226,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("build-mask", "rule to construct masks, can be 'max', 'sum' or 'comphet' (default is max)", cxxopts::value<std::string>(params->mask_rule),"STRING")
     ("vc-tests", "comma separated list of tests to compute for each set of variants included in a mask [skat/skato/skato-acat/acatv/acato]", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("vc-maxAAF", "maximum AAF for variants included in gene-based tests", cxxopts::value<double>(params->vc_maxAAF),"FLOAT(=1)")
+    ("weights-col", "column index (1-based) for user-defined weights in annotation file", cxxopts::value<int>(params->vc_weight_col))
+    ("multiply-weights", "multiply the user defined weights by the default SKAT weights in SKAT/ACAT tests")
     ("joint", "comma spearated list of joint tests to perform", cxxopts::value<std::string>(params->burden),"STRING")
     ("singleton-carrier", "define singletons as variants with a single carrier in the sample")
     ("write-mask", "write masks in PLINK bed/bim/fam format")
@@ -428,6 +430,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("check-burden-files") ) params->check_mask_files = true;
     if( vm.count("strict-check-burden") ) params->strict_check_burden = true;
     if( vm.count("force-qt") ) params->force_qt_run = true;
+    if( vm.count("weights-col") ) params->vc_with_weights = true;
+    if( vm.count("multiply-weights") ) params->vc_multiply_weights = true;
     if( vm.count("sbat-verbose") ) params->nnls_out_all = true;
     if( vm.count("sbat-adapt") ) params->nnls_adaptive = true;
     if( vm.count("sbat-mtw") ) params->nnls_mt_weights = true;

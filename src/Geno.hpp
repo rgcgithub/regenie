@@ -54,10 +54,11 @@ struct snp {
   uint64 offset;
   // for masks
   std::map <std::string, annoinfo> anno; // annotation
+  std::map <std::string, double> set_weight; // weight
   float aaf = -1;
   bool force_singleton = false; // for singleton masks
   bool MAC_fail_if_checked = true; // for extract/exclude OR
-} ;
+};
 
 struct tally {
   uint32_t snp_count = 0;
