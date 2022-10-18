@@ -30,6 +30,8 @@
 // SKAT
 void update_vc_gmat(SpMat&,Eigen::ArrayXd&,Eigen::ArrayXd&,ArrayXb&,const int&,const int&,struct param const&,const Eigen::Ref<const ArrayXb>&,Eigen::Ref<Eigen::MatrixXd>,std::vector<variant_block>&,const Eigen::Ref<MatrixXb>);
 void update_vc_gmat(SpMat&,Eigen::ArrayXd&,Eigen::ArrayXd&,SpMat const&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
+bool get_custom_weights(std::string const&,Eigen::Ref<Eigen::ArrayXd>,std::vector<snp>&,std::vector<uint64> const&);
+bool get_custom_weights(std::string const&,Eigen::Ref<Eigen::ArrayXd>,std::vector<snp>&,const Eigen::Ref<const Eigen::ArrayXi>&,std::vector<uint64> const&);
 void compute_vc_masks(SpMat&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::ArrayXd>,SpMat&,Eigen::Ref<MatrixXb>,const Eigen::Ref<const Eigen::MatrixXd>&, struct ests const&,struct f_ests const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,MatrixXb&,std::vector<variant_block>&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 void prep_ultra_rare_mask(SpMat&,Eigen::Ref<Eigen::ArrayXd>,Eigen::Ref<Eigen::ArrayXd>,SpMat&,Eigen::Ref<MatrixXb>,MatrixXb&,const Eigen::Ref<const ArrayXb>&,struct param const&);
 void compute_vc_masks_qt(SpMat&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,std::vector<variant_block>&,struct param const&);

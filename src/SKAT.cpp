@@ -103,8 +103,13 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
       // mask individuals
       Gvec *= in_analysis.cast<double>();
       // store SKAT weight
-      weights(start + i) = pdf(dist, maf);
-      weights_acat(start + i) = weights(start + i) * weights(start + i) * maf * (1-maf); // for acatv
+      if(!params.vc_with_weights){
+        weights(start + i) = pdf(dist, maf);
+        weights_acat(start + i) = weights(start + i) * weights(start + i) * maf * (1-maf); // for acatv
+      } else if(params.vc_multiply_weights){
+        weights(start + i) *= pdf(dist, maf);
+        weights_acat(start + i) *= pdf(dist, maf) * pdf(dist, maf) * maf * (1-maf); // for acatv
+      }
     } else Gvec = 0; // otherwise set the column to 0
 
   }
@@ -145,8 +150,14 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, SpMat c
       // mask individuals
       Gvec *= in_analysis.cast<double>();
       // store SKAT weight
-      weights(start + i) = pdf(dist, mafs(start + i));
-      weights_acat(start + i) = weights(start + i) * weights(start + i) * mafs(start + i) * (1-mafs(start + i)); // for acatv
+      if(!params.vc_with_weights){
+        weights(start + i) = pdf(dist, mafs(start + i));
+        weights_acat(start + i) = weights(start + i) * weights(start + i) * mafs(start + i) * (1-mafs(start + i)); // for acatv
+      } else if(params.vc_multiply_weights){
+        double v_pdf = pdf(dist, mafs(start + i));
+        weights(start + i) *= v_pdf;
+        weights_acat(start + i) *= v_pdf * v_pdf * mafs(start + i) * (1-mafs(start + i)); // for acatv
+      }
 
     }
 #if defined(_OPENMP)
@@ -156,6 +167,55 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, SpMat c
     start += bsize;
   }
 
+}
+
+bool get_custom_weights(string const& setname, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, vector<snp>& snpinfo, vector<uint64> const& indices){
+
+  // load custom user weights
+  for(size_t i = 0; i < indices.size(); i++){
+    if(!in_map(setname, snpinfo[ indices[i] ].set_weight)) // this shouldn't happen
+      throw "no custom weight found for variant " + snpinfo[ indices[i] ].ID;
+    weights(i) = snpinfo[ indices[i] ].set_weight[setname];
+  }
+  double sum_w = weights.sum(); // make weights sum to 1
+  if(sum_w == 0) return false;
+
+  weights /= sum_w;
+  weights_acat = weights;
+;
+
+  return true;
+}
+
+bool get_custom_weights(string const& setname, Ref<ArrayXd> weights, vector<snp>& snpinfo, vector<uint64> const& offsets){
+
+  // load custom user weights
+  for(size_t i = 0; i < offsets.size(); i++){
+    if(!in_map(setname, snpinfo[ offsets[i] ].set_weight)) // this shouldn't happen
+      throw "no custom weight found for variant " + snpinfo[ offsets[i] ].ID;
+    weights(i) = snpinfo[ offsets[i] ].set_weight[setname];
+  }
+  double sum_w = weights.sum(); // make weights sum to 1
+  if(sum_w == 0) return false;
+
+  weights /= sum_w;
+  return true;
+}
+
+// with lovo
+bool get_custom_weights(string const& setname, Ref<ArrayXd> weights, vector<snp>& snpinfo, const Ref<const ArrayXi>& indices, vector<uint64> const& offsets){
+
+  // load custom user weights
+  for(int i = 0; i < indices.size(); i++){
+    if(!in_map(setname, snpinfo[ offsets[indices(i)] ].set_weight)) // this shouldn't happen
+      throw "no custom weight found for variant " + snpinfo[ offsets[indices(i)] ].ID;
+    weights(i) = snpinfo[ offsets[indices(i)] ].set_weight[setname];
+  }
+  double sum_w = weights.sum(); // make weights sum to 1
+  if(sum_w == 0) return false;
+
+  weights /= sum_w;
+  return true;
 }
 
 void compute_vc_masks(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, SpMat& vc_rare_mask, Ref<MatrixXb> vc_rare_non_miss, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres,  const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, MatrixXb& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXb>& in_analysis, struct param const& params){
@@ -201,9 +261,12 @@ void prep_ultra_rare_mask(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights
     mean = gv.sum() / rare_mask_non_miss.col(iset).count();
     maf = min(mean/2, 1 - mean/2);
 
-    // store SKAT weight
-    weights(bs+iset) = pdf(dist, maf);
-    weights_acat(bs+iset) = weights(bs+iset) * weights(bs+iset) * maf * (1-maf);
+    if(params.vc_with_weights && !params.vc_multiply_weights){ // weights already incorporated when taking max of weighted geno
+      weights(bs+iset) = weights_acat(bs+iset) = 1;
+    } else { // use default SKAT/ACAT weight
+      weights(bs+iset) = pdf(dist, maf);
+      weights_acat(bs+iset) = weights(bs+iset) * weights(bs+iset) * maf * (1-maf);
+    }
 
     if(params.debug) cerr << "set #" << iset+1 << "; rare_mask [mu,nZ,w,w_a] = [" << mean << "," << (gv>0).count() << "," << weights(bs+iset) << "," << weights_acat(bs+iset) << "]";
 
@@ -244,6 +307,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
   ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
   int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+  if( !(weights(snp_indices) > 0).any() ) return;
 
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // Mall x M
@@ -285,7 +349,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
     // ACAT-V 
-    if(with_acatv){
+    if(with_acatv && (weights_acat(mall_indices) > 0).any()){
       for(int ph = 0; ph < n_pheno; ph++)
         get_acatv_pv( ph, pvals(m_indices, ph), weights_acat(mall_indices), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin, debug); 
       block_info->sum_stats_vc["ACATV"] = sum_stats;
@@ -333,6 +397,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
   ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
   int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+  if( !(weights(snp_indices) > 0).any() ) return;
 
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // Mall x M
@@ -385,7 +450,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
 
     // ACAT-V 
-    if(with_acatv){
+    if(with_acatv && (weights_acat(mall_indices) > 0).any()){
       for(int ph = 0; ph < n_pheno; ph++)
         get_acatv_pv( ph, pvals(m_indices, ph), weights_acat(mall_indices), sum_stats(ph, 1), sum_stats(ph, 0), nl_dbl_dmin, debug); 
       block_info->sum_stats_vc["ACATV"] = sum_stats;
@@ -953,6 +1018,8 @@ void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, cons
   Svals.resize(weights.size(), 1); // Mx1
   Kmat.resize(weights.size(), weights.size()); // MxM
 
+  SpMat mat2 = Gsparse * weights.matrix().asDiagonal(); // include weights to G
+
   // loop over each trait
   for(int ph = 0; ph < params.n_pheno; ph++) { 
     if( !params.pheno_pass(ph) ) continue;
@@ -964,11 +1031,11 @@ void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, cons
     MapcArXd phat (m_ests.Y_hat_p.col(ph).data(), yraw.rows());
 
     // get test stats with no correction
-    compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), Gsparse, GWs, GtWX);
+    compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), mat2, GWs, GtWX);
     varS = Kmat.diagonal().array();
 
     // apply correction and store Rvecs
-    apply_correction_cc(ph, indices, weights, vc_Rvec_start.col(ph).array(), Svals, varS, Gsparse, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, false);
+    apply_correction_cc(ph, indices, weights, vc_Rvec_start.col(ph).array(), Svals, varS, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params, false);
   }
 
   if(params.debug) {
