@@ -740,7 +740,7 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   if( pval == 1) pval = 1 - 1e-7;
 
   // SNP info
-  buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tNA\tNA\t";
+  buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tref\tset\t";
   // trait, cohort, test name
   buffer << yname << "\t" << params->cohort_name << "\t" << burden_model << tname;
 
@@ -779,7 +779,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 
   // chr pos id a0 a1 af
   if(params->split_by_pheno || ipheno == 1) {
-    buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
+    buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " ref set NA " ;
     if( params->af_cc ) buffer << "NA NA ";
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
@@ -825,7 +825,7 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   if( pval == 1) pval = 1 - 1e-7;
 
   // SNP info
-  buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tNA\tNA\t";
+  buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tref\tset\t";
   // trait, cohort, test name
   buffer << yname << "\t" << params->cohort_name << "\t" << mname;
 
