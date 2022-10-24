@@ -93,6 +93,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
       if(skip_pheno){
         params->pheno_pass(i) = false; // phenotype will be ignored
+        params->pheno_fail_nullreg(i) = true;
         if(!silent) sout << "\n     WARNING: logistic regression did not converge for phenotype '" << files->pheno_names[i] <<"'.";
         continue;
         // throw "logistic regression did not converge for phenotype " + files->pheno_names[i] + ". Perhaps increase --niter or check the covariates.";

@@ -1568,6 +1568,7 @@ void set_pheno_pass(struct in_files const* files, struct param* params){
 
   bool select_phenos = params->select_pheno_l1.size() > 0;
   params->pheno_pass = ArrayXb::Constant(params->n_pheno, false);
+  params->pheno_fail_nullreg = ArrayXb::Constant(params->n_pheno, false);
   for(int ph = 0; ph < params->n_pheno; ph++)
     if( select_phenos )
       params->pheno_pass(ph) = in_map( files->pheno_names[ph], params->select_pheno_l1 );

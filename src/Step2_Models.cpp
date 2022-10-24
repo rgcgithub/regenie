@@ -546,16 +546,17 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
       " Try decreasing the maximum step size using `--maxstep-null` (currently=" + msg1 +  ") "
       "and increasing the maximum number of iterations using `--maxiter-null` (currently=" + msg2 + ").";
 
-  } else if( ((!has_converged) && params->pheno_pass).any() ) { // some phenotypes failed - write their names to file
+  } else if( ((!has_converged) && (params->pheno_pass || params->pheno_fail_nullreg)).any() ) { // some phenotypes failed (at null reg or null firth) - write their names to file
 
+    ArrayXb pheno_flagged = (!has_converged) && (params->pheno_pass || params->pheno_fail_nullreg);
     Files outf;
     string failed_file = files->out_file + "_failedNullFirth_chr" + to_string(chrom) + ".list";
     outf.openForWrite( failed_file, sout);
     for( int i = 0; i < params->n_pheno; ++i )
-      if(((!has_converged) && params->pheno_pass)(i))
+      if(pheno_flagged(i))
         outf << files->pheno_names[i] << endl;
     outf.closeFile();
-    sout << "WARNING: null Firth failed for " << ((!has_converged) && params->pheno_pass).count() << " phenotypes (list of traits written to '" << failed_file << "' and these will be skipped)\n";
+    sout << "WARNING: null Firth failed for " << pheno_flagged.count() << " phenotypes (list of traits written to '" << failed_file << "' and these will be skipped)\n";
     params->pheno_pass = has_converged;
 
   }
