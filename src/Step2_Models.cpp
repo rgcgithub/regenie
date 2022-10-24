@@ -1578,7 +1578,7 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // indicator for no beta printed (joint or vc tests)
   if(se<0) infoCol.push_back( "NO_BETA" );
   // print info column
-  buffer << "\t" << print_scsv(infoCol) << endl;
+  buffer << "\t" << (infoCol.size() > 0 ? print_scsv(infoCol) : "NA") << "\n";
 
   return buffer.str();
 }
