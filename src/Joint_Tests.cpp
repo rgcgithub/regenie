@@ -789,7 +789,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 
   if(params->split_by_pheno || ipheno == 1) {
     // chr pos id a0 a1 af
-    buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " ref set NA " ;
+    buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " NA NA NA " ;
     if( params->af_cc ) buffer << "NA NA ";
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
