@@ -721,8 +721,8 @@ void setMasks(struct param* params, struct filter* filters, struct phenodt* phen
 
 void print_cc_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
 
-  int ncases, ncontrols;
   ArrayXd yvec;
+  params->pheno_counts = MatrixXi::Constant(files->pheno_names.size(), 2, 0);
 
   // go through each trait and print number of cases and controls
   sout << " * case-control counts for each trait:\n";
@@ -730,15 +730,17 @@ void print_cc_info(struct param* params, struct in_files* files, struct phenodt*
   for (size_t i = 0; i < files->pheno_names.size(); i++){
     if( !params->pheno_pass(i) ) continue;
 
-    ncases = pheno_data->masked_indivs.col(i).select( pheno_data->phenotypes_raw.col(i).array(), 0).sum();
-    ncontrols = pheno_data->masked_indivs.col(i).select( 1 - pheno_data->phenotypes_raw.col(i).array(), 0).sum();
+    params->pheno_counts(i, 0) = pheno_data->masked_indivs.col(i).select( pheno_data->phenotypes_raw.col(i).array(), 0).sum();
+    params->pheno_counts(i, 1) = pheno_data->masked_indivs.col(i).select( 1 - pheno_data->phenotypes_raw.col(i).array(), 0).sum();
     sout << "   - '" << files->pheno_names[i] << "': " <<
-      ncases << " cases and " << ncontrols << " controls\n";
+      params->pheno_counts(i, 0) << " cases and " << params->pheno_counts(i, 1) << " controls\n";
 
   }
 }
 
 void print_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
+
+  params->pheno_counts = MatrixXi::Constant(files->pheno_names.size(), 2, 0);
 
   // go through each trait and print number of samples used
   sout << " * number of observations for each trait:\n";
@@ -746,7 +748,8 @@ void print_info(struct param* params, struct in_files* files, struct phenodt* ph
     if( params->pheno_pass(i) ) {
       if((params->trait_mode == 0) && !params->force_qt_run) 
         check_nvals(i, files->pheno_names[i], params, pheno_data); // check there is not a binary trait
-      sout << "   - '" << files->pheno_names[i] << "': " << pheno_data->masked_indivs.col(i).count() << " observations\n";
+      params->pheno_counts(i, 0) = pheno_data->masked_indivs.col(i).count();
+      sout << "   - '" << files->pheno_names[i] << "': " << params->pheno_counts(i, 0) << " observations\n";
     }
 }
 

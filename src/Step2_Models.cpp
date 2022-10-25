@@ -1339,7 +1339,9 @@ std::string print_header_output_all(struct param const* params){
   buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
     ( params->af_cc ? "A1FREQ_CASES A1FREQ_CONTROLS ":"") <<
     ( !params->build_mask && params->dosage_mode ? "INFO ":"") 
-    << "N TEST";
+    << "N " <<
+    ( params->af_cc ? "N_CASES N_CONTROLS ":"") <<
+    "TEST";
 
   for(i = 0; i < params->n_pheno; i++) 
     buffer << " BETA.Y" << i+1 << " SE.Y" << i+1 << " CHISQ.Y" << i+1 << " LOG10P.Y" << i+1;
@@ -1356,7 +1358,9 @@ std::string print_header_output_single(struct param const* params){
   buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 A1FREQ " << 
     ( params->af_cc ? "A1FREQ_CASES A1FREQ_CONTROLS ":"") <<
     ( !params->build_mask && params->dosage_mode ? "INFO ":"") << 
-    "N TEST BETA SE CHISQ LOG10P EXTRA\n";
+    "N " <<
+    ( params->af_cc ? "N_CASES N_CONTROLS ":"") <<
+    "TEST BETA SE CHISQ LOG10P EXTRA\n";
 
   return buffer.str();
 }
@@ -1398,23 +1402,23 @@ std::string  print_sum_stats_line(int const& snp_index, int const& i, string con
   if(params.htp_out) 
     buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params);
   else  
-    buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1),block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1));
+    buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1));
 
   return buffer.str();
 }
 
 
 //// test info for each snp
-std::string print_sum_stats(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
+std::string print_sum_stats(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const int& ns_case, const int& ns_control, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
 
   if(params->split_by_pheno)
-    return print_sum_stats_single(af, af_case, af_control, info, n, model, beta, se, chisq, pv, test_pass, df, params);
+    return print_sum_stats_single(af, af_case, af_control, info, n, ns_case, ns_control, model, beta, se, chisq, pv, test_pass, df, params);
   else
-    return print_sum_stats_all(af, af_case, af_control, info, n, model, beta, se, chisq, pv, test_pass, df, params, ipheno);
+    return print_sum_stats_all(af, af_case, af_control, info, n, ns_case, ns_control, model, beta, se, chisq, pv, test_pass, df, params, ipheno);
 }
 
 // native format - all phenos
-std::string print_sum_stats_all(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
+std::string print_sum_stats_all(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const int& ns_case, const int& ns_control, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
 
   std::ostringstream buffer;
   bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0);
@@ -1432,7 +1436,9 @@ std::string print_sum_stats_all(const double& af, const double& af_case, const d
       if(print_info) buffer << " " << info;
       else buffer << " NA";
     }
-    buffer << " " << n << " " << model ;
+    buffer << " " << n ;
+    if( params->af_cc )  buffer << " NA NA";
+    buffer << " " << model ;
   }
 
   // BETA SE
@@ -1454,11 +1460,11 @@ std::string print_sum_stats_all(const double& af, const double& af_case, const d
 }
 
 std::string print_na_sumstats(int const& ph, int const& df, string const& header, string const& model, variant_block const* block_info, struct param const& params){
-  return ( ( ph==0 ? header : "" ) + print_sum_stats_all(block_info->af1, block_info->af_case(ph), block_info->af_control(ph), block_info->info1, block_info->ns1, model, -1, -1, -1, -1, false, df, &params, ph + 1) ); // pheno index is 1-based
+  return ( ( ph==0 ? header : "" ) + print_sum_stats_all(block_info->af1, block_info->af_case(ph), block_info->af_control(ph), block_info->info1, block_info->ns1, block_info->ns_case(ph), block_info->ns_control(ph), model, -1, -1, -1, -1, false, df, &params, ph + 1) ); // pheno index is 1-based
 }
 
 // native format - single pheno
-std::string print_sum_stats_single(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params){
+std::string print_sum_stats_single(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const int& ns_case, const int& ns_control, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params){
 
   std::ostringstream buffer;
   bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0);
@@ -1475,7 +1481,9 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
     if(print_info) buffer << info << " ";
     else buffer << "NA ";
   }
-  buffer << n << " " << model << " " ;
+  buffer << n ;
+  if( params->af_cc )  buffer << " " << ns_case << " " << ns_control;
+  buffer << " " << model << " ";
 
   // BETA SE
   if(print_se) buffer << beta << ' ' << se;
@@ -1552,7 +1560,12 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
       buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
     else buffer << "NA\tNA\tNA\tNA";
 
-  } else buffer << "NA\tNA\tNA\tNA\tNA\tNA\tNA\tNA"; // for skat/acat-type tests
+  } else { // for skat/acat-type tests
+    buffer << params->pheno_counts(ph, 0) << "\tNA\tNA\tNA\t";
+    if(params->trait_mode==1)
+      buffer << params->pheno_counts(ph, 1) << "\tNA\tNA\tNA"; 
+    else buffer << "NA\tNA\tNA\tNA";
+  }
 
   // info column
   vector<string> infoCol;

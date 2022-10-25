@@ -2621,6 +2621,7 @@ void prep_snp_stats(variant_block* snp_data, struct param const* params){
   snp_data->nmales = ArrayXi::Zero(params->n_pheno);
   snp_data->ns = ArrayXi::Zero(params->n_pheno);
   snp_data->ns_case = ArrayXi::Zero(params->n_pheno);
+  snp_data->ns_control= ArrayXi::Zero(params->n_pheno);
   snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
   snp_data->ignored = false;
   snp_data->skip_int = false;
@@ -2754,7 +2755,8 @@ void compute_aaf_info(double& total, double const& info_num, variant_block* snp_
   if(params->af_cc){
     snp_data->af_control = snp_data->af - snp_data->af_case;
     snp_data->af_case /= 2 * snp_data->ns_case.cast<double>();
-    snp_data->af_control /= 2 * (snp_data->ns - snp_data->ns_case).cast<double>();
+    snp_data->ns_control = snp_data->ns - snp_data->ns_case;
+    snp_data->af_control /= 2 * snp_data->ns_control.cast<double>();
   }
 
   if(params->vc_test) snp_data->ac1 = total; // for skat

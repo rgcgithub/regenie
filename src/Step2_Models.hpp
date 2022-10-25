@@ -98,10 +98,10 @@ std::string print_header_output_single(struct param const*);
 std::string print_header_output_htp();
 std::string print_sum_stats_head(const int&,std::vector<snp> const&);
 std::string print_sum_stats_head_htp(const int&,const std::string&,const std::string&,std::vector<snp> const&,struct param const*);
-std::string print_sum_stats(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
-std::string print_sum_stats_all(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
+std::string print_sum_stats(const double&,const double&,const double&,const double&,const int&,const int&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
+std::string print_sum_stats_all(const double&,const double&,const double&,const double&,const int&,const int&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*,int const&);
 std::string print_na_sumstats(const int&,const int&,const std::string&,const std::string&,variant_block const*,struct param const&);
-std::string print_sum_stats_single(const double&,const double&,const double&,const double&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*);
+std::string print_sum_stats_single(const double&,const double&,const double&,const double&,const int&,const int&,const int&,const std::string&,const double&,const double&,const double&,const double&,const bool&,const int&,struct param const*);
 std::string print_sum_stats_htp(const double&,const double&,const double&,const double&,const double&,const double&,const double&,const Eigen::Ref<const Eigen::MatrixXd>&,const int&,const bool&,const int&,struct param const*);
 std::string print_sum_stats_line(int const&,int const&,std::string const&,std::string const&,std::string const&,variant_block*,data_thread*,std::vector<snp> const&,struct in_files const&,struct param const&);
 

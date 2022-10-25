@@ -236,6 +236,7 @@ struct param {
   Eigen::ArrayXi sex; // 0=unknown, 1=male, 2=female
   std::vector<Eigen::ArrayXd> bed_lookup_table; // plink bed lookup table
   ArrayXb pheno_pass, pheno_fail_nullreg;
+  Eigen::MatrixXi pheno_counts; // track N for each pheno
 
   // step 1 
   int block_size = -1; // number of SNPs per block

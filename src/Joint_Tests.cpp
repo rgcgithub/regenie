@@ -682,14 +682,14 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
 string JTests::print_output(const int& ttype, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
 
   if(!params->htp_out) return print_sum_stats(test_names[ttype], ipheno, chrom, block, params);
-  else return print_sum_stats_htp(test_names[ttype], chrom, block, pheno_name, params);
+  else return print_sum_stats_htp(test_names[ttype], chrom, block, pheno_name, ipheno, params);
 
 }
 
 string JTests::print_output(const int& ttype, string const& tsuf, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
 
   if(!params->htp_out) return print_sum_stats(test_names[ttype] + (tsuf == "" ? "" : "_" + tsuf), ipheno, chrom, block, params);
-  else return print_sum_stats_htp(test_names[ttype] + (tsuf == "" ? "" : "_" + tsuf), chrom, block, pheno_name, params);
+  else return print_sum_stats_htp(test_names[ttype] + (tsuf == "" ? "" : "_" + tsuf), chrom, block, pheno_name, ipheno, params);
 
 }
 
@@ -704,8 +704,15 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
     if( params->af_cc ) buffer << "NA NA ";
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
-    // n test
-    buffer << "NA " << burden_str << tname << " ";
+    // n
+    if(params->split_by_pheno) buffer << params->pheno_counts.row(ipheno-1).sum() << " ";
+    else buffer << "NA ";
+    if( params->af_cc ) {
+      if(params->split_by_pheno) buffer << params->pheno_counts(ipheno-1, 0) << " " << params->pheno_counts(ipheno-1, 1) << " ";
+      else buffer << "NA NA ";
+    }
+    // test
+    buffer << burden_str << tname << " ";
   }
 
   //beta se
@@ -731,7 +738,7 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
 
 
 // htpv4 format
-std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, const int& block, const string& yname, struct param const* params){
+std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, const int& block, const string& yname, const int& ipheno, struct param const* params){
 
   std::ostringstream buffer;
   bool test_pass = (pval != -9);
@@ -751,7 +758,10 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   else buffer << "NA\t";
 
   // print out AF, counts in cases, counts in controls
-  buffer << "NA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t";
+  buffer << "NA\t" << params->pheno_counts(ipheno-1, 0) << "\tNA\tNA\tNA\t";
+  if(params->trait_mode == 1) buffer << params->pheno_counts(ipheno-1, 1);
+  else buffer << "NA";
+  buffer << "\tNA\tNA\tNA\t";
 
   // info column
   if(test_pass) buffer << "DF=" << df_test;
@@ -768,7 +778,7 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
 string JTests::print_gene_output(const string& mname, const string& max_name, const int& ipheno, const int& chrom, const int& block, const string& pheno_name, struct param const* params){
 
   if(!params->htp_out) return print_sum_stats_gene(mname, max_name, ipheno, chrom, block, params);
-  else return print_sum_stats_htp_gene(mname, max_name, chrom, block, pheno_name, params);
+  else return print_sum_stats_htp_gene(mname, max_name, chrom, block, pheno_name, ipheno, params);
 
 }
 
@@ -777,14 +787,21 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 
   std::ostringstream buffer;
 
-  // chr pos id a0 a1 af
   if(params->split_by_pheno || ipheno == 1) {
+    // chr pos id a0 a1 af
     buffer << setinfo[chrom - 1][block].chrom << " " << setinfo[chrom - 1][block].physpos << " " << setinfo[chrom - 1][block].ID << " ref set NA " ;
     if( params->af_cc ) buffer << "NA NA ";
     // info
     if(!params->build_mask && params->dosage_mode) buffer << "NA ";
-    // n test
-    buffer << "NA " << mname << " ";
+    // n
+    if(params->split_by_pheno) buffer << params->pheno_counts.row(ipheno-1).sum() << " ";
+    else buffer << "NA ";
+    if( params->af_cc ) {
+      if(params->split_by_pheno) buffer << params->pheno_counts(ipheno-1, 0) << " " << params->pheno_counts(ipheno-1, 1) << " ";
+      else buffer << "NA NA ";
+    }
+    // test
+    buffer << mname << " ";
   }
 
   //beta se
@@ -816,7 +833,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 
 
 // htpv4 format
-std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& max_name, const int& chrom, const int& block, const string& yname, struct param const* params){
+std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& max_name, const int& chrom, const int& block, const string& yname, const int& ipheno, struct param const* params){
 
   std::ostringstream buffer;
   bool test_pass = (pval != -9);
@@ -836,7 +853,10 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   else buffer << "NA\t";
 
   // print out AF, counts in cases, counts in controls
-  buffer << "NA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\tNA\t";
+  buffer << "NA\t" << params->pheno_counts(ipheno-1, 0) << "\tNA\tNA\tNA\t";
+  if(params->trait_mode == 1) buffer << params->pheno_counts(ipheno-1, 1);
+  else buffer << "NA";
+  buffer << "\tNA\tNA\tNA\t";
 
   // info column
   if(test_pass) buffer << "DF=" << df_test;

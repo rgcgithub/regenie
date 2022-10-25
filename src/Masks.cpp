@@ -1014,7 +1014,8 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
   if(params->af_cc){
     snp_data->af_control = snp_data->af - snp_data->af_case;
     snp_data->af_case /= 2 * snp_data->ns_case.cast<double>();
-    snp_data->af_control /= 2 * (snp_data->ns - snp_data->ns_case).cast<double>();
+    snp_data->ns_control = snp_data->ns - snp_data->ns_case;
+    snp_data->af_control /= 2 * snp_data->ns_control.cast<double>();
   }
 
   total /= snp_data->ns1;

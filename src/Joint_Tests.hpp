@@ -84,13 +84,13 @@ class JTests {
     void run_single_p_acat(int const&,const int&,const int&,int const&,const std::string&,std::vector<variant_block>&,std::map<std::string, double>&,struct geno_block const*,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const MatrixXb>&,std::vector<std::vector<std::string>>&,struct param const*);
     std::string print_gene_output(const std::string&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
     std::string print_sum_stats_gene(const std::string&,const std::string&,const int&,const int&,const int&,struct param const*);
-    std::string print_sum_stats_htp_gene(const std::string&,const std::string&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_sum_stats_htp_gene(const std::string&,const std::string&,const int&,const int&,const std::string&,const int&,struct param const*);
 
     // print results
     std::string print_output(const int&,const int&,const int&,const int&,const std::string&,struct param const*);
     std::string print_output(const int&,const std::string&,const int&,const int&,const int&,const std::string&,struct param const*);
     std::string print_sum_stats(const std::string&,const int&,const int&,const int&,struct param const*);
-    std::string print_sum_stats_htp(const std::string&,const int&,const int&,const std::string&,struct param const*);
+    std::string print_sum_stats_htp(const std::string&,const int&,const int&,const std::string&,const int&,struct param const*);
 
     void get_variant_names(int const&,int const&,std::vector<snp> const&);
     void reset_vals();

@@ -1650,7 +1650,7 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, (params->split_by_pheno ? block_info->ns(i) : block_info->ns1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, params->pheno_counts.row(i).sum(), params->pheno_counts(i, 0), params->pheno_counts(i, 1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
 
         block_info->sum_stats[print_index].append( buffer.str() );
       } else if(!params->split_by_pheno) // print NA sum stats

@@ -194,7 +194,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j) * cscale(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j) * cscale(j), sehat, tstat, logp, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(j) * cscale(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
     }
 
@@ -210,7 +210,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg) * gscale, sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
     else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg) * gscale, sehat, tstat, logp, true, 1, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg) * gscale, sehat, tstat, logp, true, 1, params, (i+1));
 
 
     ///////////////////////
@@ -227,7 +227,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j) * iscale(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j) * iscale(j), sehat, tstat, logp, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1+j) * iscale(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
 
       // joint test for interaction terms
@@ -241,7 +241,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, params->ncov_interaction, params);
       else 
-        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, params->ncov_interaction, params, (i+1));
+        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, params->ncov_interaction, params, (i+1));
 
     } else {
       // T, beta, se & pv
@@ -257,7 +257,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1) * iscale(0), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
       else 
-        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1) * iscale(0), sehat, tstat, logp, true, 1, params, (i+1));
+        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1) * iscale(0), sehat, tstat, logp, true, 1, params, (i+1));
     }
 
     ///////////////////////
@@ -274,7 +274,7 @@ void apply_interaction_tests_qt(const int& index, const int& isnp, const int& th
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1+params->ncov_interaction, params);
     else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, 1+params->ncov_interaction, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, 1+params->ncov_interaction, params, (i+1));
 
     //if(isnp==0 & i==0) cerr << endl << buffer.str() << endl;
     snp_data->sum_stats[i].append( buffer.str() );
@@ -346,7 +346,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j), sehat, tstat, logp, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(j), sehat, tstat, logp, true, 1, params, (i+1));
       }
     }
 
@@ -362,7 +362,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
     else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg), sehat, tstat, logp, true, 1, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg), sehat, tstat, logp, true, 1, params, (i+1));
 
 
     ///////////////////////
@@ -379,7 +379,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j), sehat, tstat, logp, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1+j), sehat, tstat, logp, true, 1, params, (i+1));
       }
 
       // joint test for interaction terms
@@ -393,7 +393,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, params->ncov_interaction, params);
       else 
-        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, params->ncov_interaction, params, (i+1));
+        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, params->ncov_interaction, params, (i+1));
 
     } else {
       // T, beta, se & pv
@@ -409,7 +409,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1), sehat, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
       else 
-        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1), sehat, tstat, logp, true, 1, params, (i+1));
+        buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1), sehat, tstat, logp, true, 1, params, (i+1));
     }
 
     ///////////////////////
@@ -426,7 +426,7 @@ void apply_interaction_tests_HLM(const int& index, const int& isnp, const int& t
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1+params->ncov_interaction, params);
     else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, 1+params->ncov_interaction, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, 1+params->ncov_interaction, params, (i+1));
 
     //cerr << endl << buffer.str() << endl; exit(-1);
     snp_data->sum_stats[i].append( buffer.str() );
@@ -524,7 +524,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
         if(params->htp_out) 
           buffer_int << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), tstat, logp, true, 1, params, (i+1));
+          buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1+j)/pheno_data->scf_i[thread](j), sehat/pheno_data->scf_i[thread](j), tstat, logp, true, 1, params, (i+1));
       }
 
       // switch to firth
@@ -547,7 +547,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
       if(params->htp_out) 
         buffer_int << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, np-1, params);
       else 
-        buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, np-1, params, (i+1));
+        buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, np-1, params, (i+1));
 
     } else {
 
@@ -575,7 +575,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
       if(params->htp_out) 
         buffer_int << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg+1)/pheno_data->scf_i[thread](0), sehat/pheno_data->scf_i[thread](0), tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
       else 
-        buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg+1)/pheno_data->scf_i[thread](0), sehat/pheno_data->scf_i[thread](0), tstat, logp, true, 1, params, (i+1));
+        buffer_int << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg+1)/pheno_data->scf_i[thread](0), sehat/pheno_data->scf_i[thread](0), tstat, logp, true, 1, params, (i+1));
 
     }
 
@@ -612,7 +612,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), tstat, logp, true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), sehat/pheno_data->scl_inter_X(j), tstat, logp, true, 1, params, (i+1));
       }
     }
 
@@ -628,7 +628,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(beg)/ snp_data->scale_fac, sehat/ snp_data->scale_fac, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, 1, params);
      else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, bhat(beg)/ snp_data->scale_fac, sehat/ snp_data->scale_fac, tstat, logp, true, 1, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, bhat(beg)/ snp_data->scale_fac, sehat/ snp_data->scale_fac, tstat, logp, true, 1, params, (i+1));
 
     // add interaction test results
     buffer << buffer_int.str();
@@ -648,7 +648,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[i], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(i), snp_data->info(i), snp_data->mac(i), snp_data->genocounts, i, true, np, params);
     else 
-      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, np, params, (i+1));
+      buffer << (!params->split_by_pheno && (i>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(i) : snp_data->af1),snp_data->af_case(i),snp_data->af_control(i), (params->split_by_pheno ? snp_data->info(i) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(i) : snp_data->ns1),snp_data->ns_case(i),snp_data->ns_control(i), test_string + stmp, -1, -1, tstat, logp, true, np, params, (i+1));
 
     //if(isnp==0 & i==0) cerr << endl << buffer.str() << endl;
     snp_data->sum_stats[i].append( buffer.str() );
@@ -726,7 +726,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bhat(j)/pheno_data->scl_inter_X(j), se(j)/pheno_data->scl_inter_X(j), -1, -1, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
       else 
-        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), se(j)/pheno_data->scl_inter_X(j), -1, -1, true, 1, params, (ipheno+1));
+        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, bhat(j)/pheno_data->scl_inter_X(j), se(j)/pheno_data->scl_inter_X(j), -1, -1, true, 1, params, (ipheno+1));
     }
   }
 
@@ -742,7 +742,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   if(params->htp_out) 
     buffer_joint << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, np, params);
   else 
-    buffer_joint << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, np, params, (ipheno+1));
+    buffer_joint << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, -1, -1, tstat, logp, true, np, params, (ipheno+1));
 
   // get lrt values for each test
   ///////////////////////
@@ -768,7 +768,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   if(params->htp_out) 
     buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bsign * bhat(beg)/snp_data->scale_fac, se_val/snp_data->scale_fac, tstat, logp, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
   else 
-    buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bsign * bhat(beg)/ snp_data->scale_fac, se_val/ snp_data->scale_fac, tstat, logp, true, 1, params, (ipheno+1));
+    buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, bsign * bhat(beg)/ snp_data->scale_fac, se_val/ snp_data->scale_fac, tstat, logp, true, 1, params, (ipheno+1));
 
   ///////////////////////
   //////  interaction tests
@@ -782,7 +782,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
       if(params->htp_out) 
         buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bsign * bhat(beg+1+j)/pheno_data->scf_i[thread](j), se(beg+1+j)/pheno_data->scf_i[thread](j), -1, -1, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
       else 
-        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bsign * bhat(beg+1+j)/pheno_data->scf_i[thread](j), se(beg+1+j)/pheno_data->scf_i[thread](j), -1, -1, true, 1, params, (ipheno+1));
+        buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, bsign * bhat(beg+1+j)/pheno_data->scf_i[thread](j), se(beg+1+j)/pheno_data->scf_i[thread](j), -1, -1, true, 1, params, (ipheno+1));
     }
 
     /// joint test for interaction
@@ -803,7 +803,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(-1, -1, tstat, logp, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, np-1, params);
     else 
-      buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, -1, -1, tstat, logp, true, np-1, params, (ipheno+1));
+      buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, -1, -1, tstat, logp, true, np-1, params, (ipheno+1));
 
   } else { // single interaction term
 
@@ -832,7 +832,7 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
     if(params->htp_out) 
       buffer << print_sum_stats_head_htp(index, files->pheno_names[ipheno], model_type + stmp, snpinfo, params) << print_sum_stats_htp(bsign * bhat(beg+1)/pheno_data->scf_i[thread](0), se(beg+1)/pheno_data->scf_i[thread](0), tstat, logp, snp_data->af(ipheno), snp_data->info(ipheno), snp_data->mac(ipheno), snp_data->genocounts, ipheno, true, 1, params);
     else 
-      buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1), test_string + stmp, bsign * bhat(beg+1)/pheno_data->scf_i[thread](0), se(beg+1)/pheno_data->scf_i[thread](0), tstat, logp, true, 1, params, (ipheno+1));
+      buffer << (!params->split_by_pheno && (ipheno>0) ? "" : head) << print_sum_stats((params->split_by_pheno ? snp_data->af(ipheno) : snp_data->af1),snp_data->af_case(ipheno),snp_data->af_control(ipheno), (params->split_by_pheno ? snp_data->info(ipheno) : snp_data->info1), (params->split_by_pheno ? snp_data->ns(ipheno) : snp_data->ns1),snp_data->ns_case(ipheno),snp_data->ns_control(ipheno), test_string + stmp, bsign * bhat(beg+1)/pheno_data->scf_i[thread](0), se(beg+1)/pheno_data->scf_i[thread](0), tstat, logp, true, 1, params, (ipheno+1));
 
   }
 
