@@ -112,6 +112,7 @@ class NNLS
     bool normalize;
     double tol;
     int maxit;
+    int maxit_inner;
     bool strict;
     int verbose;
     string msg_error;

@@ -564,12 +564,12 @@ inline void update_b(VectorXd &b, VectorXd &s, vector<bool> &subset, double tol)
 /* l <- which(b <= 0) */
 /* P[l] <- FALSE */
 /* R[l] <- TRUE */
-inline void update_subsets(VectorXd &b, vector<bool> &P, vector<bool> &R)
+inline void update_subsets(VectorXd &b, vector<bool> &P, vector<bool> &R, double tol)
 {
   int p = b.size();
 
   for(int i = 0; i < p; ++i) {
-    if(b[i] <= 0) {
+    if(b[i] <= tol) {
       P[i] = false;
       R[i] = true;
     }
@@ -625,7 +625,7 @@ int jburden_fit_nnls_cprod(const Eigen::VectorXd &Xty_, const Eigen::MatrixXd& X
       if(verbose > 2) cout << " - it (inner) " << cnt_inner << endl;
       
       update_b(b, s, P, tol);
-      update_subsets(b, P, R);
+      update_subsets(b, P, R, tol);
       if(verbose > 2) cout << " - sum(R) = " << sum_bool(R) << "; sum(P) = " << sum_bool(P) << endl;
 
       s = solve_s(Xty, XtX, P);
@@ -719,7 +719,7 @@ int jburden_fit_nnls(const Eigen::VectorXd &y, const Eigen::MatrixXd& X,
       if(verbose > 2) cout << " - it (inner) " << cnt_inner << endl;
       
       update_b(b, s, P, tol);
-      update_subsets(b, P, R);
+      update_subsets(b, P, R, tol);
       if(verbose > 2) cout << " - sum(R) = " << sum_bool(R) << "; sum(P) = " << sum_bool(P) << endl;
 
       s = solve_s(Xty, XtX, P);
@@ -1158,7 +1158,7 @@ double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, std::mt1
   
   VectorXd bhat_pos;
   vector<bool> selected_pos;
-  int ret_pos = jburden_fit_nnls(y, X, bhat_pos, selected_pos, tol);
+  int ret_pos = jburden_fit_nnls(y, X, bhat_pos, selected_pos, tol, false); // maxit, maxit_inner, verbose);
   if(ret_pos < 0) {
     if(strict) {
       std::cout << "ERROR: computing NNLS weights failed"
@@ -1178,7 +1178,7 @@ double jburden_test(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, std::mt1
 
   VectorXd bhat_neg;
   vector<bool> selected_neg;
-  int ret_neg = jburden_fit_nnls(y, X, bhat_neg, selected_neg, tol, true);
+  int ret_neg = jburden_fit_nnls(y, X, bhat_neg, selected_neg, tol, true); // maxit, maxit_inner, verbose);
   if(ret_neg < 0) {
     if(strict) {
       std::cout << "ERROR: computing NNLS weights failed"
@@ -1228,6 +1228,7 @@ NNLS::NNLS(int napprox_, bool normalize_, double tol_, bool strict_, int verbose
   normalize = normalize_;
   tol = tol_;
   maxit = 1000;
+  maxit_inner = 500;
   strict = strict_;
   verbose = verbose_;
   // defaults
@@ -1370,7 +1371,7 @@ void NNLS::fit_nnls_sign(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, boo
   fit.executed = true;
   VectorXd bhat;
   vector<bool> selected;
-  int ret = jburden_fit_nnls(y, X, bhat, selected, tol, neg, maxit, verbose);
+  int ret = jburden_fit_nnls(y, X, bhat, selected, tol, neg, maxit, maxit_inner, verbose);
   if(ret < 0) {
     msg_error = "error in computing NNLS model fit";
 
@@ -1429,7 +1430,7 @@ void NNLS::ss_fit_nnls_sign(const Eigen::VectorXd &Xty, const Eigen::MatrixXd& X
   fit.executed = true;
   VectorXd bhat;
   vector<bool> selected;
-  int ret = jburden_fit_nnls_cprod(Xty, XtX, bhat, selected, tol, neg);
+  int ret = jburden_fit_nnls_cprod(Xty, XtX, bhat, selected, tol, neg, maxit, maxit_inner, verbose);
   if(ret < 0) {
     msg_error = "error in computing NNLS model fit";
 
