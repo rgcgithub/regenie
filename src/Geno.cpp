@@ -392,17 +392,19 @@ void read_bgi_file(string const& setting, BgenParser& bgen, geno_file_info* ext_
 void read_bgen_sample(const string& sample_file, struct param* params, std::vector<string> &ids, mstream& sout){
 
   int nline = 0;
-  string FID, IID, line, tmp_str;
+  string FID, IID, line, tmp_str, fname;
   std::vector<int> sex;
   std::vector<string> IDvec;
-  ifstream myfile;
+  Files myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
 
-  sout << "   -sample file: " << sample_file << endl;
-  openStream(&myfile, sample_file, ios::in, sout);
+  fname = sample_file;
+  if(!file_exists (fname)) fname.append(".gz");
+  sout << "   -sample file: " << fname << endl;
+  myfile.openForRead(fname, sout);
 
   // read fid/iid information
-  while (getline (myfile,line)) {
+  while (myfile.readLine(line)) {
     std::istringstream iss(line);
 
     if( !(iss >> FID >> IID) )
@@ -446,20 +448,22 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
 
   params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
-  myfile.close();
+  myfile.closeFile();
 }
 
 void read_bgen_sample(const string& sample_file, std::vector<string> &ids, mstream& sout){
 
   int nline = 0;
-  string FID, IID, line;
-  ifstream myfile;
+  string FID, IID, line, fname;
+  Files myfile;
 
-  sout << "      -sample file: " << sample_file << endl;
-  openStream(&myfile, sample_file, ios::in, sout);
+  fname = sample_file;
+  if(!file_exists (fname)) fname.append(".gz");
+  sout << "      -sample file: " << fname << endl;
+  myfile.openForRead(fname, sout);
 
   // read fid/iid information
-  while (getline (myfile,line)) {
+  while (myfile.readLine(line)) {
     std::istringstream iss(line);
 
     if( !(iss >> FID >> IID) )
@@ -481,7 +485,7 @@ void read_bgen_sample(const string& sample_file, std::vector<string> &ids, mstre
     nline++;
   }
 
-  myfile.close();
+  myfile.closeFile();
 
 }
 
@@ -515,15 +519,16 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
   std::vector< string > tmp_str_vec ;
   snp tmp_snp;
   string line, fname;
-  ifstream myfile;
+  Files myfile;
 
   fname = files->bed_prefix + ".bim";
+  if(!file_exists (fname)) fname.append(".gz");
   sout << left << std::setw(20) << " * bim" << ": [" << fname << "] " << flush;
-  openStream(&myfile, fname, ios::in, sout);
+  myfile.openForRead(fname, sout);
 
   //if(params->set_range) cerr << params->range_chr << "\t" << params->range_min << "\t" << params->range_max<< endl;
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 )
@@ -595,7 +600,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
 
-  myfile.close();
+  myfile.closeFile();
 
 }
 
@@ -606,12 +611,13 @@ uint32_t read_bim(map<string, vector<uint64>>& index_map, geno_file_info* ext_fi
   std::vector< string > tmp_str_vec ;
   std::vector< uint64 > tmp_v = std::vector< uint64 >(2);
   string line, fname;
-  ifstream myfile;
+  Files myfile;
 
   fname = ext_file_info->file + ".bim";
-  openStream(&myfile, fname, ios::in, sout);
+  if(!file_exists (fname)) fname.append(".gz");
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 6 )
       throw "incorrectly formatted bim file at line " + to_string( lineread+1 );
@@ -622,7 +628,7 @@ uint32_t read_bim(map<string, vector<uint64>>& index_map, geno_file_info* ext_fi
     index_map[ tmp_str_vec[1] ] = tmp_v;
   }
 
-  myfile.close();
+  myfile.closeFile();
   return index_map.size();
 }
 
@@ -633,14 +639,15 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
   string line, tmp_id, fname;
   std::vector<int> sex;
   std::vector< string > tmp_str_vec, IDvec;
-  ifstream myfile;
+  Files myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
 
   fname = files->bed_prefix + ".fam";
+  if(!file_exists (fname)) fname.append(".gz");
   sout << left << std::setw(20) << " * fam" << ": [" << fname << "] ";
-  openStream(&myfile, fname, ios::in, sout);
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 )
@@ -668,7 +675,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
     lineread++;
   }
 
-  myfile.close();
+  myfile.closeFile();
   params->n_samples = lineread;
   params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
@@ -680,19 +687,20 @@ uint32_t read_fam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, Re
   uint32_t position;
   string line, fname;
   std::vector< string > tmp_str_vec, tmp_ids;
-  ifstream myfile;
+  Files myfile;
 
   fname = ext_file_info->file + ".fam";
-  openStream(&myfile, fname, ios::in, sout);
+  if(!file_exists (fname)) fname.append(".gz");
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 6 )
       throw "incorrectly formatted fam file at line " + to_string( tmp_ids.size() + 1 );
     tmp_ids.push_back(tmp_str_vec[0] + "_" + tmp_str_vec[1]);
   }
 
-  myfile.close();
+  myfile.closeFile();
 
   // check if included in the analysis (if yes, store IDs)
   ginfo.sample_keep.resize(tmp_ids.size());
@@ -760,13 +768,14 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   std::vector< string > tmp_str_vec ;
   snp tmp_snp;
   string line, fname;
-  ifstream myfile;
+  Files myfile;
 
   fname = files->pgen_prefix + ".pvar";
+  if(!file_exists (fname)) fname.append(".gz");
   sout << left << std::setw(20) << " * pvar" << ": [" << fname << "] " << flush;
-  openStream(&myfile, fname, ios::in, sout);
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) { // skip to main header line
+  while (myfile.readLine(line)) { // skip to main header line
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 )
@@ -783,7 +792,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
       (tmp_str_vec[4] != "ALT") )
     throw "header of pvar file does not have correct format.";
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 5 )
@@ -847,7 +856,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
 
   if (!params->test_mode && (nOutofOrder > 0)) sout << "WARNING: Total number of snps out-of-order in bim file : " << nOutofOrder << endl;
 
-  myfile.close();
+  myfile.closeFile();
 
   return lineread;
 }
@@ -859,12 +868,13 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
   std::vector< string > tmp_str_vec ;
   std::vector< uint64 > tmp_v = std::vector< uint64 >(2);
   string line, fname;
-  ifstream myfile;
+  Files myfile;
 
   fname = ext_file_info->file + ".pvar";
-  openStream(&myfile, fname, ios::in, sout);
+  if(!file_exists (fname)) fname.append(".gz");
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) { // skip to main header line
+  while (myfile.readLine(line)) { // skip to main header line
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in pvar file.";
@@ -879,7 +889,7 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
       (tmp_str_vec[4] != "ALT") )
     throw "header of pvar file does not have correct format.";
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 5 )
       throw "incorrectly formatted pvar file at line " + to_string( lineread+1 );
@@ -890,7 +900,7 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
     index_map[ tmp_str_vec[2] ] = tmp_v;
   }
 
-  myfile.close();
+  myfile.closeFile();
   return index_map.size();
 }
 
@@ -901,14 +911,15 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   string line, tmp_id, fname;
   std::vector<int> sex;
   std::vector< string > tmp_str_vec, IDvec;
-  ifstream myfile;
+  Files myfile;
   if( params->write_samples || params->write_masks) IDvec.resize(2);
 
   fname = files->pgen_prefix + ".psam";
+  if(!file_exists (fname)) fname.append(".gz");
   sout << left << std::setw(20) << " * psam" << ": [" << fname << "] " << flush;
-  openStream(&myfile, fname, ios::in, sout);
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) { // skip to main header line
+  while (myfile.readLine(line)) { // skip to main header line
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 )
@@ -927,7 +938,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   col_found = scol != tmp_str_vec.end();
   if(col_found) sex_col = std::distance(tmp_str_vec.begin(), scol);
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 3 )
@@ -957,7 +968,7 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     lineread++;
   }
 
-  myfile.close();
+  myfile.closeFile();
   params->n_samples = lineread;
   params->sex = Map<ArrayXi>(sex.data(), params->n_samples, 1);
 
@@ -968,12 +979,13 @@ uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, R
   uint32_t position;
   string line, fname;
   std::vector< string > tmp_str_vec, tmp_ids;
-  ifstream myfile;
+  Files myfile;
 
   fname = ext_file_info->file + ".psam";
-  openStream(&myfile, fname, ios::in, sout);
+  if(!file_exists (fname)) fname.append(".gz");
+  myfile.openForRead(fname, sout);
 
-  while (getline(myfile, line)) { // skip to main header line
+  while (myfile.readLine(line)) { // skip to main header line
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in psam file.";
@@ -985,14 +997,14 @@ uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, R
   if( (tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID"))
     throw "header does not have the correct format.";
 
-  while (getline(myfile, line)) {
+  while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 2 )
       throw "incorrectly formatted psam file at line " + to_string( tmp_ids.size() + 1 ) ;
     tmp_ids.push_back(tmp_str_vec[0] + "_" + tmp_str_vec[1]);
   }
 
-  myfile.close();
+  myfile.closeFile();
 
   // check if included in the analysis (if yes, store IDs)
   ginfo.sample_keep.resize(tmp_ids.size());

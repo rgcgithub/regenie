@@ -1192,7 +1192,8 @@ void check_file(string const& infile, vector<string> const& suffixes, string con
   if(infile == "") 
     throw "Invalid file argument (=' ') specified for option --" + option_name;
   for(auto suffix : suffixes)
-    if(!file_exists (infile + suffix))
+    // allow for gzipped bim/fam/psam/pvar files
+    if(!file_exists (infile + suffix) && ((suffix == ".bed") || (suffix == ".pgen") || !file_exists(infile + suffix + ".gz")))
       throw infile + suffix + " doesn't exist for option --" + option_name;
 
 }
