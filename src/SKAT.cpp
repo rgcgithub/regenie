@@ -108,7 +108,7 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, ArrayXb
         weights_acat(start + i) = weights(start + i) * weights(start + i) * maf * (1-maf); // for acatv
       } else if(params.vc_multiply_weights){
         weights(start + i) *= pdf(dist, maf);
-        weights_acat(start + i) *= pdf(dist, maf) * pdf(dist, maf) * maf * (1-maf); // for acatv
+        weights_acat(start + i) = weights(start + i) * weights(start + i) * maf * (1-maf); // for acatv
       }
     } else Gvec = 0; // otherwise set the column to 0
 
@@ -156,7 +156,7 @@ void update_vc_gmat(SpMat& mat, ArrayXd& weights, ArrayXd& weights_acat, SpMat c
       } else if(params.vc_multiply_weights){
         double v_pdf = pdf(dist, mafs(start + i));
         weights(start + i) *= v_pdf;
-        weights_acat(start + i) *= v_pdf * v_pdf * mafs(start + i) * (1-mafs(start + i)); // for acatv
+        weights_acat(start + i) = weights(start + i) * weights(start + i) * mafs(start + i) * (1-mafs(start + i)); // for acatv
       }
 
     }
