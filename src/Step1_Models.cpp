@@ -130,9 +130,8 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
 bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout) {
 
-  bool dev_conv = false;
-  int niter_cur = 0;
-  double dev_old, dev_new=0;
+  int niter_cur = 0, niter_search;
+  double dev_old, dev_new=0, diff_dev;
   ArrayXd score, betanew, wvec, zvec;
   MatrixXd XtW, XtWX;
 
@@ -157,33 +156,34 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
 
     // start step-halving
-    for( int niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+    for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
       get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
       dev_new = get_logist_dev(Y1, pivec, mask);
 
-      //cerr << "HS" << niter_search<<setprecision(16) << ": p in (" << pivec.minCoeff() << "-" << pivec.maxCoeff() << "; dev " << dev_old << "->" << dev_new << " \n";
+      if(params->debug) cerr << "HS#" << niter_search << setprecision(16) << ": p in (" << pivec.minCoeff() << "," << pivec.maxCoeff() << "); dev " << dev_old << "->" << dev_new << " \n";
       if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
 
       // adjust step size
       betanew = (betavec + betanew) / 2;
 
     }
+    if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
 
     score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
 
     // stopping criterion
-    dev_conv = (abs(dev_new - dev_old)/(0.1 + abs(dev_new))) < params->tol;
     if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
 
+    diff_dev = abs(dev_new - dev_old)/(0.1 + abs(dev_new));
     betavec = betanew;
     dev_old = dev_new;
   }
   if(params->debug) cerr << "Log. reg iter#" << niter_cur << ": beta=" << betanew.matrix().transpose() << "; score_max=" << score.abs().maxCoeff() << ";dev_diff=" << 
-   setprecision(16) << abs(dev_new - dev_old)/(0.1 + abs(dev_new)) << "\n";
+   setprecision(16) << diff_dev << "\n";
 
   // If didn't converge (check frac. change in deviances)
-  if( !dev_conv && (niter_cur > params->niter_max) )
+  if( ((diff_dev == 0) || (diff_dev >= params->tol)) && (niter_cur > params->niter_max) )
     return false;
 
   betavec = betanew;
