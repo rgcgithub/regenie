@@ -31,8 +31,8 @@
 class JTests {
 
   public:
-    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"sbat", 3}, {"acat", 4}, {"sbat_pos", 5}, {"sbat_neg", 6}, {"gene_p", 7} };
-    std::vector<std::string> test_names = {"MINP","F","GATES","SBAT","ACAT","SBAT_POS","SBAT_NEG", "GENE_P"};
+    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"acat", 3}, {"sbat", 4}, {"sbat_pos", 5}, {"sbat_neg", 6}, {"gene_p", 7} };
+    std::vector<std::string> test_names = {"MINP","F","GATES","ACAT","SBAT","SBAT_POS","SBAT_NEG", "GENE_P"};
     std::map <std::string, std::map <std::string, bool>> gene_p_tests;
     bool genep_all_masks = true;
     uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
