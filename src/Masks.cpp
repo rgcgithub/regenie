@@ -834,6 +834,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
       }
        
       if( i == 0 ) colkeep(j) = force_singleton ? snpinfo[ setinfo.snp_indices[start + j] ].force_singleton : all_snps_info[j].singleton;
+      else if (force_singleton && snpinfo[ setinfo.snp_indices[start + j] ].force_singleton) colkeep(j) = true;
       else if(aaf_given) colkeep(j) = (snpinfo[ setinfo.snp_indices[start + j] ].aaf <= upper);
       else colkeep(j) = (all_snps_info[j].af1 <= upper);
 
