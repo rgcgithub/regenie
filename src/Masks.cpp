@@ -828,7 +828,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
 
     // get snps who match with mask
     for(int j = 0; j < bs; j++){
-      if(all_snps_info[j].ignored || ( !colkeep(j) && !snpinfo[ setinfo.snp_indices[start + j] ].force_singleton ) ){
+      if(all_snps_info[j].ignored || ( !colkeep(j) && !(snpinfo[ setinfo.snp_indices[start + j] ].force_singleton || all_snps_info[j].singleton) ) ){
         colkeep(j) = false;
         continue;
       }

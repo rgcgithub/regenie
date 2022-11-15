@@ -109,7 +109,7 @@ struct variant_block {
   ArrayXb test_fail;
   ArrayXb is_corrected; // for firth/spa
   // for masks
-  bool singleton;
+  bool singleton = false;
   int col_jmat_skat = -1;
   bool skip_for_vc = true;
   std::map <std::string, Eigen::MatrixXd> sum_stats_vc; // log10p & chisq for each vc test
