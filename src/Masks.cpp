@@ -828,7 +828,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
 
     // get snps who match with mask
     for(int j = 0; j < bs; j++){
-      if(all_snps_info[j].ignored || !colkeep(j) ){
+      if(all_snps_info[j].ignored || ( !colkeep(j) && !snpinfo[ setinfo.snp_indices[start + j] ].force_singleton ) ){
         colkeep(j) = false;
         continue;
       }
@@ -837,7 +837,7 @@ void GenoMask::set_snp_aafs(int const& start, int const& bs, const bool& aaf_giv
       else if(aaf_given) colkeep(j) = (snpinfo[ setinfo.snp_indices[start + j] ].aaf <= upper);
       else colkeep(j) = (all_snps_info[j].af1 <= upper);
 
-      if(w_vc_tests) setinfo.ultra_rare_ind(start + j) = all_snps_info[j].mac1 <= vc_collapse_MAC;
+      if(w_vc_tests && (i == (n_aaf_bins-1))) setinfo.ultra_rare_ind(start + j) = all_snps_info[j].mac1 <= vc_collapse_MAC;
       //cerr << snpinfo[ setinfo.snp_indices[start + j] ].aaf  << " " << all_snps_info[j].af1 << endl;
       //if(i==0 && all_snps_info[j].singleton) cerr << snpinfo[ setinfo.snp_indices[start + j] ].ID << endl;
     }
