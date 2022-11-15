@@ -2882,6 +2882,36 @@ void residualize_geno(int const& isnp, int const& thread_num, variant_block* snp
 
 }
 
+int residualize_gmat(bool const& force, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& Graw, MatrixXd& Gres, struct param const& params){
+  if((params.trait_mode==0) || force){
+    MatrixXd beta = X.transpose() * Graw;
+    Gres = Graw - X * beta;
+  }
+  return (params.n_analyzed - X.cols());
+}
+
+void check_res_geno(int const& isnp, int const& thread_num, variant_block* snp_data, bool const& force, int const& neff, const Ref<const MatrixXd>& Gres, struct geno_block* gblock, struct param const& params){
+
+  if(snp_data->ignored) return;
+
+  if((params.trait_mode==0) || force){
+
+    // already computed
+    gblock->Gmat.col(isnp) = Gres.col(isnp);
+
+    // scale
+    snp_data->scale_fac = Gres.col(isnp).norm();
+    snp_data->scale_fac /= sqrt( neff );
+
+    if( snp_data->scale_fac < params.numtol ) {
+      snp_data->ignored = true;
+      return;
+    }
+    gblock->Gmat.col(isnp).array() /= snp_data->scale_fac;
+
+  } else snp_data->scale_fac = 1;
+
+}
 
 void writeSnplist(string const& fname, int const& start, int const& ns, vector<snp> const& snpinfo, mstream& sout){
 

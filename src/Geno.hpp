@@ -196,6 +196,8 @@ void check_sparse_G(int const&,int const&,struct geno_block*,uint32_t const&,con
 void mean_impute_g(double &,const double&,const bool&);
 void mean_impute_g(const double&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const ArrayXb>&);
 void residualize_geno(int const&,int const&,variant_block*,bool const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,struct param const*);
+int residualize_gmat(bool const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,Eigen::MatrixXd&,struct param const&);
+void check_res_geno(int const&,int const&,variant_block*,bool const&,int const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,struct param const&);
 void writeSnplist(std::string const&,int const&,int const&,std::vector<snp> const&,mstream&);
 
 bool in_chrList(const int&,struct filter const*);

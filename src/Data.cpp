@@ -2371,6 +2371,28 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
   size_t const bs = indices.size();
   ArrayXb err_caught = ArrayXb::Constant(bs, false);
 
+  if( !params.build_mask ) {
+    // start openmp for loop
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(size_t isnp = 0; isnp < bs; isnp++) {
+      uint32_t const snp_index = indices[isnp];
+      // to store variant information
+      variant_block* block_info = &(all_snps_info[isnp]);
+      parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+    }
+#if defined(_OPENMP)
+    setNbThreads(params.threads);
+#endif
+  }
+
+  // for QTs: project out covariates & scale
+  // do all at once for all variants
+  MatrixXd Gtmp_res;
+  int neff = residualize_gmat(false, pheno_data.new_cov, Gblock.Gmat, Gtmp_res, params);
+
   // start openmp for loop
 #if defined(_OPENMP)
   setNbThreads(1);
@@ -2388,9 +2410,6 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
     variant_block* block_info = &(all_snps_info[isnp]);
     reset_thread(&(Gblock.thread_data[thread_num]), params);
 
-    if( !params.build_mask )
-      parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
-
     // check if g is sparse (not for QT without strict mode)
     if(params.trait_mode || params.strict_mode)
       check_sparse_G(isnp, thread_num, &Gblock, params.n_samples, in_filters.ind_in_analysis);
@@ -2402,7 +2421,7 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
     }
 
     // for QTs: project out covariates & scale
-    residualize_geno(isnp, thread_num, block_info, false, pheno_data.new_cov, &Gblock, &params);
+    check_res_geno(isnp, thread_num, block_info, false, neff, Gtmp_res, &Gblock, params);
 
     // skip SNP if fails filters
     if( block_info->ignored || params.getCorMat ) continue;

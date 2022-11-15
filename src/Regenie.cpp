@@ -1295,7 +1295,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
       if(params->firth_approx) total_ram += params->n_pheno; // cov offset
       if(params->start_block > params->total_n_block)
         throw "Starting block > number of blocks analyzed";
-    }
+    } else total_ram += params->block_size; // for Gresid
     if((params->file_type == "bed") && params->fastMode) total_ram += params->block_size/4.0/sizeof(double); //for extracting snp_data_block
     if(params->use_max_bsize) total_ram += params->block_size; // loo masks
     // for Hmat (G_E, G, G*E )
