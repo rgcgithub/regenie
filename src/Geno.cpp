@@ -2507,17 +2507,26 @@ string bgi_chrList(struct filter* filters, const int& nChrom){// for --chr/--chr
   map<int, bool >::iterator itr;
 
   for (itr = filters->chrKeep_test.begin(); itr != filters->chrKeep_test.end(); ++itr) {
+    // add X and chrX format
     fmt = to_string(itr->first);
     clist.push_back( fmt );
+    fmt = "'chr" + to_string(itr->first) + "'";
+    clist.push_back( fmt );
 
-    if(itr->first < 10){ // add X and 0X format
+    if(itr->first < 10){ // add 0X and chr0x format
       fmt = "'0" + to_string(itr->first) + "'";
+      clist.push_back( fmt );
+      fmt = "'chr0" + to_string(itr->first) + "'";
       clist.push_back( fmt );
     } else if(itr->first == nChrom){ // add XY, X, PARs
       clist.push_back( "'X'" );
+      clist.push_back( "'chrX'" );
       clist.push_back( "'XY'" );
+      clist.push_back( "'chrXY'" );
       clist.push_back( "'PAR1'" );
+      clist.push_back( "'chrPAR1'" );
       clist.push_back( "'PAR2'" );
+      clist.push_back( "'chrPAR2'" );
     }
   }
 
@@ -2529,17 +2538,26 @@ string bgi_chrList(const int& range_chr, const int& nChrom){// for range
   string fmt = to_string(range_chr);
   vector<string> clist;
 
-  if(range_chr < 10){ // add X and 0X format
-    clist.push_back( fmt );
+  // add X and chrX format
+  clist.push_back( fmt );
+  fmt = "'chr" + to_string(range_chr) + "'";
+  clist.push_back( fmt );
+
+  if(range_chr < 10){ // add 0X and chr0X format
     fmt = "'0" + to_string(range_chr) + "'";
     clist.push_back( fmt );
-  } else if(range_chr == nChrom){ // add XY, X, Y
+    fmt = "'chr0" + to_string(range_chr) + "'";
     clist.push_back( fmt );
+  } else if(range_chr == nChrom){ // add XY, X, PARs
     clist.push_back( "'X'" );
+    clist.push_back( "'chrX'" );
     clist.push_back( "'XY'" );
+    clist.push_back( "'chrXY'" );
     clist.push_back( "'PAR1'" );
+    clist.push_back( "'chrPAR1'" );
     clist.push_back( "'PAR2'" );
-  } else return fmt;
+    clist.push_back( "'chrPAR2'" );
+  }
 
   return print_csv(clist);
 }
