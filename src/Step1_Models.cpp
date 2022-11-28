@@ -161,7 +161,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
       dev_new = get_logist_dev(Y1, pivec, mask);
 
       if(params->debug) cerr << "HS#" << niter_search << setprecision(16) << ": p in (" << pivec.minCoeff() << "," << pivec.maxCoeff() << "); dev " << dev_old << "->" << dev_new << " \n";
-      if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
+      if( mask.select((pivec > 0) && (pivec < 1), true).all() && (dev_new < dev_old) ) break;
 
       // adjust step size
       betanew = (betavec + betanew) / 2;
