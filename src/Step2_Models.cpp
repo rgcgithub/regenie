@@ -675,14 +675,14 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   // else assuming using all columns 
 
   int niter_cur = 0, niter_search, nc = X1.cols();
-  double dev_old=0, dev_new=0, denum, mx;
+  double dev_old=0, dev_new=0, denum, mx, bdiff = 1;
 
   ArrayXd hvec, mod_score;
   ArrayXd betanew, step_size, wvec;
   MatrixXd XtW, XtWX;
   ColPivHouseholderQR<MatrixXd> qr, qrX;
 
-  if(params->debug) cerr << "Firth starting beta = " << betavec.matrix().transpose() << "\n";
+  if(params->debug) cerr << "\nFirth starting beta = " << betavec.matrix().transpose() << "\n";
 
   // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
   betanew = betavec * 0;
@@ -721,11 +721,12 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     if( mx > 1 ) step_size /= mx;
 
     // start step-halving and stop when deviance decreases 
-    denum = 1;
+    denum = 2;
     for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
       // adjusted step size
       step_size /= denum;
+      if(niter_search > 1) step_size /= denum;
 
       ///////// compute corresponding deviance
       if(cols_incl < nc) 
@@ -741,16 +742,20 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       qr.compute(XtWX);
       dev_new -= qr.logAbsDeterminant();
 
-      if(params->debug) cerr << "["<<niter_cur << " - " << niter_search <<"]  denum =" <<denum << ";Lnew= " << setprecision(16)<< dev_new << " vs L0="<< dev_old<< "\n";
+      if(params->debug){
+        if(niter_search == 1) bdiff = step_size.abs().maxCoeff();
+        cerr << "["<<niter_cur << ":" << niter_search <<"] L1=" << setprecision(16)<< dev_new << "/L0="<< dev_old<< "\n";
+      }
       if( dev_new < dev_old ) break;
       denum *= 2;
     }
+
     if( niter_search > params->niter_max_line_search ) {
       if( comp_lrt ) step_size(0) += 1e-6;
       else return false; // step-halving failed
     }
 
-    if(params->debug) cerr << "Niter = " << niter_cur <<setprecision(16)<< " (beta = " << betanew.matrix().transpose() << ") : beta_diff.max = " << (betanew-betavec).abs().maxCoeff() << ";score_max=" << mod_score.abs().maxCoeff() << ")\n";
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); beta_diff.max=" << bdiff << "; score.max=" << mod_score.abs().maxCoeff() << "\n";
 
 
     if(cols_incl < nc)  
@@ -760,7 +765,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     dev_old = dev_new;
 
   }
-  if(params->debug) cerr << "Niter_total=" << niter_cur<<setprecision(16) << ";Firth ending beta = " << betavec.matrix().transpose() << "\nscore_max=" << mod_score.abs().maxCoeff() << "\n";
+  if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta.head=(" << betavec.head(min(15,cols_incl)).matrix().transpose() << "); score.max=" << mod_score.abs().maxCoeff() << "\n";
 
   // If didn't converge
   if( niter_cur > niter_firth ) return false;
