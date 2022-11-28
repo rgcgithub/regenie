@@ -373,6 +373,12 @@ void JTests::compute_ftest(const Eigen::Ref<const MatrixXb>& mask, const Eigen::
 
   int ns = mask.col(0).array().count() - ncovars;
   int df_ur = ns - df_test;
+
+  if( df_ur <= 0 ) {
+    reset_vals();
+    return;
+  }
+
   double ss_r, ss_m, tmpd;
   ArrayXd y_tmp;
   MatrixXd bhat, GtG;
@@ -406,6 +412,7 @@ void JTests::compute_ftest(const Eigen::Ref<const MatrixXb>& mask, const Eigen::
 
 void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::Ref<const Eigen::MatrixXd>& ymat, string const& input_class){
 
+  pval_nnls_pos = -1; pval_nnls_neg = -1;
   if( df_test == 0 ) {
     reset_vals();
     return;
@@ -413,8 +420,13 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
 
   int ns = mask.col(0).array().cast<int>().sum() - ncovars;
   int df_ur = ns - df_test, adapt_napprox = 2;
-  double pval_min2, adapt_thr = 1e-3; 
+
+  if( df_ur <= 0 ) {
+    reset_vals();
+    return;
+  }
   
+  double pval_min2, adapt_thr = 1e-3; 
   VectorXd y_tmp = ymat.col(0).array() * mask.col(0).array().cast<double>();
   
   // (depreciated) compute NNLS p-value by function
@@ -656,7 +668,6 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       // run nnls
       if( CHECK_BIT(test_list, joint_tests_map["sbat"]) ) {
         compute_qr_G(mask, gblock);
-        pval_nnls_pos = -1; pval_nnls_neg = -1;
         compute_nnls(mask, yres, itr->first);
         if(valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg)) {
           sum_stats_str[joint_tests_map["sbat" + itr->first]][ph] = print_output(joint_tests_map["sbat"], itr->first, ph+1, chrom, block, pheno_name, params);
