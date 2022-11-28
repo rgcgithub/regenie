@@ -70,9 +70,8 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     else loco_offset = ArrayXd::Zero(Y.size(), 1);
 
     // starting values
-    pivec = ( 0.5 + Y ) / 2;
-    etavec = mask.select( log(pivec/ (1-pivec)), 0);
     betaold = 0;
+    get_pvec(etavec, pivec, betaold, loco_offset, pheno_data->new_cov, params->numtol_eps);
 
     // check if model converged
     if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)) {
