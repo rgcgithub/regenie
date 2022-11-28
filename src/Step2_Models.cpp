@@ -472,6 +472,16 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
     if(!params->fix_maxstep_null) { // don't retry with user-given settings
       if( !success ){ // if failed to converge
         cerr << "WARNING: Logistic regression with Firth correction did not converge (maximum step size=" << maxstep <<";maximum number of iterations=" << niter <<").";
+
+        // try fitting pseudo-data representation with IRLS
+        double dev0 = 0;
+        if(
+            fit_firth_pseudo(dev0, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params)
+          ){
+          success = true;
+          break;
+        }
+
         if( trial == 1 ){
           maxstep /= 5;
           niter *= 5;
@@ -781,6 +791,98 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   return true;
 }
 
+// using pseudo-data representation with unpenalized logistic (strategy from brglm)
+bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+  // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
+  // else assuming using all columns 
+
+  int niter_cur = 0, niter_log = 0, niter_search, nc = X1.cols();
+  double dev_new=0;
+
+  ArrayXd hvec, mod_score, ystar, score;
+  ArrayXd betanew, step_size, wvec, zvec;
+  MatrixXd XtW, XtWX;
+  ColPivHouseholderQR<MatrixXd> qr, qrX;
+
+  if(params->debug) cerr << "\nFirth starting beta = " << betavec.matrix().transpose() << "\n";
+
+  betanew = betavec * 0;
+  while(niter_cur++ < niter_firth){
+
+    // update quantities
+    get_pvec(etavec, pivec, betavec, offset, X1, params->numtol_eps);
+    dev_new = get_logist_dev(Y1, pivec, mask);
+    get_wvec(pivec, wvec, mask);
+    XtW = X1.transpose() * wvec.sqrt().matrix().asDiagonal();
+    XtWX = XtW * XtW.transpose();
+    qr.compute(XtWX);
+    // compute deviance
+    dev_new -= qr.logAbsDeterminant();
+    if(comp_lrt && (niter_cur == 1)) // at first iter (i.e. betaSNP=0)
+      dev0 = dev_new;
+
+    // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
+    hvec = (qr.solve(XtW).array() * XtW.array() ).colwise().sum();
+    // compute pseudo-response
+    ystar = Y1 + hvec * (0.5 - pivec); 
+    // compute modified score & step size
+    if(cols_incl < nc) { 
+      qrX.compute(XtWX.block(0, 0, cols_incl, cols_incl));
+      mod_score = (X1.leftCols(cols_incl).transpose() * mask.select(ystar - pivec, 0).matrix() ).array();
+    } else {
+      mod_score = (X1.transpose() * mask.select(ystar - pivec, 0).matrix() ).array();
+    }
+
+    // stopping criterion using modified score function
+    // edit 5.31.12 for edge cases with approx Firth
+    if( (mod_score.abs().maxCoeff() < tol) && !((niter_cur < 2) && (nc == 1)) ) break;
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << mod_score.abs().maxCoeff() << "\n";
+
+    // fit unpenalized logistic on transformed Y
+    niter_log = 0;
+    while(niter_log++ < params->niter_max){
+      // p*(1-p) and check for zeroes
+      if( get_wvec(pivec, wvec, mask, params->numtol_eps) )
+        return false;
+      XtW = X1.transpose() * mask.select(wvec,0).matrix().asDiagonal();
+      XtWX = XtW * X1;
+      // working vector z = X*beta + (Y-p)/(p*(1-p))
+      zvec = mask.select(etavec - offset + (ystar - pivec) / wvec, 0);
+      // parameter estimate
+      betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
+      // start step-halving
+      for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+        get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
+        if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
+        // adjust step size
+        betanew = (betavec + betanew) / 2;
+      }
+      if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
+      score = X1.transpose() * mask.select(ystar - pivec, 0).matrix();
+      // stopping criterion
+      if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
+      betavec = betanew;
+    }
+    if( niter_log > params->niter_max ) return false;
+
+    betavec = betanew;
+  }
+
+  if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta.head=(" << betavec.head(min(15,cols_incl)).matrix().transpose() << "); score.max=" << mod_score.abs().maxCoeff() << "\n";
+
+  // If didn't converge
+  if( niter_cur > niter_firth ) return false;
+
+  dev = dev_new;
+  if( comp_lrt ) {
+    lrt = dev0 - dev_new;
+    if(lrt < 0) return false;
+
+    sevec = qr.inverse().diagonal().array().sqrt();
+  }
+
+  return true;
+}
 
 // fit based on penalized log-likelihood using ADAM
 bool fit_firth_adam(int const& ph, double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, struct param const* params) {
