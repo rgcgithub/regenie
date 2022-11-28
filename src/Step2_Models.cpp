@@ -735,7 +735,6 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
 
       // adjusted step size
-      step_size /= denum;
       if(niter_search > 1) step_size /= denum;
 
       ///////// compute corresponding deviance
@@ -757,7 +756,6 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
         cerr << "["<<niter_cur << ":" << niter_search <<"] L1=" << setprecision(16)<< dev_new << "/L0="<< dev_old<< "\n";
       }
       if( dev_new < dev_old ) break;
-      denum *= 2;
     }
 
     if( niter_search > params->niter_max_line_search ) {
