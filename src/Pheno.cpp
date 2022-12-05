@@ -91,6 +91,10 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   setMasks(params, filters, pheno_data, sout);
   sout << " * number of individuals used in analysis = " << params->n_analyzed << endl;
 
+  // check P vs N
+  if(pheno_data->new_cov.cols() >= params->n_samples)
+    throw "Number of covariates is greater than sample size!";
+
   // apply rint
   if(params->rint) {
     sout << "   -applying RINT to all phenotypes\n";
