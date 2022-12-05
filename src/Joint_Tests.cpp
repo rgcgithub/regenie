@@ -265,7 +265,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
   for(int isnp = 0; isnp < bs; isnp++) {
     if( !good_vars(isnp) ) continue;
     // compute weights
-    if( valid_snp_mode ) {// sqrt(w)=dbeta(maf,a1,a2)*sqrt(maf*(1-maf))
+    if( valid_snp_mode && !apply_single_p) {// sqrt(w)=dbeta(maf,a1,a2)*sqrt(maf*(1-maf))
       v_maf = min( block_info[isnp].af(ph), 1 - block_info[isnp].af(ph) );
       //cerr << v_maf << endl;
       tmpd = pdf( dist, v_maf );

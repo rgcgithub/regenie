@@ -300,7 +300,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("sbat-adapt", "use adaptive strategy to compute p-value using fewer weights (k=2)")
     ("sbat-mtw", "re-use SBAT weights across all traits")
     ("sbat-verbose", "To output detailed SBAT test results")
-    ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,1)")
+    ("acat-beta", "parameters for Beta(a,b) used for weights in ACAT joint test", cxxopts::value<std::string>(), "a,b(=1,25)")
     ("hlm-novquad", "remove quadratic term for E in variance function of HLM model (only for GxE interaction test)")
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene")
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
