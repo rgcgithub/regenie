@@ -74,7 +74,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
     get_pvec(etavec, pivec, betaold, loco_offset, pheno_data->new_cov, params->numtol_eps);
 
     // check if model converged
-    if(!fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout)) {
+    if(!(fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, true) || fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, false))) {
       bool skip_pheno = true;
 
       // if not, get starting values by omitting loco offset (instead of at 0)
@@ -84,9 +84,9 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
         pivec = ( 0.5 + Y ) / 2;
         etavec = mask.select( log(pivec/ (1-pivec)), 0);
         betaold = 0;
-        if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout) ){ 
+        if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, true) || fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, false) ){ 
           get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
-          skip_pheno = !fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout);
+          skip_pheno = !(fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, true) || fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, false));
         }
       }
 
@@ -127,7 +127,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
 }
 
-bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout) {
+bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout, bool const& check_hs_dev) {
 
   int niter_cur = 0, niter_search;
   double dev_old, dev_new=0, diff_dev;
@@ -161,7 +161,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
       dev_new = get_logist_dev(Y1, pivec, mask);
 
       if(params->debug) cerr << "HS#" << niter_search << setprecision(16) << ": p in (" << pivec.minCoeff() << "," << pivec.maxCoeff() << "); dev " << dev_old << "->" << dev_new << " \n";
-      if( mask.select((pivec > 0) && (pivec < 1), true).all() && (dev_new < dev_old) ) break;
+      if( mask.select((pivec > 0) && (pivec < 1), true).all() && (!check_hs_dev || (dev_new < dev_old)) ) break;
 
       // adjust step size
       betanew = (betavec + betanew) / 2;
@@ -169,12 +169,13 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     }
     if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
 
-    score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
-
     // stopping criterion
+    score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
     if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
 
     diff_dev = abs(dev_new - dev_old)/(0.1 + abs(dev_new));
+    if(params->debug) cerr << "#" << niter_cur << ": score_max=" << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << diff_dev << "\n";
+
     betavec = betanew;
     dev_old = dev_new;
   }

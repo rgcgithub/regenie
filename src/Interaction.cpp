@@ -479,7 +479,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     etavec = mask.select(offset, 0);
     get_pvec(pivec, etavec, params->numtol_eps);
 
-    if(!fit_logistic(Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, params, sout))
+    if(!(fit_logistic(Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, params, sout, true) || fit_logistic(Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat, params, sout, false)))
       continue; // no results for trait
     /*else if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).count() > 0 )
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype #" << files->pheno_names[i] <<").";*/
