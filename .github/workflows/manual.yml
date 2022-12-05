@@ -40,7 +40,7 @@ jobs:
           tar xzf bgen.tgz
           pushd ${BGEN_VERSION}
           python3 waf configure
-          python3 waf
+          python3 waf -v
           popd
       - name: Build
         run: make BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC all
