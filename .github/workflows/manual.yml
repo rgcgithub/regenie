@@ -10,16 +10,22 @@ on:
 # A workflow run is made up of one or more jobs that can run sequentially or in parallel
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-20.04
     name: Build
     env:
       BOOST_IO: 0
       STATIC: 1
       BGEN_VERSION: v1.1.7
-      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
+      LIB_INSTALL: g++-7 libgomp1 make python3 zlib1g-dev wget
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+
+      - name: Prep GCC install
+        run: |
+          sudo apt-get install -y software-properties-common
+          sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+          sudo apt update
 
       - name: Apt packages
         run: sudo apt install -y --no-install-recommends ${LIB_INSTALL}
@@ -40,7 +46,7 @@ jobs:
           tar xzf bgen.tgz
           pushd ${BGEN_VERSION}
           python3 waf configure
-          python3 waf
+          python3 waf -v
           popd
       - name: Build
         run: make BGEN_PATH=./${BGEN_VERSION} HAS_BOOST_IOSTREAM=$BOOST_IO STATIC=$STATIC all
