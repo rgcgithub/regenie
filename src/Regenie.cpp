@@ -1523,6 +1523,12 @@ void get_logp(double& logp, const double& Tstat){
 // get logp & chisq1 from pv
 void get_logp(const double& pv, double& logp, double& Tstat, double const& dbl_dmin){
 
+  if((pv < 0) || (pv > 1)) { // fail
+    logp = -1; 
+    Tstat = 0;
+    return;
+  }
+
   boost::math::chi_squared chisq1(1);
 
   double pval = max(dbl_dmin, pv); // to prevent underflow

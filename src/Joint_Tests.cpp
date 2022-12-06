@@ -285,13 +285,16 @@ double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<cons
   double tol = 10.0 * std::numeric_limits<double>::min(), pv_thr = 1e-15;
 
   // if single pval, return pval
-  if(logpvals.size() == 1) return pow(10, -logpvals(0));
+  if(logpvals.size() == 1) {
+    if(logpvals(0) >= 0) return pow(10, -logpvals(0));
+    else return -1;
+  }
 
   // use approx for small p-values (from ACAT R package)
-  ArrayXd pvals = (weights!=0).select( pow(10, -logpvals) , 0.5).max(tol); // to prevent underflow
+  ArrayXd pvals = ((weights!=0) && (logpvals >= 0)).select( pow(10, -logpvals) , 0.5).max(tol); // to prevent underflow
   //cerr << "log10pv=" << logpvals.matrix().transpose() << "\npv=" << pvals.matrix().transpose() << "\nw=" << weights.matrix().transpose() << "\n";
   double acat = (pvals > pv_thr).select( weights * tan( M_PI * (0.5 - pvals)), (weights / pvals) / M_PI).sum();
-  double wsum = weights.sum();
+  double wsum = (logpvals >= 0).select(weights, 0).sum();
   //cerr << std::setprecision(10) << "acat num=" << acat << " denum=" << wsum << endl;
 
   return cdf(complement(dc, acat/wsum ));
