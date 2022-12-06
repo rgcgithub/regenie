@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.2.3](https://github.com/rgcgithub/regenie/releases/tag/v3.2.3) (Address convergence issues in Firth regression; Various bug fixes)
+
 [Version 3.2.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2.2) (New columns in sumstats file (N_CASES/N_CONTROLS) to output the number of cases/controls when using `--af-cc`; Various bug fixes)
 
 [Version 3.2.1](https://github.com/rgcgithub/regenie/releases/tag/v3.2.1) (New option `--lovo-snplist` to only consider a subset of LOVO masks; Improve efficiency of LOVO for large sets to reduce memory usage; Bug fix for SPA with numerical overflow; For SKAT/ACAT tests with Firth correction, don't include SKAT weights when running Firth on single variants)
