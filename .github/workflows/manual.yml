@@ -16,7 +16,7 @@ jobs:
       BOOST_IO: 0
       STATIC: 1
       BGEN_VERSION: v1.1.7
-      LIB_INSTALL: g++-7 libgomp1 make python3 zlib1g-dev wget
+      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
