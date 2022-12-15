@@ -45,7 +45,7 @@ GenoMask::~GenoMask() {
 
 void GenoMask::prep_run(struct param& params, struct in_files const& files){
 
-  params.min_MAC_mask = params.min_MAC; // for association tests
+  params.min_MAC_mask = params.vc_with_weights ? 1e-200 : params.min_MAC; // for association tests (use lower threshold if using custom weights)
   params.min_MAC = 0.5; // set this so can retain singletons (0.5 for dosages)
   take_max = params.mask_rule_max;
   take_comphet = params.mask_rule_comphet;

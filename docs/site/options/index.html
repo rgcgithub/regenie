@@ -795,7 +795,7 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td><code>--force-qt</code></td>
 <td>FLAG</td>
 <td>Optional</td>
-<td>force QT run for traits with fewer than 10 unique values</td>
+<td>force QT run for binary traits</td>
 </tr>
 <tr>
 <td><code>--threads</code></td>
@@ -1035,7 +1035,8 @@ alternatively, the user can specify variant AAFs using this file.</p>
 based on the input genetic data. To enforce which sites should be included in the singleton masks
 (see <code>--set-singletons</code>), you can add a third column in the file with a binary indicator 
 (1=singleton; 0=not singleton). So only variants which are specified as singletons will be 
-considered for the singleton masks, regardless of whether they are singletons in the input genetic data.</p>
+considered for the singleton masks, regardless of whether they are singletons in the input genetic data.
+Note that with this flag, singleton sites will be included in all masks (regardless of the AAF in file).</p>
 <pre><code class="language-bash">7:6187101:C:T 1.53918207864341e-05 0
 7:6190395:C:A 2.19920388819247e-06 1
 .

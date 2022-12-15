@@ -102,7 +102,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   }
 
   // impute missing
-  pheno_impute_miss(pheno_data, filters->ind_in_analysis, params);
+  pheno_impute_miss(pheno_data, filters->ind_in_analysis, files, params);
 
   // print case-control counts per trait
   if(params->trait_mode==1)
@@ -750,8 +750,6 @@ void print_info(struct param* params, struct in_files* files, struct phenodt* ph
   sout << " * number of observations for each trait:\n";
   for (size_t i = 0; i < files->pheno_names.size(); i++)
     if( params->pheno_pass(i) ) {
-      if((params->trait_mode == 0) && !params->force_qt_run) 
-        check_nvals(i, files->pheno_names[i], params, pheno_data); // check there is not a binary trait
       params->pheno_counts(i, 0) = pheno_data->masked_indivs.col(i).count();
       sout << "   - '" << files->pheno_names[i] << "': " << params->pheno_counts(i, 0) << " observations\n";
     }
@@ -760,10 +758,11 @@ void print_info(struct param* params, struct in_files* files, struct phenodt* ph
 void check_nvals(int const& i_pheno, string const& pheno, struct param const* params, struct phenodt const* pheno_data){
 
   map<double, bool> uniq_vals;
-  size_t n_min_vals = 10; // o.w. analyze as bt or ct
+  size_t n_min_vals = 2; // o.w. analyze as bt or ct
 
   for(size_t i = 0; i < params->n_samples; i++){
     if(!pheno_data->masked_indivs(i, i_pheno)) continue;
+    if(pheno_data->phenotypes(i, i_pheno) == params->missing_value_double) continue;
     if(!in_map(pheno_data->phenotypes(i, i_pheno), uniq_vals)) {
       uniq_vals[pheno_data->phenotypes(i, i_pheno)] = true;
       if(uniq_vals.size() > n_min_vals) return; // more than 2 values
@@ -1533,7 +1532,12 @@ void check_str(string& mystring ){
 
 }
 
-void pheno_impute_miss(struct phenodt* pheno_data, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct param const* params){
+void pheno_impute_miss(struct phenodt* pheno_data, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct in_files* files, struct param const* params){
+
+  if( (params->trait_mode == 0) && !params->force_qt_run )
+    for(int i = 0; i < params->n_pheno; i++)
+      if( params->pheno_pass(i) ) 
+        check_nvals(i, files->pheno_names[i], params, pheno_data); // check there is not a binary trait
 
   if((params->trait_mode==0) || !params->test_mode){
     double total, ns;

@@ -279,7 +279,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|
 |`--par-region` | STRING | Optional | specify build code to determine bounds for PAR1/PAR2 regions (can be 'b36/b37/b38/hg18/hg19/hg38' or 'start,end' bp bounds of non-PAR region) [default=hg38]|
-|`--force-qt`| FLAG | Optional | force QT run for traits with fewer than 10 unique values|
+|`--force-qt`| FLAG | Optional | force QT run for binary traits|
 |`--threads`| INT | Optional| number of computational threads to use [default=all-1]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
 |`--verbose`| FLAG | Optional| verbose screen output|
@@ -476,6 +476,7 @@ based on the input genetic data. To enforce which sites should be included in th
 (see `--set-singletons`), you can add a third column in the file with a binary indicator 
 (1=singleton; 0=not singleton). So only variants which are specified as singletons will be 
 considered for the singleton masks, regardless of whether they are singletons in the input genetic data.
+Note that with this flag, singleton sites will be included in all masks (regardless of the AAF in file).
 
 ```bash
 7:6187101:C:T 1.53918207864341e-05 0
