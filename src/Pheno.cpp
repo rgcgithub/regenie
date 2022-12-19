@@ -95,20 +95,24 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
   if(pheno_data->new_cov.cols() >= params->n_samples)
     throw "Number of covariates is greater than sample size!";
 
-  // apply rint
-  if(params->rint) {
-    sout << "   -applying RINT to all phenotypes\n";
-    apply_rint(pheno_data, params);
+  if(!params->getCorMat) {
+
+    // apply rint
+    if(params->rint) {
+      sout << "   -applying RINT to all phenotypes\n";
+      apply_rint(pheno_data, params);
+    }
+
+    // impute missing
+    pheno_impute_miss(pheno_data, filters->ind_in_analysis, files, params);
+
+    // print case-control counts per trait
+    if(params->trait_mode==1)
+      print_cc_info(params, files, pheno_data, sout);
+    else
+      print_info(params, files, pheno_data, sout);
+
   }
-
-  // impute missing
-  pheno_impute_miss(pheno_data, filters->ind_in_analysis, files, params);
-
-  // print case-control counts per trait
-  if(params->trait_mode==1)
-    print_cc_info(params, files, pheno_data, sout);
-  else
-    print_info(params, files, pheno_data, sout);
 
 }
 
