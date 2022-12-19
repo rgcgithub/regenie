@@ -2006,6 +2006,7 @@ void Data::write_snplist(int const& bs, ArrayXi& indices, vector<variant_block> 
 
   if(params.cormat_force_vars){ // no need to print snplist file
 
+    Eigen::Array<std::string,Eigen::Dynamic,1> ID_sorted (bs + params.forced_in_snps.size());
     indices.resize( params.extract_vars_order.size() );
     for(int snp = 0; snp < bs; snp++){
       if(all_snps_info[snp].ignored){
@@ -2013,12 +2014,17 @@ void Data::write_snplist(int const& bs, ArrayXi& indices, vector<variant_block> 
         n_low_var++;
       } 
       indices( params.extract_vars_order[snpinfo[snp].ID] ) = snp;
+      ID_sorted( snp ) = snpinfo[snp].ID;
     }
 
     if(params.forced_in_snps.size() > 0){
-      for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++)
+      for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++) {
         indices( params.extract_vars_order[params.forced_in_snps[snp]] ) = snp + bs;
+        ID_sorted( snp + bs ) = params.forced_in_snps[snp];
+      }
     }
+    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
+    buffer << ID_sorted(indices).format(Fmt) << endl;
 
   } else {
 
@@ -2030,13 +2036,13 @@ void Data::write_snplist(int const& bs, ArrayXi& indices, vector<variant_block> 
       } 
       buffer << snpinfo[snp].ID << endl;
     }
-    // write SNP list
-    ofile.openForWrite(out, sout);
-    ofile << buffer.str();
-    ofile.closeFile();
 
   }
 
+  // write SNP list
+  ofile.openForWrite(out, sout);
+  ofile << buffer.str();
+  ofile.closeFile();
 
   if(n_low_var > 0){
     // write SNP list to ignore
