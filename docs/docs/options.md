@@ -245,7 +245,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--print-prs`|FLAG| Optional| flag to print whole genome predictions (i.e. PRS) without using LOCO scheme|
 |`--force-step1`|FLAG| Optional| flag to run step 1 when >1M variants are used (not recommened)|
 |`--minCaseCount`| INT | Optional | flag to ignore BTs with low case counts [default is 10]|
-|`--apply-rint`| FLAG | Optional| to apply Rank Inverse Normal Transformation (RINT) to quantitative phenotypes |
+|`--apply-rint`| FLAG | Optional| to apply Rank Inverse Normal Transformation (RINT) to quantitative phenotypes (use in both Step 1 & 2)|
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
