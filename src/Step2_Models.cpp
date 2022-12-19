@@ -1609,7 +1609,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 }
 
 
-std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXd>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params) {
+std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXd>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score) {
 
   std::ostringstream buffer;
   bool print_beta = test_pass && (se>=0);
@@ -1691,6 +1691,8 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(!params->build_mask && params->dosage_mode && (info >= 0) ) infoCol.push_back( "INFO=" + to_string(info) );
   // mac
   if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
+  // score test statistic 
+  if(score >= 0) infoCol.push_back( "SCORE=" + to_string(score) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
   // indicator for no beta printed (joint or vc tests)
