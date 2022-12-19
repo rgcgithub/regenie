@@ -31,8 +31,8 @@
 class JTests {
 
   public:
-    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"acat", 3}, {"sbat", 4}, {"sbat_pos", 5}, {"sbat_neg", 6}, {"gene_p", 7} };
-    std::vector<std::string> test_names = {"MINP","F","GATES","ACAT","SBAT","SBAT_POS","SBAT_NEG", "GENE_P"};
+    std::map<std::string, uint16_t> joint_tests_map = { {"minp", 0}, {"ftest", 1}, {"gates", 2}, {"acat", 3}, {"sbat", 4}, {"sbat_pos", 5}, {"sbat_neg", 6}, {"acatv_acat", 7}, {"skato_acat", 8}, {"gene_p", 9} };
+    std::vector<std::string> test_names = {"MINP","F","GATES","ACAT","SBAT","SBAT_POS","SBAT_NEG", "ACATV-ACAT", "SKATO-ACAT", "GENE_P"};
     std::map <std::string, std::map <std::string, bool>> gene_p_tests;
     bool genep_all_masks = true;
     uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
@@ -52,7 +52,7 @@ class JTests {
     double tol = 1e-6, qr_tol = 1e-7, nnls_tol = 1e-10; // qr threshold used in R
     double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
     std::mt19937_64* rng_rd;
-    std::string burden_type, burden_str, burden_model, genep_all_sfx = "";
+    std::string burden_type, test_pfx, burden_str, burden_model, genep_all_sfx = "";
     std::string out_file_prefix; // prefix of output files
     Eigen::ArrayXi colKeep; // keep track of linearly independent columns in Gmat
     Eigen::MatrixXd Gtmp;

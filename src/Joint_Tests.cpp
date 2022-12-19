@@ -67,10 +67,11 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
   std::vector< string > tmp_str_vec ;
   test_list = 0ULL;
 
-  burden_str = test_string + "-BURDEN-";
+  test_pfx = test_string + "-";
+  burden_str = test_pfx + "BURDEN-";
   if(params->htp_out){
     if(params->skip_blups) burden_model = burden_str;
-    else burden_model = test_string + "-WGR-BURDEN-";
+    else { test_pfx = test_string + "-WGR-"; burden_model = test_pfx + "BURDEN-"; }
   }
 
   // activate tests chosen by user
@@ -324,7 +325,7 @@ void JTests::compute_qr_G(const Eigen::Ref<const MatrixXb>& mask, struct geno_bl
   indices_vars.resize(0);
 
   // filter out bad variants
-  Gnew = MatrixXd::Zero( gblock->Gmat.rows(), nvars );
+  Gnew = MatrixXd::Zero( gblock->Gmat.rows(), good_vars.count() );
   for(int i = 0, j = 0; i < gblock->Gmat.cols(); i++){
     if(!good_vars(i)) continue;
     Gnew.col(j++) = gblock->Gmat.col(i);
@@ -338,7 +339,7 @@ void JTests::compute_qr_G(const Eigen::Ref<const MatrixXb>& mask, struct geno_bl
   df_test = qrA.rank();
 
   if(df_test == 0) return;
-  else if ( df_test < nvars ){
+  else if ( df_test < good_vars.count() ){
     colKeep = qrA.colsPermutation().indices();
     //ArrayXi tmp1(df_test);tmp1 << 0,1,3,4,5,6,7,9,10;colKeep = tmp1;
     //cerr << qr_tol << " -> " << colKeep.matrix().transpose().array() << endl;
@@ -605,6 +606,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
 
   // gene_p combining all masks
   if( genep_all_masks ){
+    vector<double> acatv_acat, skato_acat;
     // get SKATO/ACATV p-values as well as top mask
     for(int imask = 0; imask < bs; imask++){
       if(block_info[imask].skip_for_vc) continue; 
@@ -618,8 +620,29 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
               max_logp_mask = mname;
               max_logp = pv;
             }
+            if(extract_test == "ACATV") acatv_acat.push_back( pv );
+            else if(extract_test == "SKATO-ACAT") skato_acat.push_back( pv );
           }
         }
+    }
+    // compute acat for acatv & skato
+    if(acatv_acat.size() > 0){
+      df_test = acatv_acat.size();
+      ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
+      get_pv( get_acat(pvals_arr) );
+      sum_stats_str[joint_tests_map["acatv_acat"]][ph] = print_gene_output(test_pfx + "ACATV-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
+    } else if(!params->split_by_pheno){
+      reset_vals();
+      sum_stats_str[joint_tests_map["acatv_acat"]][ph] = print_gene_output(test_pfx + "ACATV-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
+    }
+    if(skato_acat.size() > 0){
+      df_test = acatv_acat.size();
+      ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
+      get_pv( get_acat(pvals_arr) );
+      sum_stats_str[joint_tests_map["skato_acat"]][ph] = print_gene_output(test_pfx + "SKATO-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
+    } else if(!params->split_by_pheno){
+      reset_vals();
+      sum_stats_str[joint_tests_map["skato_acat"]][ph] = print_gene_output(test_pfx + "SKATO-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     }
     // combine all p-values and pass through acat
     if(overall_p.size()>0){
@@ -641,6 +664,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     max_logp = -1;
     max_logp_mask = "";
     bool get_top_mask = itr->second.size() > 1;
+    vector<double> acatv_acat, skato_acat;
 
     // identify all the masks in the set
     for(int imask = 0; imask < bs; imask++){
@@ -657,6 +681,8 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
               max_logp_mask = mname;
               max_logp = pv;
             }
+            if(extract_test == "ACATV") acatv_acat.push_back( pv );
+            else if(extract_test == "SKATO-ACAT") skato_acat.push_back( pv );
           }
         }
     }
@@ -679,6 +705,25 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
           get_pv(pval_nnls_neg);overall_p_set["SBAT_NEG"] = plog;
           sum_stats_str[joint_tests_map["sbat_neg" + itr->first]][ph] = print_output(joint_tests_map["sbat_neg"], itr->first, ph+1, chrom, block, pheno_name, params);
         } 
+      }
+      // compute acat for acatv & skato
+      if(acatv_acat.size() > 0){
+        df_test = acatv_acat.size();
+        ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
+        get_pv( get_acat(pvals_arr) );
+        sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
+      } else if(!params->split_by_pheno){
+        reset_vals();
+        sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
+      }
+      if(skato_acat.size() > 0){
+        df_test = acatv_acat.size();
+        ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
+        get_pv( get_acat(pvals_arr) );
+        sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
+      } else if(!params->split_by_pheno){
+        reset_vals();
+        sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       }
       // apply acat to all p
       if(overall_p_set.size()>0){
@@ -935,7 +980,7 @@ void JTests::check_class_genep(string const& mask_set_file, std::map<std::string
   // allocate entry in map for each test on set of masks
   // make sure results are printed in the order of each test then list of mask groups
   std::map <std::string, std::map <std::string, bool>>::iterator itr;
-  vector<string> tests = {"acat", "sbat", "gene_p"};
+  vector<string> tests = {"acat", "sbat", "acatv_acat", "skato_acat", "gene_p"};
   for (auto const& test_name : tests)
     for (itr = gene_p_tests.begin(); itr !=  gene_p_tests.end(); ++itr)
       if( (test_name == "sbat") && CHECK_BIT(test_list, joint_tests_map["sbat"]) ) {
