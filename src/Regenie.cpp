@@ -1305,7 +1305,12 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
 
   total_ram *= params->n_samples * sizeof(double);
   total_ram += params->nvs_stored * sizeof(struct snp);
-  if( params->getCorMat ) total_ram += params->block_size * params->block_size * sizeof(double);
+  if( params->getCorMat ) {
+    if( params->cormat_force_vars ) 
+      total_ram += params->extract_vars_order.size() * params->extract_vars_order.size() * sizeof(double);
+    else
+      total_ram += params->block_size * params->block_size * sizeof(double);
+  }
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   if( params->mask_loo ) total_ram += 1e9; // at most 1GB
   if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
