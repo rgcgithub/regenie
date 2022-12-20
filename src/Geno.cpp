@@ -2671,6 +2671,7 @@ void initialize_thread_data(vector<data_thread>& all_snp_data, struct param cons
     snp_data->pval_log = ArrayXd::Zero(params.n_pheno);
     snp_data->bhat = ArrayXd::Zero(params.n_pheno);
     snp_data->se_b = ArrayXd::Zero(params.n_pheno);
+    snp_data->scores = ArrayXd::Zero(params.n_pheno);
     if(params.trait_mode){
       snp_data->stats = ArrayXd::Zero(params.n_pheno);
       snp_data->denum = ArrayXd::Zero(params.n_pheno);
@@ -2684,6 +2685,7 @@ void reset_thread(data_thread* snp_data, struct param const& params){
     snp_data->pval_log = 0;
     snp_data->bhat = 0;
     snp_data->se_b = 0;
+    snp_data->scores = params.missing_value_double;
     if(params.trait_mode){
       snp_data->stats = 0;
       snp_data->denum = 0;
@@ -3324,7 +3326,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
     }
 
     // variants | set_name | region (optional) | annotation (unique)
-    if( (!params->w_regions && !params->vc_with_weights && (tmp_str_vec.size() != 3)) || 
+    if( (!params->w_regions && !params->vc_with_weights && (tmp_str_vec.size() < 3)) || 
         (params->w_regions && (tmp_str_vec.size() != 4)) || 
         (params->vc_with_weights && ((int)tmp_str_vec.size() < params->vc_weight_col)) 
         ) 

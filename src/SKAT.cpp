@@ -342,6 +342,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     if(jcol < 0) continue; // this should not happen though
     MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
     nnz = Jvec.count();
+    if(debug) cerr << "#sites in mask=" << nnz << "\n";
     if(nnz == 0) continue;
 
     // subset to variants kept in mask
@@ -690,7 +691,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
       int npass = (Jvec(snp_indices) && masked_sites).count();
-      if(debug) cerr << "sites in mask=" << npass << "\n";
+      if(debug) cerr << "#sites in mask=" << npass << "\n";
       if(npass == 0) continue;
 
       // subset to variants kept in mask
@@ -832,7 +833,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       if(jcol < 0) continue; // this should not happen though
       MapcArXb Jvec (Jmat.col(jcol).data(), Jmat.rows(), 1);
       int npass = (Jvec(snp_indices) && masked_sites).count();
-      if(debug) cerr << "sites in mask=" << npass << "\n";
+      if(debug) cerr << "#sites in mask=" << npass << "\n";
       if(npass == 0) continue;
 
       // subset to variants kept in mask

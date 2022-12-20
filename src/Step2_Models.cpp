@@ -233,19 +233,26 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
   if( params.strict_mode ) {
 
+    double n_sq = sqrt( params.n_analyzed - params.ncov_analyzed );
     if(params.skip_blups && dt_thr->is_sparse) // Gsparse is on raw scale (must have yres centered)
-      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / (sqrt( params.n_analyzed - params.ncov_analyzed ));
+      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / n_sq;
     else
-      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / sqrt( params.n_analyzed - params.ncov_analyzed );
+      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / n_sq;
+
+    if(params.htp_out)
+      dt_thr->scores = dt_thr->stats * n_sq * gsc;
 
     // estimate
-    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( sqrt(params.n_analyzed - params.ncov_analyzed) * gsc );
+    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( n_sq * gsc );
 
   } else {
 
     // compute GtG for each phenotype (different missing patterns)
     dt_thr->scale_fac_pheno = pheno_data.masked_indivs.transpose().cast<double>() * Geno.square().matrix();
     dt_thr->stats = (yres.transpose() * Geno.matrix()).array() / dt_thr->scale_fac_pheno.sqrt();
+
+    if(params.htp_out)
+      dt_thr->scores = dt_thr->stats * dt_thr->scale_fac_pheno.sqrt() * gsc;
 
     // estimate
     dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array() ).matrix().transpose().array() / ( sqrt(dt_thr->scale_fac_pheno) * gsc );
@@ -327,6 +334,9 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
       dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
     else
       dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+
+    if(params.htp_out)
+      dt_thr->scores(i) = dt_thr->stats(i) * sqrt( dt_thr->denum(i) );
 
     /*
     if(params.debug) {
@@ -1505,7 +1515,7 @@ std::string  print_sum_stats_line(int const& snp_index, int const& i, string con
   std::ostringstream buffer;
 
   if(params.htp_out) 
-    buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params);
+    buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i));
   else  
     buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1));
 
@@ -1692,7 +1702,7 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // mac
   if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
   // score test statistic 
-  if(score >= 0) infoCol.push_back( "SCORE=" + to_string(score) );
+  if(score != params->missing_value_double) infoCol.push_back( "SCORE=" + to_string(score) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
   // indicator for no beta printed (joint or vc tests)

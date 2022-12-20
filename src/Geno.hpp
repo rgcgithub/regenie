@@ -74,6 +74,7 @@ struct data_thread {
   Eigen::MatrixXd Gres;
   Eigen::ArrayXd Gmod;
   Eigen::ArrayXd denum;
+  Eigen::ArrayXd scores;
   Eigen::ArrayXd stats;
   Eigen::ArrayXd chisq_val;
   Eigen::ArrayXd pval_log;
