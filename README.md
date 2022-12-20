@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.2.4](https://github.com/rgcgithub/regenie/releases/tag/v3.2.4) (Relaxed the requirement on the minimum number of unique values for QTs to 3; Various bug fixes)
+
 [Version 3.2.3](https://github.com/rgcgithub/regenie/releases/tag/v3.2.3) (Address convergence issues in Firth regression; Various bug fixes)
 
 [Version 3.2.2](https://github.com/rgcgithub/regenie/releases/tag/v3.2.2) (New columns in sumstats file (N_CASES/N_CONTROLS) to output the number of cases/controls when using `--af-cc`; Various bug fixes)
