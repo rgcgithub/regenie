@@ -858,6 +858,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), GtWX(all, m_indices), XWsqrt, GWs * Jtmp, Wsqrt, phat, Y, mask, fest.cov_blup_offset, params))
           continue; // failed to correct with burden mask
       }
+      if(apply_correction) block_info->cf_burden(ph) = rfrac;
 
       // get eigen values of Zt(I-U)Z
       if(!get_ztz_evals(rfrac * Kmat(m_indices, m_indices), r_outer_sum, gamma1, gamma2, gamma3, skat_lambda_tol, debug)) continue;
@@ -1649,7 +1650,7 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
         std::ostringstream buffer;
 
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params);
+          buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params, params->missing_value_double, -1, ( (params->firth || params->use_SPA) && ((itr->first == "SKATO-ACAT") || (itr->first == "SKATO")) ) ? block_info->cf_burden(i): -1.0);
         else 
           buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, params->pheno_counts.row(i).sum(), params->pheno_counts(i, 0), params->pheno_counts(i, 1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
 

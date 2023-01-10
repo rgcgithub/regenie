@@ -75,6 +75,7 @@ struct data_thread {
   Eigen::ArrayXd Gmod;
   Eigen::ArrayXd denum;
   Eigen::ArrayXd scores;
+  Eigen::ArrayXd cal_factor;
   Eigen::ArrayXd stats;
   Eigen::ArrayXd chisq_val;
   Eigen::ArrayXd pval_log;
@@ -104,7 +105,7 @@ struct variant_block {
   bool ignored, flipped;
   double scale_fac, ac1, mac1, af1, info1, ns1;
   Eigen::ArrayXi ns, ns_case, ns_control, nmales;
-  Eigen::ArrayXd af, af_case, af_control, mac, info;
+  Eigen::ArrayXd af, af_case, af_control, mac, info, cf_burden;
   Eigen::MatrixXd genocounts;
   ArrayXb ignored_trait;
   ArrayXb test_fail;

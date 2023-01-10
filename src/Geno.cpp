@@ -2648,6 +2648,7 @@ void prep_snp_stats(variant_block* snp_data, struct param const* params){
   snp_data->af_control = ArrayXd::Zero(params->n_pheno);
   snp_data->mac = ArrayXd::Zero(params->n_pheno);
   snp_data->info = ArrayXd::Zero(params->n_pheno);
+  snp_data->cf_burden = ArrayXd::Constant(params->n_pheno, -1);
   snp_data->nmales = ArrayXi::Zero(params->n_pheno);
   snp_data->ns = ArrayXi::Zero(params->n_pheno);
   snp_data->ns_case = ArrayXi::Zero(params->n_pheno);
@@ -2672,6 +2673,7 @@ void initialize_thread_data(vector<data_thread>& all_snp_data, struct param cons
     snp_data->bhat = ArrayXd::Zero(params.n_pheno);
     snp_data->se_b = ArrayXd::Zero(params.n_pheno);
     snp_data->scores = ArrayXd::Zero(params.n_pheno);
+    snp_data->cal_factor = ArrayXd::Zero(params.n_pheno);
     if(params.trait_mode){
       snp_data->stats = ArrayXd::Zero(params.n_pheno);
       snp_data->denum = ArrayXd::Zero(params.n_pheno);
@@ -2686,6 +2688,7 @@ void reset_thread(data_thread* snp_data, struct param const& params){
     snp_data->bhat = 0;
     snp_data->se_b = 0;
     snp_data->scores = params.missing_value_double;
+    snp_data->cal_factor = -1;
     if(params.trait_mode){
       snp_data->stats = 0;
       snp_data->denum = 0;

@@ -1140,6 +1140,7 @@ void check_pval_snp(variant_block* block_info, data_thread* dt_thr, int const& c
   // if firth isn't used, or Tstat < threshold, no correction done
   if(!block_info->is_corrected(ph) || (fabs(dt_thr->stats(ph)) <= params.z_thr)){
     get_sumstats(false, ph, dt_thr);
+    dt_thr->cal_factor(ph) = 1;
     block_info->is_corrected(ph) = false;
     return;
   }
@@ -1171,6 +1172,9 @@ void check_pval_snp(variant_block* block_info, data_thread* dt_thr, int const& c
     dt_thr->bhat(ph) = sgn(dt_thr->stats(ph)) * sqrt(dt_thr->chisq_val(ph)) * dt_thr->se_b(ph);
 
   }
+
+  //if(params.debug) cerr << "uncorrected: " << dt_thr->stats(ph) * dt_thr->stats(ph) <<  "] -> " << dt_thr->chisq_val(ph) << endl;
+  dt_thr->cal_factor(ph) =  dt_thr->chisq_val(ph) == 0 ? 0 : dt_thr->stats(ph) * dt_thr->stats(ph) / dt_thr->chisq_val(ph);
 
 }
 
@@ -1515,7 +1519,7 @@ std::string  print_sum_stats_line(int const& snp_index, int const& i, string con
   std::ostringstream buffer;
 
   if(params.htp_out) 
-    buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i));
+    buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i), dt_thr->cal_factor(i));
   else  
     buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1));
 
@@ -1619,7 +1623,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 }
 
 
-std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXd>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score) {
+std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXd>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden) {
 
   std::ostringstream buffer;
   bool print_beta = test_pass && (se>=0);
@@ -1703,6 +1707,8 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
   // score test statistic 
   if(score != params->missing_value_double) infoCol.push_back( "SCORE=" + to_string(score) );
+  if(cal_factor != -1) infoCol.push_back( "CF=" + to_string(cal_factor) );
+  if(cal_factor_burden != -1) infoCol.push_back( "CF_BURDEN=" + to_string(cal_factor_burden) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
   // indicator for no beta printed (joint or vc tests)
