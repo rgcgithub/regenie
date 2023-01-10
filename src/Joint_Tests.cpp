@@ -178,6 +178,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
           compute_nnls(pheno_data->masked_indivs.col(ph), yres, (genep_all_sfx == "" ? "ALL" : genep_all_sfx));
         else reset_vals();
 
+        if( apply_single_p && genep_all_masks && valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg)) overall_p["SBAT"] = plog;
         if( ((apply_single_p && genep_all_masks) || !apply_single_p) && print_stats) // default output
           sum_stats_str[joint_tests_map["sbat"]][ph] = print_output(joint_tests_map["sbat"], genep_all_sfx, ph+1, chrom, block, pheno_name, params);
         if((apply_single_p && genep_all_masks) || (!apply_single_p && nnls_verbose_out)) {
@@ -190,11 +191,6 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
           if(run_tests && valid_pval(pval_nnls_neg)) get_pv(pval_nnls_neg);
           else reset_vals();
           if(print_stats) sum_stats_str[joint_tests_map["sbat_neg"]][ph] = print_output(joint_tests_map["sbat_neg"], genep_all_sfx, ph+1, chrom, block, pheno_name, params);
-        }
-
-        if( apply_single_p && genep_all_masks && valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg) ) {
-          get_pv(pval_nnls_pos);overall_p["SBAT_POS"] = plog;
-          get_pv(pval_nnls_neg);overall_p["SBAT_NEG"] = plog;
         }
       }
     }
@@ -609,13 +605,16 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     vector<double> acatv_acat, skato_acat;
     // get SKATO/ACATV p-values as well as top mask
     for(int imask = 0; imask < bs; imask++){
-      if(block_info[imask].skip_for_vc) continue; 
       mname = block_info[imask].mask_name;
+      if( (log10pv(imask) > max_logp) && (log10pv(imask) > 0) ){ // check strongest signal also in burden-only test
+        max_logp_mask = mname;
+        max_logp = log10pv(imask);
+      }
+      if(block_info[imask].skip_for_vc) continue; 
       for(auto const& extract_test : keep_tests)
         if(in_map(extract_test, block_info[imask].sum_stats_vc)){
           pv = block_info[imask].sum_stats_vc[extract_test](ph,1); 
           if(pv>=0){
-            overall_p[extract_test + "." + mname] = pv;
             if(pv>max_logp){
               max_logp_mask = mname;
               max_logp = pv;
@@ -630,6 +629,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       df_test = acatv_acat.size();
       ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
       get_pv( get_acat(pvals_arr) );
+      if(plog>=0) overall_p["ACATV-ACAT"] = plog;
       sum_stats_str[joint_tests_map["acatv_acat"]][ph] = print_gene_output(test_pfx + "ACATV-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
       reset_vals();
@@ -639,6 +639,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       df_test = acatv_acat.size();
       ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
       get_pv( get_acat(pvals_arr) );
+      if(plog>=0) overall_p["SKATO-ACAT"] = plog;
       sum_stats_str[joint_tests_map["skato_acat"]][ph] = print_gene_output(test_pfx + "SKATO-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
       reset_vals();
@@ -669,14 +670,18 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     // identify all the masks in the set
     for(int imask = 0; imask < bs; imask++){
       mname = block_info[imask].mask_name;
-      good_vars(imask) = in_map(mname, itr->second);
+      good_vars(imask) = in_map(mname, itr->second) && !block_info[imask].ignored && !block_info[imask].ignored_trait(ph) && !block_info[imask].test_fail(ph);
       if(!good_vars(imask)) continue;
+      //cerr << mname << ":" << log10pv(imask) << "\n";
+      if( get_top_mask && (log10pv(imask) > max_logp) && (log10pv(imask) > 0) ){ // check strongest signal also in burden-only test
+        max_logp_mask = mname;
+        max_logp = log10pv(imask);
+      }
       if(block_info[imask].skip_for_vc) continue; 
       for(auto const& extract_test : keep_tests)
         if( in_map(extract_test, block_info[imask].sum_stats_vc) ){
           pv = block_info[imask].sum_stats_vc[extract_test](ph,1); 
           if(pv>=0){
-            overall_p_set[extract_test + "." + mname] = pv;
             if(get_top_mask && (pv > max_logp)){
               max_logp_mask = mname;
               max_logp = pv;
@@ -688,29 +693,38 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     }
 
     if(good_vars.any()){
+      //cerr << itr->first << " " << good_vars.count() << "\n";
+
       // run acat
       compute_acat(bs, ph, block_info);
-      if(plog >= 0) {
-        overall_p_set["BURDEN-ACAT"] = plog;
-        sum_stats_str[joint_tests_map["acat" + itr->first]][ph].append(print_output(joint_tests_map["acat"], itr->first, ph+1, chrom, block, pheno_name, params));
-      }
+      if(plog >= 0) overall_p_set["BURDEN-ACAT"] = plog;
+      sum_stats_str[joint_tests_map["acat" + itr->first]][ph].append(print_output(joint_tests_map["acat"], itr->first, ph+1, chrom, block, pheno_name, params));
+
       // run nnls
       if( CHECK_BIT(test_list, joint_tests_map["sbat"]) ) {
         compute_qr_G(mask, gblock);
         compute_nnls(mask, yres, itr->first);
         if(valid_pval(pval_nnls_pos) && valid_pval(pval_nnls_neg)) {
+          overall_p_set["SBAT"] = plog;
           sum_stats_str[joint_tests_map["sbat" + itr->first]][ph] = print_output(joint_tests_map["sbat"], itr->first, ph+1, chrom, block, pheno_name, params);
-          get_pv(pval_nnls_pos);overall_p_set["SBAT_POS"] = plog;
+          get_pv(pval_nnls_pos);
           sum_stats_str[joint_tests_map["sbat_pos" + itr->first]][ph] = print_output(joint_tests_map["sbat_pos"], itr->first, ph+1, chrom, block, pheno_name, params);
-          get_pv(pval_nnls_neg);overall_p_set["SBAT_NEG"] = plog;
+          get_pv(pval_nnls_neg);
           sum_stats_str[joint_tests_map["sbat_neg" + itr->first]][ph] = print_output(joint_tests_map["sbat_neg"], itr->first, ph+1, chrom, block, pheno_name, params);
-        } 
+        } else if(!params->split_by_pheno) {
+          reset_vals();
+          sum_stats_str[joint_tests_map["sbat" + itr->first]][ph] = print_output(joint_tests_map["sbat"], itr->first, ph+1, chrom, block, pheno_name, params);
+          sum_stats_str[joint_tests_map["sbat_pos" + itr->first]][ph] = print_output(joint_tests_map["sbat_pos"], itr->first, ph+1, chrom, block, pheno_name, params);
+          sum_stats_str[joint_tests_map["sbat_neg" + itr->first]][ph] = print_output(joint_tests_map["sbat_neg"], itr->first, ph+1, chrom, block, pheno_name, params);
+        }
       }
+
       // compute acat for acatv & skato
       if(acatv_acat.size() > 0){
         df_test = acatv_acat.size();
         ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
         get_pv( get_acat(pvals_arr) );
+        if(plog>=0) overall_p_set["ACATV-ACAT"] = plog;
         sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       } else if(!params->split_by_pheno){
         reset_vals();
@@ -720,11 +734,13 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
         df_test = acatv_acat.size();
         ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
         get_pv( get_acat(pvals_arr) );
+        if(plog>=0) overall_p_set["SKATO-ACAT"] = plog;
         sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       } else if(!params->split_by_pheno){
         reset_vals();
         sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       }
+
       // apply acat to all p
       if(overall_p_set.size()>0){
         map_to_vec(df_test, overall_p_set, pvals_gene);
@@ -737,6 +753,15 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
 
     } else if(!params->split_by_pheno){
       reset_vals();
+      // print NA for all tests for that phenotype
+      sum_stats_str[joint_tests_map["acat" + itr->first]][ph].append(print_output(joint_tests_map["acat"], itr->first, ph+1, chrom, block, pheno_name, params));
+      if( CHECK_BIT(test_list, joint_tests_map["sbat"]) ) {
+          sum_stats_str[joint_tests_map["sbat" + itr->first]][ph] = print_output(joint_tests_map["sbat"], itr->first, ph+1, chrom, block, pheno_name, params);
+          sum_stats_str[joint_tests_map["sbat_pos" + itr->first]][ph] = print_output(joint_tests_map["sbat_pos"], itr->first, ph+1, chrom, block, pheno_name, params);
+          sum_stats_str[joint_tests_map["sbat_neg" + itr->first]][ph] = print_output(joint_tests_map["sbat_neg"], itr->first, ph+1, chrom, block, pheno_name, params);
+      }
+      sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
+      sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       sum_stats_str[joint_tests_map["gene_p" + itr->first]][ph] = print_gene_output("GENE_P_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
     }
   }
