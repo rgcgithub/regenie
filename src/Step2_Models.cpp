@@ -734,7 +734,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 
     // stopping criterion using modified score function
     // edit 5.31.12 for edge cases with approx Firth
-    if( (mod_score.abs().maxCoeff() < tol) && !((niter_cur < 2) && (nc == 1)) ) break;
+    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) break;
 
     // force absolute step size to be less than maxstep for each entry of beta
     mx = step_size.abs().maxCoeff() / maxstep_firth;
@@ -843,7 +843,7 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
     // stopping criterion using modified score function
     // edit 5.31.12 for edge cases with approx Firth
-    if( (mod_score.abs().maxCoeff() < tol) && !((niter_cur < 2) && (nc == 1)) ) break;
+    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) break;
     if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << mod_score.abs().maxCoeff() << "\n";
 
     // fit unpenalized logistic on transformed Y
