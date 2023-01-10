@@ -602,7 +602,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
   int maxstep = null_fit ? params->maxstep_null : params->maxstep;
   int niter = null_fit ? params->niter_max_firth_null : params->niter_max_firth;
   double tol = null_fit ? (10*params->numtol) : params->numtol_firth;
-  double dev, lrt;
+  double dev, lrt, dev0 = 0;
 
   ArrayXd betaold, se, etavec, pivec, offset;
   MatrixXd Xmat;
@@ -646,13 +646,21 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
     else betaold = dt_thr->beta_null_firth.col(0);
   }
 
-  success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter, tol, params);
+  success = fit_firth_pseudo(dev0, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter/2, tol, params); // try pseudo
 
   // If didn't converge
   if(!success){
-    if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge!\n";
-    block_info->test_fail(ph) = true;
-    return ;
+    if(!null_fit) { // reset beta
+      if(params->firth_approx) betaold = ArrayXd::Zero(col_incl); 
+      else betaold = dt_thr->beta_null_firth.col(0);
+    }
+    success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter/2, tol, params); // try NR (slower)
+
+    if(!success){
+      if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge!\n";
+      block_info->test_fail(ph) = true;
+      return ;
+    }
   }
   // sout << "\nNiter = " << niter_cur << " : " << mod_score.matrix().transpose() << endl;
 
