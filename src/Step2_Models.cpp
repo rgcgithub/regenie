@@ -852,12 +852,12 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
       // p*(1-p) and check for zeroes
       if( get_wvec(pivec, wvec, mask, params->numtol_eps) )
         return false;
-      XtW = X1.transpose() * mask.select(wvec,0).matrix().asDiagonal();
-      XtWX = XtW * X1;
+      XtW = X1.leftCols(cols_incl).transpose() * mask.select(wvec,0).matrix().asDiagonal();
+      XtWX = XtW * X1.leftCols(cols_incl);
       // working vector z = X*beta + (Y-p)/(p*(1-p))
       zvec = mask.select(etavec - offset + (ystar - pivec) / wvec, 0);
       // parameter estimate
-      betanew = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
+      betanew.head(cols_incl) = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
       // start step-halving
       for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
         get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
@@ -866,9 +866,10 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
         betanew = (betavec + betanew) / 2;
       }
       if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
-      score = X1.transpose() * mask.select(ystar - pivec, 0).matrix();
+      score = X1.leftCols(cols_incl).transpose() * mask.select(ystar - pivec, 0).matrix();
       // stopping criterion
       if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
+      //if(params->debug) cerr << "[.-" << niter_log <<setprecision(16) << "] score.max=" << score.abs().maxCoeff() << "\n";
       betavec = betanew;
     }
     if( niter_log > params->niter_max ) return false;
