@@ -1118,7 +1118,12 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
   ArrayXd betaold, se, etavec, pivec;
   betaold = ArrayXd::Zero(1); // start at 0
 
-  fail = !fit_firth_nr(dev0, Y, Gvec, offset, mask, pivec, etavec, betaold, se, 1, dev, true, lrt, params.maxstep, params.niter_max_firth, params.numtol_firth, &params);
+  fail = !fit_firth_pseudo(dev0, Y, Gvec, offset, mask, pivec, etavec, betaold, se, 1, dev, true, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params);
+
+  if(!fail) return;
+
+  betaold = 0; // start at 0
+  fail = !fit_firth_nr(dev0, Y, Gvec, offset, mask, pivec, etavec, betaold, se, 1, dev, true, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params);
 
 }
 
