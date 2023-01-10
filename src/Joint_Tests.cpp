@@ -283,7 +283,7 @@ double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<cons
 
   // if single pval, return pval
   if(logpvals.size() == 1) {
-    if(logpvals(0) >= 0) return pow(10, -logpvals(0));
+    if((logpvals(0) >= 0) && (weights(0) != 0)) return pow(10, -logpvals(0));
     else return -1;
   }
 
@@ -1065,6 +1065,7 @@ void JTests::reset_vals(){
 
 void JTests::get_pv(const double& pv){
 
+  if(pv < 0) {reset_vals(); return;}
   chi_squared chisq(1);
 
   pval = max(nl_dbl_dmin, pv); // to prevent underflow
