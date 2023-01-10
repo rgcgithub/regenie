@@ -278,7 +278,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--niter`| INT| Optional| maximum number of iterations for logistic regression [default is 30]|
 |`--maxstep-null`| INT| Optional| maximum step size for logistic model with Firth penalty under the null [default is 25]|
 |`--maxiter-null`| INT| Optional| maximum number of iterations for logistic model with Firth penalty under the null [default is 1000]|
-|`--par-region` | STRING | Optional | specify build code to determine bounds for PAR1/PAR2 regions (can be 'b36/b37/b38/hg18/hg19/hg38' or 'start,end' bp bounds of non-PAR region) [default=hg38]|
+|`--par-region` | STRING | Optional | specify build code to determine bounds for PAR1/PAR2 regions (can be 'b36/b37/b38/hg18/hg19/hg38' or 'start,end' bp bounds of non-PAR region) [default is hg38]|
 |`--force-qt`| FLAG | Optional | force QT run for binary traits|
 |`--threads`| INT | Optional| number of computational threads to use [default=all-1]|
 |`--debug`| FLAG | Optional | debug flag (for use by developers)|
