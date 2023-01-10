@@ -473,7 +473,11 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
 
   // pvalue
   if(valid_pval(pval_min2)) {
-    pval_min2 = min(1.0, 2 * pval_min2); // apply bonferroni correction
+    //if(apply_single_p) { // compute pval_min2 using ACAT
+      ArrayXd nnls_lpvs(2); 
+      nnls_lpvs << -log10(pval_nnls_pos), -log10(pval_nnls_neg);
+      pval_min2 = get_acat(nnls_lpvs); 
+    //} else pval_min2 = min(1.0, 2 * pval_min2); // apply bonferroni correction
     get_pv( pval_min2 );
   }
   else reset_vals();
