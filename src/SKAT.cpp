@@ -1080,23 +1080,19 @@ void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, const
     MatrixXd Gres = - XWsqrt * GtWX.col(i); // get genotypic residuals
     Gres += GWs.col(i);
 
-    // use SPA by default
-    run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
-    //cerr << "wSPA\n" ;
-
-    // use firth as fallback if spa failed 
-    // remove skat weights as it can lead to different model fit for ur masks
-    if(params.firth && test_fail){
+    if(params.use_SPA){ // SPA
+      run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
+    } else if(params.firth) { // Firth
+      // remove skat weights as it can lead to different model fit for ur masks
       apply_firth_snp(test_fail, chisq, Gres.cwiseQuotient(Wsqrt.matrix()) / weights(i), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
-      //cerr << "wFirth\n" ;
     }
-
-    //if(params.debug) cerr << "uncorrected: " << tstat_cur * tstat_cur << " [=(" << score_stats(i) << ")^2/" << var_score(i) << "] -> " << chisq << endl;
 
     if( test_fail || (chisq == 0) ) { // set R to 0 for variant
       Rvec(i) = 0;
       continue;
     }
+
+    if(params.debug) cerr << "uncorrected: " << tstat_cur * tstat_cur << " [=(" << score_stats(i) << ")^2/" << var_score(i) << "] -> " << chisq << endl;
 
     corrected_var = score_stats(i) * score_stats(i) / chisq;
     Rvec(i) = sqrt(corrected_var / var_score(i));
@@ -1142,13 +1138,13 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
   // get residuals for burden mask
   VectorXd g_res = GWs * VectorXd::Ones(GWs.cols()) - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
 
-  // use SPA by default
-  run_SPA_test_snp(chisq, pv, tstat_cur, var_qb, false, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
-  /*if(params.debug && !test_fail)
-    cerr << "SPA // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
-    ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
+  if( params.use_SPA ){ // use SPA
+    run_SPA_test_snp(chisq, pv, tstat_cur, var_qb, false, g_burden, g_res.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
+    /*if(params.debug && !test_fail)
+      cerr << "SPA // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
+      ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
 
-  if( test_fail && params.firth ){ // use firth as fallback if spa failed
+  } else if( params.firth ){ // use firth
     apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, offset.col(ph).array(), mask, params);
     /*if(params.debug && !test_fail)
       cerr << "Firth // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
