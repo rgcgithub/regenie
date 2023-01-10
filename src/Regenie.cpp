@@ -920,6 +920,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: option --no-split does not work with --sbat-verbose.\n";
       params->split_by_pheno = true; valid_args[ "no-split" ] = false;
     }
+    if( vm.count("no-split") && vm.count("htp")){
+      sout << "WARNING: option --no-split cannot be used with --htp and will be ignored.\n";
+      valid_args[ "no-split" ] = false;
+    }
     if( (!params->test_mode || (params->trait_mode!=1) || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";
       params->af_cc = false; valid_args[ "af-cc" ] = false;
