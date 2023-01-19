@@ -460,9 +460,6 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
   } else  // run the NNLS test: model fitting and inference
     nnls.run(y_tmp, Gtmp, df_ur);
 
-  if (nnls_mt_weights && !nnls_weights[input_class][Gtmp.cols()-1].size() ) // store weights used
-    nnls_weights[input_class][Gtmp.cols()-1] = nnls.wts;
-
   // get the final p-value = min(NNLS with b>=0, NNLS with b<=0)
   // -1 value means that NNLS failed; check the error message
   pval_min2 = nnls.pval_min2; 
@@ -471,46 +468,52 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
   pval_nnls_pos = nnls.fit_pos.pval;
   pval_nnls_neg = nnls.fit_neg.pval;
 
-  // pvalue
   if(valid_pval(pval_min2)) {
+
+    // store wts
+    if (nnls_mt_weights && !nnls_weights[input_class][Gtmp.cols()-1].size() ) // store weights used
+      nnls_weights[input_class][Gtmp.cols()-1] = nnls.wts;
+
+    // pvalue
     //if(apply_single_p) { // compute pval_min2 using ACAT
-      ArrayXd nnls_lpvs(2); 
-      nnls_lpvs << -log10(pval_nnls_pos), -log10(pval_nnls_neg);
-      pval_min2 = get_acat(nnls_lpvs); 
+    ArrayXd nnls_lpvs(2); 
+    nnls_lpvs << -log10(pval_nnls_pos), -log10(pval_nnls_neg);
+    pval_min2 = get_acat(nnls_lpvs); 
     //} else pval_min2 = min(1.0, 2 * pval_min2); // apply bonferroni correction
     get_pv( pval_min2 );
-  }
-  else reset_vals();
 
-  // print extra NNLS information if requested
-  if(nnls_verbose_out) {
-    string fname = out_file_prefix + "_sbat.info";
-    ofstream file_info(fname, std::ios_base::out | std::ios_base::app);
-    
-    // v1: tabular format
-    // variant results per line
-    for(int i = 0; i < df_test; i++) {
-      unsigned int k = indices_vars[i]; 
-      file_info << input_class << " "; // to accomodate for gene_p classes
-      file_info << variant_names[k] << " "; // variant ID
-      file_info << nnls.str_sel_i(i) << " "; // NNLS selection status
-      file_info << nnls.str_bhat_i(i) << " "; // NNLS beta
-      file_info << nnls.bhat_ols[i] << "\n"; // OLS beta
-    }
-    
-    
-    // v2: non-tabular format
-    /* // write line with variant names */
-    /* for(unsigned int i = 0; i < df_test; i++) { */
-    /*   file_info << variant_names[ indices_vars[i] ] << " "; */
-    /* } */
-    /* file_info << endl; */
-    
-    /* // write nnls info */ 
-    /* file_info << nnls.str_info(); */
+    // print extra NNLS information if requested
+    if(nnls_verbose_out) {
+      string fname = out_file_prefix + "_sbat.info";
+      ofstream file_info(fname, std::ios_base::out | std::ios_base::app);
 
-    file_info.close();
-  } 
+      // v1: tabular format
+      // variant results per line
+      for(int i = 0; i < df_test; i++) {
+        unsigned int k = indices_vars[i]; 
+        file_info << input_class << " "; // to accomodate for gene_p classes
+        file_info << variant_names[k] << " "; // variant ID
+        file_info << nnls.str_sel_i(i) << " "; // NNLS selection status
+        file_info << nnls.str_bhat_i(i) << " "; // NNLS beta
+        file_info << nnls.bhat_ols[i] << "\n"; // OLS beta
+      }
+
+
+      // v2: non-tabular format
+      /* // write line with variant names */
+      /* for(unsigned int i = 0; i < df_test; i++) { */
+      /*   file_info << variant_names[ indices_vars[i] ] << " "; */
+      /* } */
+      /* file_info << endl; */
+
+      /* // write nnls info */ 
+      /* file_info << nnls.str_info(); */
+
+      file_info.close();
+    } 
+
+  } else reset_vals();
+
 }
 
 void JTests::compute_gates(const int& ph, const std::vector<variant_block>& block_info){
