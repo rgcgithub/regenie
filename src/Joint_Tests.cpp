@@ -640,7 +640,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       sum_stats_str[joint_tests_map["acatv_acat"]][ph] = print_gene_output(test_pfx + "ACATV-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     }
     if(skato_acat.size() > 0){
-      df_test = acatv_acat.size();
+      df_test = skato_acat.size();
       ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
       get_pv( get_acat(pvals_arr) );
       if(plog>=0) overall_p["SKATO-ACAT"] = plog;
@@ -670,11 +670,13 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     max_logp_mask = "";
     bool get_top_mask = itr->second.size() > 1;
     vector<double> acatv_acat, skato_acat;
+    if(params->debug) cerr << itr->first << ":\n";
 
     // identify all the masks in the set
     for(int imask = 0; imask < bs; imask++){
       mname = block_info[imask].mask_name;
       good_vars(imask) = in_map(mname, itr->second) && !block_info[imask].ignored && !block_info[imask].ignored_trait(ph) && !block_info[imask].test_fail(ph);
+      //if(params->debug) cerr << mname << " " << std::boolalpha << in_map(mname, itr->second) << " && " << (!block_info[imask].ignored && !block_info[imask].ignored_trait(ph) && !block_info[imask].test_fail(ph)) << " -> " << good_vars(imask) << "\n";
       if(!good_vars(imask)) continue;
       //cerr << mname << ":" << log10pv(imask) << "\n";
       if( get_top_mask && (log10pv(imask) > max_logp) && (log10pv(imask) > 0) ){ // check strongest signal also in burden-only test
@@ -697,7 +699,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     }
 
     if(good_vars.any()){
-      //cerr << itr->first << " " << good_vars.count() << "\n";
+      if(params->debug) cerr << "M=" << good_vars.count() << "\n";
 
       // run acat
       compute_acat(bs, ph, block_info);
@@ -735,7 +737,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
         sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       }
       if(skato_acat.size() > 0){
-        df_test = acatv_acat.size();
+        df_test = skato_acat.size();
         ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
         get_pv( get_acat(pvals_arr) );
         if(plog>=0) overall_p_set["SKATO-ACAT"] = plog;

@@ -677,14 +677,19 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         else throw "unrecognized VC test: '" + tmp_str_vec[i] + "' (accepted=skat/skato/skato-acat/acatv/acato)";
     }
     if( vm.count("rgc-gene-p") && vm.count("anno-file") && vm.count("mask-def") ) {
-        params->apply_gene_pval_strategy = params->joint_test = true;
-        if(!vm.count("vc-maxAAF")) params->vc_maxAAF = 0.01;
-        if(params->burden != "") params->burden.append(",");
-        params->burden.append("acat");
-        if(!params->trait_mode && !vm.count("skip-sbat")) params->burden.append(",sbat");
+      params->apply_gene_pval_strategy = params->joint_test = true;
+      if(!vm.count("vc-maxAAF")) params->vc_maxAAF = 0.01;
+      if(params->burden != "") params->burden.append(",");
+      params->burden.append("acat");
+      if(!params->trait_mode && !vm.count("skip-sbat")) params->burden.append(",sbat");
+      if(params->test_type == 0){
         BIT_SET(params->vc_test, params->vc_tests_map["acatv"]);
         BIT_SET(params->vc_test, params->vc_tests_map["skato-acat"]);
-        if(vm.count("rgc-gene-def")) check_file (params->genep_mask_sets_file, "rgc-gene-def");
+      } else {
+        sout << "WARNING: SKATO/ACATV will be skipped for non-additive tests.\n";
+        params->vc_test = 0;
+      }
+      if(vm.count("rgc-gene-def")) check_file (params->genep_mask_sets_file, "rgc-gene-def");
     } else if(vm.count("rgc-gene-p") || vm.count("rgc-gene-def")) {
       valid_args[ "rgc-gene-p" ] = false; // option is ignored
       valid_args[ "rgc-gene-def" ] = false; // option is ignored
@@ -791,7 +796,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "must specify sample file (using --sample) if writing sample IDs to file.";
 
     if( !params->getCorMat && params->joint_test ){
-      if( vm.count("test") ) 
+      if( vm.count("test") && !vm.count("rgc-gene-p")) 
         throw "cannot use --test with --joint.";
       else if ( vm.count("sbat-napprox") && params->nnls_napprox < 1 )
         throw "must pass positive integer for --sbat-napprox.";

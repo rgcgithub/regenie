@@ -695,10 +695,10 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
 
       // store mask in G
       gblock->Gmat.col(k) = Gtmp.col(index_start);
+      all_snps_info[index_start].mask_name = masks[i].name;
       if(w_vc_tests) {
         all_snps_info[index_start].col_jmat_skat = index_start;
         all_snps_info[index_start].skip_for_vc = (j == 0) || ( aafs(j-1) != vc_aaf );
-        all_snps_info[index_start].mask_name = masks[i].name;
       }
       tmp_snp_info.push_back(all_snps_info[index_start]);
       k++;
