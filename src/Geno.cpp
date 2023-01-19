@@ -3446,7 +3446,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
 void read_aafs(const double tol, const struct in_files* files, struct filter* filters, vector<snp>& snpinfo, bool const& wSingletons, mstream& sout) {
 
-  int lineread = 0, id_col = 0, aaf_col = 1, singleton_col = -1;
+  int lineread = 0, id_col = 0, aaf_col = 1, singleton_col = -1, npass = 0;
   float aaf;
   uint32_t snp_pos, ncols_min = 2;
   std::vector< string > tmp_str_vec ;
@@ -3481,6 +3481,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
       aaf = stof( tmp_str_vec[aaf_col] );
       snpinfo[ snp_pos ].aaf = aaf;
       if(wSingletons) snpinfo[ snp_pos ].force_singleton = check_singleton_column( tmp_str_vec[singleton_col] );
+      npass++;
     }
   }
   lineread++;
@@ -3512,10 +3513,12 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     snpinfo[ snp_pos ].aaf = aaf;
     if(wSingletons) snpinfo[ snp_pos ].force_singleton = check_singleton_column( tmp_str_vec[singleton_col] );
 
+    npass++;
     lineread++;
   }
 
   myfile.closeFile();
+  if( !npass ) throw "could not process any variant in the AAF file";
 
 }
 
