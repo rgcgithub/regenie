@@ -529,11 +529,10 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
   // check all covariates specified are in the file
   params->n_cov = keep_cols.count(); 
-  if( (int)filters->cov_colKeep_names.size() != params->n_cov ) 
-    throw "not all covariates specified are found in the covariate file.";
-
   if(params->w_interaction && !params->interaction_snp && !params->interaction_prs && (np_inter != 1))
     throw "cannot find the interaction covariate specified in the covariate file.";
+  if( (int)filters->cov_colKeep_names.size() != params->n_cov ) 
+    throw "not all covariates specified are found in the covariate file.";
 
   // check #covariates is > 0
   if(params->n_cov < 1){ // only intercept will be included
