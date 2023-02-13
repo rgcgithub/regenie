@@ -1108,7 +1108,7 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
     // apply masking to snps
    if( params->keep_snps ) {
       sout << "   -keeping variants specified by --extract\n";
-      if(params->cormat_force_vars) geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, params, sout);
+      if(params->cormat_force_vars && (params->ld_list_file == "")) geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, params, sout);
       else geno_mask_keep = check_in_map_from_files(filters->snpID_to_ind, files->file_snps_include, sout);
     }
     if( params->rm_snps ) {
@@ -1166,6 +1166,9 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
     tmp_v[0] = files->chr_counts[i-1];
     chr_map[ i ] = tmp_v;
   }
+
+  if(params->getCorMat)
+    check_ld_list(filters->snpID_to_ind, files, params, sout);
 
   // with OR
   check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
@@ -1299,7 +1302,6 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
 
       if( in_map(tmp_str_vec[0], map_ID) )
         mask( map_ID[ tmp_str_vec[0] ] ) = true;
-      else params->forced_in_snps.push_back(tmp_str_vec[0]);
 
       params->extract_vars_order[ tmp_str_vec[0] ] = lineread++;
     }
@@ -1370,6 +1372,57 @@ ArrayXb check_in_map_from_files_IDs(vector<string> const& file_list, struct para
 
 }
 
+void check_ld_list(map <string, uint32_t>& map_ID, struct in_files* files, struct param* params, mstream& sout) {
+
+  if(params->ld_list_file == "") {
+    if(params->extract_vars_order.size() == 0) // use all genotyped variants
+      params->extract_vars_order = map_ID; 
+    map<string, uint32_t >::iterator itr;
+    for (itr = params->extract_vars_order.begin(); itr != params->extract_vars_order.end(); ++itr) 
+      if(in_map(itr->first, map_ID))
+        params->ld_sv_offsets.push_back( map_ID[ itr->first ] );
+    return;
+  }
+
+  string line;
+  std::vector< string > tmp_str_vec, set_keep_names;
+  Files myfile;
+
+  myfile.openForRead (params->ld_list_file, sout);
+
+  while( myfile.readLine(line) ){
+    tmp_str_vec = string_split(line,"\t ");
+
+    if( tmp_str_vec.size() < 2 )
+      throw "incorrectly formatted file (fewer than 2 entries)";
+
+    if( in_map(tmp_str_vec[1], params->extract_vars_order) ) 
+      continue; // ignore duplicates
+
+    if(tmp_str_vec[0] == "sv"){ // single variant
+
+      // check if in geno file & if so, store index
+      if( in_map(tmp_str_vec[1], map_ID) ) 
+        params->ld_sv_offsets.push_back( map_ID[ tmp_str_vec[1] ] );
+
+    } else if(tmp_str_vec[0] == "mask"){ // mask
+
+      if( tmp_str_vec.size() < 3 )
+        throw "incorrectly formatted file (fewer than 3 entries)";
+      // store gene name for extraction
+      set_keep_names.push_back( tmp_str_vec[2] );
+
+    } else throw "unrecognized entry in first column (=" + tmp_str_vec[0] + "). Should be sv/mask";
+
+    params->extract_vars_order[ tmp_str_vec[1] ] = params->extract_vars_order.size();
+  }
+
+  params->keep_sets = params->set_select_list = set_keep_names.size() > 0;
+  if(params->keep_sets)
+    files->file_sets_include = {print_csv(set_keep_names)};
+
+  myfile.closeFile();
+}
 
 // only used in step 1
 void get_G(const int& block, const int& bs, const int& chrom, const uint32_t& snpcount, vector<snp> const& snpinfo, struct param const* params, struct in_files* files, struct geno_block* gblock, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, mstream& sout){
@@ -2921,6 +2974,7 @@ void check_res_geno(int const& isnp, int const& thread_num, variant_block* snp_d
 
     // already computed
     gblock->Gmat.col(isnp) = Gres.col(isnp);
+    if(params.skip_scaleG) return; // don't scale
 
     // scale
     snp_data->scale_fac = Gres.col(isnp).norm();

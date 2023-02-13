@@ -125,7 +125,8 @@ void Data::run_step2(){
   // allocate per thread if using OpenMP
   Gblock.thread_data.resize(params.neff_threads);
 
-  if( params.snp_set ) test_joint();
+  if(params.getCorMat) ld_comp();
+  else if( params.snp_set ) test_joint();
   else if (params.trait_set) test_multitrait();
   else test_snps_fast();
 
@@ -154,7 +155,7 @@ void Data::file_read_initialization() {
   else prep_bgen(&files, &params, &in_filters, snpinfo, chr_map, Gblock.bgen, sout);
 
   params.nvs_stored = snpinfo.size();
-  if(params.getCorMat) params.block_size = params.n_variants;
+  //if(params.getCorMat) params.block_size = params.n_variants;
 
   if(!params.test_mode && !params.force_run && ((int)params.nvs_stored > params.max_step1_variants))
     throw "it is not recommened to use more than " + to_string( params.max_step1_variants ) + 
@@ -1795,16 +1796,17 @@ void Data::setup_output(Files* ofile, string& out, std::vector<std::shared_ptr<F
     if(params.cor_out_txt){
       sout << " * computing correlation matrix\n  + output to text file ["<<out<<"]\n";
       ofile->openForWrite(out, sout);
+      if(params.skip_scaleG) (*ofile) << params.extract_vars_order.size() << " " << params.n_samples << "\n";
     } else {
       sout << " * computing correlation matrix (storing R^2 values)\n  + output to binary file ["<<out<<"]\n";
       ofile->openMode(out, std::ios_base::out | std::ios_base::binary, sout);
       ArrayXi vals(2);
-      vals << params.n_samples , params.n_variants + params.forced_in_snps.size();
+      vals << params.n_samples, params.extract_vars_order.size();
       //cerr << vals << endl;
       ofile->writeBinMode(vals, sout);
     }
-    if(!params.cormat_force_vars) sout << "  + list of snps written to [" << out << ".snplist]\n";
-    sout << "  + n_snps = " << params.n_variants + params.forced_in_snps.size() <<"\n\n";
+    sout << "  + list of snps written to [" << out << ".snplist]\n";
+    sout << "  + n_snps = " << params.extract_vars_order.size() <<"\n\n";
     return;
   }
 
@@ -1922,142 +1924,6 @@ void Data::print_test_info(){
 
 }
 
-void Data::print_cor(int const& bs, vector<variant_block> const& all_snps_info, Files* ofile){
-
-  int bits = 16; // break [0,1] into 2^bits intervals
-  double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
-  ArrayXi indices;
-
-  // get LD matrix
-  sout << "   -computing LD matrix..." << flush;
-  auto t1 = std::chrono::high_resolution_clock::now();
-
-  write_snplist(bs, indices, all_snps_info);
-
-  MatrixXd LDmat = (Gblock.Gmat.transpose() * Gblock.Gmat) / (params.n_samples - params.ncov);
-
-  // take care of variants with low variance
-  for(int snp = 0; snp < bs; snp++) {
-    if(all_snps_info[snp].ignored){
-      // row to 0
-      LDmat.row(snp).array() = 0;
-      // col to 0
-      LDmat.col(snp).array() = 0;
-      // diagonal to 1
-      LDmat(snp, snp) = 1;
-    } 
-  }
-
-  if(params.forced_in_snps.size() > 0){ // add additional columns & rows for these SNPs
-    int n_add = params.forced_in_snps.size();
-    LDmat.conservativeResize(LDmat.rows() + n_add, LDmat.cols() + n_add);
-    LDmat.bottomRows(n_add).array() = 0;
-    LDmat.rightCols(n_add).array() = 0;
-    LDmat.diagonal().tail(n_add).array() = 1;
-  }
-
-  sout << "done";
-  auto t2 = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
-  sout << " (" << duration.count() << "ms)\n   -writing to file..." << flush;
-
-
-  // print corr
-  if(params.cor_out_txt){
-
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    (*ofile) << LDmat(indices, indices).format(Fmt);
-    ofile->closeFile();
-
-  } else {
-
-    ArrayXt vals;
-    vals.resize( (LDmat.rows() * (LDmat.rows() - 1)) / 2 ); // m choose 2
-
-    for(int i = 0, k = 0; i < LDmat.rows(); i++)
-      for(int j = i+1; j < LDmat.cols(); j++)
-        vals(k++) = LDmat(indices(i),indices(j)) * LDmat(indices(i),indices(j)) * mult + 0.5; // round to nearest integer
-
-    //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
-     // vals.head(5) << "\n-->" << vals.size() << endl;
-
-    ofile->writeBinMode(vals, sout);
-    ofile->closeFile();
-  }
-
-  sout << "done";
-  t1 = std::chrono::high_resolution_clock::now();
-  duration = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t2);
-  sout << " (" << duration.count() << "ms) "<< endl;
-
-  exit_early();
-
-}
-
-/// When computing & outputting LD info
-// write list of variants used to compute LD
-void Data::write_snplist(int const& bs, ArrayXi& indices, vector<variant_block> const& all_snps_info){
-
-  int n_low_var = 0;
-  string const out = files.out_file + ".corr.snplist";
-  string const out_reject = files.out_file + ".corr.lowVar";
-  std::ostringstream buffer, buffer_reject;
-  Files ofile;
-
-  if(params.cormat_force_vars){ // no need to print snplist file
-
-    Eigen::Array<std::string,Eigen::Dynamic,1> ID_sorted (bs + params.forced_in_snps.size());
-    indices.resize( params.extract_vars_order.size() );
-    for(int snp = 0; snp < bs; snp++){
-      if(all_snps_info[snp].ignored){
-        buffer_reject << snpinfo[snp].ID << endl;
-        n_low_var++;
-      } 
-      indices( params.extract_vars_order[snpinfo[snp].ID] ) = snp;
-      ID_sorted( snp ) = snpinfo[snp].ID;
-    }
-
-    if(params.forced_in_snps.size() > 0){
-      for(size_t snp = 0; snp < params.forced_in_snps.size(); snp++) {
-        indices( params.extract_vars_order[params.forced_in_snps[snp]] ) = snp + bs;
-        ID_sorted( snp + bs ) = params.forced_in_snps[snp];
-      }
-    }
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    buffer << ID_sorted(indices).format(Fmt) << endl;
-
-  } else {
-
-    indices = ArrayXi::LinSpaced(bs, 0, bs);
-    for(int snp = 0; snp < bs; snp++) {
-      if(all_snps_info[snp].ignored){
-        buffer_reject << snpinfo[snp].ID << endl;
-        n_low_var++;
-      } 
-      buffer << snpinfo[snp].ID << endl;
-    }
-
-  }
-
-  // write SNP list
-  ofile.openForWrite(out, sout);
-  ofile << buffer.str();
-  ofile.closeFile();
-
-  if(n_low_var > 0){
-    // write SNP list to ignore
-    ofile.openForWrite(out_reject, sout);
-    ofile << buffer_reject.str();
-    ofile.closeFile();
-
-    sout << "WARNING: " << n_low_var << " SNPs with low variance are present (use '--exclude " + out_reject + "' to ignore them)." <<
-      " These will be kept in the LD matrix (correlations will be set to 0)\n";
-  }
-
-}
-
-
-
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -2094,8 +1960,8 @@ void Data::set_blocks_for_testing() {
   }
   chr_map = m1;
 
-  if(params.getCorMat && (nchr > 1 || params.n_variants < 2))
-    throw "can only compute LD matrix for a single chromosome (use --chr/--chrList/--range) and >=2 variants.";
+  if(params.getCorMat && (nchr > 1))
+    throw "can only compute LD matrix for a single chromosome (use --chr/--chrList/--range).";
 
   // summarize block sizes
   sout << left << std::setw(20) << " * # threads" << ": [" << params.threads << "]\n";
@@ -2235,9 +2101,6 @@ void Data::test_snps_fast() {
 
       // read SNP, impute missing & compute association test statistic
       analyze_block(chrom, bs, &snp_tally, block_info);
-
-      if(params.getCorMat) print_cor(bs, block_info, &ofile);
-      
 
       // print the results
       for (auto const& snp_data : block_info){
@@ -3341,3 +3204,307 @@ void Data::prep_multitrait()
   mt.Neff = pheno_data.Neff;
 }
 
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////    for LD computation
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+void Data::ld_comp() {
+
+  sout << "LD computation";
+
+  string out;
+  vector < string > out_split, tmp_str;
+  // output files
+  Files ofile;
+  // use pointer to class since it contains non-copyable elements
+  vector < std::shared_ptr<Files> > ofile_split;
+
+  // set some parameters
+  if( params.build_mask ) bm.prep_run(params, files);
+
+#if defined(_OPENMP)
+  sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
+#endif
+  sout << endl;
+
+  file_read_initialization(); // set up files for reading
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, &Gblock, sout);   // read phenotype and covariate files
+  prep_run(&files, &in_filters, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
+  if(params.build_mask)
+    set_groups_for_testing();   // set groups of snps to test jointly
+  else
+    set_blocks_for_testing();   // set number of blocks
+  print_usage_info(&params, &files, sout);
+  print_test_info();
+  setup_output(&ofile, out, ofile_split, out_split); // result file
+  sout << endl;
+
+  // start analyzing each chromosome
+  initialize_thread_data(Gblock.thread_data, params);
+  params.ld_n = params.extract_vars_order.size();
+  SpMat full_mat(params.n_samples, params.ld_n);
+  ArrayXb ld_var_absent = ArrayXb::Constant(params.ld_n, true);
+  map<string, int> colnames_full_mat;// to track id of cols in full_mat
+  ArrayXi indices_ld(params.ld_n);
+
+  // read in SVs
+  get_G_svs(full_mat, ld_var_absent, colnames_full_mat);
+  
+  // read in masks
+  if(params.build_mask) get_G_masks(full_mat, ld_var_absent, colnames_full_mat);
+
+  // to set columns of LD mat in right order 
+  get_G_indices(indices_ld, colnames_full_mat);
+
+  // compute LD matrix
+  print_cor(full_mat, indices_ld, ld_var_absent, &ofile);
+
+}
+
+void Data::get_G_svs(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
+
+  int n_snps = params.ld_sv_offsets.size();
+  if( n_snps == 0) return;
+
+  bool last_chunk = false;
+  int nchunks, bsize, chrom, nvar_read = 0; 
+  vector< vector < uchar > > snp_data_blocks;
+  vector<variant_block> all_snps_info;
+  vector< uint32_t > insize, outsize;
+
+  // read in variants in chunks storing as sparse matrix
+  nchunks = ceil( n_snps * 1.0 / params.block_size );
+  sout << "** reading in single variant genotypes **\n  + " << n_snps << " variants in total split across " << nchunks << " blocks\n";
+  MeasureTime mt, mt_chunk;
+  mt.start_ms();
+  if(params.debug) cerr << print_mem() << "...";
+
+  // do it in chunks to reduce memory usage when reading as dense
+  bsize = params.block_size; // default number of SNPs to read at a time
+  allocate_mat(Gblock.Gmat, params.n_samples, bsize);
+  all_snps_info.resize(bsize);
+  chrom = snpinfo[ params.ld_sv_offsets[0] ].chrom;
+
+  for(int i = 0; i < nchunks; i++){
+
+    sout << "  block [" << i + 1 << "/" << nchunks << "] : reading in genotypes..." << flush;
+    mt_chunk.start_ms();
+
+    last_chunk = ( i == (nchunks-1) );
+    if( last_chunk ) {
+      bsize = n_snps - i * bsize;// use remainder number of variants
+      allocate_mat(Gblock.Gmat, params.n_samples, bsize);
+    }
+
+    vector<uint64> indices (params.ld_sv_offsets.begin() + nvar_read, params.ld_sv_offsets.begin() + nvar_read + bsize);
+    readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
+
+#if defined(_OPENMP)
+    setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+    for(int isnp = 0; isnp < bsize; isnp++) {
+
+      uint32_t snp_index = indices[isnp];
+      variant_block* block_info = &(all_snps_info[isnp]);
+
+      // build genotype matrix
+      if( ((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") 
+        parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+
+      // impute missing if present
+      MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+      mean_impute_g(block_info->af1*2, Geno, in_filters.ind_in_analysis);
+
+      // check if in LD matrix 
+      is_absent(params.extract_vars_order[snpinfo[ snp_index ].ID]) = false;
+    }
+#if defined(_OPENMP)
+    setNbThreads(params.threads);
+#endif
+
+    // convert to sparse
+    sout << mt_chunk.stop_ms() << "...converting to sparse..."; mt_chunk.start_ms();
+    Gmat.middleCols(nvar_read, bsize) = Gblock.Gmat.sparseView();
+    // store ID in Gmat (can't do it multithreaded)
+    for(int isnp = 0; isnp < bsize; isnp++) {
+      uint32_t snp_index = indices[isnp];
+      colnames_Gmat[ snpinfo[ snp_index ].ID ] = colnames_Gmat.size();
+    }
+
+    sout << mt_chunk.stop_ms() << "\n";
+    nvar_read += bsize;
+  }
+
+  if(params.debug) cerr << print_mem() << "...";
+  sout << " -> " << mt.stop_ms() << "\n";
+
+}
+
+void Data::get_G_masks(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
+
+  MeasureTime mt;
+  int block = 0, chrom_nb, bs;
+  int nvar_read = colnames_Gmat.size();
+  vector< variant_block > block_info;
+
+  sout << "\n** Building burden masks **\n";
+  mt.start_ms();
+
+  // start analyzing each chromosome
+  for (auto const& chrom : files.chr_read){
+
+    if( !in_map(chrom, chr_map) ) continue;
+    chrom_nb = chr_map[chrom][1];
+    // if no sets in chromosome, skip
+    if(chrom_nb == 0)  continue;
+
+    // go through each set
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+
+      vector< vector < uchar > > snp_data_blocks;
+      vector< uint32_t > insize, outsize;
+      vector<int> indices_mask_keep;
+
+      vset* set_info = &(jt.setinfo[chrom - 1][bb]);
+      bs = set_info->snp_indices.size();
+
+      sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << set_info->ID << " - " << bs << " variants..." << flush;
+
+      // build the masks
+      block_info.resize(bs);
+      getMask(chrom, bb, snp_data_blocks, insize, outsize, block_info);
+
+      // store only the ones used in ld matrix
+      for(size_t mask = 0; mask < set_info->snp_indices.size(); mask++)
+        if(in_map(snpinfo[ set_info->snp_indices[mask] ].ID, params.extract_vars_order)){
+          is_absent(params.extract_vars_order[ snpinfo[ set_info->snp_indices[mask] ].ID ]) = false;
+          colnames_Gmat[ snpinfo[ set_info->snp_indices[mask] ].ID ] = colnames_Gmat.size();
+          indices_mask_keep.push_back(mask);
+        }
+
+      // store in Gmat
+      if(indices_mask_keep.size() > 0){
+        Gmat.middleCols(nvar_read, indices_mask_keep.size()) = Gblock.Gmat(Eigen::placeholders::all, indices_mask_keep).sparseView();
+        nvar_read += indices_mask_keep.size();
+      }
+    }
+
+  }
+
+  if(params.debug) cerr << print_mem() << "...";
+  sout << " -> " << mt.stop_ms() << "\n";
+
+}
+
+void Data::get_G_indices(ArrayXi& indices_ld, map<string, int>& colnames_Gmat){
+
+  map<string, uint32_t >::iterator itr;
+  int i_absent = colnames_Gmat.size();
+  for (itr = params.extract_vars_order.begin(); itr != params.extract_vars_order.end(); ++itr) 
+    if(in_map(itr->first, colnames_Gmat))
+      indices_ld(itr->second) = colnames_Gmat[ itr->first ];
+    else
+      indices_ld(itr->second) = i_absent++; // cols for absent sv/masks are the same (ie 0 vector)
+
+}
+
+void Data::write_snplist(ArrayXb& is_absent){
+
+  string const out = files.out_file + ".corr.snplist";
+  map<string, uint32_t >::iterator itr;
+  Files ofile;
+  IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","\n");
+
+  Eigen::Array<std::string,Eigen::Dynamic,1> ID_sorted (params.extract_vars_order.size());
+  for (itr = params.extract_vars_order.begin(); itr != params.extract_vars_order.end(); ++itr) 
+      ID_sorted( itr->second ) = itr->first;
+  // write SNP list
+  ofile.openForWrite(out, sout);
+  ofile << ID_sorted.format(Fmt);
+  ofile.closeFile();
+
+  if(is_absent.any()){
+    sout << " WARNING: there were variants" << (params.build_mask ? "/masks" : "") << " not found in the data; these were kept in the LD matrix.\n" <<
+      "  + list is written to [" << files.out_file << ".corr.forcedIn.snplist]\n";
+    ofile.openForWrite(files.out_file + ".corr.forcedIn.snplist", sout);
+    ofile << ID_sorted(get_true_indices(is_absent)).format(Fmt);
+    ofile.closeFile();
+  }
+
+}
+
+void Data::print_cor(SpMat& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Files* ofile){
+
+  MeasureTime mt;
+  int bits = 16; // break [0,1] into 2^bits intervals
+  double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
+
+  sout << "\n** computing LD matrix " << (params.skip_scaleG ? "(=GtG) " : "") << "**\n";
+  mt.start_ms();
+
+  // write list of snps to file (corresponding to columns in LD matrix)
+  write_snplist(is_absent);
+
+  // get LD matrix - first project covariates
+  MatrixXd GtX = Gmat.transpose() * pheno_data.new_cov; // MxK
+  MatrixXd LDmat = -GtX * GtX.transpose();
+  LDmat += Gmat.transpose() * Gmat;
+
+  if(!params.skip_scaleG) { // get cormat
+    ArrayXd sds = (LDmat.diagonal().array() == 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt());
+    LDmat.diagonal().array() = sds.square();
+    LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
+  } else 
+    LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
+  sout << " -> " << mt.stop_ms() << "\n";
+
+  // print corr
+  sout << "\n** writing to file **\n";
+  mt.start_ms();
+
+  if(params.ld_sparse_thr > 0){ // apply sparse threshold to LD matrix for off diagonal entries
+
+    double out_val;
+    // first diagonal entries (single line)
+    ArrayXd sds = LDmat.diagonal().array().sqrt();
+    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","\n");
+    (*ofile) << sds(indices_ld).matrix().transpose().format(Fmt);
+    // off diagonal entries above thr based on corr (fmt = row/col/value [1-based])
+    for(int i = 0; i < LDmat.rows(); i++)
+      for(int j = i+1; j < LDmat.cols(); j++){
+        out_val = LDmat(indices_ld(i),indices_ld(j)) / sds(indices_ld(i)) / sds(indices_ld(i));
+        if(fabs(out_val) >= params.ld_sparse_thr)
+          (*ofile) << i+1 << " " << j+1 << " " << out_val << "\n";
+      }
+    ofile->closeFile();
+
+  } else if(params.cor_out_txt){
+
+    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
+    (*ofile) << LDmat(indices_ld, indices_ld).format(Fmt);
+    ofile->closeFile();
+
+  } else {
+
+    ArrayXt vals;
+    vals.resize( (LDmat.rows() * (LDmat.rows() - 1)) / 2 ); // m choose 2
+
+    for(int i = 0, k = 0; i < LDmat.rows(); i++)
+      for(int j = i+1; j < LDmat.cols(); j++)
+        vals(k++) = LDmat(indices_ld(i),indices_ld(j)) * LDmat(indices_ld(i),indices_ld(j)) * mult + 0.5; // round to nearest integer
+
+    //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
+     // vals.head(5) << "\n-->" << vals.size() << endl;
+
+    ofile->writeBinMode(vals, sout);
+    ofile->closeFile();
+  }
+
+  sout << " -> " << mt.stop_ms() << "\n";
+
+  exit_early();
+
+}

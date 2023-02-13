@@ -179,9 +179,6 @@ struct param {
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
   bool transposedPheno = false, tpheno_iid_only = false;
-  bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false;
-  std::vector<std::string> forced_in_snps;//variant to force in for LD matrix
-  std::map<std::string, int> extract_vars_order;//order of variants
   bool condition_snps = false, condition_file = false;
   uint32_t max_condition_vars = 10000;
   int sex_specific = 0; // 0 = all; 1 = male-only; 2=female-only
@@ -364,6 +361,14 @@ struct param {
 
   // multi-trait tests 
   bool trait_set = false; 
+
+  // ld computation
+  bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;
+  int ld_n = 0;
+  double ld_sparse_thr = 0;
+  std::string ld_list_file = "";
+  std::vector<uint32_t> ld_sv_offsets;
+  std::map<std::string, uint32_t> extract_vars_order;//order of variants
 };
 
 struct geno_file_info {

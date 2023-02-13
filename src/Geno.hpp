@@ -166,6 +166,7 @@ ArrayXb check_in_map_from_files_IDs(std::vector<std::string> const&,struct param
 void check_snps_include_exclude(struct in_files*,struct param*,struct filter*,std::vector<snp>&,std::map<int,std::vector<int>>&,mstream&);
 void check_snps_include_exclude_or(struct in_files*,struct param*,struct filter*,std::vector<snp>&,mstream&);
 void check_samples_include_exclude(struct in_files const*,struct param*,struct filter*,mstream&);
+void check_ld_list(std::map<std::string,uint32_t>&,struct in_files*,struct param*,mstream&);
 
 void get_G(const int&,const int&,const int&,const uint32_t&,std::vector<snp> const&,struct param const*,struct in_files*,struct geno_block*,struct filter const*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,mstream&);
 

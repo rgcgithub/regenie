@@ -280,6 +280,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("compute-corr", "compute LD matrix (output R^2 values to binary file)")
     ("output-corr-text", "output matrix of Pearson correlations to text file")
     ("forcein-vars", "retain variants from extract file not present in genetic data file for the LD matrix")
+    ("ld-extract", "file with list of variants & masks to compute LD matrix", cxxopts::value<string>(params->ld_list_file),"FILE")
+    ("skip-scaleG", "compute LD matrix based on unscaled genotypes")
+    ("sparse-thr", "threshold used to sparsify the LD matrix", cxxopts::value<double>(params->ld_sparse_thr),"FLOAT(=0)")
     ("print-vcov", "print variance-covariance matrix for interaction test to file")
     ;
 
@@ -443,12 +446,18 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("print-vcov") ) params->print_vcov = true;
     if( vm.count("compute-corr") || vm.count("output-corr-text") ) {
       params->getCorMat = true;
-      params->cormat_force_vars = vm.count("forcein-vars") && vm.count("extract");
+      params->cormat_force_vars = (vm.count("forcein-vars") && vm.count("extract")) || vm.count("ld-extract");
+      params->skip_scaleG = vm.count("skip-scaleG");
       params->run_mode = 2;
       params->skip_blups = params->strict_mode = true;
       params->trait_mode = 0;
       params->min_MAC = 0.5;
-      if(vm.count("output-corr-text")) params->cor_out_txt = true;
+      if(vm.count("output-corr-text") || vm.count("skip-scaleG")) params->cor_out_txt = true;
+      if(vm.count("exclude")) throw "cannot use --exclude with --compute-corr (use --extract instead)";
+      if(vm.count("write-mask")){
+        sout << "WARNING: option --write-mask cannot be used when computing LD.\n" ;
+        params->write_masks = false; valid_args[ "write-mask" ] = false;
+      }
     }
     if( vm.count("gz") ) {
 # if defined(HAS_BOOST_IOSTREAM)
@@ -802,10 +811,23 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "must pass positive integer for --sbat-napprox.";
       params->snp_set = true;
     }
+    if(vm.count("sparse-thr")){
+     if(!vm.count("skip-scaleG") )
+      throw "cannot use --sparse-thr without --skip-scaleG";
+     else if((params->ld_sparse_thr < 0) || (params->ld_sparse_thr >=1))
+      throw "invalid value passed in --sparse-thr (must be in [0,1)";
+    }
+    if(vm.count("ld-extract") && !vm.count("compute-corr"))
+      throw "must use --ld-extract with --compute-corr";
+    if(vm.count("ld-extract") && (vm.count("extract-sets")+vm.count("exclude-sets")+vm.count("extract-setlist")+vm.count("exclude-setlist")))
+      throw "cannot use --ld-extract with --extract-sets/--exclude-sets";
     if( vm.count("write-null-firth") && vm.count("use-prs") )
       throw "cannot use --write-null-firth with --use-prs";
 
-    if( !params->getCorMat && (vm.count("anno-file") || vm.count("mask-def")) ){
+    if( vm.count("anno-file") || vm.count("mask-def") ){
+
+      if( params->getCorMat && !vm.count("ld-extract") )
+        throw "must use --ld-extract if building masks in LD matrix.";
 
       if(vm.count("anno-labels")) params->w_anno_lab = true;
 
@@ -971,8 +993,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: only one of --firth/--spa can be used. Only Firth will be used.\n";
       params->use_SPA = false; valid_args[ "spa" ] = false;
     }
-    params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set;
-    params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set;
+    params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set || params->getCorMat;
+    params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set || params->getCorMat;
 
     // check firth fallback pvalue threshold
     if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
@@ -1127,6 +1149,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         for(auto cn : files->file_sets_exclude)
           check_file(cn, "exclude-sets");
     }
+    if(vm.count("ld-extract"))
+      check_file(params->ld_list_file, "ld-extract");
     if(params->build_mask){
       check_file(files->anno_file, "anno-file");
       check_file(files->mask_file, "mask-def");
@@ -1314,12 +1338,8 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
 
   total_ram *= params->n_samples * sizeof(double);
   total_ram += params->nvs_stored * sizeof(struct snp);
-  if( params->getCorMat ) {
-    if( params->cormat_force_vars ) 
-      total_ram += params->extract_vars_order.size() * params->extract_vars_order.size() * sizeof(double);
-    else
-      total_ram += params->block_size * params->block_size * sizeof(double);
-  }
+  if( params->getCorMat )
+      total_ram += (params->cor_out_txt && (params->ld_sparse_thr == 0) ? 2 : 1) * params->extract_vars_order.size() * params->extract_vars_order.size() * sizeof(double);
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   if( params->mask_loo ) total_ram += 1e9; // at most 1GB
   if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
