@@ -144,11 +144,14 @@ class NNLS
 
     void set_defaults();
     void run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
-    void pw_run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
+    // ss = summary statistics
     void ss_run(const Eigen::VectorXd &bhat_, const Eigen::MatrixXd& V_);
     void ss_run(const Eigen::VectorXd &bhat_);
     void ss_weights(const Eigen::MatrixXd& V_);
+    // pw = pre-computed weights
+    void pw_run(const Eigen::VectorXd &y, const Eigen::MatrixXd& X, int df = 0);
     void pw_weights(const Eigen::MatrixXd& V_);
+    void pw_weights(const Eigen::VectorXd& wts_);
     void pw_weights(int napprox_);
     void pw_calc_pvals();
 

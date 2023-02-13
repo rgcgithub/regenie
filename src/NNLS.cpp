@@ -1502,6 +1502,16 @@ void NNLS::pw_weights(const Eigen::MatrixXd& V_)
   nw = wts.size();
 }
 
+void NNLS::pw_weights(const Eigen::VectorXd& wts_)
+{
+  // check dimensions
+  if(wts_.size() == 0) { throw std::runtime_error("pw_weights: dimensions (input weights size = 0)"); }
+
+  // assign
+  wts = wts_;   
+  nw = wts.size();
+}
+
 void NNLS::ss_weights(const Eigen::MatrixXd& V_)
 {
   if(verbose) print_param();
