@@ -105,6 +105,7 @@ class Data {
     void print_test_info();
     void set_nullreg_mat();
     void compute_res();
+    void residualize_res();
     void compute_res_bin(int const&);
     void compute_res_count(int const&);
     void setup_output(Files*,std::string&,std::vector<std::shared_ptr<Files>>&,std::vector<std::string>&);

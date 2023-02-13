@@ -2203,14 +2203,49 @@ void Data::compute_res(){
   else res = pheno_data.phenotypes - m_ests.blups;
   res.array() *= pheno_data.masked_indivs.array().cast<double>();
 
+  if(params.rerint | params.rerintcov) {
+    residualize_res();
+  }
+
   p_sd_yres = res.colwise().norm();
   p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov_analyzed); // if blup is cov
   res.array().rowwise() /= p_sd_yres.array();
 
   if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 
     HLM_fitNull(nullHLM, m_ests, pheno_data, files, params, sout);
-
 }
+
+// two-stage rinting, as described in Sofer et al., 2020, ttps://www.ncbi.nlm.nih.gov/pmc/articles/PMC6416071/
+// --apply-rerint = RN-Resid-Unadj (Table 1, Sofer et al., 2020)
+// --apply-rerint-cov = RN-Resid-Adj (Table 1, Sofer et al., 2020)
+void Data::residualize_res() {
+  // for each residual, apply rank-inverse normal transformation
+  for(int ph = 0; ph < res.cols(); ph++) {
+    rint_pheno(res.col(ph), pheno_data.masked_indivs.col(ph).array());
+  }
+
+  // further project covariates out from residuals
+  if(params.rerintcov) {
+    MatrixXd beta = res.transpose() * pheno_data.new_cov;
+    res -= ( (pheno_data.new_cov * beta.transpose()).array() * pheno_data.masked_indivs.array().cast<double>() ).matrix();
+  }
+
+  // respect masked individuals (needed here?) 
+  res.array() *= pheno_data.masked_indivs.array().cast<double>();
+
+  // performa scaling of reisidualized phenotypes, similar to residualize_phenotypes in Pheno.cpp
+  // compute the scale of residuals 
+  pheno_data.scale_Y = res.colwise().norm().array() / sqrt(pheno_data.Neff.matrix().transpose().array() - params.ncov_analyzed);
+  // set sd for phenotypes which are ignored to 1
+  pheno_data.scale_Y = params.pheno_pass.select(pheno_data.scale_Y.transpose().array(), 1).matrix().transpose();
+  // check sd is not 0 
+  MatrixXd::Index minIndex;
+  if(pheno_data.scale_Y.minCoeff(&minIndex) < params.numtol)
+    throw "some phenotype residuals has sd=0.";
+  // scale residuals
+  res.array().rowwise() /= pheno_data.scale_Y.array();
+}
+
 
 void Data::compute_res_bin(int const& chrom){
 
@@ -2813,6 +2848,16 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
 
     if(params.vc_test) // get G and w
       update_vc_gmat(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->ultra_rare_ind, nvar_read, bsize, params, in_filters.ind_in_analysis, Gblock.Gmat, all_snps_info, set_info->Jmat);
+
+    /*
+    if(params.debug){ 
+      cerr << "GG.diag()=\n" << Gblock.Gmat.array().square().colwise().sum() << "\n";
+      MatrixXd Gtmp_res;
+      residualize_gmat(false, pheno_data.new_cov, Gblock.Gmat, Gtmp_res, params);
+      cerr << "GrGr.diag()=\n" << Gtmp_res.array().square().colwise().sum() << "\n";
+      cerr << "WGGW.diag()=\n" << vc_weights.head(bsize).square() * Gtmp_res.array().square().colwise().sum().matrix().transpose().array() << "\n";
+    }
+    */
 
     nvar_read += bsize;
   }

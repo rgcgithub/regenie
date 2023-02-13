@@ -32,10 +32,10 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
+#include "MultiTrait_Tests.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
-#include "MultiTrait_Tests.hpp"
 #include "Masks.hpp"
 #include "HLM.hpp"
 #include "Data.hpp"
@@ -179,6 +179,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("print-prs", "also output polygenic predictions without using LOCO (=whole genome PRS)")
     ("gz", "compress output files (gzip format)")
     ("apply-rint", "apply Rank-Inverse Normal Transformation to quantitative traits")
+    ("apply-rerint", "apply Rank-Inverse Normal Transformation to residualized quantitative traits in step 2")
+    ("apply-rerint-cov", "apply Rank-Inverse Normal Transformation to residualized quantitative traits and project covariates out in step 2")
     ("threads", "number of threads", cxxopts::value<int>(params->threads),"INT")
     ("pred", "file containing the list of predictions files from step 1", cxxopts::value<std::string>(files->blup_list_file),"FILE")
     ("ignore-pred", "skip reading predictions from step 1 (equivalent to linear/logistic regression with only covariates)")
@@ -376,6 +378,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
     if( vm.count("apply-rint") && !vm.count("bt")) params->rint = true;
+    if( vm.count("apply-rerint") && !vm.count("bt")) params->rerint = true;
+    if( vm.count("apply-rerint-cov") && !vm.count("bt")) params->rerintcov = true;
     if( vm.count("strict") ) params->strict_mode = true;
     if( vm.count("print-prs") ) params->print_prs = true;
     if( vm.count("use-relative-path") ) params->use_rel_path = true;
@@ -1097,6 +1101,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if(params->test_mode && (params->file_type == "pgen") && !params->fastMode)
       throw "cannot use --nostream with PGEN format.";
+
+    // check apply-rint options
+    if(params->rerint & params->rerintcov)
+      throw "must select one of the two options, --apply-rerint or --apply-rerint-cov";
 
     // check multi-trait settings
     if(params->trait_set) {

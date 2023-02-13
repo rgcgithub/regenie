@@ -208,7 +208,7 @@ struct param {
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0, neff_threads = 1;
   bool verbose = false, debug = false;
-  bool early_exit = false, l1_full_samples = false, rint = false;
+  bool early_exit = false, l1_full_samples = false, rint = false, rerint = false, rerintcov = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
   std::map<std::string, bool> select_pheno_l1;
   int njobs, job_num, parallel_nGeno, parallel_nBlocks, parallel_nSnps;
