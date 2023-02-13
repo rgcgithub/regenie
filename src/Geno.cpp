@@ -1276,7 +1276,7 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
 
 ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> const& file_list, struct param* params, mstream& sout) {
 
-  int lineread = 0;
+  uint32_t lineread = 0;
   string line;
   std::vector< string > tmp_str_vec ;
   Files myfile;
@@ -1297,7 +1297,7 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
       if( in_map(tmp_str_vec[0], params->extract_vars_order) ) 
         continue; // ignore duplicates
 
-      if( in_map(tmp_str_vec[0], map_ID) ) 
+      if( in_map(tmp_str_vec[0], map_ID) )
         mask( map_ID[ tmp_str_vec[0] ] ) = true;
       else params->forced_in_snps.push_back(tmp_str_vec[0]);
 

@@ -348,6 +348,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     // subset to variants kept in mask
     ArrayXi m_indices = get_true_indices(Jvec(snp_indices)); // across markers kept in skat tests
     ArrayXi mall_indices = snp_indices(m_indices); // across all markers in set
+    if(debug) cerr <<"W(skat):\n" << weights(mall_indices).head(min(20,nnz)).matrix().transpose() << "\n";
 
     // ACAT-V 
     if(with_acatv && (weights_acat(mall_indices) > 0).any()){
@@ -359,9 +360,10 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     if(!with_skat) continue;
 
     // get eigen values of Rsqrt*V*Rsqrt
+    //if(debug) cerr << "Kmat:\n" << Kmat(m_indices, m_indices) << "\nrho_Kmat:\n" << get_RsKRs(Kmat(m_indices, m_indices), rho, c1) << "\n";
     get_lambdas(lambdas, get_RsKRs(Kmat(m_indices, m_indices), rho, c1), skat_lambda_tol);
     if(lambdas.size() == 0) continue;
-    if(debug) cerr << "L:" << lambdas.head(min(150, nnz)).transpose() << "\n";
+    if(debug) cerr << "L:" << lambdas.head(min(150, (int) lambdas.size())).transpose() << "\n";
 
     // compute test statistic & p-value
     for(int ph = 0; ph < n_pheno; ph++)
