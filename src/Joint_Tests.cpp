@@ -288,7 +288,7 @@ double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<cons
   }
 
   // use approx for small p-values (from ACAT R package)
-  ArrayXd pvals = ((weights!=0) && (logpvals >= 0)).select( pow(10, -logpvals) , 0.5).max(tol); // to prevent underflow
+  ArrayXd pvals = ((weights!=0) && (logpvals >= 0)).select( pow(10, -logpvals) , 0.5).max(tol).min(0.999); // to prevent underflow/overflow
   //cerr << "log10pv=" << logpvals.matrix().transpose() << "\npv=" << pvals.matrix().transpose() << "\nw=" << weights.matrix().transpose() << "\n";
   double acat = (pvals > pv_thr).select( weights * tan( M_PI * (0.5 - pvals)), (weights / pvals) / M_PI).sum();
   double wsum = (logpvals >= 0).select(weights, 0).sum();
@@ -306,7 +306,7 @@ double get_acat(const Eigen::Ref<const ArrayXd>& logpvals){ // uniform weights
   if(logpvals.size() == 1) return pow(10, -logpvals(0));
 
   // use approx for small p-values (from ACAT R package)
-  ArrayXd pvals = pow(10, -logpvals).max(tol); // to prevent underflow
+  ArrayXd pvals = pow(10, -logpvals).max(tol).min(0.999); // to prevent underflow/overflow
   double acat = (pvals > pv_thr).select( tan( M_PI * (0.5 - pvals)), (1.0 / pvals) / M_PI).sum();
   double wsum = logpvals.size();
   //cerr << std::setprecision(10) << "acat num=" << acat << " denum=" << wsum << endl;
