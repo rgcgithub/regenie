@@ -35,7 +35,7 @@ class JTests {
     std::vector<std::string> test_names = {"MINP","F","GATES","ACAT","SBAT","SBAT_POS","SBAT_NEG", "ACATV-ACAT", "SKATO-ACAT", "GENE_P"};
     std::map <std::string, std::map <std::string, bool>> gene_p_tests;
     bool genep_all_masks = true;
-    uint16_t test_list, qr_tests = 7ULL<<1; // 01110000 for ftest, gates and nnls
+    uint16_t test_list, qr_tests = 0ULL;
 
     // store variant set info (for each chr)
     std::vector<std::vector<vset>> setinfo;

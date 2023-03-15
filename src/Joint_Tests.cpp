@@ -66,6 +66,10 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
   bool with_flip = true; // allow to flip to minor alleles
   std::vector< string > tmp_str_vec ;
   test_list = 0ULL;
+  // for tests requiring QR decomp
+  BIT_SET(qr_tests, joint_tests_map["ftest"]);
+  BIT_SET(qr_tests, joint_tests_map["gates"]);
+  BIT_SET(qr_tests, joint_tests_map["sbat"]);
 
   test_pfx = test_string + "-";
   burden_str = test_pfx + "BURDEN-";
