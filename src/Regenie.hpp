@@ -252,7 +252,8 @@ struct param {
   bool use_rel_path = false; // write relative paths in pred.list file
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool rm_l0_pred = true; // specify whether to delete written level 0 predictions after level 1
-  bool print_block_betas = false; // print betas from level 0 within each block (for debugging)
+  bool print_block_betas = false, test_l0 = false, select_l0 = false; // print betas from level 0 within each block (for debugging)
+  std::string l0_pvals_file;
   bool force_run = false; // if using more than max nvariants in step 1
   int max_step1_variants = 1e6; // prevent users using too many step 1 variants
   int niter_max_ridge = 100, niter_max_ridge_adam = 25; // max number of iterations for ridge logistic reg.

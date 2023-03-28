@@ -296,6 +296,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ("prs-cov", "include step 1 predictions as covariate rather than offset")
+    ("test-l0", "test association for each level 0 block")
+    ("select-l0", "file with p-values for each level 0 block (use as flag if with --test-l0)", cxxopts::value<std::string>(params->l0_pvals_file)->implicit_value(""),"FILE")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
@@ -405,6 +407,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("debug") ) params->verbose = params->debug = true;
     if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
+    if( vm.count("test-l0") ) params->test_l0 = true;
+    if( vm.count("select-l0") ) params->select_l0 = true;
     //if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;
     //if( vm.count("within") ) params->within_sample_l0 = true;
     if( vm.count("write-samples") ) params->write_samples = true;
@@ -974,6 +978,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     else if(vm.count("bsize") && ( params->block_size < 2 ))
       throw "block size must be at least 2.";
     if(params->set_aaf && !params->build_mask) params->set_aaf = false;
+    if(params->run_l0_only && params->test_l0)
+      throw "cannot use --test-l0 with --run-l0";
+    if(params->test_l0 && (params->l0_pvals_file != ""))
+      throw "--select-l0 must be specified without an argument";
 
     // determine number of threads if not specified
     if(params->threads < 1)
@@ -1161,6 +1169,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         for(auto cn : files->file_sets_exclude)
           check_file(cn, "exclude-sets");
     }
+    if(params->select_l0 && !params->test_l0)
+      check_file(params->l0_pvals_file, "select-l0");
     if(vm.count("ld-extract"))
       check_file(params->ld_list_file, "ld-extract");
     if(params->build_mask){
