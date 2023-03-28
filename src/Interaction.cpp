@@ -452,8 +452,9 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
   chi_squared chisqI(np-1);
   chi_squared chisqK(np);
+  bool use_robust;
   double logp, tstat, sehat;
-  double lpfirth = -log10( params->alpha_pvalue );
+  double lpfirth = -log10( params->alpha_pvalue ), lpbase = -log10(0.05);
   string head = "", stmp;
 
   // write Hmat
@@ -470,7 +471,7 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
 
   // for logistic regression
   ArrayXd bhat, etavec, pivec, hvec;
-  MatrixXd WX, Vmat, XWX_inv, V_robust;
+  MatrixXd WX, Vmat, tmpMat, V_robust;
 
   for(int i = 0; i < params->n_pheno; ++i ){
     if( !params->pheno_pass(i) ) continue;
@@ -498,15 +499,23 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
     WX = ( pheno_data->Hmat[thread].array().colwise() * mask.select(pivec * (1 - pivec), 0).sqrt() ).matrix();
     SelfAdjointEigenSolver<MatrixXd> esM(WX.transpose() * WX);
     if( esM.eigenvalues().minCoeff() < params->numtol ) continue;
-    if( !params->force_robust && 
-        (params->no_robust || (snp_data->mac(i) <= params->rareMAC_inter)) ) // using model-based estimator [robust is inflated for ultra-rare]
-      Vmat = esM.eigenvectors() * esM.eigenvalues().cwiseInverse().asDiagonal() * esM.eigenvectors().transpose();
-    else { // robust se
-      XWX_inv = esM.eigenvectors() * esM.eigenvalues().cwiseInverse().asDiagonal() * esM.eigenvectors().transpose();
-      hvec = ((WX * XWX_inv).array() * WX.array()).rowwise().sum();
+    Vmat = esM.eigenvectors() * esM.eigenvalues().cwiseInverse().asDiagonal() * esM.eigenvectors().transpose(); // model-based SE
+
+    // check pvalues of main & interaction effect (if sig, use robust SE unless very rare variant)
+    use_robust = params->force_robust;
+    if(!params->no_robust && (snp_data->mac(i) > params->rareMAC_inter))
+      for(int j = beg; j < (np+beg); j++){
+        tstat = bhat(j) * bhat(j) / Vmat(j,j);
+        get_logp(logp, tstat);
+        if(logp > lpbase) use_robust = true;
+      }
+
+    if(use_robust) { // robust se
+      hvec = ((WX * Vmat).array() * WX.array()).rowwise().sum();
       V_robust = pheno_data->Hmat[thread].transpose() * mask.select((Y - pivec)/(1-hvec), 0).square().matrix().asDiagonal() * pheno_data->Hmat[thread];
-      Vmat = XWX_inv * V_robust * XWX_inv;
-      if(params->debug) cerr << "h:\n" << hvec.minCoeff() << " - " << hvec.maxCoeff() << "\n\nb:\n" << bhat << "\n\nV:\n" << Vmat << "\n\nXWXinv:\n" << XWX_inv << "\n\nVh:\n"<< V_robust << "\n\n";
+      tmpMat = Vmat * V_robust * Vmat;
+      if(params->debug) cerr << "h:\n" << hvec.minCoeff() << " - " << hvec.maxCoeff() << "\n\nb:\n" << bhat << "\n\nV:\n" << tmpMat << "\n\nXWXinv:\n" << Vmat << "\n\nVh:\n"<< V_robust << "\n\n";
+      Vmat = tmpMat;
     }
     if( Vmat.diagonal().minCoeff() < 0 ) continue; // if robust SE computation fails
     if(snp_data->flipped) bhat *= -1;
