@@ -61,6 +61,10 @@ struct ridgel1 {
   std::vector<Eigen::MatrixXd> cumsum_values; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
   std::vector<std::vector<Eigen::MatrixXd>> beta_hat_level_1;
   ArrayXb pheno_l1_not_converged;
+  MatrixXb l0_colkeep;
+  Eigen::MatrixXd l0_pv_block;
+  Eigen::ArrayXi chrom_block, chrom_map_ndiff;
+  Eigen::ArrayXd ridge_param_mult;
 
 };
 
@@ -78,7 +82,7 @@ void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*
 void write_l0_file(std::ofstream*,Eigen::MatrixXd&,mstream&);
 
 void set_mem_l1(struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
-void ridge_level_1(struct in_files*,struct param*,struct ridgel1*,mstream&);
+void ridge_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,mstream&);
 void ridge_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,mstream&);
 
 void ridge_logistic_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
@@ -98,8 +102,10 @@ void get_pvec_poisson(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eig
 double compute_log_lik_bern(const double&,const double&);
 double compute_log_lik_poisson(const double&,const double&);
 
+void test_assoc_block(int const&,int const&,struct ridgel0&,Files&,struct param const&);
 void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);
 void read_l0_chunk(int const&,int const&,int const&,int const&,const std::string&,struct param*,struct ridgel1*,mstream&);
+void check_l0(int const&,int const&,struct param*,struct ridgel1*,struct phenodt const*,mstream&,bool const& silent_mode = false);
 
 uint64 getSize(std::string const& fname);
 #endif
