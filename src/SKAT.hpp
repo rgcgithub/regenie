@@ -55,7 +55,7 @@ void compute_skat_pv(double&,double&,double const&,Eigen::VectorXd&,const double
 double get_chisq_mix_pv(double const&,const Eigen::Ref<const Eigen::VectorXd>&);
 double get_davies_pv(double const&,Eigen::Ref<Eigen::VectorXd>,bool const&);
 double get_kuonen_pv(const double&,const Eigen::Ref<const Eigen::VectorXd>&);
-double get_liu_pv(const double&,const Eigen::Ref<const Eigen::VectorXd>&);
+double get_liu_pv(const double&,const Eigen::Ref<const Eigen::VectorXd>&,const bool& lax = false);
 double get_tmin_lambda(const double&,const Eigen::Ref<const Eigen::ArrayXd>&);
 double get_tmax_lambda(const Eigen::Ref<const Eigen::ArrayXd>&);
 void solve_kp(bool&,double&,const double&,const double&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&);

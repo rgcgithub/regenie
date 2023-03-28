@@ -1424,7 +1424,7 @@ double get_spa_pv(const double& root,const double& q, const Ref<const ArrayXd>& 
 
 }
 
-double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas){
+double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, const bool& lax){
 
   ArrayXd cvals(6);
   get_cvals(cvals, lambdas);
@@ -1441,7 +1441,8 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas){
   else  pv = cdf(complement(non_central_chi_squared(cvals(4), cvals(5)), val));
   //cerr << "pv liu=" << val << " -> " << pv << endl;
 
-  if((pv <= 0) || (pv > 1)) return -1;
+  if(!lax && ((pv <= 0) || (pv > 1))) return -1;
+  else if(lax && ((pv < 0) || (pv > 1))) return -1;
   return pv;
 }
 
