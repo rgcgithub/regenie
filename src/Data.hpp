@@ -141,9 +141,12 @@ class Data {
     // for LD computation
     void ld_comp();
     void get_G_svs(SpMat&,ArrayXb&,std::map<std::string,int>&);
+    void get_G_svs(MatrixXd&,ArrayXb&,std::map<std::string,int>&);
     void get_G_masks(SpMat&,ArrayXb&,std::map<std::string,int>&);
+    void get_G_masks(MatrixXd&,ArrayXb&,std::map<std::string,int>&);
     void get_G_indices(Eigen::ArrayXi&,std::map<std::string,int>&);
     void print_cor(SpMat&,Eigen::ArrayXi&,ArrayXb&,Files*);
+    void print_cor(MatrixXd&,Eigen::ArrayXi&,ArrayXb&,Files*);
     void write_snplist(ArrayXb&);
 
     Data();
