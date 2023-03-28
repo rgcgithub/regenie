@@ -456,6 +456,15 @@ void apply_interaction_tests_bt(const int& index, const int& isnp, const int& th
   double lpfirth = -log10( params->alpha_pvalue );
   string head = "", stmp;
 
+  // write Hmat
+  if(params->debug){
+    IOFormat Fmt(FullPrecision, DontAlignCols, " ", "\n", "", "","","");
+    ofstream ofile;
+    openStream(&ofile, files->out_file + "_H.txt", ios::out, sout);
+    ofile << pheno_data->Hmat[thread].format(Fmt) << "\n";
+    ofile.close();
+  }
+
   // for output
   if(!params->htp_out) head = print_sum_stats_head(index, snpinfo);
 
