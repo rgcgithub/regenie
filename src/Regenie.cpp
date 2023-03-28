@@ -526,7 +526,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         for(auto cn : check_name(tmp_str_vec[i], sout))
           filters->cov_colKeep_names[cn] = false;
     }
-    if( vm.count("covarFile") && (params->run_mode ==2) && (vm.count("interaction") || vm.count("interaction-snp")) ) {
+    if( (params->run_mode ==2) && (vm.count("interaction") || vm.count("interaction-snp")) ) {
       params->w_interaction = true;
       if(vm.count("interaction-snp")) params->interaction_snp = params->w_ltco =  true;
       check_inter_var(filters->interaction_cov, filters->interaction_cov_null_level, sout);
@@ -808,6 +808,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( (vm.count("write-samples") || vm.count("write-mask")) && vm.count("bgen") && !vm.count("sample") )
       throw "must specify sample file (using --sample) if writing sample IDs to file.";
 
+    if( vm.count("test") && (params->run_mode !=2)) 
+      throw "can only use --test in step 2 (association testing).";
     if( !params->getCorMat && params->joint_test ){
       if( vm.count("test") && !vm.count("rgc-gene-p")) 
         throw "cannot use --test with --joint.";
@@ -1027,6 +1029,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "must use --condition-list if using --condition-file.";
     if(params->interaction_file && !params->interaction_snp )
       throw "must use --interaction-snp if using --interaction-file.";
+    if( !vm.count("covarFile") && vm.count("interaction") && !vm.count("interaction-snp") )
+      throw "must use --covarFile if using --interaction.";
 
     if( params->test_mode && params->select_chrs && in_map(-1, filters->chrKeep_test) )
       throw "invalid chromosome specified by --chr/--chrList.";
@@ -1346,8 +1350,10 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
 
   total_ram *= params->n_samples * sizeof(double);
   total_ram += params->nvs_stored * sizeof(struct snp);
-  if( params->getCorMat )
+  if( params->getCorMat ){
       total_ram += (params->cor_out_txt && (params->ld_sparse_thr == 0) ? 2 : 1) * params->extract_vars_order.size() * params->extract_vars_order.size() * sizeof(double);
+      if(params->dosage_mode) total_ram += params->n_samples * params->extract_vars_order.size() * (params->file_type == "bgen" ? 1.0 : 0.5) * sizeof(double);
+  }
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   if( params->mask_loo ) total_ram += 1e9; // at most 1GB
   if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
