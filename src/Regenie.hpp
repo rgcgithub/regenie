@@ -244,8 +244,7 @@ struct param {
   int n_ridge_l1 = 5; // number of ridge parameters at level 1
   double alpha_prior = -1; // to set MAF dependent prior on the effect sizes
   int chunk_mb = 1000; // max amount of memory to use with LOOCV
-  bool user_ridge_params_l0 = false; // if user specifies ridge parameters
-  bool user_ridge_params_l1 = false; // if user specifies ridge parameters
+  bool user_ridge_params_l0 = false, user_ridge_params_l1 = false; // if user specifies ridge parameters
   bool use_loocv = false; // specify whether to use LOOCV [note: this is not used if method=1]
   bool make_loco = true; // specify whether to compute & ouput LOCO predictions
   bool print_prs = false; // specify to print PRS (i.e. no LOCO used)
