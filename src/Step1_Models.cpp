@@ -600,7 +600,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
 
   string in_pheno;
   ifstream infile;
-  MatrixXd X1, X2, beta_l1, p1, vmat, dvec, dl_inv;
+  MatrixXd X1, X2, beta_l1, p1, vmat, dvec, dl_inv, XtX_tau;
   VectorXd VtX2;
   MatrixXd XtX_sum, XtY_sum;
 
@@ -621,6 +621,7 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
       read_l0(ph, ph_eff, files, params, l1, sout);
     check_l0(ph, ph_eff, params, l1, pheno_data, sout);
     bs_l1 = l1->test_mat[ph_eff][0].cols();
+    bool use_simple_ridge = (l1->ridge_param_mult == 1).all();
 
     // compute XtX and Xty for each fold and cum. sum using test_mat's
     if (!params->within_sample_l0){
@@ -645,16 +646,26 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
         X2 = XtY_sum - l1->XtY[i];
       }
 
-      SelfAdjointEigenSolver<MatrixXd> eigX1(X1);
-      vmat = eigX1.eigenvectors();
-      dvec = eigX1.eigenvalues();
-      VtX2 = vmat.transpose() * X2;
+      if(use_simple_ridge){
+        SelfAdjointEigenSolver<MatrixXd> eigX1(X1);
+        vmat = eigX1.eigenvectors();
+        dvec = eigX1.eigenvalues();
+        VtX2 = vmat.transpose() * X2;
       // compute solutions for all ridge parameters at once
-      // p1 is Nfold x nridge_l1 matrix
-      dl_inv = ( dvec.asDiagonal() * MatrixXd::Ones(bs_l1, params->n_ridge_l1) + l1->ridge_param_mult.matrix() * params->tau[ph].matrix().transpose() ).array().inverse().matrix();
-      dl_inv.array().colwise() *= VtX2.array();
-      beta_l1 = vmat * dl_inv;
+        dl_inv = ( dvec.rowwise().replicate(params->n_ridge_l1) + l1->ridge_param_mult.matrix() * params->tau[ph].matrix().transpose() ).array().inverse().matrix();
+        dl_inv.array().colwise() *= VtX2.array();
+        beta_l1 = vmat * dl_inv;
+      } else { // need to compute seperately for each parameter
+        beta_l1.resize(bs_l1, params->n_ridge_l1);
+        for(int j = 0; j < params->n_ridge_l1; ++j) {
+          XtX_tau = X1;
+          XtX_tau.diagonal().array() += params->tau[ph](j) * l1->ridge_param_mult;
+          SelfAdjointEigenSolver<MatrixXd> eigMat(XtX_tau);
+          beta_l1.col(j) = eigMat.eigenvectors() * (1/eigMat.eigenvalues().array()).matrix().asDiagonal() * eigMat.eigenvectors().transpose() * X2;
+        }
+      }
       if(!params->within_sample_l0) l1->beta_hat_level_1[ph][i] = beta_l1;
+      // p1 is Nfold x nridge_l1 matrix
       p1 = l1->test_mat[ph_eff][i] * beta_l1;
 
       l1->cumsum_values[0].row(ph) += p1.colwise().sum();
@@ -682,7 +693,7 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
   int ph_eff;
   string in_pheno;
   ifstream infile;
-  MatrixXd Xmat_chunk, Yvec_chunk, Z1, Z2, dl, dl_inv, xtx;
+  MatrixXd XH_chunk, Z1, Z2, dl, dl_inv, xtx, tmpMat;
   VectorXd wvec, zvec;
   RowVectorXd calFactor, pred;
 
@@ -708,37 +719,62 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
       read_l0(ph, ph_eff, files, params, l1, sout);
     check_l0(ph, ph_eff, params, l1, pheno_data, sout);
     bs_l1 = l1->test_mat_conc[ph_eff].cols();
+    bool use_simple_ridge = (l1->ridge_param_mult == 1).all();
 
     xtx = l1->test_mat_conc[ph_eff].transpose() * l1->test_mat_conc[ph_eff];
-    SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
-    dl = eigX.eigenvalues().asDiagonal() * MatrixXd::Ones(bs_l1, params->n_ridge_l1);
-    dl.rowwise() += params->tau[ph].matrix().transpose();
-    dl_inv = dl.array().inverse().matrix();
-
     zvec = l1->test_mat_conc[ph_eff].transpose() * pheno_data->phenotypes.col(ph);
-    wvec = eigX.eigenvectors().transpose() * zvec;
 
-    for(chunk = 0; chunk < nchunk; ++chunk ) {
-      size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
-      j_start = chunk * target_size;
-      Xmat_chunk = l1->test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1);
-      Yvec_chunk = pheno_data->phenotypes.block(j_start, ph, size_chunk, 1);
-      Z1 = (Xmat_chunk * eigX.eigenvectors()).transpose();
+    if(use_simple_ridge){ // compute solutions for all ridge parameters at once
+      SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
+      dl = eigX.eigenvalues().rowwise().replicate(params->n_ridge_l1);
+      dl.rowwise() += params->tau[ph].matrix().transpose();
+      dl_inv = dl.array().inverse().matrix();
+      wvec = eigX.eigenvectors().transpose() * zvec;
 
-      for(int i = 0; i < size_chunk; ++i ) {
-        Z2 = (dl_inv.array().colwise() * Z1.col(i).array()).matrix();
-        calFactor = Z1.col(i).transpose() * Z2;
-        pred = wvec.transpose() * Z2;
-        pred -=  Yvec_chunk(i, 0) * calFactor;
-        pred.array()  /= 1 - calFactor.array();
-        //if( ph == 0) sout << pred.head(5) << endl;
+      for(chunk = 0; chunk < nchunk; ++chunk) {
+        size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
+        j_start = chunk * target_size;
+
+        Z1 = (l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk) * eigX.eigenvectors()).transpose();
+
+        for(int i = 0; i < size_chunk; ++i ) {
+          Z2 = (dl_inv.array().colwise() * Z1.col(i).array()).matrix();
+          calFactor = Z1.col(i).transpose() * Z2;
+          pred = wvec.transpose() * Z2;
+          pred -= pheno_data->phenotypes(j_start + i, ph) * calFactor;
+          pred.array() /= 1 - calFactor.array();
+          //if( ph == 0) sout << pred.head(5) << endl;
+
+          // compute mse and rsq
+          l1->cumsum_values[0].row(ph) += pred; // Sx
+          // Y is centered so Sy = 0
+          l1->cumsum_values[2].row(ph) += pred.array().square().matrix(); // Sx2
+          // Y is scaled so Sy2 = params->n_samples - ncov
+          l1->cumsum_values[4].row(ph).array() += pred.array() * pheno_data->phenotypes(j_start + i, ph); // Sxy
+        }
+      }
+    } else for(int j = 0; j < params->n_ridge_l1; ++j) {
+      // compute seperately for each parameter
+      tmpMat = xtx;
+      tmpMat.diagonal().array() += params->tau[ph](j) * l1->ridge_param_mult;
+      SelfAdjointEigenSolver<MatrixXd> eigMat(tmpMat);
+      tmpMat = eigMat.eigenvectors() * (1/eigMat.eigenvalues().array()).matrix().asDiagonal() * eigMat.eigenvectors().transpose();
+
+      for(chunk = 0; chunk < nchunk; ++chunk) {
+        size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
+        j_start = chunk * target_size;
+
+        XH_chunk = l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk) * tmpMat; // Nc x k
+        calFactor = (l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk).array() * XH_chunk.array()).matrix().rowwise().sum().transpose();
+        pred = (XH_chunk * zvec).transpose() - (calFactor.array() * pheno_data->phenotypes.col(ph).segment(j_start, size_chunk).transpose().array()).matrix();
+        pred.array() /= (1 - calFactor.array());
 
         // compute mse and rsq
-        l1->cumsum_values[0].row(ph) += pred; // Sx
+        l1->cumsum_values[0](ph, j) += pred.sum(); // Sx
         // Y is centered so Sy = 0
-        l1->cumsum_values[2].row(ph) += pred.array().square().matrix(); // Sx2
+        l1->cumsum_values[2](ph, j) += pred.array().square().sum(); // Sx2
         // Y is scaled so Sy2 = params->n_samples - ncov
-        l1->cumsum_values[4].row(ph).array() += pred.array() * Yvec_chunk(i,0); // Sxy
+        l1->cumsum_values[4](ph, j) += pred.transpose().dot(pheno_data->phenotypes.col(ph).segment(j_start, size_chunk)); // Sxy
       }
     }
 
@@ -820,15 +856,17 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             }
             zvec = (etavec - W1) + (Y1 - pivec) / wvec;
             XtW = X1.transpose() * wvec.matrix().asDiagonal();
-            betanew = (XtW * X1 + params->tau[ph](j) * ident_l1).colPivHouseholderQr().solve(XtW * zvec.matrix()).array();
+            XtWX = params->tau[ph](j) * l1->ridge_param_mult.matrix().asDiagonal();
+            XtWX += XtW * X1;
+            betanew = XtWX.colPivHouseholderQr().solve(XtW * zvec.matrix()).array();
             // get the score
             etavec = W1 + (X1 * betanew.matrix()).array();
             pivec = 1 - 1/(etavec.exp() + 1);
-            score = (X1.transpose() * (Y1 - pivec).matrix()).array() - params->tau[ph](j) * betanew;
+            score = (X1.transpose() * (Y1 - pivec).matrix()).array() - params->tau[ph](j) * l1->ridge_param_mult * betanew;
 
           } else {
 
-            XtWX = MatrixXd::Zero(bs_l1, bs_l1);
+            XtWX = params->tau[ph](j) * l1->ridge_param_mult.matrix().asDiagonal();
             XtWZ = MatrixXd::Zero(bs_l1, 1);
 
             for(int k = 0; k < params->cv_folds; ++k ) {
@@ -851,7 +889,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
             }
             if( l1->pheno_l1_not_converged(ph) ) break;
 
-            betanew = (XtWX + params->tau[ph](j) * ident_l1).llt().solve(XtWZ).array();
+            betanew = XtWX.llt().solve(XtWZ).array();
 
             // start step-halving
             for( int niter_search = 1; niter_search <= params->niter_max_line_search_ridge; niter_search++ ){
@@ -888,7 +926,7 @@ void ridge_logistic_level_1(struct in_files* files, struct param* params, struct
                 score += (l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();
               }
             }
-            score -= params->tau[ph](j) * betanew;
+            score -= params->tau[ph](j) * l1->ridge_param_mult * betanew;
 
 
           }
@@ -997,9 +1035,9 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
       // using warm starts (i.e. set final beta of previous ridge param 
       // as initial beta for current ridge param)
       if( params->use_adam ) // run ADAM to get close to max
-        run_log_ridge_loocv_adam(ph, params->tau[ph](j), beta, pivec, wvec, Y, X, offset, mask, params, sout);
+        run_log_ridge_loocv_adam(ph, params->tau[ph](j), l1->ridge_param_mult, beta, pivec, wvec, Y, X, offset, mask, params, sout);
 
-      if(!run_log_ridge_loocv(params->tau[ph](j), target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, params, sout)){
+      if(!run_log_ridge_loocv(params->tau[ph](j), l1->ridge_param_mult, target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, params, sout)){
         sout << "WARNING: Ridge logistic regression did not converge! (Increase --niter)\n";
         l1->pheno_l1_not_converged(ph) = true;
         break;
@@ -1011,7 +1049,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
 
       // compute Hinv
       // zvec = (pheno_data->masked_indivs.col(ph).array()).select( (etavec - m_ests->offset_nullreg.col(ph).array()) + (pheno_data->phenotypes_raw.col(ph).array() - pivec) / wvec, 0);
-      XtWX = VectorXd::Constant(bs_l1, params->tau[ph](j)).asDiagonal(); // compute XtWX in chunks
+      XtWX = params->tau[ph](j) * l1->ridge_param_mult.matrix().asDiagonal(); // compute XtWX in chunks
       for(chunk = 0; chunk < nchunk; ++chunk){
         size_chunk = ( chunk == nchunk - 1 ? params->cv_folds - target_size * chunk : target_size );
         j_start = chunk * target_size;
@@ -1071,7 +1109,7 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   sout << endl;
 }
 
-bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int& nchunk, ArrayXd& betaold, ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
+bool run_log_ridge_loocv(const double& lambda, const Ref<const ArrayXd>& ridge_param_mult, const int& target_size, const int& nchunk, ArrayXd& betaold, ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
 
   bool dev_conv = false;
   int bs_l1 = X.cols();
@@ -1085,14 +1123,14 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   // get w=p*(1-p) and check none of the values are 0
   get_pvec(etavec, pivec, betaold, offset, X, params->numtol_eps);
   // get -2f(b)
-  fn_start = get_logist_dev(Y, pivec, mask) + lambda * betaold.square().sum();
+  fn_start = get_logist_dev(Y, pivec, mask) + lambda * (ridge_param_mult * betaold).square().sum();
   if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
     sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
     return false;
   }
   // get the score
   score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
-  score -= lambda * betaold;
+  score -= lambda * ridge_param_mult * betaold;
   // for convergence check
   //vweights = (X.array().square().matrix().transpose() * mask.select(wvec,0).matrix()).array();
   //vweights /= mask.select(wvec,0).sum();
@@ -1100,7 +1138,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
   while(niter_cur++ < params->niter_max_ridge) {
 
     // get step size
-    XtWX = VectorXd::Constant(bs_l1, lambda).asDiagonal(); // compute XtWX in chunks
+    XtWX = lambda * ridge_param_mult.matrix().asDiagonal(); // compute XtWX in chunks
     for(chunk = 0; chunk < nchunk; ++chunk ) {
       size_chunk = ( chunk == nchunk - 1 ? params->cv_folds - target_size * chunk : target_size );
       j_start = chunk * target_size;
@@ -1123,7 +1161,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
       // get w=p*(1-p) and check none of the values are 0
       get_pvec(etavec, pivec, betanew, offset, X, params->numtol_eps);
       // -2f(b)
-      fn_end = get_logist_dev(Y, pivec, mask) + lambda * betanew.square().sum();
+      fn_end = get_logist_dev(Y, pivec, mask) + lambda * (ridge_param_mult * betanew).square().sum();
       if( get_wvec(pivec, wvec, mask, params->l1_ridge_eps) ){
         sout << "ERROR: Zeros occurred in Var(Y) during ridge logistic regression.\n";
         return false;
@@ -1138,7 +1176,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
-    score -= lambda * betanew;
+    score -= lambda * ridge_param_mult * betanew;
     if(params->debug) cerr << "#"<< niter_cur << ": score max = " << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << abs(fn_end - fn_start)/(.01 + abs(fn_end)) << "\n";
 
     dev_conv = (abs(fn_end - fn_start)/(.01 + abs(fn_end)) < params->tol); // fractional change - same as glm
@@ -1160,7 +1198,7 @@ bool run_log_ridge_loocv(const double& lambda, const int& target_size, const int
 }
 
 // Ridge logistic with ADAM using mini batch
-void run_log_ridge_loocv_adam(const int& ph, const double& lambda, ArrayXd& betavec, ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
+void run_log_ridge_loocv_adam(const int& ph, const double& lambda, const Ref<const ArrayXd>& ridge_param_mult, ArrayXd& betavec, ArrayXd& pivec, ArrayXd& wvec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
 
   int niter_cur = 0, index;
   double p_alpha = params->adam_alpha, p_beta1 = params->adam_beta1, p_beta2 = params->adam_beta2, p_eps = params->adam_eps, p_alpha_t;
@@ -1176,7 +1214,7 @@ void run_log_ridge_loocv_adam(const int& ph, const double& lambda, ArrayXd& beta
 
   while(niter_cur++ < params->niter_max_ridge_adam) {
 
-    gradient_f = lambda * betavec;
+    gradient_f = lambda * ridge_param_mult * betavec;
 
     if(params->adam_mini){ // ADAM using mini-batch (only non-masked samples)
 
@@ -1259,7 +1297,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
 
         while(niter_cur++ < params->niter_max_ridge){
 
-          XtWX = MatrixXd::Zero(bs_l1, bs_l1);
+          XtWX = params->tau[ph](j) * l1->ridge_param_mult.matrix().asDiagonal();
           XtWZ = MatrixXd::Zero(bs_l1, 1);
 
           for(int k = 0; k < params->cv_folds; ++k ) {
@@ -1282,7 +1320,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
           }
           if( l1->pheno_l1_not_converged(ph) ) break;
 
-          betanew = (XtWX + params->tau[ph](j) * ident_l1).llt().solve(XtWZ).array();
+          betanew = XtWX.llt().solve(XtWZ).array();
 
           // start step-halving
           for( int niter_search = 1; niter_search <= params->niter_max_line_search_ridge; niter_search++ ){
@@ -1319,7 +1357,7 @@ void ridge_poisson_level_1(struct in_files* files, struct param* params, struct 
               score += (l1->test_mat[ph_eff][k].transpose() * masked_in_folds[k].col(ph).array().select(l1->test_pheno_raw[ph][k].array() - pivec, 0).matrix()).array();
             }
           }
-          score -= params->tau[ph](j) * betanew;
+          score -= params->tau[ph](j) * l1->ridge_param_mult * betanew;
 
           // stopping criterion
           if( (score.abs().maxCoeff() < params->l1_ridge_tol) || l1->pheno_l1_not_converged(ph)) break;
@@ -1418,7 +1456,7 @@ void ridge_poisson_level_1_loocv(struct in_files* files, struct param* params, s
       if( params->use_adam ) // run ADAM to get close to max
         throw "not yet implemented"; //run_ct_ridge_loocv_adam(ph, params->tau[ph](j), beta, pivec, Y, X, offset, mask, params, sout);
 
-      if(!run_ct_ridge_loocv(params->tau[ph](j), target_size, nchunk, beta, pivec, Y, X, offset, mask, params, sout)){
+      if(!run_ct_ridge_loocv(params->tau[ph](j), l1->ridge_param_mult, target_size, nchunk, beta, pivec, Y, X, offset, mask, params, sout)){
         sout << "WARNING: Ridge poisson regression did not converge! (Increase --niter)\n";
         l1->pheno_l1_not_converged(ph) = true;
         break;
@@ -1481,7 +1519,7 @@ void ridge_poisson_level_1_loocv(struct in_files* files, struct param* params, s
   sout << endl;
 }
 
-bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int& nchunk, ArrayXd& betaold, ArrayXd& pivec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
+bool run_ct_ridge_loocv(const double& lambda, const Ref<const ArrayXd>& ridge_param_mult, const int& target_size, const int& nchunk, ArrayXd& betaold, ArrayXd& pivec, const Ref<const ArrayXd>& Y, Ref<MatrixXd> X, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param* params, mstream& sout) {
 
   int bs_l1 = X.cols();
   int niter_cur = 0, j_start, chunk, size_chunk;
@@ -1502,7 +1540,8 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
     zvec = mask.select( (etavec - offset) + (Y - pivec) / pivec, 0);
 
     // compute XtWX and XtWZ in chunks
-    XtWX = MatrixXd::Zero(bs_l1, bs_l1); XtWZ = MatrixXd::Zero(bs_l1, 1);
+    XtWX = lambda * ridge_param_mult.matrix().asDiagonal(); 
+    XtWZ = MatrixXd::Zero(bs_l1, 1);
     for(chunk = 0; chunk < nchunk; ++chunk ) {
       size_chunk = ( chunk == nchunk - 1 ? params->cv_folds - target_size * chunk : target_size );
       j_start = chunk * target_size;
@@ -1516,7 +1555,7 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
       XtWX += V1 * Xmat_chunk;
       XtWZ += V1 * z_chunk;
     }
-    Hinv.compute( XtWX + lambda * ident_l1 );
+    Hinv.compute( XtWX );
     betanew = Hinv.solve(XtWZ).array();
 
     get_pvec_poisson(etavec, pivec, betanew, offset, X, params->numtol_eps);
@@ -1527,7 +1566,7 @@ bool run_ct_ridge_loocv(const double& lambda, const int& target_size, const int&
 
     // get the score
     score = ( X.transpose() * mask.select(Y - pivec, 0).matrix()).array() ;
-    score -= lambda * betanew;
+    score -= lambda * ridge_param_mult * betanew;
 
     if( score.abs().maxCoeff() < params->l1_ridge_tol ) break;
 
@@ -1752,28 +1791,32 @@ void check_l0(int const& ph, int const& ph_eff, struct param* params, struct rid
     auto const Q2 = N / 2;
     auto const Q3 = Q1 + Q2;
     double thr, beta_q, conf_alpha = 0.05/N; // to be conservative
-    std::nth_element(quantile_vec.begin(), quantile_vec.begin() + Q1, quantile_vec.end());
-    std::nth_element(quantile_vec.begin() + Q1 + 1, quantile_vec.begin() + Q2, quantile_vec.end());
-    std::nth_element(quantile_vec.begin() + Q2 + 1, quantile_vec.begin() + Q3, quantile_vec.end());
+    std::sort(quantile_vec.begin(), quantile_vec.end());
     if(!silent_mode && params->debug) cout << "[ Q1="<< quantile_vec[Q1] << ", Q2=" << quantile_vec[Q2] << ", Q3=" << quantile_vec[Q3] << " ]..." << flush;
 
     // with U(0,1) independent p-values under H0, kth order statistic is Beta(k, N-k) 
     thr = quantile_vec[N-1] + 1e-6;
-    for( int i = 0; i < N; ++i ) {
+    for( int i = 0; i < (N-1); ++i ) {
       beta_distribution<>  bd(i+1, N - i - 1);
       beta_q = -log10( quantile(bd, conf_alpha/2.0) );
-      if(quantile_vec[N-i-1] < beta_q){
+      if((quantile_vec[N-i-1] < beta_q) || (i==(N-2))){
         if(i>0) thr = quantile_vec[N-i];
         break;
       }
     }
     
-    /*
+    int Ntop = ceil(0.05*N);
     // threshold = median + 3*IQR
     // or 3 SD above mean?
-    double iqr = quantile_vec[Q3] - quantile_vec[Q1];
-    thr = quantile_vec[Q3] + 3 * iqr; 
-  */
+    if((pv_arr >= thr).count() >= Ntop){
+      double iqr = quantile_vec[Q3] - quantile_vec[Q1];
+      thr = max(thr, quantile_vec[Q3] + 3 * iqr); 
+    }
+
+    // if too many are selected, keep top 1%
+    if((pv_arr >= thr).count() >= Ntop){
+      thr = quantile_vec[N-Ntop]; 
+    }
 
     if(!silent_mode) sout << (pv_arr >= thr).count() << "/" << N << " blocks selected (Upper bound = " << thr << ")..." << flush;
 
