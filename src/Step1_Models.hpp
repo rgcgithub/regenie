@@ -70,7 +70,7 @@ struct ridgel1 {
 
 
 void fit_null_logistic(bool const&,const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
-bool fit_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&,bool const&);
+bool fit_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&,bool const&,double const& numtol = 1e-8);
 double get_logist_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
 
 void fit_null_poisson(const int&,struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
