@@ -41,6 +41,7 @@
 #include "Data.hpp"
 
 #include <boost/exception/all.hpp>
+#include <boost/math/special_functions/gamma.hpp>
 
 using namespace std;
 using namespace Eigen;
@@ -1592,6 +1593,22 @@ void get_logp(const double& pv, double& logp, double& Tstat, double const& dbl_d
   double pval = max(dbl_dmin, pv); // to prevent underflow
   Tstat = quantile(complement(chisq1, pval)); // chisq stat
   logp = -log10(pval); // -log10p
+
+}
+
+// get logp from chisq(k)
+void get_logp(double& logp, const double& Tstat, double const& df){
+
+  boost::math::chi_squared chisqK(df);
+
+  if( (Tstat < 0) && (fabs(Tstat) < 1e-6)){logp = 0; return;} // num err
+  else if(Tstat<0) {logp = -1; return;} // fail
+  double pv = cdf(complement(chisqK, Tstat));
+
+  if(pv == 0) logp = log10(2) - 0.5 * df * log10(2) - boost::math::lgamma(df * 0.5) / log(10) + 0.5 * (df-2) * log10(Tstat) - 0.5 * Tstat * M_LOG10E ;
+  else logp = log10(pv);
+
+  logp *= -1;
 
 }
 

@@ -476,8 +476,10 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       // get eigen values of Rsqrt*ZtZ*Rsqrt
       get_lambdas(lambdas, get_RsKRs(Kmat(m_indices, m_indices), r_outer_sum, gamma1, rho_vec(j), flip_rho_sqrt(j)), skat_lambda_tol);
       //if(debug) cerr << "rho:" << rho_vec(j) << "-> L:" << lambdas.transpose() << "\n";
-      if(lambdas.size() == 0) break; // SKAT & SKAT-O failed
-
+      if(lambdas.size() == 0) {
+        if(debug) cerr << "all eigen values are 0 for rho = " << rho_vec(j) << "\n";
+        break; // SKAT & SKAT-O failed
+      }
       // needed for skato (M>1)
       if(nnz > 1)  get_cvals(j, cvals, lambdas);
 
@@ -510,11 +512,17 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     }
 
     // for each phenotype, check all SKATO pvs are defined
-    if((pvs_skato.array() < 0).rowwise().any().all()) continue; // go to next mask set if no phenotype with all pvals defined
+    if((pvs_skato.array() < 0).rowwise().any().all()) {
+      if(debug) cerr << "Some SKATO pvalues failed to compute for all the phenotypes (p = " << pvs_skato << " )\n";
+      continue; // go to next mask set if no phenotype with all pvals defined
+    }
 
     // Get minimum of p-values and corresponding chisq quantile for each rho
     for(int ph = 0; ph < n_pheno; ph++) {
-      if( (pvs_skato.row(ph).array() < 0).any() ) continue;
+      if( (pvs_skato.row(ph).array() < 0).any() ) {
+        if(debug) cerr << "One of the SKATO pvalues failed for phenotype (p = " << pvs_skato.row(ph) << " )\n";
+        continue;
+      }
 
       if(with_skato_acat){
         if(debug) cerr << "skato-acat logp=" << pvs_skato.row(ph) <<"\n";
@@ -527,9 +535,9 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         get_logp(get_acat(p_acato), pvs_acato(ph,0), chisq_acato(ph, 0), nl_dbl_dmin);
       }
       if(with_skato_int){
-        minp = pow(10, -pvs_skato.row(ph).maxCoeff());
+        minp = max(nl_dbl_dmin, pow(10, -pvs_skato.row(ph).maxCoeff())); // prevent underflow
         get_Qmin(nrho, minp, skato_Qmin_rho, cvals);
-        if(debug) cerr << "Qmin=" << skato_Qmin_rho.matrix().transpose() << "\nlogp=" << pvs_skato.row(ph) <<"\n";
+        if(debug) cerr << "Qmin=" << skato_Qmin_rho.matrix().transpose() << "\nminP=" << minp <<"; logp=" << pvs_skato.row(ph) <<"\n";
         // numerical integration
         get_skato_pv(pvs_skato(ph,0), chisq_skato(ph, 0), minp, nrho, nl_dbl_dmin, debug);
       }
@@ -925,9 +933,9 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         get_logp(get_acat(p_acato), pvs_m_acato(ph, imask), chisq_m_acato(ph, imask), nl_dbl_dmin);
       }
       if(with_skato_int){
-        minp = pow(10, -pvs_skato.maxCoeff());
+        minp = max(nl_dbl_dmin, pow(10, -pvs_skato.maxCoeff())); // prevent underflow
         get_Qmin(nrho, minp, skato_Qmin_rho, cvals);
-        if(debug) cerr << "Qmin=" << skato_Qmin_rho.matrix().transpose() << "\nlogp=" << pvs_skato.matrix().transpose() <<"\n";
+        if(debug) cerr << "Qmin=" << skato_Qmin_rho.matrix().transpose() << "\nminP=" << minp <<"; logp=" << pvs_skato.matrix().transpose() <<"\n";
         // numerical integration
         get_skato_pv(pvs_m_o(ph, imask), chisq_m_o(ph, imask), minp, nrho, nl_dbl_dmin, debug);
       }
@@ -1244,19 +1252,8 @@ void compute_fixed_skato_p(double& pval, double& chival, double& q, double const
 }
 
 void compute_skat_pv(double& logp, double& chival, double const& Q, VectorXd& lambdas, const double& tol){
-
-  double pv;
-
-  pv = get_chisq_mix_pv(Q, lambdas);
-  //cerr << "mixture pv = " << pv << "\n";
-
-  if(pv <= 0) { // spa also failed
-    logp = -1; chival = -1;
-  } else if( pv >= 1 ){ // numerically 1
-    logp = 0; chival = 0;
-  } else // take log10 and get chisq quantile
-    get_logp(pv, logp, chival, tol);
-
+  // use log10P directly to handle small pvalues
+  logp = get_chisq_mix_logp(Q, lambdas, chival);
 }
 
 // returns p-value or -1
@@ -1267,19 +1264,64 @@ double get_chisq_mix_pv(double const& q, const Ref<const VectorXd>& lambdas){
   // re-scale so that max lambda is 1 (lambda is sorted)
   double newQ = q / lambdas.tail(1)(0);
   VectorXd newL = lambdas / lambdas.tail(1)(0);
-
+  //cerr << "Qval= " << newQ << "\n";
   // exact
   pv = get_davies_pv(newQ, newL, false);
+  //cerr << "davies: " << pv << "\n";
+
   // if failed or is very low, use SPA
   if(pv <= pv_davies_thr){ 
     pv = get_kuonen_pv(newQ, newL); // SPA
+    //cerr << "kuonen: " << pv << "\n";
     if(pv <= 0) {// if SPA failed
       pv = get_davies_pv(newQ, newL, true); // use Davies with stringent parameters
-      if(pv <= 0) pv = get_liu_pv(newQ, newL); // only use mod Liu if Davies/SPA failed
+      //cerr << "davies strict: " << pv << "\n";
+      if(pv <= 0) {
+        pv = get_liu_pv(newQ, newL); // only use mod Liu if Davies/SPA failed
+        //cerr << "liu: " << pv << "\n";
+      }
     }
   }
 
   return pv;
+
+}
+
+// get log10p or -1
+double get_chisq_mix_logp(double const& q, const Ref<const VectorXd>& lambdas, double& chival){
+
+  double logp, pv, pv_davies_thr = 1e-5; // davies can be unreliable if pv is too small
+  double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
+
+  // re-scale so that max lambda is 1 (lambda is sorted)
+  double newQ = q / lambdas.tail(1)(0);
+  VectorXd newL = lambdas / lambdas.tail(1)(0);
+  //cerr << "Qval= " << newQ << "\n";
+  // exact
+  pv = get_davies_pv(newQ, newL, false);
+  //cerr << "davies: " << pv << "\n";
+
+  // if failed or is very low, use SPA
+  if(pv <= pv_davies_thr){ 
+    pv = get_kuonen_pv(newQ, newL); // SPA
+    //cerr << "kuonen: " << pv << "\n";
+
+    if(pv <= 0) {// if SPA failed
+      pv = get_davies_pv(newQ, newL, true); // use Davies with stringent parameters
+      //cerr << "davies strict: " << pv << "\n";
+
+      if(pv <= 0) {
+        logp = get_liu_pv(newQ, newL, chival); // only use mod Liu if Davies/SPA failed
+        //cerr << "liu: " << logp << "\n";
+      } else get_logp(pv, logp, chival, nl_dbl_dmin);
+
+    } else get_logp(pv, logp, chival, nl_dbl_dmin);
+
+  } else get_logp(pv, logp, chival, nl_dbl_dmin); 
+
+  if(logp < 0) chival = -1;
+
+  return logp;
 
 }
 
@@ -1444,6 +1486,37 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, const boo
   if(!lax && ((pv <= 0) || (pv > 1))) return -1;
   else if(lax && ((pv < 0) || (pv > 1))) return -1;
   return pv;
+}
+
+
+double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, double& chival){
+
+  ArrayXd cvals(6);
+  get_cvals(cvals, lambdas);
+  //cerr << "cvals liu=" << cvals.matrix().transpose() << endl;
+  
+  double pv, logpv;
+  double tstar = (q - cvals(0)) * cvals(1);
+  double val = tstar * cvals(3) + cvals(2);
+
+  //cerr << "liu val = " << val << " ";
+  if(val < 0) {
+    chival = -1;
+    return -1;
+  }
+
+  // 0 ncp gives strange behavior with non_central_chi_squared (returns -cdf instead of 1-cdf)
+  if(cvals(5) == 0) get_logp(logpv, val, cvals(4));
+  else  {
+    pv = cdf(complement(non_central_chi_squared(cvals(4), cvals(5)), val));
+    logpv = ( ((pv <= 0) || (pv > 1)) ? -1.0 : -log10(pv) );
+  }
+
+  //cerr << "; params = ( "  << std::setprecision(10) << cvals(4) << ", " << cvals(5) << ") -> logpv liu = " << logpv << "\n";
+
+  if(logpv < 0) chival = -1;
+  chival = val;
+  return logpv;
 }
 
 bool get_ztz_evals(const Ref<const MatrixXd>& Kmat, MatrixXd& outer_sum, double& gamma1, double& gamma2, double& gamma3, double const& skat_lambda_tol, bool const& debug){

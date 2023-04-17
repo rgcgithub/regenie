@@ -455,6 +455,7 @@ std::string print_sv(const std::vector<T>&,const std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
+void get_logp(double&,const double&,const double&);
 void allocate_mat(Eigen::MatrixXd&,int const&,int const&);
 std::string print_mat_dims(Eigen::MatrixXd const&);
 void print_obj(const Eigen::Ref<const Eigen::MatrixXd>&,std::string const&);
