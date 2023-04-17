@@ -3483,8 +3483,11 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
 
   myfile.closeFile();
 
-  if(n_anno_read == 0)
-    throw "annotation information could not be read. Perhaps check variant IDs matches those in the genotype file?";
+  if(n_anno_read == 0){
+    string msg_err = "annotation information could not be read. Perhaps check variant IDs matches those in the genotype file?";
+    if ( params->mask_loo || params->mask_lodo) msg_err.append( " (Or set name for LOVO/LODO matches with that in annotation file?)" );
+    throw msg_err;
+  }
   if(!params->w_anno_lab) {
     if(ncat == 0)
       throw "there are no annotation categories read from file.";
