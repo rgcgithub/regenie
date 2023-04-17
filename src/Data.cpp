@@ -1139,7 +1139,6 @@ void Data::make_predictions(int const& ph, int const& val) {
   string outname;
   ofstream ofile;
 
-
   if(params.within_sample_l0){
     X1 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_mat[ph_eff][0];
     X2 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_pheno[ph][0];
@@ -1207,10 +1206,9 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
   check_l0(ph, ph_eff, &params, &l1_ests, &pheno_data, sout, true);
 
   int bs_l1 = l1_ests.test_mat_conc[ph_eff].cols();
-  MatrixXd Xmat_chunk, Yvec_chunk,  Z1, Z2, b0, xtx;
-  VectorXd w1, w2, Vw2, zvec;
-  RowVectorXd calFactor;
-  ArrayXd dl_inv;
+  MatrixXd b0, xtx, tmpMat, HX_chunk;
+  VectorXd zvec, bvec;
+  ArrayXd calFactor, yres;
 
   uint64 max_bytes = params.chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (target_size * bs_l1) matrix ]
@@ -1219,28 +1217,23 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
   int chunk, size_chunk, target_size = params.cv_folds / nchunk;
   int j_start;
 
+  xtx = l1_ests.test_mat_conc[ph_eff].transpose() * l1_ests.test_mat_conc[ph_eff];
+  xtx.diagonal().array() += params.tau[ph](val) * l1_ests.ridge_param_mult;
+  zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
 
   // fit model on whole data again for optimal ridge param
-  xtx = l1_ests.test_mat_conc[ph_eff].transpose() * l1_ests.test_mat_conc[ph_eff];
-  SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
-  zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
-  w1 = eigX.eigenvectors().transpose() * zvec;
-  dl_inv = (eigX.eigenvalues().array() + params.tau[ph](val) * l1_ests.ridge_param_mult).inverse();
-  w2 = (w1.array() * dl_inv).matrix();
-  Vw2 = eigX.eigenvectors() * w2;
+  SelfAdjointEigenSolver<MatrixXd> eigMat(xtx);
+  tmpMat = eigMat.eigenvectors() * (1/eigMat.eigenvalues().array()).matrix().asDiagonal() * eigMat.eigenvectors().transpose();
+  bvec = tmpMat * zvec;
+  yres = (pheno_data.phenotypes.col(ph) - l1_ests.test_mat_conc[ph_eff] * bvec).array();
 
   for(chunk = 0; chunk < nchunk; ++chunk ) {
     size_chunk = chunk == nchunk - 1? params.cv_folds - target_size * chunk : target_size;
     j_start = chunk * target_size;
-    Xmat_chunk = l1_ests.test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1);
-    Yvec_chunk = pheno_data.phenotypes.block(j_start, ph, size_chunk, 1);
 
-    Z1 = (Xmat_chunk * eigX.eigenvectors()).transpose();
-    Z2 = dl_inv.matrix().asDiagonal() * Z1;
-    calFactor = (Z1.array() * Z2.array()).matrix().colwise().sum();
-    b0 = eigX.eigenvectors() * Z2;
-    b0.array().rowwise() *= (w2.transpose() * Z1 - Yvec_chunk.transpose()).array() / (1 - calFactor.array());
-    b0.colwise() += Vw2;
+    HX_chunk = tmpMat * l1_ests.test_mat_conc[ph_eff].middleRows(j_start, size_chunk).transpose(); // k x Nc
+    calFactor = (l1_ests.test_mat_conc[ph_eff].middleRows(j_start, size_chunk).array() * HX_chunk.transpose().array()).matrix().rowwise().sum().array();
+    b0 = bvec.rowwise().replicate(size_chunk) - HX_chunk * (yres.segment(j_start, size_chunk)/(1-calFactor)).matrix().asDiagonal() ;
 
     int ctr = 0, chr_ctr = 0;
     int nn;
@@ -1378,7 +1371,7 @@ void Data::make_predictions_binary_loocv_full(int const& ph, int const& val) {
 
   // fit logistic on whole data again for optimal ridge param
   beta = ArrayXd::Zero(bs_l1);
-  run_log_ridge_loocv(params.tau[ph](val), target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
+  run_log_ridge_loocv(params.tau[ph](val), l1_ests.ridge_param_mult, target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
 
   // use estimates from this model directly
   // compute predictor for each chr
@@ -1436,7 +1429,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
 
   // fit logistic on whole data again for optimal ridge param
   beta = ArrayXd::Zero(bs_l1);
-  run_log_ridge_loocv(params.tau[ph](val), target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
+  run_log_ridge_loocv(params.tau[ph](val), l1_ests.ridge_param_mult, target_size, nchunk, beta, pivec, wvec, Y, X, offset, mask, &params, sout);
 
   // compute Hinv
   //zvec = (etavec - m_ests.offset_nullreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
@@ -1577,7 +1570,7 @@ void Data::make_predictions_count_loocv(int const& ph, int const& val) {
 
   // fit logistic on whole data again for optimal ridge param
   beta = ArrayXd::Zero(bs_l1);
-  run_ct_ridge_loocv(params.tau[ph](val), target_size, nchunk, beta, pivec, Y, X, offset, mask, &params, sout);
+  run_ct_ridge_loocv(params.tau[ph](val), l1_ests.ridge_param_mult, target_size, nchunk, beta, pivec, Y, X, offset, mask, &params, sout);
 
   // compute Hinv
   //zvec = (etavec - m_ests.offset_nullreg.col(ph).array()) + (pheno_data.phenotypes_raw.col(ph).array() - pivec) / wvec;
