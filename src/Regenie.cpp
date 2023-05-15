@@ -985,10 +985,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "minimum info score must be in [0,1].";
     if( params->rm_missing_qt && (params->strict_mode || params->trait_mode || !params->test_mode) ) params->rm_missing_qt = false;
 
-    if( !vm.count("bsize") && !params->snp_set && !params->getCorMat ) 
+    if( !vm.count("bsize") && !params->snp_set ) 
       throw "must specify the block size using '--bsize'.";
-    else if(vm.count("bsize") && ( params->block_size < 2 ))
-      throw "block size must be at least 2.";
+    else if(vm.count("bsize") && ( params->block_size < 1 ))
+      throw "block size must be at least 1.";
     if(params->set_aaf && !params->build_mask) params->set_aaf = false;
     if(params->run_l0_only && params->test_l0)
       throw "cannot use --test-l0 with --run-l0";
