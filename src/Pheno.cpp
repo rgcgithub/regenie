@@ -960,7 +960,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   // with interaction test, remove colinear columns
   if( params->w_interaction ) {
     // apply QR decomp
-    QRcheck(pheno_data->interaction_cov, params);
+    QRcheck(pheno_data->interaction_cov, params->interaction_cat, params->interaction_lvl_names, params->n_analyzed - params->ncov, Eigen::Default, params->numtol);
     //cerr << pheno_data->interaction_cov.topRows(3) << "\n\n";
     params->ncov_interaction = pheno_data->interaction_cov.cols();
     params->n_tests_per_variant += 3; // marginal + inter + joint
