@@ -1234,7 +1234,7 @@ void run_firth_correction_snp(int const& chrom, int const& ph, int const& isnp, 
     // fit full model and compute deviance
     fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, gblock.Gmat.col(isnp), block_info, dt_thr, sout);
   } else // approx firth - only fit full model
-  fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, dt_thr->Gres.cwiseQuotient(m_ests.Gamma_sqrt.col(ph)), block_info, dt_thr, sout);
+    fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, dt_thr->Gres.cwiseQuotient(m_ests.Gamma_sqrt.col(ph)), block_info, dt_thr, sout);
 
 }
 
