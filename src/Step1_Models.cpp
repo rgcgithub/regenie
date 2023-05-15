@@ -45,7 +45,7 @@ using boost::math::beta_distribution;
 
 
 // null models
-void fit_null_logistic(bool const& silent, const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
+void fit_null_logistic(bool const& silent, const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout, bool const& save_betas) {
 
   if(!silent) sout << "   -fitting null logistic regression on binary phenotypes..." << flush;
   if(params->test_mode) params->pheno_pass = true;
@@ -73,6 +73,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
     // starting values
     betaold = 0;
+    if(params->print_cov_betas) {betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0))) - loco_offset.mean();}
     get_pvec(etavec, pivec, betaold, loco_offset, pheno_data->new_cov, params->numtol_eps);
 
     // check if model converged
@@ -86,6 +87,10 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
         pivec = ( 0.5 + Y ) / 2;
         etavec = mask.select( log(pivec/ (1-pivec)), 0);
         betaold = 0;
+        if(params->print_cov_betas) {
+          betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0)));
+          get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
+        }
         if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, true, params->numtol) || fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, false, params->numtol) ){ 
           get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
           skip_pheno = !(fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, true, params->numtol) || fit_logistic(Y, pheno_data->new_cov, loco_offset, mask, pivec, etavec, betaold, params, sout, false, params->numtol));
@@ -105,6 +110,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
 
     if(params->test_mode){
+      if(save_betas && params->print_cov_betas) {params->cov_betas.col(i) = betaold;continue;}
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
@@ -194,7 +200,7 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
 }
 
 // poisson models
-void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
+void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout, bool const& save_betas) {
 
   sout << "   -fitting null poisson regression..." << flush;
 
@@ -228,6 +234,7 @@ void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* ph
       sout << "\n     WARNING: Fitted rates numerically 0 occurred (phenotype #" << files->pheno_names[i] <<").";
 
     if(params->test_mode){
+      if(save_betas && params->print_cov_betas) {params->cov_betas.col(i) = betaold;continue;}
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       m_ests->Gamma_sqrt.col(i) = pivec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
