@@ -1402,6 +1402,38 @@ int getBasis(MatrixXd& X,struct param const* params){
 }
 
 void QRcheck(MatrixXd& mat, struct param* params){
+int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct param* params){
+
+  // only keep linearly independent columns
+  ArrayXi index_in_analysis = get_true_indices(ind_in_analysis);
+  MatrixXd X_in_analysis = X(index_in_analysis, all);
+  int ncol_start = X_in_analysis.cols();
+
+  QRcheck(X_in_analysis, true, params->covar_names, params->n_analyzed - params->ncov, Eigen::Default, params->numtol, false);
+  if(X_in_analysis.cols() != ncol_start) cout << "WARNING: " << (ncol_start - X_in_analysis.cols()) << " variables removed due to multi-colinearity\n";
+
+  // save SD
+  RowVectorXd mu = X_in_analysis.colwise().mean();
+  params->cov_sds = (X_in_analysis.rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - X_in_analysis.cols());
+
+  // SD=0 should be only for intercept column (set it to 1)
+  if((params->cov_sds < params->eigen_val_rel_tol).count() != 1){
+    if(params->debug) {
+      cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
+      cerr << "X top 2 rows:\n" << X_in_analysis.topRows(2);
+      cerr << "SDs:\n" << params->cov_sds.matrix().transpose();
+    }
+    throw "more than 1 covariates have SD = 0";
+  }
+  params->cov_sds = (params->cov_sds < params->eigen_val_rel_tol).select(1, params->cov_sds);
+
+  // re-scale X (better for logistic reg convergence)
+  X_in_analysis.array().rowwise() /= params->cov_sds.matrix().transpose().array();
+  X(index_in_analysis, all) = X_in_analysis;
+  
+  return X.cols();
+}
+
 
   vector<string> new_names;
 
