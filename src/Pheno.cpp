@@ -953,9 +953,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
 
-  // compute offset for nonQT (only in step 1)
-  if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(false, 0, params, pheno_data, m_ests, files, sout);
-  else if((params->trait_mode==2) && !params->test_mode) fit_null_poisson(0, params, pheno_data, m_ests, files, sout);
+  fit_null_models_nonQT(params, pheno_data, m_ests, files, sout);
 
   // with interaction test, remove colinear columns
   if( params->w_interaction ) {
@@ -1380,6 +1378,31 @@ void write_ids(struct in_files const* files, struct param* params, struct phenod
   } 
 
   if(!params->write_masks) params->FIDvec.clear();
+}
+
+void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout) {
+
+  if(params->print_cov_betas) { 
+
+    params->cov_betas.resize(params->ncov, params->n_pheno);
+
+    // need to get betas for non-QTs in step 2
+    if(params->trait_mode==1) { // BT
+      fit_null_logistic(true, 0, params, pheno_data, m_ests, files, sout, true);// null logistic
+      if(params->firth) // null firth
+        for( int ph = 0; ph < params->n_pheno; ++ph ) 
+          if(params->pheno_pass(ph))
+            params->pheno_pass(ph) = fit_approx_firth_null(0, ph, pheno_data, m_ests, params->cov_betas.col(ph), params);
+
+    } else if(params->trait_mode==2) // CT
+      fit_null_poisson(0, params, pheno_data, m_ests, files, sout, true);
+
+  }
+
+  // compute offset for nonQT (only in step 1)
+  if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(false, 0, params, pheno_data, m_ests, files, sout);
+  else if((params->trait_mode==2) && !params->test_mode) fit_null_poisson(0, params, pheno_data, m_ests, files, sout);
+
 }
 
 
