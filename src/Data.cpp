@@ -3332,7 +3332,7 @@ void Data::ld_comp() {
   ArrayXi indices_ld(params.ld_n);
 
   if((params.file_type == "bgen") && params.dosage_mode){ // use dense matrix with dosages in BGEN format
-    MatrixXd full_mat(params.n_samples, params.ld_n);
+    MatrixXd full_mat = MatrixXd::Zero(params.n_samples, params.ld_n);
     // read in SVs
     get_G_svs(full_mat, ld_var_absent, colnames_full_mat);
     // read in masks
