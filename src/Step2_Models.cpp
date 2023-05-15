@@ -35,7 +35,7 @@
 #include "MultiTrait_Tests.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
-
+#include "MCC.hpp"
 
 using namespace std;
 using namespace Eigen;
@@ -218,11 +218,120 @@ void compute_score(int const& isnp, int const& snp_index, int const& chrom, int 
     compute_score_bt(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
   else if(params.trait_mode==2)
     compute_score_ct(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
-  else if(params.trait_mode==0)
-    compute_score_qt(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
-
+  else if(params.trait_mode==0) {
+    if(params.mcc_test) {
+      compute_score_qt_mcc(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
+    } else {
+      compute_score_qt(isnp, snp_index, thread_num, test_string, model_type, yres, p_sd_yres, params, pheno_data, gblock, block_info, snpinfo, files, sout);
+    }
+  }
 }
 
+// MCC test stat for QT 
+void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, mstream& sout){
+
+  double gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
+  string tmpstr; // for sum stats
+  MapArXd Geno (gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+  data_thread* dt_thr = &(gblock.thread_data[thread_num]);
+
+  if( params.strict_mode ) {
+    double n_sq = sqrt( params.n_analyzed - params.ncov_analyzed );
+    if(params.skip_blups && dt_thr->is_sparse) // Gsparse is on raw scale (must have yres centered)
+      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / n_sq;
+    else
+      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / n_sq;
+
+    if(params.htp_out)
+      dt_thr->scores = dt_thr->stats * n_sq * gsc;
+
+    // estimate
+    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( n_sq * gsc );
+  } else {
+    // compute GtG for each phenotype (different missing patterns)
+    dt_thr->scale_fac_pheno = pheno_data.masked_indivs.transpose().cast<double>() * Geno.square().matrix();
+    dt_thr->stats = (yres.transpose() * Geno.matrix()).array() / dt_thr->scale_fac_pheno.sqrt();
+
+    if(params.htp_out)
+      dt_thr->scores = dt_thr->stats * dt_thr->scale_fac_pheno.sqrt() * gsc;
+
+    // estimate
+    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array() ).matrix().transpose().array() / ( sqrt(dt_thr->scale_fac_pheno) * gsc );
+  }
+
+  // SE
+  dt_thr->se_b = dt_thr->bhat / dt_thr->stats;
+
+  // get test statistic
+  dt_thr->chisq_val = dt_thr->stats.square();
+
+  // (1) MCC if mcc_apply_thr == false; (2) Score -> MCC if Pval(Score) < mcc_thr
+  MCC mcc;
+  boost::math::chi_squared chisq(1);
+  double chisq_val_adj;
+
+  if(!params.mcc_apply_thr) {
+    // (1) only MCC
+    mcc.setup_y(pheno_data.masked_indivs, yres, params.ncov_analyzed);
+    MCCResults mcc_results = mcc.run(Geno);
+    // store MCC results into dt_thr
+    for( int i = 0; i < params.n_pheno; ++i ) {
+      if(mcc_results.Skip(i, 0)) {
+        dt_thr->pval_log(i) = -1;
+        block_info->test_fail(i) = true;
+      } else {
+        dt_thr->pval_log(i) = -log10(mcc_results.Pval(i, 0));
+        // adjust SE
+        chisq_val_adj = boost::math::quantile(boost::math::complement(chisq, mcc_results.Pval(i, 0)));
+        dt_thr->se_b(i) *= sqrt(dt_thr->chisq_val(i) / chisq_val_adj);
+      }
+    }
+  } else {
+    // (2) Score -> MCC
+    for( int i = 0; i < params.n_pheno; ++i ) {
+      get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));
+      if(dt_thr->pval_log(i) > params.mcc_thr) {
+        mcc.setup_y(pheno_data.masked_indivs.col(i), yres.col(i), params.ncov_analyzed);
+        MCCResults mcc_results_i = mcc.run(Geno);
+        if(mcc_results_i.Skip(0, 0)) {
+          dt_thr->pval_log(i) = -1;
+          block_info->test_fail(i) = true;
+        } else {
+          dt_thr->pval_log(i) = -log10(mcc_results_i.Pval(0, 0));
+          // adjust SE
+          chisq_val_adj = boost::math::quantile(boost::math::complement(chisq, mcc_results_i.Pval(i, 0)));
+          dt_thr->se_b(i) *= sqrt(dt_thr->chisq_val(i) / chisq_val_adj);
+        }
+      }
+    }
+  }
+
+  if(!params.htp_out) tmpstr = print_sum_stats_head(snp_index, snpinfo);
+
+  for( int i = 0; i < params.n_pheno; ++i ) {
+
+    if( !params.pheno_pass(i) || block_info->ignored_trait(i) ) {
+      if(!params.p_joint_only && !params.split_by_pheno)
+        block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
+      continue;
+    }
+    if(block_info->flipped) dt_thr->bhat(i) *= -1;
+
+    // get MCC pvalue
+    /* get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i)); */
+    /* if(mcc_results.Skip(i, 0)) { */
+    /*   dt_thr->pval_log(i) = -1; */
+    /*   block_info->test_fail(i) = true; */
+    /* } else { */
+    /*   dt_thr->pval_log(i) = -log10(mcc_results.Pval(i, 0)); */
+    /* } */
+
+    if(!params.p_joint_only)
+      block_info->sum_stats[i].append( print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params) );
+
+  }
+
+}
 // score test stat for QT
 void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, mstream& sout){
 
