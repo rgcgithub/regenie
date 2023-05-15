@@ -190,9 +190,12 @@ struct param {
   bool rm_snps = false, rm_or = false; // user specify to remove snps from analysis
   bool mk_snp_map = false, keep_snp_map = false;
   bool select_phenos = false, select_phenos_rm = false, force_qt_run = false; // user specify which phenotype columns to use
-  bool select_covs = false, select_covs_rm = false, cat_cov = false; // user specify which covariate columns to use and if categorical covars present
+  bool select_covs = false, select_covs_rm = false, cat_cov = false, print_cov_betas = false; // user specify which covariate columns to use and if categorical covars present
   int max_cat_levels = 10; // maximum number of categories of categorical covars
   bool select_chrs = false; // user specify which chromosomes to test
+  std::vector<std::string> covar_names;
+  Eigen::MatrixXd cov_betas;
+  Eigen::ArrayXd cov_sds;
 
   // other global options
   const std::string missing_pheno_str = "NA";

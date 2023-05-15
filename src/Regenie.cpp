@@ -295,6 +295,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
+    ("print-cov-betas", "Print covariate effects to file (assumes no multi-colinearity)")
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ("prs-cov", "include step 1 predictions as covariate rather than offset")
     ("test-l0", "test association for each level 0 block")
@@ -410,6 +411,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("debug") ) params->verbose = params->debug = true;
     if( vm.count("range") ) params->set_range = true;
     if( vm.count("print") ) params->print_block_betas = true;
+    if( vm.count("print-cov-betas") ) params->print_cov_betas = true;
     if( vm.count("test-l0") ) params->test_l0 = true;
     if( vm.count("select-l0") ) params->select_l0 = true;
     //if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;
@@ -994,6 +996,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "cannot use --test-l0 with --run-l0";
     if(params->test_l0 && (params->l0_pvals_file != ""))
       throw "--select-l0 must be specified without an argument";
+    if(params->print_cov_betas && (params->w_interaction || params->blup_cov))
+      throw "cannot use --print-cov-betas with interaction tests or --prs-cov";
+    if(params->print_cov_betas && !params->test_mode)
+      throw "can only use --print-cov-betas in step 2";
 
     // determine number of threads if not specified
     if(params->threads < 1)
