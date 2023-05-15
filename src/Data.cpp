@@ -3682,12 +3682,14 @@ void Data::print_cor(SpMat& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Files
   MatrixXd GtX = Gmat.transpose() * pheno_data.new_cov; // MxK
   MatrixXd LDmat = -GtX * GtX.transpose();
   LDmat += Gmat.transpose() * Gmat;
-  if(params.debug) cout << print_mem() << "...";
+  if(params.debug) cout << print_mem() << "...raw covariance matrix:\n" << LDmat << "\n";
 
   if(!params.skip_scaleG) { // get cormat
     ArrayXd sds = (LDmat.diagonal().array() == 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt());
     LDmat.diagonal().array() = sds.square();
+    if(params.debug) cout << print_mem() << "...thresholded covariance matrix:\n" << LDmat << "\n";
     LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
+    if(params.debug) cout << print_mem() << "...correlation matrix:\n" << LDmat << "\n";
   } else 
     LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
   sout << " -> " << mt.stop_ms() << "\n";
@@ -3755,13 +3757,22 @@ void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
   // get LD matrix - first project covariates
   MatrixXd GtX = Gmat.transpose() * pheno_data.new_cov; // MxK
   MatrixXd LDmat = Gmat.transpose() * Gmat - GtX * GtX.transpose();
-  if(params.debug) cout << print_mem() << "...";
+  if(params.debug) cout << print_mem() << "...raw covariance matrix:\n" << LDmat << "\n";
   Gmat.resize(0,0);
+
+  // check if any of the diagonal entries are negative (but numerically zero -- due to rounding error)
+  ArrayXb sd_G_zero = (LDmat.diagonal().array() < 0) && (LDmat.diagonal().array().abs() < params.tol) ;
+  if(sd_G_zero.any()) {// set entries in LD matrix to 0
+    ArrayXi ind_0 = get_true_indices(sd_G_zero);
+    LDmat(ind_0,all).array() = 0; LDmat(all,ind_0).array() = 0;
+  }
 
   if(!params.skip_scaleG) { // get cormat
     ArrayXd sds = (LDmat.diagonal().array() == 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt());
     LDmat.diagonal().array() = sds.square();
+    if(params.debug) cout << print_mem() << "...thresholded covariance matrix:\n" << LDmat << "\n";
     LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
+    if(params.debug) cout << print_mem() << "...correlation matrix:\n" << LDmat << "\n";
   } else 
     LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
   sout << " -> " << mt.stop_ms() << "\n";
