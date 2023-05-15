@@ -476,6 +476,10 @@ template <typename T> int sgn(T val) {
   return (T(0) < val) - (val < T(0));
 }
 
+template<class T> T get_max(T const& val) {
+  return std::numeric_limits<T>::max();
+}
+
 template <typename U> 
 std::string get_test_list(U const& bit_map, std::map<std::string, U>& srt_map){
 
