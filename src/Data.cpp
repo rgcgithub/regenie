@@ -1892,6 +1892,7 @@ void Data::print_test_info(){
 
   sout << " * using minimum MAC of " << (params.build_mask ? params.min_MAC_mask : params.min_MAC) << 
     " (" << (params.build_mask ? "masks" : "variants") << " with lower MAC are ignored)\n";
+  if(params.forced_MAC > 0) sout << "   -using threshold of " << params.forced_MAC << " for subset of specified variants\n";
   if(params.setMinINFO) 
     sout << " * using minimum imputation info score of " << params.min_INFO << " (variants with lower info score are ignored)\n";
   if((params.test_type == 2) && (params.minHOMs > 0))

@@ -319,6 +319,8 @@ struct param {
   double range_min, range_max; // use genomic region to filter variants
   std::string build_code = "hg38"; // to identify chrX PAR region bounds
   uint32_t par1_max_bound, par2_min_bound;
+  std::string forced_MAC_snpfile;
+  double forced_MAC = -1;
 
   // snp sets (masks/joint tests)
   bool snp_set = false; 

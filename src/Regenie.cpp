@@ -314,6 +314,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
     ("skip-cf-burden", "skip computing per-mask calibration factor for SKAT tests")
+    ("force-mac-filter", "apply a seperate MAC filter on a subset of the SNPs", cxxopts::value<std::string>(), "snpfile,MAC")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
@@ -913,6 +914,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->build_mask = true;
 
     }
+    if( params->test_mode && vm.count("force-mac-filter") ) {
+      tmp_str_vec = string_split(vm["force-mac-filter"].as<string>(),",");
+      params->forced_MAC_snpfile = tmp_str_vec[0];
+      params->forced_MAC = convertDouble( tmp_str_vec[1], params, sout);
+      if(params->forced_MAC < 0.5) throw "MAC must be greater than 0.5 for --force-mac-filter";
+      if(params->rm_or || params->keep_or) throw "option --force-mac-filter cannot be used with --extract-or/--exclude-or";
+      if(params->build_mask) throw "option --force-mac-filter cannot be used when building masks";
+    } else valid_args[ "force-mac-filter" ] = false;
 
     if(!params->build_mask && params->write_masks) {params->write_masks = false; valid_args[ "write-mask" ] = false;}
     if(!params->build_mask && params->check_mask_files) {params->check_mask_files = false; valid_args[ "check-burden-files" ] = false;}
@@ -1010,8 +1019,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: only one of --firth/--spa can be used. Only Firth will be used.\n";
       params->use_SPA = false; valid_args[ "spa" ] = false;
     }
-    params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set || params->getCorMat;
-    params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set || params->getCorMat;
+    params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set || params->getCorMat || (params->forced_MAC > 0);
+    params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set || params->getCorMat || (params->forced_MAC > 0);
 
     // check firth fallback pvalue threshold
     if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
@@ -1175,6 +1184,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         for(auto cn : files->file_sets_exclude)
           check_file(cn, "exclude-sets");
     }
+    if(params->forced_MAC > 0) check_file(params->forced_MAC_snpfile, "force-mac-filter");
     if(params->select_l0 && !params->test_l0)
       check_file(params->l0_pvals_file, "select-l0");
     if(vm.count("ld-extract"))

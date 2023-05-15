@@ -1173,6 +1173,9 @@ void check_snps_include_exclude(struct in_files* files, struct param* params, st
   // with OR
   check_snps_include_exclude_or(files, params, filters, snpinfo, sout);
 
+  if(params->forced_MAC > 0)
+    check_forced_MAC_file(filters->snpID_to_ind, snpinfo, params, sout);
+
 }
 
 // determine if snps should be included/excluded for step 2 using OR filter with MAC
@@ -1198,6 +1201,21 @@ void check_snps_include_exclude_or(struct in_files* files, struct param* params,
   // not needed if not using sets
   if(!params->snp_set)
     filters->snpID_to_ind.clear();
+
+}
+
+// use different MAC filter for subset of SNPs
+void check_forced_MAC_file(map <string, uint32_t>& map_ID, vector<snp>& snpinfo, struct param* params, mstream& sout){
+
+  assert( snpinfo.size() == map_ID.size() ); // should be the same
+
+  ArrayXb geno_mask = check_in_map_from_files(map_ID, {params->forced_MAC_snpfile}, sout);
+  for(int i = 0; i < geno_mask.size(); i++)
+    snpinfo[ i ].apply_diff_MAC_filter = geno_mask(i);
+
+  // not needed if not using sets
+  if(!params->snp_set)
+    map_ID.clear();
 
 }
 
@@ -1976,7 +1994,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
 
     // check MAC
     if( params->test_mode){
-      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_data, params);
+      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_info->apply_diff_MAC_filter, snp_data, params);
       if(snp_data->ignored) continue;
     }
 
@@ -2231,7 +2249,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
 
   // check MAC
   if( params->test_mode){
-    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, infosnp->apply_diff_MAC_filter, snp_data, params);
     if(snp_data->ignored) return;
   }
 
@@ -2365,7 +2383,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 
   // check MAC
   if( params->test_mode){
-    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, snp_data, params);
+    compute_mac(!non_par, mac, total, nmales, ncarriers, infosnp->MAC_fail_if_checked, infosnp->apply_diff_MAC_filter, snp_data, params);
     if(snp_data->ignored) return;
   }
 
@@ -2494,7 +2512,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     // check MAC
     if( params->test_mode){
       ncarriers = (keep_index && (Geno >= 0.5)).count(); // check carriers
-      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_data, params);
+      compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_info->apply_diff_MAC_filter, snp_data, params);
       if(snp_data->ignored) continue;
     }
 
@@ -2803,7 +2821,7 @@ void update_af_cc(int const& ind, double const& genoValue, variant_block* snp_da
 
 }
 
-void compute_mac(bool const& auto_chrom, double& mac, double const& total, int const& nmales, int const& ncarriers, bool const& MAC_fail_if_checked, variant_block* snp_data, struct param const* params){
+void compute_mac(bool const& auto_chrom, double& mac, double const& total, int const& nmales, int const& ncarriers, bool const& MAC_fail_if_checked, bool const& sep_MAC_filter, variant_block* snp_data, struct param const* params){
 
   if(auto_chrom) mac = total; // use MAC assuming diploid coding
   //cerr << snp_data->mac << endl << endl; 
@@ -2826,10 +2844,12 @@ void compute_mac(bool const& auto_chrom, double& mac, double const& total, int c
     snp_data->mac = snp_data->mac.min( 2 * snp_data->ns.cast<double>() - snp_data->nmales.cast<double>() - snp_data->mac );
   }
 
+  double MAC_thr = sep_MAC_filter ? params->forced_MAC : params->min_MAC;
+
   snp_data->ignored_trait = MAC_fail_if_checked;
-  snp_data->ignored_trait = snp_data->ignored_trait && (snp_data->mac < params->min_MAC);
+  snp_data->ignored_trait = snp_data->ignored_trait && (snp_data->mac < MAC_thr);
   //cerr << snp_data->ignored_trait.cast<double>() << endl << endl; exit(EXIT_FAILURE);
-  if((mac < params->min_MAC) && MAC_fail_if_checked) 
+  if((mac < MAC_thr) && MAC_fail_if_checked) 
     snp_data->ignored = true;
 
 }
