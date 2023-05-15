@@ -812,15 +812,16 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
-  int niter_cur = 0, niter_log = 0, niter_search, nc = X1.cols();
-  double dev_new=0;
+  int niter_cur = 0, niter_log = 0, niter_search, niter_max = 25, nc = X1.cols();
+  double dev_new=0, mx, maxstep = (comp_lrt && cols_incl == 1) ? 5 : maxstep_firth;
+  //double dev_log0, dev_log1=0;
 
   ArrayXd hvec, mod_score, ystar, score;
   ArrayXd betanew, step_size, wvec, zvec;
   MatrixXd XtW, XtWX;
   ColPivHouseholderQR<MatrixXd> qr, qrX;
 
-  if(params->debug) cerr << "\nFirth starting beta = " << betavec.matrix().transpose() << "\n";
+  if(params->debug) cerr << "\nPseudo-firth starting beta = " << betavec.matrix().transpose() << "\n";
 
   betanew = betavec * 0;
   while(niter_cur++ < niter_firth){
@@ -851,34 +852,59 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
     // stopping criterion using modified score function
     // edit 5.31.12 for edge cases with approx Firth
-    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) break;
+    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) {
+      if(params->debug) cerr << "stopping criterion met (" << mod_score.abs().maxCoeff() << " < " << tol << ")\n";
+      break;
+    }
     if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << mod_score.abs().maxCoeff() << "\n";
 
     // fit unpenalized logistic on transformed Y
     niter_log = 0;
-    while(niter_log++ < params->niter_max){
+    //dev_log0 = std::numeric_limits<double>::max();
+    while(niter_log++ < niter_max){
       // p*(1-p) and check for zeroes
-      if( get_wvec(pivec, wvec, mask, params->numtol_eps) )
+      if( get_wvec(pivec, wvec, mask, params->numtol_eps) ){
+        if(params->debug) cerr << "WARNING: pseudo-firth gave fitted p=0 in logistic reg step\n";
         return false;
+      }
       XtW = X1.leftCols(cols_incl).transpose() * mask.select(wvec,0).matrix().asDiagonal();
       XtWX = XtW * X1.leftCols(cols_incl);
       // working vector z = X*beta + (Y-p)/(p*(1-p))
       zvec = mask.select(etavec - offset + (ystar - pivec) / wvec, 0);
       // parameter estimate
       betanew.head(cols_incl) = ( XtWX ).colPivHouseholderQr().solve( XtW * zvec.matrix() ).array();
-      // start step-halving
+
+    // force absolute step size to be less than maxstep for each entry of beta
+      if(comp_lrt && (cols_incl == 1)){ // only do this when testing each SNP
+        step_size = betanew.head(cols_incl) - betavec.head(cols_incl);
+        mx = step_size.abs().maxCoeff() / maxstep;
+        if( mx > 1 ) betanew.head(cols_incl) = betavec.head(cols_incl) + step_size / mx;
+        if((mx > 1) && params->debug) cerr << "step = " << step_size << " -- mx = " << mx << " -- beta = " << betanew << "\n";
+      }
+
+      // skip step-halving
       for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
         get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
-        if( mask.select((pivec > 0) && (pivec < 1), true).all() ) break;
+        //dev_log1 = get_deviance_logistic((ystar + 0.5 * hvec)/(1+hvec), pivec, 1 + hvec, mask);
+        //if(params->debug) cerr << "[[" << niter_log << " - " << niter_search <<setprecision(16) << "]] D0=" << dev_log0 << " -> D1=" << dev_log1 << "\n";
+        //if( dev_log1 < dev_log0 ) break;
+        break;
         // adjust step size
         betanew = (betavec + betanew) / 2;
       }
-      if( niter_search > params->niter_max_line_search ) return false; // step-halving failed
-      score = X1.leftCols(cols_incl).transpose() * mask.select(ystar - pivec, 0).matrix();
+      if( niter_search > params->niter_max_line_search ){
+        if(params->debug) cerr << "step halving failed in pseudo-firth log. reg step\n";
+        return false; // step-halving failed
+      }
+
       // stopping criterion
-      if( score.abs().maxCoeff() < params->tol ) break; // prefer for score to be below tol
-      //if(params->debug) cerr << "[.-" << niter_log <<setprecision(16) << "] score.max=" << score.abs().maxCoeff() << "\n";
+      score = X1.leftCols(cols_incl).transpose() * mask.select(ystar - pivec, 0).matrix();
+      if( score.abs().maxCoeff() < tol ) break; // prefer for score to be below tol
+
+      if(params->debug) cerr << "[[" << niter_log <<setprecision(16) << "]] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << score.abs().maxCoeff() << "\n";
+
       betavec = betanew;
+      //dev_log0 = dev_log1;
     }
     if( niter_log > params->niter_max ) return false;
 
