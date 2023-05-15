@@ -126,7 +126,7 @@ void GenoMask::setBins(struct param* params, mstream& sout){
 void GenoMask::prepMasks(int const& ntotal, const string& setID) {
 
   maskinfo tmp_region_mask;
-  std::map <std::string, uint16_t>::iterator itr;
+  std::map <std::string, uint32_t>::iterator itr;
 
   // make new set of masks if using set regions
   if(w_regions){ 
@@ -137,7 +137,7 @@ void GenoMask::prepMasks(int const& ntotal, const string& setID) {
       for (itr = regions[setID].begin(); itr != regions[setID].end(); ++itr) { // make region mak
         if(w_lodo){ // LODO scheme
           tmp_region_mask.region_name = "LODO_" + itr->first + ".";
-          tmp_region_mask.region = (65535 & ~itr->second); // unset bits for region [2-byte]
+          tmp_region_mask.region = (get_max(itr->second) & ~itr->second); // unset bits for region
           masks.push_back(tmp_region_mask);
         } else {
           tmp_region_mask.region_name = itr->first + ".";
@@ -147,7 +147,7 @@ void GenoMask::prepMasks(int const& ntotal, const string& setID) {
       }
       if(!w_loo){// add mask across all regions
         tmp_region_mask = base_masks[i];
-        tmp_region_mask.region |= 65535; //set all 16 bits
+        tmp_region_mask.region |= get_max(itr->second); //set all bits to 1
         masks.push_back(tmp_region_mask);
       }
     }

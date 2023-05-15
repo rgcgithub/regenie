@@ -339,7 +339,7 @@ struct param {
   bool set_select_list = false; // comma separated list of sets given
   bool keep_sets = false, rm_sets = false; // user specify to filter sets in analysis
   bool w_regions = false; // categorize by set regions 
-  uint max_cat = 64, nmax_regions = 16; // maximum number of annotations (to fit in uint64)
+  uint max_cat = 64, nmax_regions = 32; // maximum number of annotations (to fit in uint64)
   std::vector<std::string> mbins; // temporary object to store aaf bins
   bool mask_rule_max = true, mask_rule_comphet = false; // default use max to combine mask
   std::string mask_rule = "max";

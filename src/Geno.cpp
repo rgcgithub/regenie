@@ -3017,7 +3017,7 @@ void read_setlist(const struct in_files* files, struct param* params, struct fil
 
   // for snps with no anno for the set
   annoinfo ainfo_null;
-  ainfo_null.regionid = 65535; // any region (set all bits to 1)
+  ainfo_null.regionid = get_max(ainfo_null.regionid); // any region (set all bits to 1)
   BIT_SET(ainfo_null.id, 0);
 
   sout << left << std::setw(20) << " * set file" << ": [" << files->set_file << "] " << flush;
@@ -3270,7 +3270,7 @@ void check_in_map_from_files_sets(bool const& keep, map <string, vector<int>>& m
 
 }
 
-void get_masks_info(const struct in_files* files, struct param* params, struct filter* filters, map<std::string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uint16_t>>& regions, vector<maskinfo>& mask_map, std::vector <std::vector<string>>& mask_out, uint64& all_masks, vector<snp>& snpinfo, mstream& sout) {
+void get_masks_info(const struct in_files* files, struct param* params, struct filter* filters, map<std::string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uint32_t>>& regions, vector<maskinfo>& mask_map, std::vector <std::vector<string>>& mask_out, uint64& all_masks, vector<snp>& snpinfo, mstream& sout) {
 
   // read annotation categories if specified
   if(params->w_anno_lab) read_anno_cat(files, params, anno_map, sout);
@@ -3342,12 +3342,12 @@ void read_anno_cat(const struct in_files* files, struct param* params, map<strin
   sout << "n_categories = " << lineread << endl;
 }
 
-void read_anno(struct param* params, const struct in_files* files, struct filter* filters, map<string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uint16_t>>& regions, vector<snp>& snpinfo, mstream& sout) {
+void read_anno(struct param* params, const struct in_files* files, struct filter* filters, map<string, anno_name>& anno_map, std::map <std::string, std::map <std::string, uint32_t>>& regions, vector<snp>& snpinfo, mstream& sout) {
 
   int lineread = 0, col_cat = 2, nregions = 0;
   uint32_t snp_pos, ncat = 0, n_anno_read = 0;
   uint64 null_id = 0ULL;
-  uint16_t null_region = 0ULL;
+  uint32_t null_region = 0ULL;
   double set_weight = 0;
   anno_name new_anno;
   annoinfo ainfo;
@@ -3419,7 +3419,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
       // check if new set
       if (!in_map(gname, regions)){ // create new map with region for set
         BIT_SET(ainfo.regionid, 0); // set first bit
-        std::map <std::string, uint16_t> gene_region_map;
+        std::map <std::string, uint32_t> gene_region_map;
         gene_region_map[tmp_str_vec[col_cat-1]] = ainfo.regionid;
         regions[gname] = gene_region_map;
         nregions++;

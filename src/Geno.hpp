@@ -40,7 +40,7 @@
 #include "pgenlibr.h"
 
 struct annoinfo {
-  uint16_t regionid = 0ULL;
+  uint32_t regionid = 0ULL;
   uint64 id = 0ULL;
 };
 
@@ -230,16 +230,16 @@ struct anno_name {
 struct maskinfo {
   std::string name, region_name = "";
   uint64 id = 0ULL;
-  uint16_t region = 0ULL;
+  uint32_t region = 0ULL;
 };
 
 void read_setlist(const struct in_files*,struct param*,struct filter*,std::vector<std::vector<vset>>&,std::vector<snp>&,const uint64,const double,mstream&);
 void check_sets_include_exclude(bool const&,const struct in_files*,struct param*,struct filter*,std::vector<std::vector<vset>>&,mstream&);
 void check_in_map_from_files_sets(bool const&,std::map<std::string,std::vector<int>>&,std::vector<std::string> const&,bool const&,mstream&);
 
-void get_masks_info(const struct in_files*,struct param*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint16_t>>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,std::vector<snp>&,mstream& sout);
+void get_masks_info(const struct in_files*,struct param*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint32_t>>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,std::vector<snp>&,mstream& sout);
 void read_anno_cat(const struct in_files*,struct param*,std::map<std::string,anno_name>&,mstream& sout);
-void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint16_t>>&,std::vector<snp>&,mstream& sout);
+void read_anno(struct param*,const struct in_files*,struct filter*,std::map<std::string,anno_name>&,std::map <std::string, std::map <std::string,uint32_t>>&,std::vector<snp>&,mstream& sout);
 void read_aafs(const double,const struct in_files*,struct filter*,std::vector<snp>&,bool const&,mstream& sout);
 bool check_singleton_column(std::string const&);
 void read_masks(const struct in_files*,struct param*,std::map<std::string,anno_name>&,std::vector<maskinfo>&,std::vector<std::vector<std::string>>&,uint64&,mstream& sout);
