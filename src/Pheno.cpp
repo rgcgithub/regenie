@@ -29,6 +29,7 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "Step1_Models.hpp"
+#include "Step2_Models.hpp"
 #include "Pheno.hpp"
 
 using namespace std;
@@ -67,6 +68,7 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
   // Intercept
   pheno_data->new_cov = MatrixXd::Ones(params->n_samples, 1);
+  if(params->print_cov_betas) params->covar_names.push_back("Intercept");
 
   // read in covariates
   if(!files->cov_file.empty()) covariate_read(params, files, filters, pheno_data, ind_in_cov_and_geno, sout);
@@ -523,6 +525,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
         np_inter = 1;
         params->interaction_cat = !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
       }
+      if( params->print_cov_betas )
+        params->covar_names.push_back(tmp_str_vec[i+2]);
     }
   }
   categories.resize(nc_cat);
@@ -618,8 +622,12 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     int n_add = check_categories(covar_names, categories, params, filters, sout) - nc_cat + params->interaction_cat; // new columns to add (or remove if single category) & ignore interaction cov if categorical
 
     MatrixXd full_covarMat (pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + n_add);
+    vector<string> full_cov_names;
+    if(params->print_cov_betas) full_cov_names.resize(params->covar_names.size() + n_add);
+
     // copy intercept column
     full_covarMat.col(0) = pheno_data->new_cov.col(0);
+    if(params->print_cov_betas) full_cov_names[0] = params->covar_names[0];
 
     for(int i = 0, raw_col = 1, full_col = 1, icat = -1; i < params->n_cov; i++){
       n_dummies = 1;
@@ -630,6 +638,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
           inter_cov_matrix = inter_cov_column.matrix(); continue; 
         } else
           full_covarMat.col(full_col) = pheno_data->new_cov.col(raw_col);
+        if(params->print_cov_betas) full_cov_names[full_col] = params->covar_names[raw_col];
 
       } else { // cCovar
 
@@ -652,8 +661,15 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
         } else {
 
           n_dummies = pheno_data->new_cov.col(raw_col).maxCoeff();
-          if( n_dummies > 0 )
+          if( n_dummies > 0 ){
             full_covarMat.block(0, full_col, full_covarMat.rows(), n_dummies) = get_dummies(pheno_data->new_cov.col(raw_col).array());
+            if(params->print_cov_betas) {
+              vector<string> lvl_names;
+              extract_names(lvl_names, categories[icat]); // save levels
+              for(size_t ix = 0; ix < lvl_names.size(); ix++) 
+                full_cov_names[full_col + ix] = params->covar_names[raw_col] + "=" + lvl_names[ix] ;
+            }
+          }
 
         }
 
@@ -666,6 +682,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
 
     pheno_data->new_cov = full_covarMat;
     params->n_cov = pheno_data->new_cov.cols() - 1; // ignore intercept
+    if(params->print_cov_betas) params->covar_names = full_cov_names;
   }
 
   if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) // save inter cov
@@ -823,6 +840,11 @@ void extract_condition_snps(struct param* params, struct in_files* files, struct
     for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr, count++) 
       read_snp(mean_impute, itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters->ind_ignore, files, gblock->pgr, params, true);
 
+  }
+
+  if(params->print_cov_betas) { // save SNP names
+    for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr) 
+      params->covar_names.push_back(itr->first);
   }
   
   // Add to covariates
