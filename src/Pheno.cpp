@@ -1005,6 +1005,8 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   if( !params->getCorMat && (!params->test_mode || (params->trait_mode==0)) ) 
     residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
+  if(params->print_cov_betas) print_cov_betas(params, files, sout);
+
   // if using step 1 preds as covariate
   check_cov_blup(pheno_data, params);
 
@@ -1405,6 +1407,33 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
 
 }
 
+void print_cov_betas(struct param* params, struct in_files const* files, mstream& sout){
+
+  sout << " * covariate effects written to file : [ " << files->out_file << "_cov_betas.txt ]\n";
+
+  Files fout;
+  fout.openForWrite(files->out_file + "_cov_betas.txt", sout);
+  IOFormat Fmt(FullPrecision, DontAlignCols, "\t", "", "", "","","\n");
+
+  // print covariate names
+  fout << "PHENO" << "\t" << print_sv(params->covar_names, "\t") << "\n";
+
+  // re-scale the betas
+  params->cov_betas.array().colwise() /= params->cov_sds;
+
+  for( int ph = 0; ph < params->n_pheno; ph++){
+    if( !params->pheno_pass(ph) ) {
+      fout << files->pheno_names[ph];
+      for(size_t ix = 0; ix < params->covar_names.size(); ix++) fout << "\tNA";
+      fout << "\n";
+    } else // print phenotype name on 1st column followed by covariate values
+      fout << files->pheno_names[ph] << "\t" << params->cov_betas.col(ph).transpose().format(Fmt); 
+  } 
+
+  fout.closeFile();
+  params->cov_betas.resize(0,0);
+  params->covar_names.resize(0);
+}
 
 int getBasis(MatrixXd& X, struct param const* params){
 
