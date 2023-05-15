@@ -1401,7 +1401,6 @@ int getBasis(MatrixXd& X,struct param const* params){
   return non_zero_eigen;
 }
 
-void QRcheck(MatrixXd& mat, struct param* params){
 int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct param* params){
 
   // only keep linearly independent columns
@@ -1434,34 +1433,35 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
   return X.cols();
 }
 
+void QRcheck(MatrixXd& mat, bool const& replace_names, vector<string>& old_names, int const& n, double const& qr_tol, double const& num_tol, bool const& apply_check_sd){
 
   vector<string> new_names;
 
   // find set of linearly independent cols
   ColPivHouseholderQR<MatrixXd> qrA(mat);
-  qrA.setThreshold(params->qr_tol); 
+  qrA.setThreshold(qr_tol); 
   int indCols = qrA.rank();
 
   if(indCols == 0)
     throw "rank of matrix is 0.";
   else if ( indCols < mat.cols() ){
     ArrayXi colKeep = qrA.colsPermutation().indices();
-    std::vector<int> new_indices;
+    // sort them to keep order
+    vector<int> mindices(colKeep.data(), colKeep.data() + indCols);
+    std::sort(mindices.begin(), mindices.end());
 
     // keep only linearly independent columns
-    MatrixXd tmpM (mat.rows(), indCols);
-
-    for(int i = 0; i < indCols; i++){
-      tmpM.col(i) = mat.col( colKeep(i) );
-      if(params->interaction_cat) new_names.push_back( params->interaction_lvl_names[ colKeep(i) ]);
-    }
+    MatrixXd tmpM = mat(all, mindices);
+    if(replace_names)
+      for(int i = 0; i < indCols; i++)
+        new_names.push_back( old_names[ mindices[i] ]);
 
     mat = tmpM;
-    if(params->interaction_cat) params->interaction_lvl_names = new_names;
+    if(replace_names) old_names = new_names;
   } 
 
   // check no columns has sd = 0
-  check_sd(mat, params->n_analyzed - params->ncov, params->numtol);
+  if(apply_check_sd) check_sd(mat, n, num_tol);
 
 }
 
