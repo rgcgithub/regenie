@@ -67,7 +67,7 @@ int getBasis(Eigen::MatrixXd&,struct param const*);
 void QRcheck(Eigen::MatrixXd&,struct param*);
 void check_sd(const Eigen::Ref<const Eigen::MatrixXd>&,int const&,double const&);
 void check_cov_blup(struct phenodt*,struct param*);
-void residualize_phenotypes(struct param const*,struct phenodt*,const std::vector<std::string>&,mstream&);
+void residualize_phenotypes(struct param*,struct phenodt*,const std::vector<std::string>&,mstream&);
 bool residualize_matrix(Eigen::MatrixXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::MatrixXd>&,size_t const&,double const&);
 void get_lm_resid(Eigen::MatrixXd&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&);
 void apply_QR(Eigen::MatrixXd&,struct param const*,bool const&);
