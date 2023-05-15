@@ -1457,12 +1457,19 @@ void check_cov_blup(struct phenodt* pheno_data, struct param* params) {
 
 }
 
-void residualize_phenotypes(struct param const* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
+void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, const std::vector<std::string>& pheno_names, mstream& sout) {
   sout << "   -residualizing and scaling phenotypes...";
   auto t1 = std::chrono::high_resolution_clock::now();
 
+  // compute covariate effects
+  MatrixXd beta;
+  if(params->print_cov_betas) { // X is not orth basis
+    MatrixXd xtx = pheno_data->new_cov.transpose() * pheno_data->new_cov;
+    params->cov_betas = ( xtx ).colPivHouseholderQr().solve( pheno_data->new_cov.transpose() * pheno_data->phenotypes);
+    beta = params->cov_betas.transpose();
+  } else beta = pheno_data->phenotypes.transpose() * pheno_data->new_cov;
+
   // residuals (centered) then scale
-  MatrixXd beta = pheno_data->phenotypes.transpose() * pheno_data->new_cov;
   pheno_data->phenotypes -= ( (pheno_data->new_cov * beta.transpose()).array() * pheno_data->masked_indivs.array().cast<double>() ).matrix();
   pheno_data->scale_Y = pheno_data->phenotypes.colwise().norm().array() / sqrt(pheno_data->Neff.matrix().transpose().array() - params->ncov);
 
