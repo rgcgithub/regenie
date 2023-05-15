@@ -357,6 +357,7 @@ struct param {
   int nnls_napprox = 10;
   double acat_a1 = 1, acat_a2 = 25, skat_a1 = 1, skat_a2 = 25, skat_tol = 1e-5; // for ACAT & SKAT test
   int skat_collapse_MAC = 10;
+  bool skip_cf_burden = false;
   Eigen::ArrayXd skato_rho; // rho parameter from skat-o
 
   // multi-trait tests 

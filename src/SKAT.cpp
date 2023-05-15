@@ -716,7 +716,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
       // correct using burden test
       double rfrac = 1;
-      if(apply_correction && (npass > 1)) {// no need if M=1
+      if(apply_correction && !params.skip_cf_burden && (npass > 1)) {// no need if M=1
 
         // to slice sparse matrix (cannot use indexing)
         SpMat Jtmp (bs, npass); // Mall x Mpass
@@ -857,7 +857,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
       // correct using burden test
       double rfrac = 1;
-      if(apply_correction && (npass > 1)) {// no need if M=1
+      if(apply_correction && !params.skip_cf_burden && (npass > 1)) {// no need if M=1
 
         // to slice sparse matrix (cannot use indexing)
         SpMat Jtmp (bs, npass); // Mall x Mpass

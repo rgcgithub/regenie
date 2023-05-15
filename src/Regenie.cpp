@@ -313,6 +313,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene")
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
+    ("skip-cf-burden", "skip computing per-mask calibration factor for SKAT tests")
     ("use-adam", "use ADAM to fit penalized logistic models")
     ("adam-mini", "use mini-batch for ADAM")
     ("ct", "analyze phenotypes as counts")
@@ -447,6 +448,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("sbat-verbose") ) params->nnls_out_all = true;
     if( vm.count("sbat-adapt") ) params->nnls_adaptive = true;
     if( vm.count("sbat-mtw") ) params->nnls_mt_weights = true;
+    if( vm.count("skip-cf-burden") ) params->skip_cf_burden = true;
     if( vm.count("condition-list") ) { params->condition_snps = true;params->rm_snps = true;}
     if( vm.count("force-robust") ) params->force_robust = true;
     if( vm.count("force-hc4") ) params->force_robust = params->force_hc4 = true;
@@ -1018,6 +1020,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
       throw "SPA fallback p-value threshold must be in (0,1).";
     if(params->firth_approx && !params->firth) params->firth_approx = false;
+    if( params->skip_cf_burden && !(params->use_SPA || params->firth) ) {
+      params->skip_cf_burden = false; valid_args[ "skip-cf-burden" ] = false;
+    }
 
     // check arguments for logistic regression 
     if(params->trait_mode && (params->niter_max < 1))
