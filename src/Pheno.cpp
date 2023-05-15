@@ -1383,7 +1383,7 @@ void write_ids(struct in_files const* files, struct param* params, struct phenod
 }
 
 
-int getBasis(MatrixXd& X,struct param const* params){
+int getBasis(MatrixXd& X, struct param const* params){
 
   // eigen-decompose NxK matrix
   MatrixXd xtx = X.transpose() * X;
