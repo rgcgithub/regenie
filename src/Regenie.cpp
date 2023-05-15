@@ -322,6 +322,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("seed", "specify seed for random number generation", cxxopts::value<uint>(params->rng_seed))
     ("debug", "more verbose screen output for debugging purposes")
     ("mt", "run multi-trait tests")
+    ("mcc", "run MCC test")
+    ("mcc-thr", "threshold to activate MCC", cxxopts::value<double>(params->mcc_thr),"FLOAT(=1)")
     ;
 
 
@@ -434,6 +436,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
     if( vm.count("mt") ) params->trait_set = true;
+    if( vm.count("mcc") ) params->mcc_test = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
@@ -1145,6 +1148,16 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "--strict mode is required for multi-trait tests";
       if(params->split_by_pheno) 
         throw "--no-split mode is required for multi-trait tests";
+    }
+
+    // check MCC settings
+    if(params->mcc_test) {
+      // convert mcc thr. from raw to -log10 scale
+      if(params->mcc_thr > 1 & params->mcc_thr < 0) 
+        throw "--mcc-thr range must be 0-1";
+      if(params->mcc_thr < 1) 
+        params->mcc_apply_thr = true;
+      params->mcc_thr = -log10(params->mcc_thr); // -log10 transformation
     }
 
     // check input files
