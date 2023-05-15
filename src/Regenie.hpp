@@ -487,7 +487,7 @@ std::string get_test_list(U const& bit_map, std::map<std::string, U>& srt_map){
   typename std::map <std::string, U>::iterator itr;
   for (itr = srt_map.begin(); itr !=  srt_map.end(); ++itr) {
     // skip nnls_pos and neg
-    if(itr->first == "nnls_pos" || itr->first == "nnls_neg") continue;
+    if(itr->first == "sbat_pos" || itr->first == "sbat_neg" || itr->first == "acatv_acat" || itr->first == "gene_p") continue;
     if( CHECK_BIT(bit_map, itr->second) ) { // add to test list
       std::string newstr = itr->first;
       std::transform(newstr.begin(), newstr.end(), newstr.begin(), ::toupper);
