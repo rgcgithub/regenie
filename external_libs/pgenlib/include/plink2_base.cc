@@ -1,4 +1,4 @@
-// This library is part of PLINK 2, copyright (C) 2005-2020 Shaun Purcell,
+// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -23,7 +23,7 @@ namespace plink2 {
 
 uintptr_t g_failed_alloc_attempt_size = 0;
 
-#if (__GNUC__ <= 4) && (__GNUC_MINOR__ < 7) && !defined(__APPLE__)
+#if (((__GNUC__ == 4) && (__GNUC_MINOR__ < 7)) || (__GNUC__ >= 11)) && !defined(__APPLE__)
 BoolErr pgl_malloc(uintptr_t size, void* pp) {
   *S_CAST(unsigned char**, pp) = S_CAST(unsigned char*, malloc(size));
   if (likely(*S_CAST(unsigned char**, pp))) {
@@ -473,6 +473,91 @@ int32_t Memcmp(const void* m1, const void* m2, uintptr_t byte_ct) {
   return 0;
 }
 #endif
+
+uintptr_t FirstUnequal4(const void* arr1, const void* arr2, uintptr_t nbytes) {
+  // Similar to memequal().
+#ifdef __LP64__
+  if (nbytes < kBytesPerVec) {
+    if (nbytes < kBytesPerWord) {
+      uint32_t xor_result = (*S_CAST(const uint32_t*, arr1)) ^ (*S_CAST(const uint32_t*, arr2));
+      if (xor_result) {
+        return ctzu32(xor_result) / CHAR_BIT;
+      }
+      if (nbytes > 4) {
+        const uintptr_t final_offset = nbytes - 4;
+        const char* s1 = S_CAST(const char*, arr1);
+        const char* s2 = S_CAST(const char*, arr2);
+        xor_result = (*R_CAST(const uint32_t*, &(s1[final_offset]))) ^ (*R_CAST(const uint32_t*, &(s2[final_offset])));
+        if (xor_result) {
+          return final_offset + ctzu32(xor_result) / CHAR_BIT;
+        }
+      }
+      return nbytes;
+    }
+    const uintptr_t* arr1_alias = S_CAST(const uintptr_t*, arr1);
+    const uintptr_t* arr2_alias = S_CAST(const uintptr_t*, arr2);
+    const uintptr_t word_ct = nbytes / kBytesPerWord;
+    for (uint32_t widx = 0; widx != word_ct; ++widx) {
+      const uintptr_t xor_result = arr1_alias[widx] ^ arr2_alias[widx];
+      if (xor_result) {
+        return widx * kBytesPerWord + ctzw(xor_result) / CHAR_BIT;
+      }
+    }
+    if (nbytes % kBytesPerWord) {
+      const uintptr_t final_offset = nbytes - kBytesPerWord;
+      const char* s1 = S_CAST(const char*, arr1);
+      const char* s2 = S_CAST(const char*, arr2);
+      const uintptr_t xor_result = (*R_CAST(const uintptr_t*, &(s1[final_offset]))) ^ (*R_CAST(const uintptr_t*, &(s2[final_offset])));
+      if (xor_result) {
+        return final_offset + ctzw(xor_result) / CHAR_BIT;
+      }
+    }
+    return nbytes;
+  }
+  const VecUc* arr1_alias = S_CAST(const VecUc*, arr1);
+  const VecUc* arr2_alias = S_CAST(const VecUc*, arr2);
+  const uintptr_t vec_ct = nbytes / kBytesPerVec;
+  for (uintptr_t vidx = 0; vidx != vec_ct; ++vidx) {
+    const VecUc v1 = vecuc_loadu(&(arr1_alias[vidx]));
+    const VecUc v2 = vecuc_loadu(&(arr2_alias[vidx]));
+    const uint32_t eq_result = vecw_movemask(v1 == v2);
+    if (eq_result != kVec8thUintMax) {
+      return vidx * kBytesPerVec + ctzu32(~eq_result);
+    }
+  }
+  if (nbytes % kBytesPerVec) {
+    const uintptr_t final_offset = nbytes - kBytesPerVec;
+    const char* s1 = S_CAST(const char*, arr1);
+    const char* s2 = S_CAST(const char*, arr2);
+    const VecW v1 = vecw_loadu(&(s1[final_offset]));
+    const VecW v2 = vecw_loadu(&(s2[final_offset]));
+    const uint32_t eq_result = vecw_movemask(v1 == v2);
+    if (eq_result != kVec8thUintMax) {
+      return final_offset + ctzu32(~eq_result);
+    }
+  }
+#else  // !__LP64__
+  const uintptr_t* arr1_alias = S_CAST(const uintptr_t*, arr1);
+  const uintptr_t* arr2_alias = S_CAST(const uintptr_t*, arr2);
+  const uintptr_t word_ct = nbytes / kBytesPerWord;
+  for (uintptr_t widx = 0; widx != word_ct; ++widx) {
+    const uintptr_t xor_result = arr1_alias[widx] ^ arr2_alias[widx];
+    if (xor_result) {
+      return widx * kBytesPerWord + ctzw(xor_result) / CHAR_BIT;
+    }
+  }
+  if (nbytes % kBytesPerWord) {
+    const uintptr_t final_offset = nbytes - kBytesPerWord;
+    const char* s1 = S_CAST(const char*, arr1);
+    const char* s2 = S_CAST(const char*, arr2);
+    const uintptr_t xor_result = (*R_CAST(const uintptr_t*, &(s1[final_offset]))) ^ (*R_CAST(const uintptr_t*, &(s2[final_offset])));
+    if (xor_result) {
+      return final_offset + ctzw(xor_result) / CHAR_BIT;
+    }
+  }
+#endif
+  return nbytes;
+}
 
 #ifdef __cplusplus
 }  // namespace plink2

@@ -1,4 +1,4 @@
-// This library is part of PLINK 2.00, copyright (C) 2005-2020 Shaun Purcell,
+// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -122,7 +122,7 @@ void CopyGenomatchSubset(const uintptr_t* __restrict raw_bitarr, const uintptr_t
 }
 
 // Variant of ExpandBytearr() which is based off a target 2-bit value instead
-// of single expand_mask bits.  expand_size must be the number of instance of
+// of single expand_mask bits.  expand_size must be the number of instances of
 // the target value in genovec.
 void ExpandBytearrFromGenoarr(const void* __restrict compact_bitarr, const uintptr_t* __restrict genoarr, uintptr_t match_word, uint32_t genoword_ct, uint32_t expand_size, uint32_t read_start_bit, uintptr_t* __restrict target) {
   const uint32_t expand_sizex_m1 = expand_size + read_start_bit - 1;
@@ -724,6 +724,23 @@ void GenoarrCountFreqsUnsafe(const uintptr_t* genoarr, uint32_t sample_ct, STD_A
   genocounts[1] = even_ct - bothset_ct;
   genocounts[2] = odd_ct - bothset_ct;
   genocounts[3] = bothset_ct;
+}
+
+uintptr_t MostCommonGenoUnsafe(const uintptr_t* genoarr, uint32_t sample_ct) {
+  STD_ARRAY_DECL(uint32_t, 4, genocounts);
+  GenoarrCountFreqsUnsafe(genoarr, sample_ct, genocounts);
+  uint32_t most_common_geno_ct = genocounts[0];
+  if (most_common_geno_ct * 2 >= sample_ct) {
+    return 0;
+  }
+  uintptr_t most_common_geno = 0;
+  for (uintptr_t cur_geno = 1; cur_geno != 4; ++cur_geno) {
+    if (most_common_geno_ct < genocounts[cur_geno]) {
+      most_common_geno = cur_geno;
+      most_common_geno_ct = genocounts[cur_geno];
+    }
+  }
+  return most_common_geno;
 }
 
 // geno_vvec now allowed to be unaligned.
@@ -1388,6 +1405,37 @@ void GenoarrToNonmissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t
   for (uint32_t widx = 0; widx != sample_ctl2; ++widx) {
     const uintptr_t cur_geno_word = genoarr[widx];
     nonmissingness_alias[widx] = PackWordToHalfwordMask5555(~(cur_geno_word & (cur_geno_word >> 1)));
+  }
+}
+
+void SparseToMissingness(const uintptr_t* __restrict raregeno, const uint32_t* difflist_sample_ids, uint32_t sample_ct, uint32_t difflist_common_geno, uint32_t difflist_len, uintptr_t* __restrict missingness) {
+  if (difflist_common_geno != 3) {
+    const uint32_t sample_ctl = BitCtToWordCt(sample_ct);
+    ZeroWArr(sample_ctl, missingness);
+    if (!difflist_len) {
+      return;
+    }
+    const uint32_t raregeno_word_ct = NypCtToWordCt(difflist_len);
+    for (uint32_t widx = 0; widx != raregeno_word_ct; ++widx) {
+      const uintptr_t raregeno_word = raregeno[widx];
+      uintptr_t raregeno_11 = raregeno_word & (raregeno_word >> 1) & kMask5555;
+      if (raregeno_11) {
+        const uint32_t* cur_difflist_sample_ids = &(difflist_sample_ids[widx * kBitsPerWordD2]);
+        do {
+          const uint32_t sample_idx_lowbits = ctzw(raregeno_11) / 2;
+          const uint32_t cur_sample_id = cur_difflist_sample_ids[sample_idx_lowbits];
+          SetBit(cur_sample_id, missingness);
+          raregeno_11 &= raregeno_11 - 1;
+        } while (raregeno_11);
+      }
+    }
+  } else {
+    SetAllBits(sample_ct, missingness);
+    // Don't need to look at raregeno, all cases are nonmissing.
+    for (uint32_t uii = 0; uii != difflist_len; ++uii) {
+      const uint32_t cur_sample_id = difflist_sample_ids[uii];
+      ClearBit(cur_sample_id, missingness);
+    }
   }
 }
 
@@ -2835,6 +2883,25 @@ void PglMultiallelicSparseToDenseMiss(const PgenVariant* pgvp, uint32_t sample_c
       wide_codes_alias[sample_idx] = patch_10_vals_alias[uii];
     }
   }
+}
+
+uintptr_t PglComputeMaxAlleleCt(const uintptr_t* allele_idx_offsets, uint32_t variant_ct) {
+  if ((!allele_idx_offsets) || (allele_idx_offsets[variant_ct] == 2 * variant_ct)) {
+    return 2;
+  }
+  // todo: try vectorizing this
+  uintptr_t max_allele_ct = 2;
+  uintptr_t prev_offset = allele_idx_offsets[0];
+  const uintptr_t* shifted_offsets = &(allele_idx_offsets[1]);
+  for (uintptr_t uii = 0; uii != variant_ct; ++uii) {
+    const uintptr_t cur_offset = shifted_offsets[uii];
+    const uintptr_t cur_allele_ct = cur_offset - prev_offset;
+    if (cur_allele_ct > max_allele_ct) {
+      max_allele_ct = cur_allele_ct;
+    }
+    prev_offset = cur_offset;
+  }
+  return max_allele_ct;
 }
 
 #ifdef __cplusplus

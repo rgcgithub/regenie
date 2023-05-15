@@ -1,7 +1,7 @@
 #ifndef __PLINK2_BITS_H__
 #define __PLINK2_BITS_H__
 
-// This library is part of PLINK 2.00, copyright (C) 2005-2020 Shaun Purcell,
+// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -52,6 +52,10 @@ HEADER_INLINE void PackWordsToHalfwordsMask(const uintptr_t* words, uintptr_t wo
 // ok for ct == 0
 void SetAllBits(uintptr_t ct, uintptr_t* bitarr);
 
+// "Nz" added to names to make it obvious these require positive len
+void FillBitsNz(uintptr_t start_idx, uintptr_t end_idx, uintptr_t* bitarr);
+void ClearBitsNz(uintptr_t start_idx, uintptr_t end_idx, uintptr_t* bitarr);
+
 void BitvecAnd(const uintptr_t* __restrict arg_bitvec, uintptr_t word_ct, uintptr_t* __restrict main_bitvec);
 
 void BitvecInvmask(const uintptr_t* __restrict exclude_bitvec, uintptr_t word_ct, uintptr_t* __restrict main_bitvec);
@@ -59,6 +63,31 @@ void BitvecInvmask(const uintptr_t* __restrict exclude_bitvec, uintptr_t word_ct
 void BitvecOr(const uintptr_t* __restrict arg_bitvec, uintptr_t word_ct, uintptr_t* main_bitvec);
 
 void BitvecInvert(uintptr_t word_ct, uintptr_t* main_bitvec);
+
+void BitvecXorCopy(const uintptr_t* __restrict source1_bitvec, const uintptr_t* __restrict source2_bitvec, uintptr_t word_ct, uintptr_t* target_bitvec);
+
+void BitvecInvertCopy(const uintptr_t* __restrict source_bitvec, uintptr_t word_ct, uintptr_t* __restrict target_bitvec);
+
+// These ensure the trailing bits are zeroed out.
+// 'AlignedBitarr' instead of Bitvec since this takes bit_ct instead of word_ct
+// as the size argument, and zeroes trailing bits.
+HEADER_INLINE void AlignedBitarrInvert(uintptr_t bit_ct, uintptr_t* main_bitvec) {
+  const uintptr_t fullword_ct = bit_ct / kBitsPerWord;
+  BitvecInvert(fullword_ct, main_bitvec);
+  const uint32_t trail_ct = bit_ct % kBitsPerWord;
+  if (trail_ct) {
+    main_bitvec[fullword_ct] = bzhi(~main_bitvec[fullword_ct], trail_ct);
+  }
+}
+
+HEADER_INLINE void AlignedBitarrInvertCopy(const uintptr_t* __restrict source_bitvec, uintptr_t bit_ct, uintptr_t* __restrict target_bitvec) {
+  const uintptr_t fullword_ct = bit_ct / kBitsPerWord;
+  BitvecInvertCopy(source_bitvec, fullword_ct, target_bitvec);
+  const uint32_t trail_ct = bit_ct % kBitsPerWord;
+  if (trail_ct) {
+    target_bitvec[fullword_ct] = bzhi(~source_bitvec[fullword_ct], trail_ct);
+  }
+}
 
 // Functions with "adv" in the name generally take an index or char-pointer as
 // an argument and return its new value, while "mov" functions take a
@@ -246,6 +275,8 @@ HEADER_INLINE uintptr_t PopcountWords(const uintptr_t* bitvec, uintptr_t word_ct
 
 uintptr_t PopcountWordsIntersect(const uintptr_t* __restrict bitvec1_iter, const uintptr_t* __restrict bitvec2_iter, uintptr_t word_ct);
 
+uintptr_t PopcountWordsXor(const uintptr_t* __restrict bitvec1_iter, const uintptr_t* __restrict bitvec2_iter, uintptr_t word_ct);
+
 // requires positive word_ct
 // stay agnostic a bit longer re: word_ct := DIV_UP(entry_ct, kBitsPerWord)
 // vs. word_ct := 1 + (entry_ct / kBitsPerWord)
@@ -426,6 +457,10 @@ HEADER_INLINE void ZeroTrailingWords(__maybe_unused uint32_t word_ct, __maybe_un
 }
 #endif
 
+HEADER_INLINE void CopyBitarr(const uintptr_t* __restrict src, uintptr_t bit_ct, uintptr_t* __restrict dst) {
+  memcpy(dst, src, BitCtToWordCt(bit_ct) * kBytesPerWord);
+}
+
 // output_bit_idx_end is practically always subset_size
 void CopyBitarrSubset(const uintptr_t* __restrict raw_bitarr, const uintptr_t* __restrict subset_mask, uint32_t output_bit_idx_end, uintptr_t* __restrict output_bitarr);
 
@@ -509,6 +544,50 @@ uintptr_t CountU16(const void* u16arr, uint16_t usii, uintptr_t u16_ct);
 uint32_t Copy1bit8Subset(const uintptr_t* __restrict src_subset, const void* __restrict src_vals, const uintptr_t* __restrict sample_include, uint32_t src_subset_size, uint32_t sample_ct, uintptr_t* __restrict dst_subset, void* __restrict dst_vals);
 
 uint32_t Copy1bit16Subset(const uintptr_t* __restrict src_subset, const void* __restrict src_vals, const uintptr_t* __restrict sample_include, uint32_t src_subset_size, uint32_t sample_ct, uintptr_t* __restrict dst_subset, void* __restrict dst_vals);
+
+// more verbose than (val + 3) / 4, but may as well make semantic meaning
+// obvious; any explicit DivUp(val, 4) expressions should have a different
+// meaning
+// (not needed for bitct -> bytect, DivUp(val, CHAR_BIT) is clear enough)
+HEADER_INLINE uintptr_t NypCtToByteCt(uintptr_t val) {
+  return DivUp(val, 4);
+}
+
+HEADER_INLINE uintptr_t NypCtToVecCt(uintptr_t val) {
+  return DivUp(val, kNypsPerVec);
+}
+
+HEADER_INLINE uintptr_t NypCtToWordCt(uintptr_t val) {
+  return DivUp(val, kBitsPerWordD2);
+}
+
+HEADER_INLINE uintptr_t NypCtToAlignedWordCt(uintptr_t val) {
+  return kWordsPerVec * NypCtToVecCt(val);
+}
+
+HEADER_INLINE uintptr_t NypCtToCachelineCt(uintptr_t val) {
+  return DivUp(val, kNypsPerCacheline);
+}
+
+HEADER_INLINE uintptr_t GetNyparrEntry(const uintptr_t* nyparr, uint32_t idx) {
+  return (nyparr[idx / kBitsPerWordD2] >> (2 * (idx % kBitsPerWordD2))) & 3;
+}
+
+// todo: check if this optimizes newval=0 out
+HEADER_INLINE void AssignNyparrEntry(uint32_t idx, uintptr_t newval, uintptr_t* nyparr) {
+  const uint32_t bit_shift_ct = 2 * (idx % kBitsPerWordD2);
+  uintptr_t* wordp = &(nyparr[idx / kBitsPerWordD2]);
+  *wordp = ((*wordp) & (~((3 * k1LU) << bit_shift_ct))) | (newval << bit_shift_ct);
+}
+
+HEADER_INLINE void ClearNyparrEntry(uint32_t idx, uintptr_t* nyparr) {
+  nyparr[idx / kBitsPerWordD2] &= ~((3 * k1LU) << (idx % kBitsPerWordD2));
+}
+
+// Assumes arr is vector-aligned.
+// 'Unsafe' because it assumes high bits of every byte are 0 and entry_ct is
+// positive.
+void Reduce8to4bitInplaceUnsafe(uintptr_t entry_ct, uintptr_t* arr);
 
 #ifdef __cplusplus
 }  // namespace plink2

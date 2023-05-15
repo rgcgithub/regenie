@@ -57,7 +57,7 @@ void PgenReader::Load(std::string filename, uint32_t cur_sample_ct, std::vector<
   plink2::PgenHeaderCtrl header_ctrl;
   uintptr_t pgfi_alloc_cacheline_ct;
   char errstr_buf[plink2::kPglErrstrBufBlen];
-  if (PgfiInitPhase1(fname, cur_variant_ct, cur_sample_ct, 0, &header_ctrl, _info_ptr, &pgfi_alloc_cacheline_ct, errstr_buf) != plink2::kPglRetSuccess) {
+  if (PgfiInitPhase1(fname, nullptr, cur_variant_ct, cur_sample_ct, &header_ctrl, _info_ptr, &pgfi_alloc_cacheline_ct, errstr_buf) != plink2::kPglRetSuccess) {
     fprintf(stderr, "%s\n", &(errstr_buf[7]));
     exit(-1);
   }

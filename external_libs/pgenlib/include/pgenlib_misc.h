@@ -1,7 +1,7 @@
 #ifndef __PGENLIB_MISC_H__
 #define __PGENLIB_MISC_H__
 
-// This library is part of PLINK 2.00, copyright (C) 2005-2020 Shaun Purcell,
+// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -79,7 +79,7 @@
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access to this
 // value.  Named with all caps as a consequence.
-#define PGENLIB_INTERNAL_VERNUM 1505
+#define PGENLIB_INTERNAL_VERNUM 1908
 
 #ifdef __cplusplus
 namespace plink2 {
@@ -91,36 +91,18 @@ typedef uint16_t DoubleAlleleCode;
 static_assert(sizeof(DoubleAlleleCode) == 2 * sizeof(AlleleCode), "Inconsistent AlleleCode and DoubleAlleleCode definitions.");
 // Set this to 65534 if AlleleCode is uint16_t, 2^24 - 1 if uint32_t.
 CONSTI32(kPglMaxAltAlleleCt, 254);
+
+CONSTI32(kPglMaxAlleleCt, kPglMaxAltAlleleCt + 1);
+#define PGL_MAX_ALT_ALLELE_CT_STR "254"
+#define PGL_MAX_ALLELE_CT_STR "255"
 #ifdef __cplusplus
 #  define kMissingAlleleCode S_CAST(plink2::AlleleCode, -1)
+#  define kMissingDoubleAlleleCode S_CAST(plink2::DoubleAlleleCode, -1)
 #else
 #  define kMissingAlleleCode S_CAST(AlleleCode, -1)
+#  define kMissingDoubleAlleleCode S_CAST(DoubleAlleleCode, -1)
 #endif
 CONSTI32(kAlleleCodesPerVec, kBytesPerVec / sizeof(AlleleCode));
-
-// more verbose than (val + 3) / 4, but may as well make semantic meaning
-// obvious; any explicit DivUp(val, 4) expressions should have a different
-// meaning
-// (not needed for bitct -> bytect, DivUp(val, CHAR_BIT) is clear enough)
-HEADER_INLINE uintptr_t NypCtToByteCt(uintptr_t val) {
-  return DivUp(val, 4);
-}
-
-HEADER_INLINE uintptr_t NypCtToVecCt(uintptr_t val) {
-  return DivUp(val, kNypsPerVec);
-}
-
-HEADER_INLINE uintptr_t NypCtToWordCt(uintptr_t val) {
-  return DivUp(val, kBitsPerWordD2);
-}
-
-HEADER_INLINE uintptr_t NypCtToAlignedWordCt(uintptr_t val) {
-  return kWordsPerVec * NypCtToVecCt(val);
-}
-
-HEADER_INLINE uintptr_t NypCtToCachelineCt(uintptr_t val) {
-  return DivUp(val, kNypsPerCacheline);
-}
 
 HEADER_INLINE uintptr_t AlleleCodeCtToVecCt(uintptr_t val) {
   return DivUp(val, kAlleleCodesPerVec);
@@ -128,21 +110,6 @@ HEADER_INLINE uintptr_t AlleleCodeCtToVecCt(uintptr_t val) {
 
 HEADER_INLINE uintptr_t AlleleCodeCtToAlignedWordCt(uintptr_t val) {
   return kWordsPerVec * AlleleCodeCtToVecCt(val);
-}
-
-HEADER_INLINE uintptr_t GetNyparrEntry(const uintptr_t* nyparr, uint32_t idx) {
-  return (nyparr[idx / kBitsPerWordD2] >> (2 * (idx % kBitsPerWordD2))) & 3;
-}
-
-// todo: check if this optimizes newval=0 out
-HEADER_INLINE void AssignNyparrEntry(uint32_t idx, uintptr_t newval, uintptr_t* nyparr) {
-  const uint32_t bit_shift_ct = 2 * (idx % kBitsPerWordD2);
-  uintptr_t* wordp = &(nyparr[idx / kBitsPerWordD2]);
-  *wordp = ((*wordp) & (~((3 * k1LU) << bit_shift_ct))) | (newval << bit_shift_ct);
-}
-
-HEADER_INLINE void ClearNyparrEntry(uint32_t idx, uintptr_t* nyparr) {
-  nyparr[idx / kBitsPerWordD2] &= ~((3 * k1LU) << (idx % kBitsPerWordD2));
 }
 
 // returns a word with low bit in each pair set at each 00.
@@ -195,9 +162,6 @@ HEADER_INLINE uint32_t Popcount0001Word(uintptr_t val) {
 }
 #endif
 
-// safe errstr_buf size for pgen_init_phase{1,2}()
-CONSTI32(kPglErrstrBufBlen, kPglFnamesize + 256);
-
 // assumes subset_mask has trailing zeroes up to the next vector boundary
 void FillInterleavedMaskVec(const uintptr_t* __restrict subset_mask, uint32_t base_vec_ct, uintptr_t* interleaved_mask_vec);
 
@@ -225,6 +189,10 @@ void Count3FreqVec6(const VecW* geno_vvec, uint32_t vec_ct, uint32_t* __restrict
 
 // vector-alignment preferred.
 void GenoarrCountFreqsUnsafe(const uintptr_t* genoarr, uint32_t sample_ct, STD_ARRAY_REF(uint32_t, 4) genocounts);
+
+// GenoarrCountFreqsUnsafe() wrapper that returns most common genotype,
+// breaking ties in favor of the lower value.
+uintptr_t MostCommonGenoUnsafe(const uintptr_t* genoarr, uint32_t sample_ct);
 
 // geno_vvec now allowed to be unaligned.
 void CountSubset3FreqVec6(const VecW* __restrict geno_vvec, const VecW* __restrict interleaved_mask_vvec, uint32_t vec_ct, uint32_t* __restrict even_ctp, uint32_t* __restrict odd_ctp, uint32_t* __restrict bothset_ctp);
@@ -258,47 +226,7 @@ HEADER_INLINE void SetTrailingNyps(uintptr_t nyp_ct, uintptr_t* bitarr) {
   }
 }
 
-// A VINT is a sequence of bytes where each byte stores just 7 bits of an
-// an integer, and the high bit is set when the integer has more nonzero bits.
-// See e.g.
-//   https://developers.google.com/protocol-buffers/docs/encoding#varints
-// (Note that protocol buffers used "group varints" at one point, but then
-// abandoned them.  I suspect they'd be simultaneously slower and less
-// compact here.)
-
-HEADER_INLINE unsigned char* Vint32Append(uint32_t uii, unsigned char* buf) {
-  while (uii > 127) {
-    *buf++ = (uii & 127) + 128;
-    uii >>= 7;
-  }
-  *buf++ = uii;
-  return buf;
-}
-
-// Returns 0x80000000U on read-past-end instead of UINT32_MAX so overflow check
-// works properly in 32-bit build.  Named "GetVint31" to make it more obvious
-// that a 2^31 return value can't be legitimate.
-HEADER_INLINE uint32_t GetVint31(const unsigned char* buf_end, const unsigned char** buf_iterp) {
-  if (likely(buf_end > (*buf_iterp))) {
-    uint32_t vint32 = *((*buf_iterp)++);
-    if (vint32 <= 127) {
-      return vint32;
-    }
-    vint32 &= 127;
-    uint32_t shift = 7;
-    while (likely(buf_end > (*buf_iterp))) {
-      uint32_t uii = *((*buf_iterp)++);
-      vint32 |= (uii & 127) << shift;
-      if (uii <= 127) {
-        return vint32;
-      }
-      shift += 7;
-      // currently don't check for shift >= 32 (that's what ValidateVint31()
-      // is for).
-    }
-  }
-  return 0x80000000U;
-}
+// GetVint31 and Vint32Append moved to plink2_base.
 
 // Input must be validated, or bufp must be >= 5 characters before the end of
 // the read buffer.  Currently unused.
@@ -453,6 +381,8 @@ void GenoarrToMissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t sa
 // currently does not zero trailing halfword
 void GenoarrToNonmissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict nonmissingness);
 
+void SparseToMissingness(const uintptr_t* __restrict raregeno, const uint32_t* difflist_sample_ids, uint32_t sample_ct, uint32_t difflist_common_geno, uint32_t difflist_len, uintptr_t* __restrict missingness);
+
 // hom_buf gets set bits when genoarr value is 0 or 2.
 // ref2het_buf gets set bits when genoarr value is 0 or 1.
 // N.B. assumes trailing bits of loadbuf have been filled with 1s, not 0s
@@ -592,15 +522,14 @@ HEADER_INLINE double MultiallelicDiploidMachR2(const uint64_t* __restrict sums, 
 
 CONSTI32(kPglVblockSize, 65536);
 
+// kPglDifflistGroupSize defined in plink2_base
+
 // Currently chosen so that it plus kPglFwriteBlockSize + kCacheline - 2 is
 // < 2^32, so DivUp(kPglMaxBytesPerVariant + kPglFwriteBlockSize - 1,
 // kCacheline) doesn't overflow.
 static const uint32_t kPglMaxBytesPerVariant = 0xfffdffc0U;
 // CONSTI32(kPglMaxBytesPerDataTrack, 0x7ffff000);
 // static_assert(kMaxBytesPerIO >= (int32_t)kPglMaxBytesPerDataTrack, "pgenlib assumes a single variant data track always fits in one fread/fwrite operation.");
-
-// currently must be power of 2, and multiple of (kBitsPerWord / 2)
-CONSTI32(kPglDifflistGroupSize, 64);
 
 FLAGSET_DEF_START()
   kfPgenGlobal0,
@@ -636,7 +565,7 @@ void PgrDifflistToGenovecUnsafe(const uintptr_t* __restrict raregeno, const uint
 // phased hardcalls and unphased dosages are simple enough for this to be
 // overkill, though.)
 typedef struct PgenVariantStruct {
-  NONCOPYABLE(PgenVariantStruct);
+  MOVABLE_BUT_NONCOPYABLE(PgenVariantStruct);
   uintptr_t* genovec;
   uintptr_t* patch_01_set;
   AlleleCode* patch_01_vals;
@@ -683,6 +612,8 @@ extern const uint16_t kHcToAlleleCodes[1024];
 
 // Permits missing codes, does not remap.
 void PglMultiallelicSparseToDenseMiss(const PgenVariant* pgvp, uint32_t sample_ct, AlleleCode* __restrict wide_codes);
+
+uintptr_t PglComputeMaxAlleleCt(const uintptr_t* allele_idx_offsets, uint32_t variant_ct);
 
 // The actual format:
 // 1. 2 magic bytes 0x6c 0x1b.
@@ -977,6 +908,12 @@ void PglMultiallelicSparseToDenseMiss(const PgenVariant* pgvp, uint32_t sample_c
 // least.  In principle, this is subject to reevaluation if (i) changes, but
 // given the poor interaction with phased dosages, it's probably better to just
 // think of them as permanently outside PLINK's scope.
+
+// maximum prime < 2^32 is 4294967291; quadratic hashing guarantee breaks down
+// past that divided by 2.
+CONSTI32(kPglMaxVariantCt, 0x7ffffffd);
+
+CONSTI32(kPglMaxSampleCt, 0x7ffffffe);
 
 #ifdef __cplusplus
 }  // namespace plink2
