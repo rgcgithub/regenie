@@ -101,6 +101,8 @@ void get_pvec(Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,double con
 void get_pvec_poisson(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
 double compute_log_lik_bern(const double&,const double&);
 double compute_log_lik_poisson(const double&,const double&);
+double y_log_ypi(const double&,const double&);
+double get_deviance_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
 
 void test_assoc_block(int const&,int const&,struct ridgel0&,Files&,struct param const&);
 void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);

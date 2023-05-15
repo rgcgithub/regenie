@@ -1665,6 +1665,23 @@ double compute_log_lik_poisson(const double& y, const double& p){
   return -(y * log(p) - p); // ignore log(y!) constant
 }
 
+double y_log_ypi(const double& y, const double& p){
+  return (y != 0) ? y * log(y/p) : 0;
+}
+
+double get_deviance_logistic(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi, const Ref<const ArrayXd>& wt, const Ref<const ArrayXb>& mask){
+
+  double dev = 0;
+  for(int i = 0; i < Y.size(); i++)
+    if(mask(i)) {
+      dev += 2 * wt(i) * ( y_log_ypi(Y(i), pi(i)) + y_log_ypi(1 - Y(i), 1 - pi(i)) );
+      //cerr << "(" << wt(i) << ", " << Y(i) << ", " << pi(i) << ") - " << i << " -> " << dev << "\n";
+      //if(i>10) exit(-1);
+    }
+
+  return dev;
+}
+
 void test_assoc_block(int const& chrom, int const& block, struct ridgel0& l0, Files& ostream_p, struct param const& params){
 
   double pv, logp, chival;
