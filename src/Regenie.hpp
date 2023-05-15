@@ -367,6 +367,10 @@ struct param {
 
   // multi-trait tests 
   bool trait_set = false; 
+  // MCC test
+  bool mcc_test = false;
+  bool mcc_apply_thr = false;
+  double mcc_thr = 1.0; // significance threshold (at -log10 scale) above which to use MCC
 
   // ld computation
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;
