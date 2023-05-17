@@ -3,7 +3,7 @@
 #
 AR         ?= ar
 CXX        ?= g++
-CXXFLAGS    = -O3 -Wall -std=c++11
+CXXFLAGS    = -O3 -Wall -std=c++11 -arch x86_64
 CFLAGS      = 
 
 OBJECTS       = $(patsubst %.cc,%.o,$(wildcard ./include/*.cc)) $(patsubst %.cpp,%.o,$(wildcard *.cpp))  $(patsubst %.cc,%.o,$(wildcard *.cc))

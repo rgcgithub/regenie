@@ -1,4 +1,4 @@
-FLAG  =-O2 -DNDEBUG -fPIC
+FLAG  =-O2 -DNDEBUG -fPIC -arch x86_64
 AR   ?= ar
 CXX  ?= g++
 CC   ?= gcc
