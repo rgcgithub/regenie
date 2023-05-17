@@ -3,8 +3,13 @@
 #
 AR         ?= ar
 CXX        ?= g++
-CXXFLAGS    = -O3 -Wall -std=c++11 -arch x86_64
+CXXFLAGS    = -O3 -Wall -std=c++11
 CFLAGS      = 
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+ CXXFLAGS += -arch x86_64
+endif
 
 OBJECTS       = $(patsubst %.cc,%.o,$(wildcard ./include/*.cc)) $(patsubst %.cpp,%.o,$(wildcard *.cpp))  $(patsubst %.cc,%.o,$(wildcard *.cc))
 INC           =  -I./simde/ -I./include/
