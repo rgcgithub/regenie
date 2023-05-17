@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.2.7](https://github.com/rgcgithub/regenie/releases/tag/v3.2.7) (New option `--force-mac-filter` to apply different MAC filter to subset of SNPs; Extend maximum number of domains to 32 for 4-column anno-file; Update PGEN library)
+
 [Version 3.2.6](https://github.com/rgcgithub/regenie/releases/tag/v3.2.6) (Relax tolerance parameter for null unpenalized logistic regression from 1e-8 to 1e-6; Minor bug fixes)
 
 [Version 3.2.5.3](https://github.com/rgcgithub/regenie/releases/tag/v3.2.5.3) (Fix inflation issue when testing main effect of SNP in GxE model; Minor bug fixes)
