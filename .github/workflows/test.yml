@@ -23,7 +23,7 @@ jobs:
       LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
       - name: Prep GCC install
         run: |
@@ -40,7 +40,7 @@ jobs:
 
       - name: Cache Bgen
         id: bgen-cache
-        uses: actions/cache@v2
+        uses: actions/cache@v3
         with:
           path: bgen.tgz
           key: ${{ runner.os }}-bgen
