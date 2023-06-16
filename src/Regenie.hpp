@@ -456,6 +456,7 @@ int chrStrToInt(const std::string&, const int&);
 std::vector<std::string> check_name(std::string const&,mstream&);
 void check_build_code(struct param*);
 double convertDouble(const std::string&,struct param const*,mstream&);
+std::string convert_logp_raw(double const& logp);
 double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param const*,mstream&);
 void check_inter_var(std::string&,std::string&,mstream&);
 std::string print_csv(const std::vector<std::string>&);

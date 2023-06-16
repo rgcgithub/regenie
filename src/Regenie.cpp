@@ -1527,6 +1527,23 @@ double convertDouble(const string& val, struct param const* params, mstream& sou
   return dval;
 }
 
+string convert_logp_raw(double const& logp){
+
+  char pval_str[256];
+
+  if(logp <= 3) {
+    sprintf(pval_str, "%f", pow(10, -logp));
+  } else {
+    double thr = log(9.95)/log(10);
+    int base = ceil(logp);
+    double res = base - logp;
+    if(res>=thr) {res = 0; base++;}
+    sprintf(pval_str, "%.1fE-%d", pow(10, res), base);
+  }
+
+  return( string(pval_str) );
+}
+
 // convert to numerical category using map
 double convertNumLevel(const string& val, std::map<std::string,int>& cmap, struct param const* params, mstream& sout){
 
