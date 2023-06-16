@@ -100,6 +100,8 @@ class JTests {
     ~JTests();
 };
 
+double get_acat_robust(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&);
+double get_acat_robust(const Eigen::Ref<const Eigen::ArrayXd>&);
 double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&);
 double get_acat(const Eigen::Ref<const Eigen::ArrayXd>&); // uniform weights
 bool valid_pval(double const&);

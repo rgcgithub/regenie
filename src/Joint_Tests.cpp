@@ -280,6 +280,70 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
 
 }
 
+double get_acat_robust(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<const ArrayXd>& weights){ // robust to low pvalues
+
+  // if single pval, return log10p
+  int n_pv = ((weights!=0) && (logpvals >= 0)).count();
+  if(n_pv == 0) return -1;
+  else if(n_pv == 1) return logpvals.maxCoeff();
+
+  cauchy dc(0,1);
+  double lpv_thr = 15, lpval_out;
+
+  // split pvals by thr
+  int n_A = ((weights!=0) && (logpvals >= lpv_thr)).count(); // very small pvals
+  int n_B = ((weights!=0) && (logpvals >= 0) && (logpvals < lpv_thr)).count();
+  double wsum = (logpvals >= 0).select(weights, 0).sum();
+  double l_TA = 0, TB = 0;
+
+  // T_A
+  if(n_A > 0){ // compute on log scale to handle the very small pvalues
+    ArrayXi vind = get_true_indices((weights!=0) && (logpvals >= lpv_thr));
+    ArrayXd lp = logpvals( vind ), ws = weights( vind ) / wsum;
+    ArrayXd zvec = lp * log(10) + ws.log() - log(M_PI);
+    double zmax = zvec.maxCoeff();
+    l_TA = zmax + log( (zvec - zmax).exp().sum() );
+  }
+  // T_B (can be negative)
+  if(n_B > 0){
+    ArrayXi vind = get_true_indices((weights!=0) && (logpvals >= 0) && (logpvals < lpv_thr));
+    ArrayXd pv = pow(10, -logpvals(vind)).min(0.999); // avoid pvalues of 1
+    ArrayXd ws = weights( vind ) / wsum; 
+    TB = ( ws * tan( M_PI * (0.5 - pv)) ).sum(); 
+  }
+
+  // T_ACAT = TA + TB
+  if(n_A == 0){ // avoid computing log(TB) as TB can be negative
+    lpval_out = ( TB >= 8886111 ? -log(TB) - log(M_PI) : log(cdf(complement(dc, TB))) );
+  } else if ((n_B == 0) || (TB == 0)){
+    lpval_out = ( l_TA >= 16 ? -l_TA - log(M_PI) : log(cdf(complement(dc, exp(l_TA)))) );
+  } else {
+    double lsum; // get sum on log scale
+    if(TB < 0){
+      double l_abs_TB = log(fabs(TB));
+      if(l_abs_TB < l_TA)
+        lsum = l_TA + log1p(-exp(l_abs_TB - l_TA));
+      else { // compute log(-Tacat)
+        lsum = l_abs_TB + log1p(-exp(l_TA - l_abs_TB)); 
+        lpval_out = ( lsum >= 16 ? log1p(-exp(-lsum-log(M_PI))) : log(cdf(complement(dc, -exp(lsum)))) );
+        return -lpval_out/log(10);
+      }
+    } else {
+      double l_TB = log(TB);
+      lsum = fmax(l_TA, l_TB) + log1p(exp(-fabs(l_TB - l_TA)));
+    } 
+    lpval_out = ( lsum >= 16 ? -lsum - log(M_PI) : log(cdf(complement(dc, exp(lsum) ))) );
+  }
+
+  // return log10P
+  return -lpval_out/log(10);
+}
+
+double get_acat_robust(const Eigen::Ref<const ArrayXd>& logpvals){
+  ArrayXd wts = ArrayXd::Constant(logpvals.size(), 1); // uniform weights
+  return get_acat_robust(logpvals, wts);
+}
+
 double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<const ArrayXd>& weights){
 
   cauchy dc(0,1);
