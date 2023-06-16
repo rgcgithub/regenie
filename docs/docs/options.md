@@ -59,6 +59,7 @@ One of the output files from these two commands is included in `example/test_bin
 |---|-------|------|----|
 |`--bgen, --bed, --pgen`  | FILE | Required |Input genetic data file. Either BGEN file eg. `file.bgen`, or bed/bim/fam prefix that assumes`file.bed`, `file.bim`, `file.fam` exist, or pgen/pvar/psam prefix that assumes`file.pgen`, `file.pvar`, `file.psam` exist |
 |`--sample`  | FILE | Optional |Sample file corresponding to input BGEN file|
+|`--bgi`  | FILE | Optional |Index bgi file corresponding to input BGEN file|
 |`--ref-first`  | FLAG | Optional |Specify to use the first allele as the reference allele for BGEN or PLINK bed/bim/fam file input [default is to use the last allele as the reference]|
 |`--keep`  | FILE | Optional | Inclusion file that lists individuals to retain in the analysis|
 |`--remove`  | FILE | Optional | Exclusion file that lists individuals to remove from the analysis|
