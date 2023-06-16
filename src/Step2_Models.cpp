@@ -290,7 +290,8 @@ void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thre
     // (2) Score -> MCC
     for( int i = 0; i < params.n_pheno; ++i ) {
       get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));
-      if(dt_thr->pval_log(i) > params.mcc_thr) {
+      // check for skewness of phenotype i
+      if(dt_thr->pval_log(i) > params.mcc_thr_nlog10 && pheno_data.mcc_Y[i]) {
         mcc.setup_y(pheno_data.masked_indivs.col(i), yres.col(i), params.ncov_analyzed);
         MCCResults mcc_results_i = mcc.run(Geno);
         if(mcc_results_i.Skip(0, 0)) {
@@ -299,7 +300,7 @@ void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thre
         } else {
           dt_thr->pval_log(i) = -log10(mcc_results_i.Pval(0, 0));
           // adjust SE
-          chisq_val_adj = boost::math::quantile(boost::math::complement(chisq, mcc_results_i.Pval(i, 0)));
+          chisq_val_adj = boost::math::quantile(boost::math::complement(chisq, mcc_results_i.Pval(0, 0)));
           dt_thr->se_b(i) *= sqrt(dt_thr->chisq_val(i) / chisq_val_adj);
         }
       }

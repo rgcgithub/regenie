@@ -44,7 +44,8 @@ struct phenodt {
   MatrixXb masked_indivs;
   Eigen::ArrayXd Neff; // number of non-missing samples (per trait)
   Eigen::RowVectorXd scale_Y;
-
+  Eigen::ArrayXd skew_Y; // skewness of phenotypes
+  ArrayXb mcc_Y; // flags to apply MCC test on phenotypes
 };
 
 
@@ -89,6 +90,8 @@ void apply_rint(struct phenodt*,struct param const*);
 void set_pheno_pass(struct in_files const*,struct param*);
 void rint_pheno(Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const ArrayXb>&);
 bool cmp_rank_pair(struct rank_pair&,struct rank_pair&);
+void compute_skew(struct phenodt*,struct param const*);
+double skew_pheno(const Eigen::Ref<const Eigen::ArrayXd> & , const Eigen::Ref<const ArrayXb> & );
 
 #endif
 

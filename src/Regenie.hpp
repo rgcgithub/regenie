@@ -370,7 +370,9 @@ struct param {
   // MCC test
   bool mcc_test = false;
   bool mcc_apply_thr = false;
-  double mcc_thr = 1.0; // significance threshold (at -log10 scale) above which to use MCC
+  double mcc_thr = 0.01; // significance threshold above which to use MCC
+  double mcc_thr_nlog10 = 2; 
+  double mcc_skew = 0.0; // threshold value of absolute phenotypic skewness to activate MCC
 
   // ld computation
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;

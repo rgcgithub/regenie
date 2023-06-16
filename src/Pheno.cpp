@@ -104,6 +104,18 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
       sout << "   -applying RINT to all phenotypes\n";
       apply_rint(pheno_data, params);
     }
+    
+    // compute skewness of traits only if MCC test is activated
+    if(params->mcc_test) {
+      sout << "   -computing phenotypic skewness: ";
+      compute_skew(pheno_data, params);
+      if(params->mcc_skew == 0.0) {
+        pheno_data->mcc_Y = ArrayXb::Constant(params->n_pheno, true);
+      } else {
+        pheno_data->mcc_Y = (pheno_data->skew_Y > params->mcc_skew); 
+      }
+      sout << pheno_data->mcc_Y.cast<int>().sum() << " phenotypes will use the MCC test\n";
+    }
 
     // impute missing
     pheno_impute_miss(pheno_data, filters->ind_in_analysis, files, params);
@@ -1765,4 +1777,35 @@ void rint_pheno(Ref<MatrixXd> Y, const Eigen::Ref<const ArrayXb>& mask){
 
 bool cmp_rank_pair(struct rank_pair& a, struct rank_pair& b) {
   return a.val < b.val;
+}
+
+void compute_skew(struct phenodt* pheno_data, struct param const* params){
+
+  // for each trait, compute skewness
+  pheno_data->skew_Y = ArrayXd::Constant(params->n_pheno, 0.0);
+  for(int ph = 0; ph < params->n_pheno; ph++) {
+    if( params->pheno_pass(ph) ) {
+      double skew = skew_pheno(pheno_data->phenotypes.col(ph), (pheno_data->phenotypes.col(ph).array() != params->missing_value_double) && pheno_data->masked_indivs.col(ph).array());
+      // debug
+      /* cout << "skew = " << skew << endl; */
+      pheno_data->skew_Y[ph] = skew;
+    }
+  }
+}
+
+double skew_pheno(const Eigen::Ref<const ArrayXd> & Y, const Eigen::Ref<const ArrayXb> & mask)
+{
+  // check arguments
+  if(Y.cols() != 1)
+    throw "skew_pheno: Y must a matrix with one column";
+
+  unsigned int n_val = mask.cast<int>().sum();
+  if(n_val == 0)
+    throw "skew_pheno: all values are missing";
+
+  double n_val_d = (double)(n_val);
+  double mean_y = mask.select(Y, 0.0).sum() / n_val_d;
+  double skew_y = ((Y - mean_y).cube().sum() / n_val_d) / pow(((Y - mean_y).square().sum() / n_val_d), 1.5);
+
+  return skew_y;
 }

@@ -323,8 +323,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("seed", "specify seed for random number generation", cxxopts::value<uint>(params->rng_seed))
     ("debug", "more verbose screen output for debugging purposes")
     ("mt", "run multi-trait tests")
-    ("mcc", "run MCC test")
-    ("mcc-thr", "threshold to activate MCC", cxxopts::value<double>(params->mcc_thr),"FLOAT(=1)")
+    ("mcc", "apply MCC test for quantitative traits")
+    ("mcc-skew", "absolute phenotypic skewness to activate MCC [default value is 0]", cxxopts::value<double>(params->mcc_skew),"FLOAT(=0)")
+    ("mcc-thr", "threshold to apply MCC if activated [default value is 0.01]", cxxopts::value<double>(params->mcc_thr),"FLOAT(=0.01)")
     ;
 
 
@@ -1151,14 +1152,15 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "--no-split mode is required for multi-trait tests";
     }
 
-    // check MCC settings
     if(params->mcc_test) {
       // convert mcc thr. from raw to -log10 scale
-      if((params->mcc_thr > 1) && (params->mcc_thr < 0))
-        throw "--mcc-thr range must be 0-1";
+      if((params->mcc_thr > 1) && (params->mcc_thr <= 0))
+        throw "--mcc-thr range must be in (0; 1]";
       if(params->mcc_thr < 1) 
         params->mcc_apply_thr = true;
-      params->mcc_thr = -log10(params->mcc_thr); // -log10 transformation
+      params->mcc_thr_nlog10 = -log10(params->mcc_thr); // -log10 transformation
+      // debug
+      /* cout << "mcc_test = " << params->mcc_test << " | mcc_apply_thr = " << params->mcc_apply_thr << " | mcc_thr  = " << params->mcc_thr << " | mcc_thr_nlog10 = " << params->mcc_thr_nlog10 << " | mcc_skew = " << params->mcc_skew << endl; */
     }
 
     // check input files
