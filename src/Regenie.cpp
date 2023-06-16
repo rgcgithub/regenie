@@ -1154,7 +1154,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     // check MCC settings
     if(params->mcc_test) {
       // convert mcc thr. from raw to -log10 scale
-      if(params->mcc_thr > 1 & params->mcc_thr < 0) 
+      if((params->mcc_thr > 1) && (params->mcc_thr < 0))
         throw "--mcc-thr range must be 0-1";
       if(params->mcc_thr < 1) 
         params->mcc_apply_thr = true;
