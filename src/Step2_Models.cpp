@@ -549,7 +549,7 @@ void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, i
 
 
 // Firth (currently only used for null approximate firth)
-bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const* pheno_data, struct ests const* m_ests, Ref<ArrayXd> betavec, struct param const* params) {
+bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const* pheno_data, struct ests const* m_ests, Ref<ArrayXd> betavec, struct param* params, bool const& save_se) {
 
   bool success, set_start = true;
   int col_incl;
@@ -619,6 +619,13 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
     return false;
 
   betavec.head(betaold.size()) = betaold;
+  if(save_se && params->print_cov_betas) { // get se
+    ArrayXd wvec;
+    get_wvec(pivec, wvec, mask);
+    MatrixXd XWsqrt = ( Xmat.array().colwise() * (wvec.sqrt() * mask.cast<double>()) ).matrix();
+    MatrixXd xtx_inv = ( XWsqrt.transpose() * XWsqrt ).colPivHouseholderQr().inverse();
+    params->xtx_inv_diag.col(ph).array() = xtx_inv.diagonal().array().sqrt();
+  }
   return true;
 
 }

@@ -194,7 +194,7 @@ struct param {
   int max_cat_levels = 10; // maximum number of categories of categorical covars
   bool select_chrs = false; // user specify which chromosomes to test
   std::vector<std::string> covar_names;
-  Eigen::MatrixXd cov_betas;
+  Eigen::MatrixXd cov_betas, xtx_inv_diag;
   Eigen::ArrayXd cov_sds;
 
   // other global options
