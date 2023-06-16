@@ -183,7 +183,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
   int nalleles;
   uint32_t lineread = 0;
   uint64 variant_bgi_size, variant_bgen_size;
-  string bgi_file = files->bgen_file + ".bgi";
+  string bgi_file = files->bgi_file;
   string sql_query = "SELECT * FROM Variant", cnd1 = "";
   snp tmp_snp;
   sqlite3* db;
