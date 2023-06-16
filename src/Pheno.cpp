@@ -1005,7 +1005,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   if( !params->getCorMat && (!params->test_mode || (params->trait_mode==0)) ) 
     residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
-  if(params->print_cov_betas) print_cov_betas(params, files, sout);
+  if(params->print_cov_betas) print_cov_betas(params, files, pheno_data, sout);
 
   // if using step 1 preds as covariate
   check_cov_blup(pheno_data, params);
@@ -1387,6 +1387,7 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
   if(params->print_cov_betas) { 
 
     params->cov_betas.resize(params->ncov, params->n_pheno);
+    params->xtx_inv_diag.resize(params->ncov, params->n_pheno);
 
     // need to get betas for non-QTs in step 2
     if(params->trait_mode==1) { // BT
@@ -1394,7 +1395,7 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
       if(params->firth) // null firth
         for( int ph = 0; ph < params->n_pheno; ++ph ) 
           if(params->pheno_pass(ph))
-            params->pheno_pass(ph) = fit_approx_firth_null(0, ph, pheno_data, m_ests, params->cov_betas.col(ph), params);
+            params->pheno_pass(ph) = fit_approx_firth_null(0, ph, pheno_data, m_ests, params->cov_betas.col(ph), params, true);
 
     } else if(params->trait_mode==2) // CT
       fit_null_poisson(0, params, pheno_data, m_ests, files, sout, true);
@@ -1407,31 +1408,42 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
 
 }
 
-void print_cov_betas(struct param* params, struct in_files const* files, mstream& sout){
+void print_cov_betas(struct param* params, struct in_files const* files, struct phenodt* pheno_data, mstream& sout){
 
   sout << " * covariate effects written to file : [ " << files->out_file << "_cov_betas.txt ]\n";
 
+  double se, stat, logp;
+  std::ostringstream buffer;
   Files fout;
-  fout.openForWrite(files->out_file + "_cov_betas.txt", sout);
-  IOFormat Fmt(FullPrecision, DontAlignCols, "\t", "", "", "","","\n");
 
-  // print covariate names
-  fout << "PHENO" << "\t" << print_sv(params->covar_names, "\t") << "\n";
+  //header
+  buffer << "COVAR\tPHENO\tBETA\tSE\tPVALUE\n";
 
   // re-scale the betas
   params->cov_betas.array().colwise() /= params->cov_sds;
+  params->xtx_inv_diag.array().colwise() /= params->cov_sds;
 
-  for( int ph = 0; ph < params->n_pheno; ph++){
-    if( !params->pheno_pass(ph) ) {
-      fout << files->pheno_names[ph];
-      for(size_t ix = 0; ix < params->covar_names.size(); ix++) fout << "\tNA";
-      fout << "\n";
-    } else // print phenotype name on 1st column followed by covariate values
-      fout << files->pheno_names[ph] << "\t" << params->cov_betas.col(ph).transpose().format(Fmt); 
-  } 
+  // for each covariate/phenotype, print beta|SE|p-value
+  for(size_t ic = 0; ic < params->covar_names.size(); ic++)
+    for(int ph = 0; ph < params->n_pheno; ph++){
+      if( !params->pheno_pass(ph) ) {
+        buffer << params->covar_names[ic] << "\t" << files->pheno_names[ph] << "\tNA\tNA\tNA\n";
+        continue;
+      }
+      se = params->xtx_inv_diag(ic, ph);
+      stat = pow(params->cov_betas(ic,ph)/se, 2);
+      get_logp(logp, stat);
 
+      buffer << params->covar_names[ic] << "\t" << files->pheno_names[ph] << "\t" <<
+        params->cov_betas(ic,ph) << "\t" << se << "\t" << convert_logp_raw(logp) << "\n";
+    }
+
+  fout.openForWrite(files->out_file + "_cov_betas.txt", sout);
+  fout << buffer.str();
   fout.closeFile();
+
   params->cov_betas.resize(0,0);
+  params->xtx_inv_diag.resize(0,0);
   params->covar_names.resize(0);
 }
 
@@ -1549,9 +1561,13 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   MatrixXd beta;
   if(params->print_cov_betas) { // X is not orth basis
     MatrixXd xtx = pheno_data->new_cov.transpose() * pheno_data->new_cov;
-    params->cov_betas = ( xtx ).colPivHouseholderQr().solve( pheno_data->new_cov.transpose() * pheno_data->phenotypes);
-    beta = params->cov_betas.transpose();
-  } else beta = pheno_data->phenotypes.transpose() * pheno_data->new_cov;
+    MatrixXd xtx_inv = ( xtx ).colPivHouseholderQr().inverse();
+    params->xtx_inv_diag.array().colwise() = xtx_inv.diagonal().array().sqrt();
+    params->cov_betas =  xtx_inv * (pheno_data->new_cov.transpose() * pheno_data->phenotypes);
+    // get orthonormal basis so xtx_inv = I
+    if(params->trait_mode == 0) params->ncov = getBasis(pheno_data->new_cov, params);
+  }
+  beta = pheno_data->phenotypes.transpose() * pheno_data->new_cov;
 
   // residuals (centered) then scale
   pheno_data->phenotypes -= ( (pheno_data->new_cov * beta.transpose()).array() * pheno_data->masked_indivs.array().cast<double>() ).matrix();
@@ -1559,6 +1575,7 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
 
   // set sd for phenotypes which are ignored to 1
   pheno_data->scale_Y = params->pheno_pass.select(pheno_data->scale_Y.transpose().array(), 1).matrix().transpose();
+  if(params->print_cov_betas) params->xtx_inv_diag *= pheno_data->scale_Y.asDiagonal();
 
   // check sd is not 0 
   MatrixXd::Index minIndex;
