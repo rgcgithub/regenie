@@ -82,7 +82,7 @@ void read_prs(Eigen::Ref<Eigen::ArrayXd>,struct in_files*,struct param*,Eigen::R
 void check_phenos(Eigen::Ref<ArrayXb>,std::vector<std::string> const&,std::string const&,mstream&);
 void write_ids(struct in_files const*,struct param*,struct phenodt const*,mstream&);
 void fit_null_models_nonQT(struct param*,struct phenodt*,struct ests*,struct in_files*,mstream&);
-void print_cov_betas(struct param*,struct in_files const*,mstream&);
+void print_cov_betas(struct param*,struct in_files const*,struct phenodt*,mstream&);
 void check_str(std::string&);
 void pheno_impute_miss(struct phenodt*,const Eigen::Ref<const ArrayXb>&,struct in_files*,struct param const*);
 void apply_rint(struct phenodt*,struct param const*);
