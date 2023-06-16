@@ -148,6 +148,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("pgen", "prefix to PLINK2 .pgen/.pvar/.psam files", cxxopts::value<std::string>(files->pgen_prefix),"PREFIX")
     ("bgen", "BGEN file", cxxopts::value<std::string>(files->bgen_file),"FILE")
     ("sample", "sample file corresponding to BGEN file", cxxopts::value<std::string>(files->sample_file),"FILE")
+    ("bgi", "index bgi file corresponding to BGEN file", cxxopts::value<std::string>(files->bgi_file),"FILE")
     ("ref-first", "use the first allele as the reference for BGEN or PLINK bed/bim/fam input format [default assumes reference is last]")
     ("keep", "comma-separated list of files listing samples to retain in the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(),"FILE")
     ("remove", "comma-separated list of files listing samples to remove from the analysis (no header; starts with FID IID)", cxxopts::value<std::string>(),"FILE")
@@ -1164,7 +1165,13 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(params->file_type == "bgen") {
       check_file (files->bgen_file, "bgen"); 
       if(params->bgenSample) check_file (files->sample_file, "sample"); 
-      params->with_bgi = file_exists (files->bgen_file + ".bgi") ;
+      if(files->bgi_file != "") {
+        check_file (files->bgi_file, "bgi");
+        params->with_bgi = true;
+      } else {
+        files->bgi_file = files->bgen_file + ".bgi";
+        params->with_bgi = file_exists (files->bgi_file) ;
+      }
     }
     if(vm.count("covarFile")) check_file(files->cov_file,"covarFile");
     if(!params->getCorMat) check_file(files->pheno_file,"phenoFile"); 

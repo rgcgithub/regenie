@@ -392,7 +392,7 @@ struct in_files {
 
   std::string bed_prefix;
   std::string pgen_prefix;
-  std::string bgen_file, sample_file;
+  std::string bgen_file, sample_file, bgi_file = "";
   std::vector<std::string> file_ind_include, file_ind_exclude;
   std::vector<std::string> file_snps_include, file_snps_exclude;
   std::vector<std::string> file_snps_include_or, file_snps_exclude_or;
