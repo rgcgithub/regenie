@@ -110,7 +110,15 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
 
     if(params->test_mode){
-      if(save_betas && params->print_cov_betas) {params->cov_betas.col(i) = betaold;continue;}
+      if(save_betas && params->print_cov_betas) {
+        params->cov_betas.col(i) = betaold;
+        // get se
+        get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
+        MatrixXd XWsqrt = ( pheno_data->new_cov.array().colwise() * (wvec.sqrt() * mask.cast<double>()) ).matrix();
+        MatrixXd xtx_inv = ( XWsqrt.transpose() * XWsqrt ).colPivHouseholderQr().inverse();
+        params->xtx_inv_diag.col(i).array() = xtx_inv.diagonal().array().sqrt();
+        continue;
+      }
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
@@ -234,7 +242,14 @@ void fit_null_poisson(const int& chrom, struct param* params, struct phenodt* ph
       sout << "\n     WARNING: Fitted rates numerically 0 occurred (phenotype #" << files->pheno_names[i] <<").";
 
     if(params->test_mode){
-      if(save_betas && params->print_cov_betas) {params->cov_betas.col(i) = betaold;continue;}
+      if(save_betas && params->print_cov_betas) {
+        params->cov_betas.col(i) = betaold;
+        // get se
+        MatrixXd XWsqrt = ( pheno_data->new_cov.array().colwise() * mask.select(pivec,0).sqrt() ).matrix();
+        MatrixXd xtx_inv = ( XWsqrt.transpose() * XWsqrt ).colPivHouseholderQr().inverse();
+        params->xtx_inv_diag.col(i).array() = xtx_inv.diagonal().array().sqrt();
+        continue;
+      }
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       m_ests->Gamma_sqrt.col(i) = pivec.sqrt().matrix();
       m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
