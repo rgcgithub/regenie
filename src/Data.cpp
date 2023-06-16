@@ -1411,8 +1411,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
   check_l0(ph, ph_eff, &params, &l1_ests, &pheno_data, sout, true);
 
   int bs_l1 = l1_ests.test_mat_conc[ph_eff].cols();
-  double v2;
-  ArrayXd beta, pivec, wvec;
+  ArrayXd beta, pivec, wvec, v2;
   MatrixXd XtWX, V1, beta_final;
   LLT<MatrixXd> Hinv;
 
@@ -1438,28 +1437,30 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
     size_chunk = ( chunk == nchunk - 1 ? params.cv_folds - target_size * chunk : target_size );
     j_start = chunk * target_size;
 
-    Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
-    Ref<MatrixXd> w_chunk = wvec.matrix().block(j_start, 0, size_chunk,1);
+    Ref<MatrixXd> Xmat_chunk = X.middleRows(j_start, size_chunk); // n x k
+    Ref<ArrayXd> w_chunk = wvec.segment(j_start, size_chunk);
+    Ref<ArrayXb> mask_chunk = mask.segment(j_start, size_chunk);
 
-    XtWX.noalias() += Xmat_chunk.transpose() * w_chunk.asDiagonal() * Xmat_chunk;
+    XtWX.noalias() += Xmat_chunk.transpose() * mask_chunk.select(w_chunk,0).matrix().asDiagonal() * Xmat_chunk;
   }
   Hinv.compute( XtWX );
 
   // loo estimates
+  beta_final = MatrixXd::Zero(bs_l1, target_size);
   for(chunk = 0; chunk < nchunk; ++chunk ) {
     size_chunk = chunk == nchunk - 1? params.cv_folds - target_size * chunk : target_size;
     j_start = chunk * target_size;
-    if( (chunk == 0) || (chunk == nchunk - 1) ) beta_final = MatrixXd::Zero(bs_l1, size_chunk);
+    if( chunk == (nchunk - 1) ) beta_final = MatrixXd::Zero(bs_l1, size_chunk);
 
-    Ref<MatrixXd> Xmat_chunk = l1_ests.test_mat_conc[ph_eff].block(j_start, 0, size_chunk, bs_l1); // n x k
-    Ref<MatrixXd> Yvec_chunk = pheno_data.phenotypes_raw.block(j_start, ph, size_chunk, 1);
+    Ref<MatrixXd> Xmat_chunk = X.middleRows(j_start, size_chunk); // n x k
+    Ref<ArrayXd> Yvec_chunk = Y.segment(j_start, size_chunk);
+    Ref<ArrayXd> p_chunk = pivec.segment(j_start, size_chunk);
+    Ref<ArrayXd> w_chunk = wvec.segment(j_start, size_chunk);
 
     V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
-    for(int i = 0; i < size_chunk; ++i ) {
-      v2 = Xmat_chunk.row(i) * V1.col(i);
-      v2 *= wvec(j_start + i);
-      beta_final.col(i) = (beta - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
-    }
+    v2 = (Xmat_chunk.array() * V1.transpose().array()).rowwise().sum() * w_chunk;
+    beta_final.array().colwise() = beta;
+    beta_final -= V1 * ((Yvec_chunk - p_chunk)/(1-v2)).matrix().asDiagonal();
 
     // compute predictor for each chr
     int ctr = 0, chr_ctr = 0;
@@ -1472,7 +1473,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
       nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
 
       if(nn > 0) {
-        predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * beta_final.block(ctr, 0, nn, size_chunk).transpose().array() ).matrix().rowwise().sum();
+        predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( X.block(j_start, ctr, size_chunk, nn).array() * beta_final.middleRows(ctr, nn).transpose().array() ).matrix().rowwise().sum();
         chr_ctr++;
         ctr += nn;
       }
@@ -1788,10 +1789,10 @@ std::string Data::write_ID_header(){
 }
 
 
-std::string Data::write_chr_row(int const& chr, int const& ph, const Ref<const MatrixXd>& pred){
+std::string Data::write_chr_row(int const& chr, int const& ph, const Ref<const VectorXd>& pred){
 
   uint32_t index;
-  string out, id_index;
+  string out;
   std::ostringstream buffer;
   map<string, uint32_t >::iterator itr_ind;
 
@@ -1803,9 +1804,8 @@ std::string Data::write_chr_row(int const& chr, int const& ph, const Ref<const M
     if( !in_filters.ind_in_analysis( index ) ) continue;
 
     // print prs
-    id_index = itr_ind->first;
     if( pheno_data.masked_indivs(index, ph) )
-      buffer << pred(index, 0) << " ";
+      buffer << pred(index) << " ";
     else
       buffer << "NA ";
   }

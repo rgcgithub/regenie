@@ -97,7 +97,7 @@ class Data {
     void make_predictions_count_loocv(int const&,int const&);
     void write_predictions(int const&);
     std::string write_ID_header();
-    std::string write_chr_row(int const&,int const&,const Eigen::Ref<const Eigen::MatrixXd>&);
+    std::string write_chr_row(int const&,int const&,const Eigen::Ref<const Eigen::VectorXd>&);
     void rm_l0_files(int const& ph);
 
     // step 2 main functions
