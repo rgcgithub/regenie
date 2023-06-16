@@ -191,7 +191,7 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
 
   uint32_t n_variants = bgen.number_of_variants();
   uint32_t position ;
-  std::string chromosome, rsid;
+  std::string chromosome, rsid, tmpchrom;
   std::vector< std::string > alleles ;
   std::vector< std::vector< double > > probs ;
 
@@ -244,13 +244,16 @@ void read_bgi_file(BgenParser& bgen, struct in_files* files, struct param* param
         // check if matches with info from bgenparser for first read variant
         if( snpinfo.empty() ){
           bgen.jumpto(tmp_snp.offset);
-          bgen.read_variant( &chromosome, &position, &rsid, &alleles );
+          bgen.read_variant( &tmpchrom, &position, &rsid, &alleles );
           bgen.read_probs( &probs ) ;
           if( probs[0].size() != 3 ) // unphased only 
             throw "only unphased bgen are supported.";
           variant_bgen_size = bgen.get_position() - tmp_snp.offset;
           variant_bgi_size = strtoull( (char *) sqlite3_column_text(stmt, 7), NULL, 10);
-          assert( tmp_snp.ID == rsid );
+          // check CPRA
+          assert( chromosome == tmpchrom );
+          assert( tmp_snp.physpos == position );
+          assert( ( (tmp_snp.allele1 == alleles[0]) && (tmp_snp.allele2 == alleles[1]) ) || ( (tmp_snp.allele1 == alleles[1]) && (tmp_snp.allele2 == alleles[0])) );
           assert( variant_bgi_size == variant_bgen_size );
         }
 
