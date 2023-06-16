@@ -1011,12 +1011,12 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
   sout << endl << " Level 1 ridge with logistic regression..." << flush;
 
   int ph_eff, bs_l1 = params->total_n_block * params->n_ridge_l0;
-  double v2, pred, p1;
+  double p1;
   string in_pheno;
   ifstream infile;
   ofstream ofile;
 
-  ArrayXd beta, pivec, wvec;
+  ArrayXd beta, pivec, wvec, v2, pred;
   MatrixXd XtWX, V1, b_loo;
   LLT<MatrixXd> Hinv;
   l1->pheno_l1_not_converged = ArrayXb::Constant(params->n_pheno, false);
@@ -1090,18 +1090,22 @@ void ridge_logistic_level_1_loocv(struct in_files* files, struct param* params, 
         j_start = chunk * target_size;
 
         Ref<MatrixXd> Xmat_chunk = X.block(j_start, 0, size_chunk, bs_l1); // n x k
-        Ref<MatrixXd> Yvec_chunk = Y.matrix().block(j_start, 0, size_chunk, 1);
+        Ref<ArrayXd> Yvec_chunk = Y.segment(j_start, size_chunk);
         Ref<ArrayXb> mask_chunk = mask.segment(j_start, size_chunk);
+        Ref<ArrayXd> p_chunk = pivec.segment(j_start, size_chunk);
+        Ref<ArrayXd> w_chunk = wvec.segment(j_start, size_chunk);
+        Ref<ArrayXd> off_chunk = offset.segment(j_start, size_chunk);
 
         V1 = Hinv.solve( Xmat_chunk.transpose() ); // k x n
+        v2 = (Xmat_chunk.array() * V1.transpose().array()).rowwise().sum() * w_chunk;
+        b_loo.resize(beta.size(), size_chunk);
+        b_loo.array().colwise() = beta;
+        b_loo -= V1 * ((Yvec_chunk - p_chunk)/(1-v2)).matrix().asDiagonal();
+        pred = (Xmat_chunk.array() * b_loo.transpose().array()).rowwise().sum() + off_chunk;
+
         for(int i = 0; i < size_chunk; ++i ) {
           if(!mask_chunk(i)) continue;
-          v2 = Xmat_chunk.row(i) * V1.col(i);
-          v2 *= wvec(j_start + i);
-          b_loo = (beta - V1.col(i).array() * (Yvec_chunk(i,0) - pivec(j_start + i)) / (1 - v2)).matrix();
-          pred = Xmat_chunk.row(i) * b_loo.col(0);
-          pred += offset(j_start + i);
-          p1 = 1 - 1/ ( exp(pred) + 1 );
+          p1 = 1 - 1/ ( exp(pred(i)) + 1 );
 
           // if p is within eps of 0/1, set to eps/1-eps
           if( p1 < params->l1_ridge_eps ) p1 = params->l1_ridge_eps;
