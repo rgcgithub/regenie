@@ -1174,7 +1174,7 @@ void Data::make_predictions(int const& ph, int const& val) {
     int chrom = files.chr_read[itr];
     if( !in_map(chrom, chr_map) ) continue;
 
-    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
     if(nn > 0) {
       cum_size_folds = 0;
       for(int i = 0; i < params.cv_folds; ++i ) {
@@ -1244,7 +1244,7 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
       int chrom = files.chr_read[itr];
       if( !in_map(chrom, chr_map) ) continue;
 
-      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
       if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = (l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * b0.block(ctr, 0, nn, size_chunk).transpose().array()).rowwise().sum();
         chr_ctr++;
@@ -1325,7 +1325,7 @@ void Data::make_predictions_binary(int const& ph, int const& val) {
     int chrom = files.chr_read[itr];
     if( !in_map(chrom, chr_map) ) continue;
 
-    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
     if(nn > 0) {
       cum_size_folds = 0;
       for(int i = 0; i < params.cv_folds; ++i ) {
@@ -1384,7 +1384,7 @@ void Data::make_predictions_binary_loocv_full(int const& ph, int const& val) {
     int chrom = files.chr_read[itr];
     if( !in_map(chrom, chr_map) ) continue;
 
-    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
 
     if(nn > 0) {
       predictions[0].col(chr_ctr) = l1_ests.test_mat_conc[ph_eff].middleCols(ctr, nn) * beta.segment(ctr, nn).matrix();
@@ -1472,7 +1472,7 @@ void Data::make_predictions_binary_loocv(int const& ph, int const& val) {
       int chrom = files.chr_read[itr];
       if( !in_map(chrom, chr_map) ) continue;
 
-      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
 
       if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( X.block(j_start, ctr, size_chunk, nn).array() * beta_final.middleRows(ctr, nn).transpose().array() ).matrix().rowwise().sum();
@@ -1520,7 +1520,7 @@ void Data::make_predictions_count(int const& ph, int const& val) {
     int chrom = files.chr_read[itr];
     if( !in_map(chrom, chr_map) ) continue;
 
-    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
     if(nn > 0) {
       cum_size_folds = 0;
       for(int i = 0; i < params.cv_folds; ++i ) {
@@ -1613,7 +1613,7 @@ void Data::make_predictions_count_loocv(int const& ph, int const& val) {
       int chrom = files.chr_read[itr];
       if( !in_map(chrom, chr_map) ) continue;
 
-      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom);
+      nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
 
       if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = ( l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * beta_final.block(ctr, 0, nn, size_chunk).transpose().array() ).matrix().rowwise().sum();
