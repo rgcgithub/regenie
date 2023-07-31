@@ -1424,11 +1424,13 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
 
 void print_cov_betas(struct param* params, struct in_files const* files, struct phenodt* pheno_data, mstream& sout){
 
-  sout << " * covariate effects written to file : [ " << files->out_file << "_cov_betas.txt ]\n";
+  sout << " * covariate effects written to file : [ " << files->out_file << "_cov_betas.txt ]";
 
   double se, stat, logp;
   std::ostringstream buffer;
   Files fout;
+  MeasureTime mt;
+  mt.start_ms();
 
   //header
   buffer << "COVAR\tPHENO\tBETA\tSE\tPVALUE\n";
@@ -1445,6 +1447,10 @@ void print_cov_betas(struct param* params, struct in_files const* files, struct 
         continue;
       }
       se = params->xtx_inv_diag(ic, ph);
+      if(se == 0) {
+        buffer << params->covar_names[ic] << "\t" << files->pheno_names[ph] << "\tNA\tNA\tNA\n";
+        continue;
+      }
       stat = pow(params->cov_betas(ic,ph)/se, 2);
       get_logp(logp, stat);
 
@@ -1455,6 +1461,8 @@ void print_cov_betas(struct param* params, struct in_files const* files, struct 
   fout.openForWrite(files->out_file + "_cov_betas.txt", sout);
   fout << buffer.str();
   fout.closeFile();
+
+  sout << " ..." << mt.stop_ms() << "\n";
 
   params->cov_betas.resize(0,0);
   params->xtx_inv_diag.resize(0,0);
@@ -1479,34 +1487,51 @@ int getBasis(MatrixXd& X, struct param const* params){
   return non_zero_eigen;
 }
 
+  // only keep linearly independent columns in X
 int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, struct param* params){
 
-  // only keep linearly independent columns
+  int ncol_start = X.cols();
   ArrayXi index_in_analysis = get_true_indices(ind_in_analysis);
-  MatrixXd X_in_analysis = X(index_in_analysis, all);
-  int ncol_start = X_in_analysis.cols();
 
-  QRcheck(X_in_analysis, true, params->covar_names, params->n_analyzed - params->ncov, Eigen::Default, params->numtol, false);
-  if(X_in_analysis.cols() != ncol_start) cout << "WARNING: " << (ncol_start - X_in_analysis.cols()) << " variables removed due to multi-colinearity\n";
+  // apply QR directly here to save memory usage
+  ColPivHouseholderQR<MatrixXd> qrA(X(index_in_analysis, all));
+  int indCols = qrA.rank();
+  if(indCols == 0)
+    throw "rank of matrix is 0.";
+  else if ( indCols < X.cols() ){
+    vector<string> new_names;
+    // get indices of columns retained
+    ArrayXi colKeep = qrA.colsPermutation().indices();
+    // sort them to keep order
+    vector<int> mindices(colKeep.data(), colKeep.data() + indCols);
+    std::sort(mindices.begin(), mindices.end());
+    // keep only linearly independent columns (avoid full matrix copy)
+    for(int i = 0; i < indCols; i++) {
+      X.col(i) = X.col(mindices[i]); // overwrite columns starting from leftmost ones
+      new_names.push_back( params->covar_names[ mindices[i] ]);
+    }
+    params->covar_names = new_names;
+    cout << "WARNING: " << (ncol_start - indCols) << " variables removed due to multi-colinearity\n";
+  } 
 
   // save SD
-  RowVectorXd mu = X_in_analysis.colwise().mean();
-  params->cov_sds = (X_in_analysis.rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - X_in_analysis.cols());
+  RowVectorXd mu = X(index_in_analysis, all).colwise().mean();
+  params->cov_sds = (X(index_in_analysis, all).rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - X.cols());
 
   // SD=0 should be only for intercept column (set it to 1)
-  if((params->cov_sds < params->eigen_val_rel_tol).count() != 1){
+  if((params->cov_sds < params->eigen_val_rel_tol).count() > 1){
     if(params->debug) {
       cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
-      cerr << "X top 2 rows:\n" << X_in_analysis.topRows(2);
-      cerr << "SDs:\n" << params->cov_sds.matrix().transpose();
+      cerr << "X top 2 rows:\n" << X.topRows(2) << "\n";
+      cerr << "SDs:\n" << params->cov_sds.matrix().transpose() << "\n";
+      cerr << "eig. tol: " << params->eigen_val_rel_tol << "\n";
     }
     throw "more than 1 covariates have SD = 0";
   }
   params->cov_sds = (params->cov_sds < params->eigen_val_rel_tol).select(1, params->cov_sds);
 
   // re-scale X (better for logistic reg convergence)
-  X_in_analysis.array().rowwise() /= params->cov_sds.matrix().transpose().array();
-  X(index_in_analysis, all) = X_in_analysis;
+  X.array().rowwise() /= params->cov_sds.matrix().transpose().array();
   
   return X.cols();
 }
