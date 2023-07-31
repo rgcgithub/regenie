@@ -1417,7 +1417,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
   } else {
     // Step 2
     // 3P + B
-    total_ram = params->n_pheno * 3 + params->block_size + params->ncov; // y, mask, y_resid, g, X
+    total_ram = params->n_pheno * 3 + params->block_size + params->ncov * 2; // y, mask, y_resid, g, X, X getbasis projection
     if(params->trait_mode) {
       total_ram += 2 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
