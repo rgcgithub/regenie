@@ -101,6 +101,7 @@ add_executable(regenie
   ${CMAKE_SOURCE_DIR}/src/Step2_Models.cpp
   ${CMAKE_SOURCE_DIR}/src/MultiTrait_Tests.cpp
   ${CMAKE_SOURCE_DIR}/src/MCC.cpp
+  ${CMAKE_SOURCE_DIR}/src/Ordinal.cpp
   )
 target_include_directories(regenie PRIVATE ${CMAKE_SOURCE_DIR}/src)
 

@@ -2789,6 +2789,11 @@ void reset_stats(variant_block* snp_data, struct param const& params){
       snp_data->sum_stats_mt.resize(1); // current only 1 trait set
       std::fill(snp_data->sum_stats_mt.begin(), snp_data->sum_stats_mt.end(), "");
     }
+    // MultiPhen test results
+    if(params.multiphen) {
+      snp_data->sum_stats_multiphen.resize(1); // current only 1 trait set
+      std::fill(snp_data->sum_stats_multiphen.begin(), snp_data->sum_stats_multiphen.end(), "");
+    }
 
 }
 

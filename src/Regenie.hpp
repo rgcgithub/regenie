@@ -85,6 +85,7 @@ typedef unsigned char uchar;
 typedef unsigned int uint;
 typedef unsigned long long uint64;
 typedef Eigen::Array<bool,Eigen::Dynamic,1> ArrayXb;
+typedef Eigen::Matrix<bool,Eigen::Dynamic,1> VectorXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
 typedef Eigen::Map<const Eigen::ArrayXd > MapcArXd;
@@ -367,12 +368,24 @@ struct param {
 
   // multi-trait tests 
   bool trait_set = false; 
+  int n_tests_multitrait = 1; // number of tests per trait set
+  bool split_by_multitrait = false; // specify whether to write multi-trait testing result in separate files
   // MCC test
   bool mcc_test = false;
   bool mcc_apply_thr = false;
   double mcc_thr = 0.01; // significance threshold above which to use MCC
   double mcc_thr_nlog10 = 2; 
   double mcc_skew = 0.0; // threshold value of absolute phenotypic skewness to activate MCC
+  // MultiPhen test
+  bool multiphen = false;
+  double multiphen_thr = 0.001; // significance p-value threshold below which to use LRT 
+  std::string multiphen_test = "nocov_score_addcov"; // type of MultiPhen test
+  double multiphen_tol = 1e-4; // tolerance level for MultiPhen
+  bool multiphen_trace = false; // trace model fitting performance for MultiPhen
+  double multiphen_firth_mult = 1.0; // multiplier for the Firth penalty
+  int multiphen_verbose = 0; // multiphen verbose level
+  double multiphen_maxstep = 100.0; // max step
+  bool multiphen_approx_offset = false; // approximate Firth
 
   // ld computation
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;

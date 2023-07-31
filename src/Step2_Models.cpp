@@ -33,6 +33,7 @@
 #include "HLM.hpp"
 #include "Pheno.hpp"
 #include "MultiTrait_Tests.hpp"
+#include "Ordinal.hpp"
 #include "Masks.hpp"
 #include "Data.hpp"
 #include "MCC.hpp"
@@ -1598,8 +1599,58 @@ std::string print_header_output(struct param const* params){
   if(params->split_by_pheno)
     return print_header_output_single(params);
   else
-    return print_header_output_all(params);
+    if(params->trait_set) 
+      return print_header_output_all_multitrait(params);
+    else if(params->multiphen)
+      return print_header_output_all_multiphen(params);
+    else
+      return print_header_output_all(params);
+}
 
+std::string print_header_output_all_multiphen(struct param const* params){
+
+  std::ostringstream buffer;
+
+  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 MAC A1FREQ N LOG10P MULTINOM IT UP FIRTH";
+  buffer << endl;
+
+  return buffer.str();
+}
+
+std::string print_header_output_all_multitrait(struct param const* params){
+
+  std::ostringstream buffer;
+
+  buffer << "CHROM GENPOS ID ALLELE0 ALLELE1 MAC A1FREQ N";
+  // p-values for single-trait tests
+  /* for(int i = 0; i < params->n_pheno; i++) { */
+  /*   buffer << "LOG10P.Y0" << i+1 << " "; */
+  /* } */
+  buffer << " LOG10P.MINP0 LOG10Q.MINP0";
+  // p-values for multi-trait tests
+  buffer << " LOG10P.MANOVA LOG10P.OMNIBUS0 LOG10BF.BAYES LOG10P.NNLS0 LOG10P.SUMZ0 LOG10P.NPMANOVA LOG10P.HOMNIBUS0 LOG10P.CPC0"
+      << " LOG10P.RCPC0SUMCHI2 LOG10P.RCPC0FISHER LOG10P.RCPC0ACAT" 
+      << " LOG10P.ACPC0SUMCHI2 LOG10P.ACPC0FISHER LOG10P.ACPC0ACAT" 
+      << " LOG10Q.NNLS0";
+  // z-scores for single-trait models
+  for(int i = 0; i < params->n_pheno; i++) {
+    buffer << " " << "Z.Y0" << i+1;
+  }
+  // z-scores for PCs
+  for(int i = 0; i < params->n_pheno; i++) {
+    buffer << " " << "Z.PC0" << i+1;
+  }
+  // z-scores for Robust PCs
+  for(int i = 0; i < params->n_pheno; i++) {
+    buffer << " " << "Z.RPC0" << i+1;
+  }
+  // z-scores for Adjusted PCs
+  for(int i = 0; i < params->n_pheno; i++) {
+    buffer << " " << "Z.APC0" << i+1;
+  }
+  buffer << endl;
+
+  return buffer.str();
 }
 
 std::string print_header_output_all(struct param const* params){
@@ -1863,6 +1914,8 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(cal_factor_burden != -1) infoCol.push_back( "CF_BURDEN=" + to_string(cal_factor_burden) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
+  // log10P
+  infoCol.push_back( "LOG10P=" + (print_pv ? to_string(lpv) : "NA") );
   // indicator for no beta printed (joint or vc tests)
   if(se<0) infoCol.push_back( "NO_BETA" );
   // print info column

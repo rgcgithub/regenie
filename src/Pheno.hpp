@@ -46,6 +46,7 @@ struct phenodt {
   Eigen::RowVectorXd scale_Y;
   Eigen::ArrayXd skew_Y; // skewness of phenotypes
   ArrayXb mcc_Y; // flags to apply MCC test on phenotypes
+  Eigen::MatrixXd cov_phenotypes; // matrix of covariates/phenotypes for MultiPhen test
 };
 
 

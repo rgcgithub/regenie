@@ -33,6 +33,7 @@
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
 #include "MultiTrait_Tests.hpp"
+#include "Ordinal.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
@@ -326,8 +327,16 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("mcc", "apply MCC test for quantitative traits")
     ("mcc-skew", "absolute phenotypic skewness to activate MCC [default value is 0]", cxxopts::value<double>(params->mcc_skew),"FLOAT(=0)")
     ("mcc-thr", "threshold to apply MCC if activated [default value is 0.01]", cxxopts::value<double>(params->mcc_thr),"FLOAT(=0.01)")
+    ("multiphen", "run MultiPhen test")
+    ("multiphen-thr", "threshold to apply LRT for MultiPhen [default value is 0.01]", cxxopts::value<double>(params->multiphen_thr),"FLOAT(=0.001)")
+    ("multiphen-test", "type of MultiPhen test", cxxopts::value<std::string>(params->multiphen_test),"STRING")
+    ("multiphen-tol", "toleance level for Firth [default value is 1e-4]", cxxopts::value<double>(params->multiphen_tol),"FLOAT(=0.0001)")
+    ("multiphen-trace", "trace model fitting performance for MultiPhen")
+    ("multiphen-firth-mult", "Firth penalty multiplier [default value is 1]", cxxopts::value<double>(params->multiphen_firth_mult),"FLOAT(=1.0)")
+    ("multiphen-verbose", "MultiPhen verbose level", cxxopts::value<int>(params->multiphen_verbose),"INT(=0)")
+    ("multiphen-maxstep", "Maximum step in IRLS for MultiPhen [default value is 100]", cxxopts::value<double>(params->multiphen_maxstep),"FLOAT(=25.0)")
+    ("multiphen-approx-offset", "approximate Firth for MultiPhen")
     ;
-
 
   try
   {
@@ -409,6 +418,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("minMAC") ) params->setMinMAC = true;
     if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
+    if( vm.count("multiphen") ) params->split_by_pheno = false;
     if( vm.count("af-cc") ) params->af_cc = true;
     if( vm.count("tpheno-file") ) params->transposedPheno = true;
     if( vm.count("v") ) params->verbose = true;
@@ -439,6 +449,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("joint-only") ) params->p_joint_only = true;
     if( vm.count("mt") ) params->trait_set = true;
     if( vm.count("mcc") ) params->mcc_test = true;
+    if( vm.count("multiphen") ) params->multiphen = true;
+    if( vm.count("multiphen-trace") ) params->multiphen_trace = true;
+    if( vm.count("multiphen-firth-approx") ) params->multiphen_approx_offset = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
@@ -1152,15 +1165,32 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         throw "--no-split mode is required for multi-trait tests";
     }
 
+    if(params->mcc_skew < 0) {
+        throw "absolute phenotypic skewness must be positive";
+    }
+    if(params->mcc_skew > 0) {
+      if(!params->mcc_test) {
+        throw "--mcc must be on when specifying absolute phenotypic skewness";
+      }
+    }
     if(params->mcc_test) {
       // convert mcc thr. from raw to -log10 scale
       if((params->mcc_thr > 1) && (params->mcc_thr <= 0))
-        throw "--mcc-thr range must be in (0; 1]";
+        throw "--mcc-thr must be in (0; 1]";
       if(params->mcc_thr < 1) 
         params->mcc_apply_thr = true;
       params->mcc_thr_nlog10 = -log10(params->mcc_thr); // -log10 transformation
       // debug
       /* cout << "mcc_test = " << params->mcc_test << " | mcc_apply_thr = " << params->mcc_apply_thr << " | mcc_thr  = " << params->mcc_thr << " | mcc_thr_nlog10 = " << params->mcc_thr_nlog10 << " | mcc_skew = " << params->mcc_skew << endl; */
+    }
+
+    // check MultiPhen-trait settings
+    if(params->multiphen) {
+      if(!params->strict_mode) throw "--strict mode is required for MultiPhen test";
+      /* if(params->split_by_pheno) throw "--no-split mode is required for MultiPhen test"; */
+      if((params->multiphen_thr > 1) && (params->multiphen_thr <= 0)) throw "--multiphen-thr must be in (0; 1]";
+      params->n_tests_multitrait = 1; // a single test = MultiPhen
+      params->split_by_multitrait = false; // no split of output files
     }
 
     // check input files

@@ -112,7 +112,11 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
       if(params->mcc_skew == 0.0) {
         pheno_data->mcc_Y = ArrayXb::Constant(params->n_pheno, true);
       } else {
-        pheno_data->mcc_Y = (pheno_data->skew_Y > params->mcc_skew); 
+        pheno_data->mcc_Y = (pheno_data->skew_Y.abs() > params->mcc_skew); 
+        // disable mcc_test if 0 phenotypes need MCC (only relevant when mcc_skew > 0)
+        if(!pheno_data->mcc_Y.any()) {
+          params->mcc_test = false;
+        }
       }
       sout << pheno_data->mcc_Y.cast<int>().sum() << " phenotypes will use the MCC test\n";
     }
@@ -1805,7 +1809,7 @@ double skew_pheno(const Eigen::Ref<const ArrayXd> & Y, const Eigen::Ref<const Ar
 
   double n_val_d = (double)(n_val);
   double mean_y = mask.select(Y, 0.0).sum() / n_val_d;
-  double skew_y = ((Y - mean_y).cube().sum() / n_val_d) / pow(((Y - mean_y).square().sum() / n_val_d), 1.5);
+  double skew_y = (mask.select((Y - mean_y).cube(), 0.0).sum() / n_val_d) / pow((mask.select((Y - mean_y).square(), 0.0).sum() / n_val_d), 1.5);
 
   return skew_y;
 }

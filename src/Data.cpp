@@ -47,6 +47,7 @@
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
 #include "MultiTrait_Tests.hpp"
+#include "Ordinal.hpp"
 #include "HLM.hpp"
 #include "SKAT.hpp"
 #include "Interaction.hpp"
@@ -130,6 +131,7 @@ void Data::run_step2(){
   if(params.getCorMat) ld_comp();
   else if( params.snp_set ) test_joint();
   else if (params.trait_set) test_multitrait();
+  else if (params.multiphen) test_multiphen();
   else test_snps_fast();
 
 }
@@ -3123,8 +3125,13 @@ void Data::test_multitrait()
   setup_output(&ofile, out, ofile_split, out_split); // result files
   sout << endl;
 
-  // Set up mt
-  prep_multitrait();
+  // Set up mt for all chr: verbose level, masks 
+  /* if(params.mt_out_all) mt.verbose = 3; */
+  /* mt.verbose = 3; */
+  /* if(params.mt_precomp) mt.precomp = true; */
+  mt.precomp = true;
+
+  mt.setup_masks(pheno_data.masked_indivs);
 
   // Loop 1: start analyzing each chromosome
   bool block_init_pass = false;
@@ -3158,6 +3165,16 @@ void Data::test_multitrait()
     } else {
       throw std::runtime_error("multi-trait tests only for QTs");
     }
+
+    // Set up mt for each chr: matrix of traits Y
+    mt.setup_yres(res);
+
+    /* const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n"); */
+    /* string f_cory = files.out_file + ".regenie.Ycor.chr" + to_string(chrom) + ".txt"; */
+    /* mt.compute_cory(mt.Yres, mt.Mask); */
+    /* ofstream out_cory(f_cory.c_str()); */
+    /* out_cory << mt.Ryy.format(CSVFormat); */
+    /* out_cory.close(); */
 
     // analyze by blocks of SNPs
     for(int bb = 0; bb < chrom_nb ; bb++) {
@@ -3261,8 +3278,17 @@ void Data::compute_tests_mt_multitrait(int const& chrom, vector<uint64> indices,
 
     try {
       // run multi-trait tests & save summary stats
-      mt.apply_tests_snp(isnp, Gblock, res, p_sd_yres, params);
-      string tmp_str = mt.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params);
+      // v1: store results in mt 
+      // - doesn't work for multi-threaded calculations
+      /* mt.apply_tests_snp(isnp, Gblock, res, p_sd_yres, params); */
+      /* string tmp_str = mt.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params); */
+      // v2: store results outside mt, i.e. separately for each thread
+      /* MTestsResults mt_results_i = mt.run_tests_snp(isnp, Gblock, res, p_sd_yres, params); */
+      // v3: pre-load Yres/Y0res
+      MTestsResults mt_results_i = mt.run_tests_snp_precomp(isnp, Gblock, params);
+      /* string tmp_str = mt.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params); */
+      string tmp_str = mt.print_sumstats(mt_results_i, isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params);
+
       block_info->sum_stats_mt[0].append(tmp_str);
     } catch (...) {
       err_caught(isnp) = true;
@@ -3282,9 +3308,281 @@ void Data::compute_tests_mt_multitrait(int const& chrom, vector<uint64> indices,
 
 }
 
-void Data::prep_multitrait()
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+////    Testing mode (MultiPhen test)
+/////////////////////////////////////////////////
+/////////////////////////////////////////////////
+
+void Data::test_multiphen() 
 {
-  mt.Neff = pheno_data.Neff;
+  sout << "Association testing mode (MultiPhen test)";
+
+  std::chrono::high_resolution_clock::time_point t1, t2;
+  string out;
+  vector<string> out_split, tmp_str;
+  // output files
+  Files ofile;
+  // use pointer to class since it contains non-copyable elements
+  vector <std::shared_ptr<Files>> ofile_split;
+
+#if defined(_OPENMP)
+  sout << " with " << (params.streamBGEN? "fast " : "") << "multithreading using OpenMP";
+#endif
+  sout << endl;
+
+  // Set up 
+  file_read_initialization(); // set up files for reading
+  read_pheno_and_cov(&files, &params, &in_filters, &pheno_data, &m_ests, &Gblock, sout);   // read phenotype and covariate files
+  prep_run(&files, &in_filters, &params, &pheno_data, &m_ests, sout); // check blup files and adjust for covariates
+  set_blocks_for_testing();   // set number of blocks
+  print_usage_info(&params, &files, sout);
+  print_test_info();
+  setup_output(&ofile, out, ofile_split, out_split); // result files
+  sout << endl;
+
+  // Set up mt
+  prep_multiphen();
+
+  // Loop 1: start analyzing each chromosome
+  bool block_init_pass = false;
+  int block = 0, chrom_nsnps, chrom_nb, bs;
+  tally snp_tally;
+  vector< variant_block > block_info;
+  /* initialize_thread_data(Gblock.thread_data, params); */
+
+  for(auto const& chrom : files.chr_read) {
+    if( !in_map(chrom, chr_map) ) continue;
+
+    chrom_nsnps = chr_map[chrom][0];
+    chrom_nb = chr_map[chrom][1];
+    if(chrom_nb == 0) continue;
+
+    // If specified starting block
+    if(!block_init_pass && (params.start_block > (block + chrom_nb)) ) {
+      snp_tally.snp_count += chrom_nsnps;
+      block += chrom_nb;
+      continue;
+    }
+
+    sout << "Chromosome " << chrom << " [" << chrom_nb << " blocks in total]\n";
+
+    // read polygenic effect predictions from step 1
+    blup_read_chr(false, chrom, m_ests, files, in_filters, pheno_data, params, sout);
+
+    // compute phenotype residual (adjusting for BLUP)
+    if(params.trait_mode == 0) {
+      compute_res();
+      set_multiphen();
+    } else {
+      throw std::runtime_error("MultiPhen test for QTs only");
+    }
+
+    // analyze by blocks of SNPs
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+      get_block_size(params.block_size, chrom_nsnps, bb, bs);
+
+      // If specified starting block
+      if(!block_init_pass && (params.start_block > (block+1)) ) {
+        snp_tally.snp_count += bs;
+        block++;
+        continue;
+      } else {
+        if(!block_init_pass) block_init_pass = true;
+      }
+
+      sout << " block [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
+
+      allocate_mat(Gblock.Gmat, params.n_samples, bs);
+      block_info.resize(bs);
+
+      // read SNP, impute missing & compute association test statistic
+      analyze_block_multiphen(chrom, bs, &snp_tally, block_info);
+
+      // print the results
+      if(params.split_by_pheno) {
+        // ignore split_by_pheno for MultiPhen
+        // throw std::runtime_error("test_multiphen: split_by_pheno");
+      }
+
+      for (auto const& snp_data : block_info){
+        if( snp_data.ignored ) {
+          snp_tally.n_ignored_snps++;
+          continue;
+        }
+        snp_tally.n_ignored_tests += snp_data.ignored_trait.count();
+
+        /* size_t n_trait_sets = 1; */
+        size_t j = 0;
+        ofile << snp_data.sum_stats_multiphen[j]; // add test info
+      }
+
+      snp_tally.snp_count += bs;
+      block++;
+    }
+
+  }
+
+  sout << print_summary(&ofile, out, ofile_split, out_split, n_corrected, snp_tally, files, firth_est, params);
+}
+
+// test SNPs in block for multi-trait tests
+void Data::analyze_block_multiphen(int const& chrom, int const& n_snps, tally* snp_tally, vector<variant_block> &all_snps_info){
+
+  auto t1 = std::chrono::high_resolution_clock::now();
+  const int start = snp_tally->snp_count;
+  vector< vector < uchar > > snp_data_blocks;
+  vector< uint32_t > insize, outsize;
+
+  vector<uint64> indices(n_snps);
+  std::iota(indices.begin(), indices.end(), start);
+
+  readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
+
+  // analyze using openmp
+  compute_tests_mt_multiphen(chrom, indices, snp_data_blocks, insize, outsize, all_snps_info);
+
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << "done (" << duration.count() << "ms) "<< endl;
+}
+
+void Data::compute_tests_mt_multiphen(int const& chrom, vector<uint64> indices,vector< vector < uchar > >& snp_data_blocks, vector< uint32_t > insize, vector< uint32_t >& outsize, vector<variant_block> &all_snps_info){
+  size_t const bs = indices.size();
+  ArrayXb err_caught = ArrayXb::Constant(bs, false);
+
+  // start openmp for loop
+#if defined(_OPENMP)
+  setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for(size_t isnp = 0; isnp < bs; isnp++) {
+    uint32_t const snp_index = indices[isnp];
+
+    int thread_num = 0;
+#if defined(_OPENMP)
+    thread_num = omp_get_thread_num();
+#endif
+
+    // to store variant information
+    variant_block* block_info = &(all_snps_info[isnp]);
+    reset_thread(&(Gblock.thread_data[thread_num]), params);
+
+    parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+
+    // for QTs: project out covariates & scale
+    /* residualize_geno(isnp, thread_num, block_info, false, pheno_data.new_cov, &Gblock, &params); */
+
+    // skip SNP if fails filters
+    if( block_info->ignored ) continue;
+    
+    reset_stats(block_info, params);
+
+    try {
+      // load one SNP into Gmat
+      MapMatXd Gmat(Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+      // create a copy of mphen for every SNP (for parallel processing)
+      MultiPhen mphen_i = mphen;
+
+      // run MultiPhen test & save summary stats
+      mphen_i.run(Gmat, pheno_data.cov_phenotypes, pheno_data.new_cov.cols() - 1, params.n_pheno); // the last 2 arg.: #cov excluding intercept; #phenotypes
+
+      /* string tmp_str = mphen_i.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params); */
+      /* print_sum_stats_line(int const& snp_index, int const& i, string const& tmpstr, string const& test_string, string const& model_type, variant_block* block_info, data_thread* dt_thr, vector<snp> const& snpinfo, struct in_files const& files, struct param const& params){ */
+      std::ostringstream buffer;
+      if(params.htp_out) buffer << print_sum_stats_head_htp(snp_index, "MultiPhen", model_type + params.condtl_suff, snpinfo, &params) << mphen_i.print_sum_stats_htp(block_info, &params);
+      else buffer << mphen_i.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params); 
+      /* else buffer << print_sum_stats( */
+      /*     (params.split_by_pheno ? block_info->af(i) : block_info->af1), */ 
+      /*     block_info->af_case(i),block_info->af_control(i), */ 
+      /*     (params.split_by_pheno ? block_info->info(i) : block_info->info1), */
+      /*     (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), */ 
+      /*     block_info->ns_case(i), */ 
+      /*     block_info->ns_control(i), */ 
+      /*     test_string, */ 
+      /*     dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1)); */ 
+
+    /* else */  
+    /*   buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1)); */
+    /* return buffer.str(); */
+    /* if(params.htp_out) */ 
+    /*   buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << 
+     *   print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), 
+     *   block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, 
+     *   i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i), dt_thr->cal_factor(i)); */
+    /* else */  
+    /*   buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i),block_info->af_control(i), (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1)); */
+      std::string tmp_str = buffer.str();
+
+      // 1 set of traits
+      block_info->sum_stats_multiphen[0].append(tmp_str);
+    } catch (...) {
+      err_caught(isnp) = true;
+      block_info->sum_stats[0] = boost::current_exception_diagnostic_information();
+      continue;
+    }
+  }
+
+#if defined(_OPENMP)
+  setNbThreads(params.threads);
+#endif
+
+  // check no errors
+  if(err_caught.any())
+    for(int i = 0; i < err_caught.size(); i++)
+      if(err_caught(i)) throw all_snps_info[i].sum_stats[0];
+
+}
+
+void Data::prep_multiphen()
+{
+  // user parameters 
+  mphen.test = params.multiphen_test;
+  mphen.pval_thr = params.multiphen_thr;
+  mphen.firth_binom = (params.multiphen_firth_mult <= 0);
+  mphen.firth_mult = params.multiphen_firth_mult;
+  mphen.tol = params.multiphen_tol;
+  mphen.trace = params.multiphen_trace;
+  mphen.verbose = params.multiphen_verbose;
+  // parameters for model fitting
+  mphen.optim = "WeightHalving";
+  mphen.maxit = 250; mphen.maxit2 = 25;
+  mphen.check_step = (params.multiphen_maxstep <= 0);
+  mphen.max_step = params.multiphen_maxstep; 
+  mphen.reuse_start = true;
+  mphen.approx_offset = params.multiphen_approx_offset;
+
+  // prepare new matrix of covariates X + matrix of phenotypes Y
+  unsigned int n_samples = pheno_data.new_cov.rows(), n_cov1 = pheno_data.new_cov.cols();
+  unsigned int n_cov = n_cov1 - 1;
+  unsigned int n_phen = params.n_pheno;
+
+  pheno_data.cov_phenotypes.resize(n_samples, n_cov + n_phen + 2); // +2 intercepts
+  // column # 1 = Intercept
+  pheno_data.cov_phenotypes.col(0) = ArrayXd::Constant(n_samples, 1.0);
+  // next n_cov columns = covariates **without** intercept
+  // new_cov has intercept in the last column
+  if(n_cov) {
+    pheno_data.cov_phenotypes.leftCols(n_cov1).rightCols(n_cov) = pheno_data.new_cov.leftCols(n_cov);
+  }
+  // next n_phen columns = phenotypes (skipped here & to be filled in for each chr.)
+  // next & the last column = Intercept
+  pheno_data.cov_phenotypes.rightCols(1) = ArrayXd::Constant(n_samples, 1.0);
+}
+
+void Data::set_multiphen()
+{
+  unsigned int n_samples = pheno_data.new_cov.rows(), n_cov1 = pheno_data.new_cov.cols();
+  unsigned int n_cov = n_cov1 - 1;
+  unsigned int n_phen = params.n_pheno;
+
+  if(pheno_data.cov_phenotypes.rows() != n_samples) throw std::runtime_error("#rows in cov_phenotypes");
+  if(pheno_data.cov_phenotypes.cols() != n_cov + n_phen + 2) throw std::runtime_error("#rows in cov_phenotypes");
+
+  pheno_data.cov_phenotypes.rightCols(n_phen + 1).leftCols(n_phen) = res;
+
+  if(!params.strict_mode) throw std::runtime_error("--strict mode is required for MultiPhen test");
+  mphen.setup_x(pheno_data.masked_indivs.col(0), pheno_data.cov_phenotypes, n_cov, n_phen, true, false); // (ignored by MultiPhen) pos_intercept_first = true, pos_phen_first = false
 }
 
 /////////////////////////////////////////////////

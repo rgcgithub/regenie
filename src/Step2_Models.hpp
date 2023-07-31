@@ -96,6 +96,8 @@ void get_SPA_pvalue_snp(const double&,const double&,double&,bool&,const double&,
 // printing sum stats
 std::string print_header_output(struct param const*);
 std::string print_header_output_all(struct param const*);
+std::string print_header_output_all_multitrait(struct param const*);
+std::string print_header_output_all_multiphen(struct param const*);
 std::string print_header_output_single(struct param const*);
 std::string print_header_output_htp();
 std::string print_sum_stats_head(const int&,std::vector<snp> const&);

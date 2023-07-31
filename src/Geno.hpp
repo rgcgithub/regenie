@@ -125,6 +125,8 @@ struct variant_block {
   ArrayXb test_fail_inter; // for firth
   // multi-trait tests
   std::vector<std::string> sum_stats_mt;
+  // MultiPhen test
+  std::vector<std::string> sum_stats_multiphen;
   // association test info
   std::vector<std::string> sum_stats;
 };

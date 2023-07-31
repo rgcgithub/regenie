@@ -62,6 +62,7 @@ class Data {
     Eigen::MatrixXd res, stats, W_hat;
     Eigen::RowVectorXd p_sd_yres;
     Eigen::VectorXd scale_G; // keep track of sd(Y) (1xP) and sd(G) (M*1)
+    MultiPhen mphen;
 
     // function definitions
     void run();
@@ -138,6 +139,14 @@ class Data {
     void analyze_block_multitrait(int const&,int const&,tally*,std::vector<variant_block>&);
     void compute_tests_mt_multitrait(int const&,std::vector<uint64>,std::vector<std::vector <uchar>>&,std::vector<uint32_t>,std::vector<uint32_t>&,std::vector<variant_block>&);
     void prep_multitrait(); 
+
+    // step 2 with MultiPhen test
+    /* MTests mt; */
+    void test_multiphen();
+    void analyze_block_multiphen(int const&,int const&,tally*,std::vector<variant_block>&);
+    void compute_tests_mt_multiphen(int const&,std::vector<uint64>,std::vector<std::vector <uchar>>&,std::vector<uint32_t>,std::vector<uint32_t>&,std::vector<variant_block>&);
+    void prep_multiphen(); 
+    void set_multiphen();
 
     // for LD computation
     void ld_comp();
