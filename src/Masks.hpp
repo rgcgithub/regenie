@@ -32,7 +32,7 @@ class GenoMask {
 
   public:
     std::map <std::string, anno_name> annotations; // store identifier as 1 byte vector
-    std::map <std::string, std::map <std::string, uint32_t>> regions; // store identifier as 1 byte vector
+    std::map <std::string, std::map <std::string, uint64>> regions; // store identifier as 1 byte vector
     std::vector <maskinfo> masks, base_masks;
     std::vector <std::vector <std::string>> mask_out, list_masks;//contains mask info
     Eigen::VectorXd aafs;

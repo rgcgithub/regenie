@@ -126,7 +126,7 @@ void GenoMask::setBins(struct param* params, mstream& sout){
 void GenoMask::prepMasks(int const& ntotal, const string& setID) {
 
   maskinfo tmp_region_mask;
-  std::map <std::string, uint32_t>::iterator itr;
+  std::map <std::string, decltype(tmp_region_mask.region)>::iterator itr;
 
   // make new set of masks if using set regions
   if(w_regions){ 
