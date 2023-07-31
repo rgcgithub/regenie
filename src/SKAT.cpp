@@ -386,7 +386,7 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_skato_acat = CHECK_BIT(vc_test,3);
   bool with_acato = CHECK_BIT(vc_test,4);
   int jcol, n_pheno = yres.cols(), nnz, nrho = rho_vec.size();
-  double minp, gamma1, gamma2, gamma3;
+  double minp, gamma1, gamma2, gamma3, tmpv, log10_nl_dbl_dmin = -log10(nl_dbl_dmin);
   ArrayXd D, p_acato, flip_rho_sqrt;
   VectorXd lambdas;
   MatrixXd Qs, Qb, Qopt, Svals, Kmat, cvals, sum_stats, pvals, r_outer_sum;
@@ -503,11 +503,11 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
       sum_stats.col(0) = chisq_skato.col(0);
       sum_stats.col(1) = pvs_skato.col(0);
       if(with_acato)
-      block_info->sum_stats_vc["ACATO"] = sum_stats;
+        block_info->sum_stats_vc["ACATO"] = sum_stats;
       if(with_skato_acat)
-      block_info->sum_stats_vc["SKATO-ACAT"] = sum_stats;
+        block_info->sum_stats_vc["SKATO-ACAT"] = sum_stats;
       if(with_skato_int)
-      block_info->sum_stats_vc["SKATO"] = sum_stats;
+        block_info->sum_stats_vc["SKATO"] = sum_stats;
       continue;
     }
 
@@ -526,13 +526,15 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
       if(with_skato_acat){
         if(debug) cerr << "skato-acat logp=" << pvs_skato.row(ph) <<"\n";
-        get_logp(get_acat(pvs_skato.row(ph).array()), pvs_skato_acat(ph,0), chisq_skato_acat(ph, 0), nl_dbl_dmin);
+        pvs_skato_acat(ph,0) = get_acat(pvs_skato.row(ph).array());
+        get_chisq_stat_pv(tmpv, chisq_skato_acat(ph, 0), pvs_skato_acat(ph,0), nl_dbl_dmin, log10_nl_dbl_dmin);
       } 
       if(with_acato){ // include acatv pvalue
         p_acato(0) = block_info->sum_stats_vc["ACATV"](ph, 1);
         p_acato.tail(nrho) = pvs_skato.row(ph).transpose().array();
         if(debug) cerr << "acato logp=" << p_acato.matrix().transpose() <<"\n";
-        get_logp(get_acat(p_acato), pvs_acato(ph,0), chisq_acato(ph, 0), nl_dbl_dmin);
+        pvs_acato(ph,0) = get_acat(p_acato);
+        get_chisq_stat_pv(tmpv, chisq_acato(ph, 0), pvs_acato(ph,0), nl_dbl_dmin, log10_nl_dbl_dmin);
       }
       if(with_skato_int){
         minp = max(nl_dbl_dmin, pow(10, -pvs_skato.row(ph).maxCoeff())); // prevent underflow
@@ -606,7 +608,9 @@ void get_acatv_pv(int const& ph, const Ref<const MatrixXd>& pvals, const Ref<con
     "\nWsq:\n" << weights.head(nmax).matrix().transpose() << "\n\n";
   }
 
-  get_logp(get_acat(pvals.array(), weights), logp, chisq, nl_dbl_dmin);
+  double tmpv, log10_nl_dbl_dmin = -log10(nl_dbl_dmin);
+  logp = get_acat(pvals.array(), weights);
+  get_chisq_stat_pv(tmpv, chisq, logp, nl_dbl_dmin, log10_nl_dbl_dmin);
 
 }
 
@@ -766,7 +770,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   bool with_skato_acat = CHECK_BIT(vc_test,3);
   bool with_acato = CHECK_BIT(vc_test,4);
   int jcol, n_pheno = yres.cols(), nrho = rho_vec.size();
-  double minp, gamma1, gamma2, gamma3;
+  double minp, gamma1, gamma2, gamma3, tmpv, log10_nl_dbl_dmin = -log10(nl_dbl_dmin);
   VectorXd lambdas, Qs, Qb, Qopt;
   ArrayXb masked_sites;
   ArrayXd Svals, Rvec_sqrt, pvs_skato, chisq_skato, pvals, p_acato, flip_rho_sqrt;
@@ -924,13 +928,15 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
 
       if(with_skato_acat){
         if(debug) cerr << "skato-acat logp=" << pvs_skato.matrix().transpose() <<"\n";
-        get_logp(get_acat(pvs_skato), pvs_m_o_acat(ph, imask), chisq_m_o_acat(ph, imask), nl_dbl_dmin);
+        pvs_m_o_acat(ph, imask) = get_acat(pvs_skato);
+        get_chisq_stat_pv(tmpv, chisq_m_o_acat(ph, imask), pvs_m_o_acat(ph, imask), nl_dbl_dmin, log10_nl_dbl_dmin);
       } 
       if(with_acato){ // include acatv pvalue
         p_acato(0) = pvs_m_a(ph, imask);
         p_acato.tail(nrho) = pvs_skato;
         if(debug) cerr << "acato logp=" << p_acato.matrix().transpose() <<"\n";
-        get_logp(get_acat(p_acato), pvs_m_acato(ph, imask), chisq_m_acato(ph, imask), nl_dbl_dmin);
+        pvs_m_acato(ph, imask) = get_acat(p_acato);
+        get_chisq_stat_pv(tmpv, chisq_m_acato(ph, imask), pvs_m_acato(ph, imask), nl_dbl_dmin, log10_nl_dbl_dmin);
       }
       if(with_skato_int){
         minp = max(nl_dbl_dmin, pow(10, -pvs_skato.maxCoeff())); // prevent underflow
@@ -1292,6 +1298,7 @@ double get_chisq_mix_logp(double const& q, const Ref<const VectorXd>& lambdas, d
 
   double logp, pv, pv_davies_thr = 1e-5; // davies can be unreliable if pv is too small
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
+  double log10_nl_dbl_dmin = -log10(nl_dbl_dmin);
 
   // re-scale so that max lambda is 1 (lambda is sorted)
   double newQ = q / lambdas.tail(1)(0);
@@ -1312,6 +1319,8 @@ double get_chisq_mix_logp(double const& q, const Ref<const VectorXd>& lambdas, d
 
       if(pv <= 0) {
         logp = get_liu_pv(newQ, newL, chival); // only use mod Liu if Davies/SPA failed
+        // get corresponding test stat for chisq(1)
+        get_chisq_stat_pv(pv, chival, logp, nl_dbl_dmin, log10_nl_dbl_dmin);
         //cerr << "liu: " << logp << "\n";
       } else get_logp(pv, logp, chival, nl_dbl_dmin);
 
