@@ -51,6 +51,7 @@ class JTests {
     double pval_nnls_pos, pval_nnls_neg;
     double tol = 1e-6, qr_tol = 1e-7, nnls_tol = 1e-10; // qr threshold used in R
     double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
+    double log10_nl_dbl_dmin = -log10(nl_dbl_dmin);
     std::mt19937_64* rng_rd;
     std::string burden_type, test_pfx, burden_str, burden_model, genep_all_sfx = "";
     std::string out_file_prefix; // prefix of output files
@@ -95,6 +96,7 @@ class JTests {
     void get_variant_names(int const&,int const&,std::vector<snp> const&);
     void reset_vals();
     void get_pv(const double&);
+    void get_chisq(const double&);
 
     JTests();
     ~JTests();

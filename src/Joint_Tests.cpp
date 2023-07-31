@@ -1151,6 +1151,16 @@ void JTests::get_pv(const double& pv){
 
 }
 
+void JTests::get_chisq(const double& lpv){
+
+  if(lpv < 0) {reset_vals(); return;}
+
+  get_chisq_stat_pv(pval, zval, lpv, nl_dbl_dmin, log10_nl_dbl_dmin);
+  plog = lpv;
+
+}
+
+
 bool valid_pval(double const& pv){
   return (pv >= 0) && (pv <= 1);
 }
