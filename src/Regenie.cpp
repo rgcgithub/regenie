@@ -1702,6 +1702,28 @@ void get_logp(double& logp, const double& Tstat, double const& df){
 
 }
 
+// get chisq1 & pval from logp
+void get_chisq_stat_pv(double& pv, double& Tstat, double const& logp, double const& dbl_dmin, double const& log10_dbl_dmin){
+
+  if(logp<0) { // fail
+    pv = -1; 
+    Tstat = 0;
+    return;
+  }
+
+  boost::math::chi_squared chisq1(1);
+
+  if(logp > log10_dbl_dmin){
+    double val = logp * log(100) + log(2/M_PI);
+    Tstat = val - log(val); // approximation for small p-values using Lambert W function
+    pv = dbl_dmin; // prevent underflow
+  } else {
+    pv = pow(10, -logp);
+    Tstat = quantile(complement(chisq1, pv)); // chisq stat
+  }
+
+}
+
 void allocate_mat(MatrixXd& M, int const& nrows, int const& ncols){
   M.resize(nrows, ncols);
 }
