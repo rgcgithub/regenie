@@ -932,6 +932,9 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   // info column
   if(test_pass) buffer << "DF=" << df_test;
   else buffer << "DF=0";
+  // log10P
+  if(test_pass) buffer << ";LOG10P=" << plog;
+  else buffer << ";LOG10P=NA";
 
   buffer << ";NO_BETA\n";
 
@@ -1027,11 +1030,13 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   // info column
   if(test_pass) buffer << "DF=" << df_test;
   else buffer << "DF=0";
-
   // top signal
   if(max_name != "") buffer << ";STRONGEST_MASK=" << max_name;
-
+  // log10P
+  if(test_pass) buffer << ";LOG10P=" << plog;
+  else buffer << ";LOG10P=NA";
   buffer << ";NO_BETA\n";
+
   reset_vals();
   return buffer.str();
 
