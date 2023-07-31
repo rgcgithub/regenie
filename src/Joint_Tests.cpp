@@ -276,7 +276,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
   //if(debug_mode) cerr << "done building acat weights\n";
 
   // get ACAT test stat
-  get_pv( get_acat(log10pv, wts) );
+  get_chisq(get_acat(log10pv, wts));
 
 }
 
@@ -345,6 +345,17 @@ double get_acat_robust(const Eigen::Ref<const ArrayXd>& logpvals){
 }
 
 double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<const ArrayXd>& weights){
+  double logp = get_acat_robust(logpvals, weights);
+  return logp;
+}
+
+double get_acat(const Eigen::Ref<const ArrayXd>& logpvals){ // uniform weights
+  double logp = get_acat_robust(logpvals);
+  return logp;
+}
+
+/*
+double get_acat(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::Ref<const ArrayXd>& weights){
 
   cauchy dc(0,1);
   double tol = 10.0 * std::numeric_limits<double>::min(), pv_thr = 1e-15;
@@ -381,6 +392,7 @@ double get_acat(const Eigen::Ref<const ArrayXd>& logpvals){ // uniform weights
 
   return cdf(complement(dc, acat/wsum ));
 }
+*/
 
 void JTests::compute_qr_G(const Eigen::Ref<const MatrixXb>& mask, struct geno_block const* gblock){
 
@@ -545,10 +557,10 @@ void JTests::compute_nnls(const Eigen::Ref<const MatrixXb>& mask, const Eigen::R
     // pvalue
     //if(apply_single_p) { // compute pval_min2 using ACAT
     ArrayXd nnls_lpvs(2); 
-    nnls_lpvs << -log10(pval_nnls_pos), -log10(pval_nnls_neg);
-    pval_min2 = get_acat(nnls_lpvs); 
+    nnls_lpvs << -log10(max(nl_dbl_dmin, pval_nnls_pos)), -log10(max(nl_dbl_dmin, pval_nnls_neg)); // avoid 0 p-values (TBD: switch to log10p)
+    get_chisq(get_acat(nnls_lpvs)); 
+    pval_min2 = pval;
     //} else pval_min2 = min(1.0, 2 * pval_min2); // apply bonferroni correction
-    get_pv( pval_min2 );
 
     // print extra NNLS information if requested
     if(nnls_verbose_out) {
@@ -703,7 +715,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     if(acatv_acat.size() > 0){
       df_test = acatv_acat.size();
       ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
-      get_pv( get_acat(pvals_arr) );
+      get_chisq(get_acat(pvals_arr));
       if(plog>=0) overall_p["ACATV-ACAT"] = plog;
       sum_stats_str[joint_tests_map["acatv_acat"]][ph] = print_gene_output(test_pfx + "ACATV-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
@@ -713,7 +725,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     if(skato_acat.size() > 0){
       df_test = skato_acat.size();
       ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
-      get_pv( get_acat(pvals_arr) );
+      get_chisq(get_acat(pvals_arr));
       if(plog>=0) overall_p["SKATO-ACAT"] = plog;
       sum_stats_str[joint_tests_map["skato_acat"]][ph] = print_gene_output(test_pfx + "SKATO-ACAT" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), "", ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
@@ -723,7 +735,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
     // combine all p-values and pass through acat
     if(overall_p.size()>0){
       map_to_vec(df_test, overall_p, pvals_gene);
-      get_pv( get_acat(pvals_gene) );
+      get_chisq(get_acat(pvals_gene));
       sum_stats_str[joint_tests_map["gene_p"]][ph] = print_gene_output("GENE_P" + (genep_all_sfx == "" ? "" : "_" + genep_all_sfx), max_logp_mask, ph+1, chrom, block, pheno_name, params);
     } else if(!params->split_by_pheno){
       reset_vals();
@@ -800,7 +812,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       if(acatv_acat.size() > 0){
         df_test = acatv_acat.size();
         ArrayXd pvals_arr = MapArXd( acatv_acat.data(), df_test); 
-        get_pv( get_acat(pvals_arr) );
+        get_chisq(get_acat(pvals_arr));
         if(plog>=0) overall_p_set["ACATV-ACAT"] = plog;
         sum_stats_str[joint_tests_map["acatv_acat" + itr->first]][ph] = print_gene_output(test_pfx + "ACATV-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       } else if(!params->split_by_pheno){
@@ -810,7 +822,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       if(skato_acat.size() > 0){
         df_test = skato_acat.size();
         ArrayXd pvals_arr = MapArXd( skato_acat.data(), df_test); 
-        get_pv( get_acat(pvals_arr) );
+        get_chisq(get_acat(pvals_arr));
         if(plog>=0) overall_p_set["SKATO-ACAT"] = plog;
         sum_stats_str[joint_tests_map["skato_acat" + itr->first]][ph] = print_gene_output(test_pfx + "SKATO-ACAT_" + itr->first, "", ph+1, chrom, block, pheno_name, params);
       } else if(!params->split_by_pheno){
@@ -821,7 +833,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       // apply acat to all p
       if(overall_p_set.size()>0){
         map_to_vec(df_test, overall_p_set, pvals_gene);
-        get_pv( get_acat(pvals_gene) );
+        get_chisq(get_acat(pvals_gene));
         sum_stats_str[joint_tests_map["gene_p" + itr->first]][ph] = print_gene_output("GENE_P_" + itr->first, max_logp_mask, ph+1, chrom, block, pheno_name, params);
       } else if(!params->split_by_pheno){
         reset_vals();
