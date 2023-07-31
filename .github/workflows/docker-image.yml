@@ -23,7 +23,8 @@ jobs:
     - 
       name: Read VERSION file
       id: getversion
-      run: echo "::set-output name=version::$(cat VERSION)"
+      run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+      #run: echo "::set-output name=version::$(cat VERSION)"
     
     - name: Build and push image to Docker
       run: |
