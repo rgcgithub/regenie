@@ -184,7 +184,7 @@ debug: CXXFLAGS  = -O0 -g -std=c++11 -fPIC
 debug: ${EFILE}
 
 clean:
-	rm -f ${EFILE} ./src/*.o
+	rm -rf ${EFILE} ./src/*.o ./build/
 	(cd ./external_libs/mvtnorm/;$(MAKE) clean)
 	(cd ./external_libs/qf/;$(MAKE) clean)
 	(cd ./external_libs/quadpack/;$(MAKE) clean)
