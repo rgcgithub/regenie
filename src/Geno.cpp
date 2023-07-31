@@ -3957,7 +3957,7 @@ void get_snps_offset(map<string, uint64>& snps, map<string, vector<uint64>>& ind
 
 }
 
-MatrixXd extract_from_genofile(string const& setting, bool const& mean_impute, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, mstream& sout){
+void extract_from_genofile(string const& setting, Ref<MatrixXd> Gmat, bool const& mean_impute, Ref<ArrayXb> mask, struct filter* filters, struct in_files* files, struct param* params, mstream& sout){
 
   ext_geno_info geno_info;
   map <string, vector<uint64>> tmp_map;
@@ -4002,7 +4002,7 @@ MatrixXd extract_from_genofile(string const& setting, bool const& mean_impute, R
 
   if(setting == "conditional") 
     sout <<  "      -n_used = " << variant_names->size() << endl;
-  MatrixXd Gmat = MatrixXd::Constant(params->n_samples, variant_names->size(), -3); // set all to missing
+  Gmat.array() = -3; // set all to missing
 
   // read in variants & impute if missing
   // note variant with all missing will be captured in intercept
@@ -4026,7 +4026,6 @@ MatrixXd extract_from_genofile(string const& setting, bool const& mean_impute, R
   if((setting == "interaction") && files->interaction_snp_info.ref_first && !((ext_file_info->format == "bgen") && !geno_info.streamBGEN))
     Gmat.array() = (2 - Gmat.array()).colwise() * mask.cast<double>();
 
-  return Gmat;
 }
 
 // for conditional analyses

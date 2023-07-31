@@ -819,7 +819,7 @@ void extract_interaction_snp(struct param* params, struct in_files* files, struc
 
   // read snp
   if(params->interaction_file) {// from external file
-    Gcov = extract_from_genofile("interaction", mean_impute, ind_in_cov_and_geno, filters, files, params, sout).col(0).array();
+    extract_from_genofile("interaction", Gcov.matrix(), mean_impute, ind_in_cov_and_geno, filters, files, params, sout);
   } else { // from input file
     read_snp(mean_impute, params->interaction_snp_offset, Gcov, ind_in_cov_and_geno, filters->ind_ignore, files, gblock->pgr, params, true);
     /*
@@ -841,18 +841,21 @@ void extract_condition_snps(struct param* params, struct in_files* files, struct
   bool mean_impute = true;
   int count = 0;
   std::map <std::string, uint64>::iterator itr;
-  MatrixXd Gcov;
+
+  // Add to covariates
+  int ncols = pheno_data->new_cov.cols(), ncov_snps = filters->condition_snp_names.size();
+  pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), ncols + ncov_snps);
+  MapMatXd Gcov (&(pheno_data->new_cov(0,ncols)), pheno_data->new_cov.rows(), ncov_snps);
 
   if(params->condition_file) {
 
     sout << "    +conditioning on variants in [" << files->condition_snps_list << "]\n";
-    Gcov = extract_from_genofile("conditional", mean_impute, ind_in_cov_and_geno, filters, files, params, sout);
+    extract_from_genofile("conditional", Gcov, mean_impute, ind_in_cov_and_geno, filters, files, params, sout);
 
   } else { // just read the snps
 
-    sout << "    +conditioning on variants in [" << files->condition_snps_list << "] n_used = " << filters->condition_snp_names.size() << endl;
+    sout << "    +conditioning on variants in [" << files->condition_snps_list << "] n_used = " << ncov_snps << endl;
 
-    Gcov.resize(params->n_samples, filters->condition_snp_names.size());
     for (itr = filters->condition_snp_names.begin(); itr != filters->condition_snp_names.end(); ++itr, count++) 
       read_snp(mean_impute, itr->second, Gcov.col(count).array(), ind_in_cov_and_geno, filters->ind_ignore, files, gblock->pgr, params, true);
 
@@ -863,11 +866,6 @@ void extract_condition_snps(struct param* params, struct in_files* files, struct
       params->covar_names.push_back(itr->first);
   }
   
-  // Add to covariates
-  pheno_data->new_cov.conservativeResize( pheno_data->new_cov.rows(), pheno_data->new_cov.cols() + Gcov.cols());
-  pheno_data->new_cov.rightCols(Gcov.cols()) = Gcov;
-
-  //cerr << Gcov.topRows(5) << "\n\n" << pheno_data->new_cov.topRows(5) << "\n\n";
 
 }
 

@@ -258,7 +258,7 @@ void code_snp(Eigen::MatrixXd&,Eigen::Ref<ArrayXb>,uint64 const&,struct filter*,
 void get_conditional_vars(std::map<std::string,uint64>&,struct in_files*,struct param const*,mstream&);
 void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,uint32_t>&,std::vector<snp> const&,mstream&);
 void get_snps_offset(std::map<std::string,uint64>&,std::map<std::string,std::vector<uint64>>&,mstream&);
-Eigen::MatrixXd extract_from_genofile(std::string const&,bool const&,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,mstream&);
+void extract_from_genofile(std::string const&,Eigen::Ref<Eigen::MatrixXd>,bool const&,Eigen::Ref<ArrayXb>,struct filter*,struct in_files*,struct param*,mstream&);
 void setup_bgen(std::string const&,struct ext_geno_info&,geno_file_info*,std::map<std::string,uint64>*,std::map<std::string,std::vector<uint64>>&,Eigen::Ref<ArrayXb>,struct in_files*,struct param*,struct filter*,mstream&);
 void read_snps_bgen(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&,struct param*);
 void read_snps_bgen(bool const&,std::map<std::string,uint64>&,Eigen::Ref<Eigen::MatrixXd>,struct ext_geno_info&,Eigen::Ref<ArrayXb>,std::string const&);
