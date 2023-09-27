@@ -871,7 +871,7 @@ bool GenoMask::check_in_lovo_mask(const Ref<const ArrayXd>& Geno, struct filter 
       if( filters.ind_ignore(i) ) continue;
       if( keep_index(index) ){
         // compute MAC using 0.5*g for males for variants on sex chr non-PAR (males coded as diploid) - sex is 1 for males and 0 o.w.
-        lval = (params->sex(i) == 1);
+        lval = (params->sex(index) == 1);
         mval = Geno(index) * 0.5 * (2 - lval);
         // check if not 0/2
         if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
@@ -954,7 +954,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       if( ds >= 0 ){
         lval = 0, mval = ds;
         if(params->test_mode && (chrom == params->nChrom)) {
-          lval = (params->sex(i) == 1);
+          lval = (params->sex(index) == 1);
           mval = ds * 0.5 * (2 - lval);
         }
         total += ds;
@@ -965,14 +965,15 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
         // counts by trait
         if(filters->has_missing(index)) update_trait_counts(index, ds, mval, lval, 0, snp_data, masked_indivs);
 
-        // get genotype counts (convert to hardcall)
+        /* // get genotype counts (convert to hardcall)
         if( params->htp_out && (take_max || take_comphet) ) {
           if(params->test_mode && (chrom == params->nChrom) && (lval>0)) 
             hc_val = (ds < 1 ? 0 : 2);
           else
             hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
           update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, ymat);
-        } else if( params->af_cc )
+        } else*/
+        if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, ymat);
 
       }
@@ -1031,6 +1032,9 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
       snp_data->af_control /= nsites(isnp);;
     }
   }
+
+  if( params->htp_out && (take_max || take_comphet) ) 
+    compute_genocounts(params->trait_mode==1, chrom == params->nChrom, mac, maskvec, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   if(params->use_SPA) {
     // switch to minor allele

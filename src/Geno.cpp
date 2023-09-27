@@ -1978,7 +1978,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // counts by trait
           if(filters->has_missing(index)) update_trait_counts(index, ds, mval, lval, ival, snp_data, masked_indivs);
 
-          // get genotype counts (convert to hardcall)
+          /* // get genotype counts (convert to hardcall)
           if( params->htp_out ) {
             // counts for males are 0/2
             if(params->test_mode && non_par && (lval>0)) 
@@ -1986,7 +1986,8 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
             else
               hc_val = (int) (ds + 0.5); // round to nearest integer (0/1/2)
             update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
-          } else if( params->af_cc )
+          } else*/
+          if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, phenotypes_raw);
         }
       }
@@ -2007,6 +2008,9 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
     if(params->test_mode && params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
       snp_data->ignored = true; continue;
     }
+
+    if( params->htp_out ) 
+      compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
     // for SPA switch effect allele to minor allele
     flip_geno(total, Geno, snp_data, params);
@@ -2235,7 +2239,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // counts by trait
       if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, ival, snp_data, masked_indivs);
 
-      // get genotype counts (convert to hardcall)
+      /* // get genotype counts (convert to hardcall)
       if( params->htp_out ) {
         // counts for males are 0/2
         if(params->test_mode && non_par && (lval>0)) 
@@ -2243,7 +2247,8 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
         else
           hc_val = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
         update_genocounts(params->trait_mode==1, index, hc_val, snp_data->genocounts, masked_indivs, phenotypes_raw);
-      } else if( params->af_cc )
+      } else*/ 
+      if( params->af_cc )
         update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
     }
@@ -2263,6 +2268,9 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
     snp_data->ignored = true;
     return;
   }
+
+  if( params->htp_out ) 
+    compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   // for SPA switch effect allele to minor allele
   flip_geno(total, Geno, snp_data, params);
@@ -2373,10 +2381,11 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         // counts by trait
         if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, 0, snp_data, masked_indivs);
 
-        // get genotype counts
+        /* // get genotype counts
         if( params->htp_out ) 
           update_genocounts(params->trait_mode==1, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
-        else if( params->af_cc )
+        else */
+        if( params->af_cc )
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
       }
@@ -2391,6 +2400,9 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
   }
 
   compute_aaf_info(total, 0, snp_data, params);
+
+  if( params->htp_out ) 
+    compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   // for SPA switch effect allele to minor allele
   flip_geno(total, Geno, snp_data, params);
@@ -2497,7 +2509,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // counts by trait
         if(filters->has_missing(index)) update_trait_counts(index, Geno(index), mval, lval, ival, snp_data, masked_indivs);
 
-        // get genotype counts
+       /* // get genotype counts
         if( params->htp_out ) {
           // counts for males are 0/2
           if(params->test_mode && non_par && (lval>0)) 
@@ -2505,7 +2517,8 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
           else
             hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
           update_genocounts(params->trait_mode==1, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
-        } else if( params->af_cc )
+        } else */
+          if( params->af_cc )
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
       }
@@ -2525,6 +2538,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     if( params->dosage_mode && params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
       snp_data->ignored = true; continue;
     }
+
+    if( params->htp_out ) 
+      compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
     // for SPA switch effect allele to minor allele
     flip_geno(total, Geno, snp_data, params);
