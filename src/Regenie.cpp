@@ -1566,6 +1566,20 @@ double convertDouble(const string& val, struct param const* params, mstream& sou
   return dval;
 }
 
+float convertFloat(const string& val, struct param const* params, mstream& sout){
+
+  if(val == params->missing_pheno_str)
+    return params->missing_value_float;
+  else if( (val == "nan") || (val == "inf") )
+    return params->missing_value_float;
+
+  float dval;
+  if(sscanf(val.c_str(), "%f", &dval) != 1)
+    throw "could not convert value to float: '" + val + "'";
+
+  return dval;
+}
+
 string convert_logp_raw(double const& logp){
 
   char pval_str[256];
@@ -1653,6 +1667,21 @@ Eigen::ArrayXi get_true_indices(const Ref<const ArrayXb>&  bool_arr){
   return v_indices;
 }
 
+void get_both_indices(std::vector<Eigen::ArrayXi>& res, const Eigen::Ref<const ArrayXb>& bool_arr, const Eigen::Ref<const ArrayXb>& mask){
+
+  res.resize(2);
+  int Ntot = mask.count();
+  res[0].resize((mask && bool_arr).count()); // true entries
+  res[1].resize(Ntot - res[0].size()); // false entries
+  for(int i = 0, j_t = 0, j_f = 0; i < bool_arr.size(); i++) {
+    if(mask(i)){
+      if(bool_arr(i)) res[0](j_t++) = i;
+      else res[1](j_f++) = i;
+    }
+  }
+
+}
+
 // get logp from chisq(1)
 void get_logp(double& logp, const double& Tstat){
 
@@ -1730,7 +1759,7 @@ void allocate_mat(MatrixXd& M, int const& nrows, int const& ncols){
 
 std::string print_mat_dims(MatrixXd const& mat){
   std::ostringstream buffer;
-  buffer << "#rows=" << mat.rows() << "\n#cols=" <<  mat.cols();
+  buffer << "#rows=" << mat.rows() << " | #cols=" <<  mat.cols();
   return buffer.str();
 }
 
