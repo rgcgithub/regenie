@@ -97,6 +97,7 @@ bool run_ct_ridge_loocv(const double&,const Eigen::Ref<const Eigen::ArrayXd>&,co
 void get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&);
 bool get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&,const double&);
 void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
+void get_pvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const double&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::VectorXd>&,double const&);
 void get_pvec(Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,double const&);
 void get_pvec_poisson(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,double const&);
 double compute_log_lik_bern(const double&,const double&);

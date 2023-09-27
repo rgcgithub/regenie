@@ -1640,6 +1640,13 @@ void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const Ref<const ArrayXd>& beta, c
 
 }
 
+void get_pvec(ArrayXd& etavec, ArrayXd& pivec, const double& beta, const Ref<const ArrayXd>& offset, const Ref<const VectorXd>& Xmat, double const& eps){
+
+  etavec = offset + Xmat.array() * beta;
+  get_pvec(pivec, etavec, eps);
+
+}
+
 void get_pvec(ArrayXd& pivec, const Ref<const ArrayXd>& etavec, double const& eps){
 
   // strategy used in glm
