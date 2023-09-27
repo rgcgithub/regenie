@@ -1124,6 +1124,7 @@ void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, const
 }
 
 // firth wrapper 
+/*
 void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param const& params) {
 
   double dev0 = 0, dev;
@@ -1136,6 +1137,27 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 
   betaold = 0; // start at 0
   fail = !fit_firth_nr(dev0, Y, Gvec, offset, mask, pivec, etavec, betaold, se, 1, dev, true, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params);
+
+}
+*/
+void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param const& params) {
+
+  double dev0 = 0, bstart = 0, betaold = bstart, se;
+  ArrayXi index_carriers;
+
+  // get dev0
+  ArrayXd pivec, wvec;
+  get_pvec(pivec, offset, params.numtol_eps);
+  dev0 = get_logist_dev(Y, pivec, mask);
+  get_wvec(pivec, wvec, mask);
+  dev0 -= log( mask.select(Gvec.array().square() * wvec, 0).sum() );
+
+  fail = fit_firth_pseudo(dev0, Y, Gvec.col(0), offset, mask, index_carriers, betaold, se, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params); // try pseudo
+
+  if(!fail) return;
+
+  betaold = bstart; // start at 0
+  fail = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params); // try NR (slower)
 
 }
 
