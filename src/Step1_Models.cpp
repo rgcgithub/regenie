@@ -1878,7 +1878,7 @@ void check_l0(int const& ph, int const& ph_eff, struct param* params, struct rid
           l1->l0_colkeep.block(i * params->n_ridge_l0, ph, params->n_ridge_l0 - 1, 1).array() = false;
           l1->ridge_param_mult( (i+1) * params->n_ridge_l0 - 1 ) = 0;
           // subtract from chr_map
-          l1->chrom_map_ndiff( l1->chrom_block(i) ) += params->n_ridge_l0 - 1;
+          l1->chrom_map_ndiff( l1->chrom_block(i) - 1 ) += params->n_ridge_l0 - 1;
         }
   }
 
