@@ -1498,23 +1498,27 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
   int ncol_start = X.cols();
   ArrayXi index_in_analysis = get_true_indices(ind_in_analysis);
 
-  // apply QR directly here to save memory usage
-  ColPivHouseholderQR<MatrixXd> qrA(X(index_in_analysis, all));
+  // check XtX is invertible using QR
+  MatrixXd xtx = X(index_in_analysis, all).transpose() * X(index_in_analysis, all);
+  ColPivHouseholderQR<MatrixXd> qrA(xtx);
   int indCols = qrA.rank();
+
   if(indCols == 0)
     throw "rank of matrix is 0.";
   else if ( indCols < X.cols() ){
     vector<string> new_names;
     // get indices of columns retained
-    ArrayXi colKeep = qrA.colsPermutation().indices();
+    ArrayXi colKeep = qrA.colsPermutation().indices().head(indCols);
     // sort them to keep order
-    vector<int> mindices(colKeep.data(), colKeep.data() + indCols);
-    std::sort(mindices.begin(), mindices.end());
+    std::sort(colKeep.begin(), colKeep.end());
+    //cerr << "invert:" << qrA.isInvertible() << "\ndim: " << ncol_start << "\nrank: " << indCols << "\nqr_perm_vec:"<<colKeep.transpose() << "\n";
+    //for(int i = 0; i < ncol_start; i++) cerr << i << " - " << params->covar_names[i] << " | " ;
     // keep only linearly independent columns (avoid full matrix copy)
     for(int i = 0; i < indCols; i++) {
-      X.col(i) = X.col(mindices[i]); // overwrite columns starting from leftmost ones
-      new_names.push_back( params->covar_names[ mindices[i] ]);
+      X.col(i) = X.col(colKeep(i)); // overwrite columns starting from leftmost ones
+      new_names.push_back( params->covar_names[ colKeep(i) ]);
     }
+    X.conservativeResize(X.rows(), indCols);
     params->covar_names = new_names;
     cout << "WARNING: " << (ncol_start - indCols) << " variables removed due to multi-colinearity\n";
   } 
@@ -1605,9 +1609,9 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   MatrixXd beta;
   if(params->print_cov_betas) { // X is not orth basis
     MatrixXd xtx = pheno_data->new_cov.transpose() * pheno_data->new_cov;
-    MatrixXd xtx_inv = ( xtx ).colPivHouseholderQr().inverse();
-    params->xtx_inv_diag.array().colwise() = xtx_inv.diagonal().array().sqrt();
-    params->cov_betas =  xtx_inv * (pheno_data->new_cov.transpose() * pheno_data->phenotypes);
+    ColPivHouseholderQR<MatrixXd> qrA(xtx);
+    params->cov_betas =  qrA.solve(pheno_data->new_cov.transpose() * pheno_data->phenotypes);
+    params->xtx_inv_diag.array().colwise() = qrA.inverse().diagonal().array().sqrt();
     // get orthonormal basis so xtx_inv = I
     if(params->trait_mode == 0) params->ncov = getBasis(pheno_data->new_cov, params);
   }
