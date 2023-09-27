@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.3](https://github.com/rgcgithub/regenie/releases/tag/v3.3) (Faster implementation of approximate Firth LRT; New strategy for approximate Firth LRT with ultra-rare variants; Relaxed convergence criterion of Firth LRT from 1E-4 to 2.5E-4)
+
 [Version 3.2.9](https://github.com/rgcgithub/regenie/releases/tag/v3.2.9) (Switch to robust version of ACAT to handle very small p-values; Bug fix for Step1 when sex chromosome was included in the analysis; Allow for 64 domains when using the 4-column annotation file)
 
 [Version 3.2.8](https://github.com/rgcgithub/regenie/releases/tag/v3.2.8) (New option `--bgi` to specify custom index bgi file accompagnying BGEN file; Relax matching criteria between BGEN and index bgi files to use CPRA instead of variant ID)
