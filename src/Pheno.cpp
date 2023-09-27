@@ -126,9 +126,9 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
 
     // print case-control counts per trait
     if(params->trait_mode==1)
-      print_cc_info(params, files, pheno_data, sout);
+      print_cc_info(params, files, pheno_data, filters->case_control_indices, sout);
     else
-      print_info(params, files, pheno_data, sout);
+      print_info(params, files, pheno_data, filters->case_control_indices, sout);
 
   }
 
@@ -759,34 +759,39 @@ void setMasks(struct param* params, struct filter* filters, struct phenodt* phen
 }
 
 
-void print_cc_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
+void print_cc_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, std::vector<std::vector<Eigen::ArrayXi>>& case_control_indices, mstream& sout){
 
-  ArrayXd yvec;
   params->pheno_counts = MatrixXi::Constant(files->pheno_names.size(), 2, 0);
+  case_control_indices.resize(files->pheno_names.size());
 
   // go through each trait and print number of cases and controls
   sout << " * case-control counts for each trait:\n";
 
   for (size_t i = 0; i < files->pheno_names.size(); i++){
     if( !params->pheno_pass(i) ) continue;
+    // save indices of cases & controls
+    get_both_indices(case_control_indices[i], pheno_data->phenotypes_raw.col(i).array() == 1, pheno_data->masked_indivs.col(i).array());
 
-    params->pheno_counts(i, 0) = pheno_data->masked_indivs.col(i).select( pheno_data->phenotypes_raw.col(i).array(), 0).sum();
-    params->pheno_counts(i, 1) = pheno_data->masked_indivs.col(i).select( 1 - pheno_data->phenotypes_raw.col(i).array(), 0).sum();
+    params->pheno_counts(i, 0) = case_control_indices[i][0].size();
+    params->pheno_counts(i, 1) = case_control_indices[i][1].size();
     sout << "   - '" << files->pheno_names[i] << "': " <<
       params->pheno_counts(i, 0) << " cases and " << params->pheno_counts(i, 1) << " controls\n";
-
   }
 }
 
-void print_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, mstream& sout){
+void print_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, std::vector<std::vector<Eigen::ArrayXi>>& case_control_indices, mstream& sout){
 
   params->pheno_counts = MatrixXi::Constant(files->pheno_names.size(), 2, 0);
+  case_control_indices.resize(files->pheno_names.size());
 
   // go through each trait and print number of samples used
   sout << " * number of observations for each trait:\n";
   for (size_t i = 0; i < files->pheno_names.size(); i++)
     if( params->pheno_pass(i) ) {
-      params->pheno_counts(i, 0) = pheno_data->masked_indivs.col(i).count();
+      // save indices of non-missing samples
+      case_control_indices[i].resize(1);
+      case_control_indices[i][0] = get_true_indices(pheno_data->masked_indivs.col(i).array());
+      params->pheno_counts(i, 0) = case_control_indices[i][0].size();
       sout << "   - '" << files->pheno_names[i] << "': " << params->pheno_counts(i, 0) << " observations\n";
     }
 }
