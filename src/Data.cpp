@@ -2200,31 +2200,6 @@ void Data::analyze_block(int const& chrom, int const& n_snps, tally* snp_tally, 
 
   readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
 
-  if((params.file_type == "bgen") && params.streamBGEN){
-    snp_data_blocks.resize( n_snps );
-    insize.resize(n_snps); outsize.resize(n_snps);
-    vector<uint64> offsets(n_snps);
-    for (int i = 0; i < n_snps; i++) offsets[i] = snpinfo[indices[i]].offset;
-
-    readChunkFromBGEN(&files.geno_ifstream, insize, outsize, snp_data_blocks, offsets);
-
-  } else if((params.file_type == "bgen") && !params.streamBGEN) 
-    readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, Gblock.Gmat, Gblock.bgen, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
-  else if(params.file_type == "pgen") 
-    readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, Gblock.Gmat, Gblock.pgr, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
-  else if(params.file_type == "bed"){
-
-    snp_data_blocks.resize( n_snps );
-    for(int isnp = 0; isnp < n_snps; isnp++) {
-
-      jumpto_bed( snpinfo[indices[isnp]].offset, files.bed_block_size, files.geno_ifstream);
-      snp_data_blocks[isnp].resize(files.bed_block_size);
-      files.geno_ifstream.read( reinterpret_cast<char *> (&snp_data_blocks[isnp][0]), files.bed_block_size);
-
-    }
-
-  }
-
   // analyze using openmp
   compute_tests_mt(chrom, indices, snp_data_blocks, insize, outsize, all_snps_info);
   //compute_tests_st(chrom, indices, snp_data_blocks, insize, outsize, all_snps_info); // this is slower
@@ -2315,7 +2290,7 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
   size_t const bs = indices.size();
   ArrayXb err_caught = ArrayXb::Constant(bs, false);
 
-  if( !params.build_mask ) {
+  if( !params.build_mask && (((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") ) {
     // start openmp for loop
 #if defined(_OPENMP)
     setNbThreads(1);
