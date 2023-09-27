@@ -2821,6 +2821,105 @@ void update_genocounts(bool const& binary_mode, int const& ind, int const& hc, M
 
 }
 
+void compute_genocounts(bool const& binary_mode, bool const& non_par, double const& mac, const Ref<const ArrayXd>& Geno, Ref<MatrixXi> genocounts, const Ref<const ArrayXi>& sex, std::vector<std::vector<Eigen::ArrayXi>> const& cc_indices_phenos){
+
+  int mac_thr = 100, Nmin = 1e3;
+  bool snp_ur = (Geno.size() > Nmin) && (mac <= mac_thr); // for sparse G with QTs
+
+  for(size_t ph = 0; ph < cc_indices_phenos.size(); ph++) {
+    if(!binary_mode & snp_ur) // ultra-rare variants
+      update_genocounts_sp(binary_mode, non_par, genocounts.col(ph), sex, Geno, cc_indices_phenos[ph]);
+    else
+      update_genocounts(binary_mode, non_par, genocounts.col(ph), sex, Geno, cc_indices_phenos[ph]);
+  }
+}
+
+// for each trait
+void update_genocounts(bool const& bt_mode, bool const& non_par, Ref<VectorXi> genocounts, const Eigen::Ref<const Eigen::ArrayXi>& sex, const Eigen::Ref<const Eigen::ArrayXd>& Geno, std::vector<Eigen::ArrayXi> const& cc_indices){
+
+  int miss_cases = 0, miss_controls = 0;
+  bool is_maleC;
+  double val;
+
+  // get counts in non-missing cases (or samples for QTs)
+  for(int k = 0; k < cc_indices[0].size(); k++){
+    val = Geno( cc_indices[0](k) ); is_maleC = sex( cc_indices[0](k) ) != 1;
+    if(val < 0) miss_cases++;
+    else if (non_par && val >= 1.5 && is_maleC) genocounts(2)++;
+    else if (non_par && val >= 0.5 && is_maleC) genocounts(1)++;
+    else if (non_par && val >= 1 && !is_maleC) genocounts(2)++;
+    else if (non_par && !is_maleC) continue;
+    else if (val >= 1.5) genocounts(2)++;
+    else if (val >= 0.5) genocounts(1)++;
+  }
+  genocounts(0) = cc_indices[0].size() - genocounts(1) - genocounts(2) - miss_cases;
+
+  if(bt_mode) {
+    for(int k = 0; k < cc_indices[1].size(); k++){
+      val = Geno( cc_indices[1](k) ); is_maleC = sex( cc_indices[1](k) ) != 1;
+      if(val < 0) miss_controls++;
+      else if (non_par && val >= 1.5 && is_maleC) genocounts(5)++;
+      else if (non_par && val >= 0.5 && is_maleC) genocounts(4)++;
+      else if (non_par && val >= 1 && !is_maleC) genocounts(5)++;
+      else if (non_par && !is_maleC) continue;
+      else if (val >= 1.5) genocounts(5)++;
+      else if (val >= 0.5) genocounts(4)++;
+    }
+    genocounts(3) = cc_indices[1].size() - genocounts(4) - genocounts(5) - miss_controls;
+
+  }
+
+}
+
+// with sparse Geno (per-trait)
+void update_genocounts_sp(bool const& bt_mode, bool const& non_par, Ref<VectorXi> genocounts, const Eigen::Ref<const Eigen::ArrayXi>& sex, const Eigen::Ref<const Eigen::ArrayXd>& Geno, std::vector<Eigen::ArrayXi> const& cc_indices){
+
+  bool not_male = true;
+  int miss_cases = 0, miss_controls = 0, index;
+  double val;
+
+  SpVec Gsp;
+  if(!bt_mode && (cc_indices[0].size() == Geno.size())) // no need to subset 
+    Gsp = Geno.matrix().sparseView();
+  else Gsp = Geno(cc_indices[0]).matrix().sparseView();
+  for (SpVec::InnerIterator it(Gsp); it; ++it) {
+    val = it.value();
+    index = it.index();
+    if(non_par) not_male = (sex(index) != 1);
+
+    if(val < 0) miss_cases++;
+    else if (non_par && val >= 1.5 && not_male) genocounts(2)++;
+    else if (non_par && val >= 0.5 && not_male) genocounts(1)++;
+    else if (non_par && val >= 1 && !not_male) genocounts(2)++;
+    else if (non_par && !not_male) continue;
+    else if (val >= 1.5) genocounts(2)++;
+    else if (val >= 0.5) genocounts(1)++;
+
+  }
+  genocounts(0) = cc_indices[0].size() - genocounts(1) - genocounts(2) - miss_cases;
+
+  if(bt_mode) { 
+    SpVec Gspc = Geno(cc_indices[1]).matrix().sparseView(); 
+    for (SpVec::InnerIterator it(Gspc); it; ++it) {
+      val = it.value();
+      index = it.index();
+      if(non_par) not_male = (sex(index) == 1);
+
+      if(val < 0) miss_controls++;
+      else if (non_par && val >= 1.5 && not_male) genocounts(2)++;
+      else if (non_par && val >= 0.5 && not_male) genocounts(1)++;
+      else if (non_par && val >= 1 && !not_male) genocounts(2)++;
+			else if (non_par && !not_male) continue;
+      else if (val >= 1.5) genocounts(2)++;
+      else if (val >= 0.5) genocounts(1)++;
+    }
+    genocounts(3) = cc_indices[1].size() - genocounts(4) - genocounts(5) - miss_controls;
+
+  }
+
+}
+
+
 void update_af_cc(int const& ind, double const& genoValue, variant_block* snp_data, const Ref<const MatrixXb>& mask, const Ref<const MatrixXd>& ymat){
 
   // only compute in cases as N-case=control
