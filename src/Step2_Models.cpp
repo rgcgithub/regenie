@@ -1826,7 +1826,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 }
 
 
-std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXd>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden) {
+std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden) {
 
   std::ostringstream buffer;
   bool print_beta = test_pass && (se>=0);
@@ -1876,10 +1876,10 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(mac>0) {
 
     // print counts in cases
-    buffer << (int) genocounts.block(0,ph,3,1).sum() << "\t" << (int) genocounts(0,ph) << "\t" << (int) genocounts(1,ph) << "\t" << (int) genocounts(2,ph) << "\t";
+    buffer << genocounts.block(0,ph,3,1).sum() << "\t" << genocounts(0,ph) << "\t" << genocounts(1,ph) << "\t" << genocounts(2,ph) << "\t";
     // print counts in controls
     if(params->trait_mode==1)
-      buffer << (int) genocounts.block(3,ph,3,1).sum() << "\t" << (int) genocounts(3,ph) << "\t" << (int) genocounts(4,ph) << "\t" << (int) genocounts(5,ph);
+      buffer << genocounts.block(3,ph,3,1).sum() << "\t" << genocounts(3,ph) << "\t" << genocounts(4,ph) << "\t" << genocounts(5,ph);
     else buffer << "NA\tNA\tNA\tNA";
 
   } else { // for skat/acat-type tests

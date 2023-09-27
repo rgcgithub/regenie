@@ -2727,7 +2727,7 @@ void prep_snp_stats(variant_block* snp_data, struct param const* params){
   snp_data->ns = ArrayXi::Zero(params->n_pheno);
   snp_data->ns_case = ArrayXi::Zero(params->n_pheno);
   snp_data->ns_control= ArrayXi::Zero(params->n_pheno);
-  snp_data->genocounts = MatrixXd::Zero(6, params->n_pheno);
+  snp_data->genocounts = MatrixXi::Zero(6, params->n_pheno);
   snp_data->ignored = false;
   snp_data->skip_int = false;
   snp_data->fitHLM = false;
@@ -2810,13 +2810,13 @@ void update_trait_counts(int const& index, double const& genoValue, double const
 
 }
 
-void update_genocounts(bool const& binary_mode, int const& ind, int const& hc, MatrixXd& genocounts, const Ref<const MatrixXb>& mask, const Ref<const MatrixXd>& ymat){
+void update_genocounts(bool const& binary_mode, int const& ind, int const& hc, MatrixXi& genocounts, const Ref<const MatrixXb>& mask, const Ref<const MatrixXd>& ymat){
 
   if( !binary_mode ) {
-    genocounts.row(hc) += mask.row(ind).cast<double>();
+    genocounts.row(hc) += mask.row(ind).cast<int>();
   } else {
-    genocounts.row(hc).array() += mask.row(ind).array().cast<double>() * ymat.row(ind).array();
-    genocounts.row(3 + hc).array() += mask.row(ind).array().cast<double>() * (1 - ymat.row(ind).array());
+    genocounts.row(hc).array() += mask.row(ind).array().cast<int>() * ymat.row(ind).array().cast<int>();
+    genocounts.row(3 + hc).array() += mask.row(ind).array().cast<int>() * (1 - ymat.row(ind).array()).cast<int>();
   }
 
 }
