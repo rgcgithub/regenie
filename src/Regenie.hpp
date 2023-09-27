@@ -312,7 +312,7 @@ struct param {
   double tol_spa = pow( std::numeric_limits<double>::epsilon(), 0.25);
   // firth
   bool firth = false;// firth correction using LRT
-  bool firth_approx = false; // approx. to Firth LRT
+  bool firth_approx = false, skip_fast_firth = false; // approx. to Firth LRT
   bool write_null_firth = false, use_null_firth = false, compute_all_chr = false; // write/use null coefficients from approx. Firth
   int niter_max = 50; // max number of iterations for logistic reg.
   int niter_max_firth = 250, niter_max_firth_adam = 25; // max number of iterations in Firth logistic reg.

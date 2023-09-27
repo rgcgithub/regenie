@@ -279,6 +279,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("niter", "maximum number of iterations for logistic regression", cxxopts::value<int>(params->niter_max),"INT(=50)")
     ("maxstep-null", "maximum step size in null Firth logistic regression", cxxopts::value<int>(params->maxstep_null),"INT(=25)")
     ("maxiter-null", "maximum number of iterations in null Firth logistic regression", cxxopts::value<int>(params->niter_max_firth_null),"INT(=1000)")
+    ("skip-fast-firth", "skip fast implementation of approximate Firth for variants below MAC 50")
     ("force-impute", "keep and impute missing observations when in step 2 (default is to drop missing for each trait)")
     ("firth-se", "Compute SE for Firth based on effect size estimate and LRT p-value")
     ("print-pheno", "Print phenotype name when writing sample IDs to file (only for step 2)")
@@ -408,6 +409,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("force-impute") ) params->rm_missing_qt = false;
     if( vm.count("no-split") ) params->split_by_pheno = false;
     if( vm.count("approx") ) params->firth_approx = true;
+    if( vm.count("approx") && vm.count("skip-fast-firth") ) params->skip_fast_firth = true;
     if( vm.count("nauto") ) params->nChrom = vm["nauto"].as<int>() + 1;
     if( vm.count("maxstep-null") | vm.count("maxiter-null") ) params->fix_maxstep_null = true;
     if( vm.count("firth") ) params->firth = true;
