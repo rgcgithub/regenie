@@ -89,15 +89,21 @@ typedef Eigen::Matrix<bool,Eigen::Dynamic,1> VectorXb;
 typedef Eigen::Matrix<bool,Eigen::Dynamic,Eigen::Dynamic> MatrixXb;
 typedef Eigen::Map<Eigen::ArrayXd > MapArXd;
 typedef Eigen::Map<const Eigen::ArrayXd > MapcArXd;
+typedef Eigen::Map<Eigen::ArrayXf > MapArXf;
+typedef Eigen::Map<const Eigen::ArrayXf > MapcArXf;
 typedef Eigen::Map<Eigen::MatrixXd > MapMatXd;
 typedef Eigen::Map<const Eigen::MatrixXd > MapcMatXd;
+typedef Eigen::Map<Eigen::MatrixXf > MapMatXf;
+typedef Eigen::Map<const Eigen::MatrixXf > MapcMatXf;
 typedef Eigen::Map<ArrayXb> MapArXb;
 typedef Eigen::Map<const ArrayXb> MapcArXb;
 typedef Eigen::Array<uint16_t,Eigen::Dynamic,1> ArrayXt;
 typedef Eigen::Array<uint64,Eigen::Dynamic,1> ArrayXui;
-typedef Eigen::SparseMatrix<double> SpMat;
-typedef Eigen::SparseMatrix<bool> SpMatb;
 typedef Eigen::SparseVector<double> SpVec;
+typedef Eigen::SparseMatrix<double> SpMat;
+typedef Eigen::SparseVector<float> SpVecf;
+typedef Eigen::SparseMatrix<float> SpMatf;
+typedef Eigen::SparseMatrix<bool> SpMatb;
 
 inline bool file_exists (const std::string& name) {
   struct stat buffer;   
@@ -201,6 +207,7 @@ struct param {
   // other global options
   const std::string missing_pheno_str = "NA";
   const double missing_value_double = -999;
+  const float missing_value_float = -999;
   int nChrom = 23; // total number of chromosome numbers (sex chromosomes collapsed in chr23)
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
   int mcc = 10; // minimum case count
@@ -452,6 +459,7 @@ struct filter {
   uint32_t step1_snp_count = 0;
   std::map <std::string, std::vector<int>> setID_to_ind;//chr,index,is_kept
   std::map <std::string, uint64> condition_snp_names;
+  std::vector<std::vector<Eigen::ArrayXi>> case_control_indices; //case-control indices across traits
 
 };
 
@@ -471,6 +479,7 @@ int chrStrToInt(const std::string&, const int&);
 std::vector<std::string> check_name(std::string const&,mstream&);
 void check_build_code(struct param*);
 double convertDouble(const std::string&,struct param const*,mstream&);
+float convertFloat(const std::string&,struct param const*,mstream&);
 std::string convert_logp_raw(double const& logp);
 double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param const*,mstream&);
 void check_inter_var(std::string&,std::string&,mstream&);
@@ -479,6 +488,7 @@ std::string print_scsv(const std::vector<std::string>&);
 template <typename T>
 std::string print_sv(const std::vector<T>&,const std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
+void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
 void get_logp(double&,const double&,const double&);
