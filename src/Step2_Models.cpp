@@ -714,8 +714,6 @@ void fit_null_firth(bool const& silent, int const& chrom, struct f_ests* firth_e
 
 }
 
-
-
 void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bool const& null_fit, struct param const* params, struct phenodt* pheno_data, struct ests const* m_ests, struct f_ests const* fest, const Ref<const MatrixXd>& Gvec, variant_block* block_info, data_thread* dt_thr, mstream& sout) {
   // if firth is used, fit based on penalized log-likelihood
 
@@ -1023,6 +1021,7 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
   int niter_cur = 0, niter_log = 0, niter_search, niter_max = 25, nc = X1.cols();
   double dev_new=0, mx, maxstep = (comp_lrt && cols_incl == 1) ? 5 : maxstep_firth;
+  double bdiff=1e16, bdiff_new=1e16;
   //double dev_log0, dev_log1=0;
 
   ArrayXd hvec, mod_score, ystar, score;
@@ -1069,6 +1068,7 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
     // fit unpenalized logistic on transformed Y
     niter_log = 0;
+    bdiff = 1e16;
     //dev_log0 = std::numeric_limits<double>::max();
     while(niter_log++ < niter_max){
       // p*(1-p) and check for zeroes
@@ -1086,9 +1086,16 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
     // force absolute step size to be less than maxstep for each entry of beta
       if(comp_lrt && (cols_incl == 1)){ // only do this when testing each SNP
         step_size = betanew.head(cols_incl) - betavec.head(cols_incl);
-        mx = step_size.abs().maxCoeff() / maxstep;
-        if( mx > 1 ) betanew.head(cols_incl) = betavec.head(cols_incl) + step_size / mx;
-        if((mx > 1) && params->debug) cerr << "step = " << step_size << " -- mx = " << mx << " -- beta = " << betanew << "\n";
+        bdiff_new = fabs(step_size(0));
+        if(bdiff_new > bdiff) { // step size should get smaller closer to soln
+          if(params->debug) cerr << "WARNING: bdiff in pseudo-firth increased (" << bdiff << " -> " << bdiff_new << ")\n";
+          return false; 
+        }
+        mx = bdiff_new / maxstep;
+        if( mx > 1 ) {
+          betanew.head(cols_incl) = betavec.head(cols_incl) + step_size / mx;
+          if(params->debug) cerr << "step = " << step_size(0) << " -- mx = " << mx << " -- beta = " << betanew(0) << "\n";
+        }
       }
 
       // skip step-halving
@@ -1099,20 +1106,21 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
         //if( dev_log1 < dev_log0 ) break;
         break;
         // adjust step size
-        betanew = (betavec + betanew) / 2;
+        //betanew = (betavec + betanew) / 2;
       }
-      if( niter_search > params->niter_max_line_search ){
+      /*if( niter_search > params->niter_max_line_search ){
         if(params->debug) cerr << "step halving failed in pseudo-firth log. reg step\n";
         return false; // step-halving failed
-      }
+      }*/
 
       // stopping criterion
       score = X1.leftCols(cols_incl).transpose() * mask.select(ystar - pivec, 0).matrix();
       if( score.abs().maxCoeff() < tol ) break; // prefer for score to be below tol
 
-      if(params->debug) cerr << "[[" << niter_log <<setprecision(16) << "]] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << score.abs().maxCoeff() << "\n";
+      if(params->debug) cerr << "[[" << niter_log <<setprecision(16) << "]] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); bdiff=" << bdiff_new << "; score.max=" << score.abs().maxCoeff() << "\n";
 
       betavec = betanew;
+      if(comp_lrt && (cols_incl == 1)) bdiff = bdiff_new;
       //dev_log0 = dev_log1;
     }
     if( niter_log > params->niter_max ) return false;
