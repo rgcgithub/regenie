@@ -2439,7 +2439,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
 void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, struct param const* params, struct filter const* filters, Ref<MatrixXd> Gmat, PgenReader& pgr, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<snp> const& snpinfo, vector<variant_block> &all_snps_info){
 
   int const bs = indices.size();
-  ArrayXb oob_err = ArrayXb::Constant(bs, false);
+  ArrayXb oob_err = ArrayXb::Constant(bs, false), het_male_X = ArrayXb::Constant(bs, false);
 
 #if defined(_OPENMP)
   setNbThreads(1);
@@ -2497,7 +2497,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
           mval *= 0.5 * (2 - lval);
           // check if not 0/2
           if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
-            cerr << "WARNING: genotype is 1 for a male on chrX at " << snp_info->ID << " (males should coded as diploid).";
+            het_male_X(j) = true;
         }
 
         if( params->dosage_mode ) ival = Geno(index) * Geno(index);
@@ -2583,6 +2583,13 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 
   if(oob_err.any()) 
     throw "there is a variant in the block that has a value not in [0,2] or missing";
+  if(het_male_X.any()){
+    vector<string> msg;
+    for(int j = 0; j < bs; j++)
+      if(het_male_X(j))
+        msg.push_back( snpinfo[ indices[j] ].ID );
+    cerr << "WARNING: genotype is 1 for a male on chrX (males should coded as diploid) at variants [" << print_sv(msg, ";") << "].";
+  }
 
 }
 
