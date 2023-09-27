@@ -212,7 +212,7 @@ struct param {
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
   int mcc = 10; // minimum case count
   double numtol = 1e-6, qr_tol = 1e-7;
-  double numtol_firth = 1e-4; // tolerance level for firth
+  double numtol_firth = 2.5e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-15;
