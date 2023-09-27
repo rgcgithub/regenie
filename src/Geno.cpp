@@ -1289,6 +1289,10 @@ void check_samples_include_exclude(struct in_files const* files, struct param* p
     params->FID_IID_to_ind = new_map;
     if(keep_ids) params->FIDvec = newFIDs;
 
+    // subset sex to samples kept in the analysis
+    ArrayXi tmpVi = params->sex( get_true_indices(filters->ind_in_analysis) ); 
+    params->sex = tmpVi;
+
     // resize ind_in_analysis
     filters->ind_in_analysis = ArrayXb::Constant(cum_pos, true);
     sout << "   -number of genotyped individuals remaining in the analysis = " << cum_pos << endl;
@@ -1911,7 +1915,7 @@ void check_bgen(const string& bgen_file, string const& file_type, bool& zlib_com
 void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, vector<snp> const& snpinfo, struct param const* params, Ref<MatrixXd> Gmat, BgenParser& bgen, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& phenotypes_raw, vector<variant_block> &all_snps_info, mstream& sout) {
 
   int const bs = indices.size();
-  int hc_val, lval, ncarriers, nmales;
+  int lval, ncarriers, nmales;
   uint32_t index ;
   double ds, total, mac, mval, ival, info_num, sum_pos;
   std::string chromosome, rsid;
@@ -1929,7 +1933,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
     Geno = 0;
     prep_snp_stats(snp_data, params);
 
-    hc_val = 0, index = 0, ncarriers = 0, nmales = 0;
+    index = 0, ncarriers = 0, nmales = 0;
     total = 0, mac = 0, info_num = 0;
     bool non_par = in_non_par(chrom, snp_info->physpos, params);
 
@@ -1957,7 +1961,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // sex is 1 for males and 0 o.w.
           lval = 0, mval = ds;
           if(params->test_mode && non_par) {
-            lval = (params->sex(i) == 1);
+            lval = (params->sex(index) == 1);
             mval = ds * 0.5 * (2 - lval);
           }
           
@@ -2183,7 +2187,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
   // get dosages (can compute mean as going along (and identify non-zero entries if SPA is used)
   bool missing;
   bool non_par = in_non_par(chrom, infosnp->physpos, params);
-  int hc_val, lval, ncarriers = 0, nmales = 0;
+  int lval, ncarriers = 0, nmales = 0;
   double prob0, prob1, prob2, total = 0, mac = 0, mval, ival, info_num = 0, sum_pos;
 
   // parse genotype probabilities block
@@ -2218,7 +2222,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // sex is 1 for males and 0 o.w.
       lval = 0, mval = Geno(index);
       if(params->test_mode && non_par) {
-        lval = (params->sex(i) == 1);
+        lval = (params->sex(index) == 1);
         mval =  Geno(index) * 0.5 * (2 - lval);
       }
 
@@ -2364,7 +2368,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         // sex is 1 for males and 0 o.w.
         lval = 0, mval = hc;
         if(params->test_mode && non_par) {
-          lval = (params->sex(i) == 1);
+          lval = (params->sex(index) == 1);
           mval = hc * 0.5 * (2 - lval);
           // check if not 0/2
           if( (lval == 1) && (hc == 1) ) cerr << "WARNING: genotype is 1 for a male on chrX at " << infosnp->ID << " (males should coded as diploid).";
@@ -2452,7 +2456,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     thread_num = omp_get_thread_num();
 #endif
 
-    int hc, cur_index, index, lval, nmales, ncarriers;
+    int hc, cur_index, lval, nmales, ncarriers;
     double total, mac, mval, ival, eij2 = 0, sum_pos;
     ArrayXb keep_index;
 
@@ -2463,7 +2467,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     // reset variant info
     prep_snp_stats(snp_data, params);
 
-    mac = 0, index = 0, nmales = 0;
+    mac = 0, nmales = 0;
     bool non_par = in_non_par(chrom, snp_info->physpos, params);
     if( params->dosage_mode ) eij2 = 0;
 
@@ -2483,17 +2487,14 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     //cerr << "ID: " << snp_info->ID << "\nG bounds: " << 
     //  (Geno * keep_index.cast<double>()).minCoeff() << " - " << (Geno * keep_index.cast<double>()).maxCoeff() << "\n\n";
 
-    for (int i = 0; i < filters->ind_ignore.size(); i++) {
-
-      // skip samples that were ignored from the analysis
-      if( filters->ind_ignore(i) ) continue;
+    for (int index = 0; index < filters->ind_in_analysis.size(); index++) {
 
       if( keep_index(index) ){
         // compute MAC using 0.5*g for males for variants on sex chr non-PAR (males coded as diploid)
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
         if(params->test_mode && non_par) {
-          lval = (params->sex(i) == 1);
+          lval = (params->sex(index) == 1);
           mval *= 0.5 * (2 - lval);
           // check if not 0/2
           if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
@@ -2522,7 +2523,6 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
 
       }
-      index++;
     }
 
     // check MAC

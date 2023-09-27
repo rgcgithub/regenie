@@ -924,7 +924,7 @@ bool GenoMask::check_in_lovo_mask(const Ref<const ArrayXd>& Geno, struct filter 
 
 void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, variant_block* snp_data){
 
-  int hc_val, lval, nmales = 0;
+  int lval, nmales = 0;
   double ds, total = 0, mac = 0, mval, sum_pos;
 
   MapArXd maskvec (Gtmp.col(isnp).data(), params->n_samples, 1);
@@ -1121,17 +1121,13 @@ void GenoMask::write_famfile(struct param* params, struct filter const* filters,
   out.openForWrite(fname, sout);
 
   // columns: FID IID FA MO SEX
-  for (int i = 0, index = 0; i < filters->ind_ignore.size(); i++) {
-    if( filters->ind_ignore(i) ) continue;
-
-    if( filters->ind_in_analysis(index) ){
+  for (int i = 0; i < filters->ind_in_analysis.size(); i++) {
+    if( filters->ind_in_analysis(i) ){
       out << 
-        params->FIDvec[index][0] << "\t" <<
-        params->FIDvec[index][1] << "\t" <<
+        params->FIDvec[i][0] << "\t" <<
+        params->FIDvec[i][1] << "\t" <<
         "0\t0\t" << params->sex(i) << "\t-9\n";
     }
-
-    index++;
   }
 
   out.closeFile();
