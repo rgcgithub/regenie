@@ -400,7 +400,7 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
 
   string tmpstr; 
-  MatrixXd GW;
+  VectorXd GW, XtWG;
   SpVec GWs;
   data_thread* dt_thr = &(gblock.thread_data[thread_num]);
 
@@ -425,7 +425,8 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     // project out covariates from G
     if(dt_thr->is_sparse) {
       GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
-      dt_thr->Gres = -XWsqrt * (XWsqrt.transpose() * GWs);
+      XtWG = XWsqrt.transpose() * GWs;
+      dt_thr->Gres = -XWsqrt * XtWG;
       dt_thr->Gres += GWs;
     } else {
       GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
@@ -433,7 +434,10 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     }
 
     // denominator
-    dt_thr->denum(i) = dt_thr->Gres.squaredNorm();
+    if(dt_thr->is_sparse) 
+      dt_thr->denum(i) = GWs.squaredNorm() - XtWG.squaredNorm();
+    else
+      dt_thr->denum(i) = dt_thr->Gres.squaredNorm();
     if( dt_thr->denum(i) < params.numtol ){
       block_info->ignored_trait(i) = true;
       if(!params.p_joint_only && !params.split_by_pheno)
