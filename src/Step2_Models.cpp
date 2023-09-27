@@ -802,6 +802,93 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
   return ;
 }
 
+// for approx firth testing step
+void fit_firth_logistic_snp_fast(int const& chrom, int const& ph, int const& isnp, bool const& null_fit, struct param const* params, struct phenodt* pheno_data, struct ests const* m_ests, struct f_ests const* fest, const Ref<const VectorXd>& Gvec, variant_block* block_info, data_thread* dt_thr, mstream& sout) {
+  // if firth is used, fit based on penalized log-likelihood
+
+  uint fit_state;
+  int maxstep = params->maxstep;
+  int niter = params->niter_max_firth, niter_pseudo = min(niter/2, 50), niter_nr = niter/2;
+  double tol = params->numtol_firth;
+  double lrt, dev0 = 0;
+
+  double bstart = 0, betaold, se;
+  ArrayXd offset;
+
+  MapArXd Y (pheno_data->phenotypes_raw.col(ph).data(), pheno_data->phenotypes_raw.rows());
+  MapArXb mask (pheno_data->masked_indivs.col(ph).data(), pheno_data->masked_indivs.rows());
+  
+  // For rare variants, set entries in Gvec for non-carriers to 0
+  int mac_thr_sparse = (params->skip_fast_firth ? 0 : 50), i = 0, index_j;
+  ArrayXi index_carriers;
+  if(dt_thr->is_sparse && (block_info->mac(ph) < mac_thr_sparse)) {
+    index_carriers.resize(dt_thr->Gsparse.nonZeros());
+    for (SpVec::InnerIterator it(dt_thr->Gsparse); it; ++it) {
+      index_j = it.index();
+      // check for small entries in G (eg with imputed data)
+      if(mask(index_j) && (it.value() > 1e-4)) index_carriers(i++) = index_j;
+      }
+    index_carriers.conservativeResize(i);
+    niter_pseudo = niter/2;
+  }
+
+  // warm starts using estimates ignoring covariates
+  if( params->htp_out && (block_info->genocounts(2,ph) == 0) && (block_info->genocounts(5,ph) == 0) )
+    bstart = log( (block_info->genocounts(1,ph) + 0.5) * (block_info->genocounts(3,ph) + 0.5) / (block_info->genocounts(0,ph) + 0.5) / (block_info->genocounts(4,ph) + 0.5) );
+  betaold = bstart;
+
+  // covariate effects added as offset in firth approx.
+  offset = fest->cov_blup_offset.col(ph).array(); 
+
+  // get dev0
+  ArrayXd pivec, wvec;
+  get_pvec(pivec, offset, params->numtol_eps);
+  dev0 = get_logist_dev(Y, pivec, mask);
+  get_wvec(pivec, wvec, mask);
+  dev0 -= log( (mask.select(Gvec.array().square(), 0) * wvec).sum() );
+
+  // fit state =
+  //  0 - fit was successful
+  //  1 - too slow convergence
+  //  2 - diff_beta increased
+  //  3 - fitted p = 0
+  //  4 - lrt < 0
+  fit_state = fit_firth_pseudo(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, maxstep, niter_pseudo, tol, params); // try pseudo
+
+  // If didn't converge, try again with NR at 0
+  if(fit_state && (bstart != 0) && index_carriers.size()) {
+    betaold = 0;
+    fit_state = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, maxstep, 100, tol, params); // try NR (slower)
+  }
+
+  // If didn't converge, try with NR
+  if(fit_state){
+    betaold = bstart; 
+    fit_state = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, maxstep, niter_nr, tol, params); // try NR (slower)
+  }
+
+  if(fit_state){
+    if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge!\n";
+    block_info->test_fail(ph) = true;
+    return ;
+  }
+  // sout << "\nNiter = " << niter_cur << " : " << mod_score.matrix().transpose() << endl;
+
+  // compute beta_hat
+  dt_thr->bhat(ph) = betaold;
+  // compute SE based on Hessian for unpenalized LL
+  if(!params->back_correct_se)
+    dt_thr->se_b(ph) = se;
+
+  if( lrt < 0 ) {
+    block_info->test_fail(ph) = true;
+    return ;
+  }
+  dt_thr->dif_deviance = lrt;
+
+  return ;
+}
+
 // use NR or ADAM for Firth
 bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
 
@@ -1041,6 +1128,218 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
     sevec = qr.inverse().diagonal().array().sqrt();
   }
+
+  return true;
+}
+
+// for approx firth testing step
+uint fit_firth_pseudo(double const& dev0, const Ref<const ArrayXd>& Y1, const Ref<const VectorXd>& Gvec, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, const Ref<const ArrayXi>& index_carriers, double& betavec, double& sevec, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+
+  bool fastFirth = index_carriers.size() > 0;
+  int niter_cur = 0, niter_log = 0, niter_max = 25;
+  double dev_new=0, dev_non_carriers = 0, mx, maxstep = 5;
+  double bdiff=1e16, bdiff_new=1e16;
+  //double dev_log0, dev_log1=0;
+
+  double score, betanew = 0, step_size, XtWX = 0, beta_itr_14 = 0;
+  ArrayXd hvec, ystar, etavec, pivec, wvec, XtWX_diag, Gvec_mask, Gvec_sq;
+
+  if(fastFirth) {
+    get_pvec(etavec, pivec, betavec, offset, Gvec, params->numtol_eps);
+    dev_new = get_logist_dev(Y1, pivec, mask);
+    dev_non_carriers = dev_new - get_logist_dev(Y1(index_carriers), pivec(index_carriers), mask(index_carriers));
+    Gvec_mask = Gvec(index_carriers);
+  } else Gvec_mask = mask.select(Gvec.array(),0);
+  Gvec_sq = Gvec_mask.square();
+
+  if(params->debug) cerr << "\nPseudo-firth (fast) starting beta = " << betavec << "\n";
+
+  while(niter_cur++ < niter_firth){
+
+    // update quantities
+    if(fastFirth) {
+      get_pvec(etavec, pivec, betavec, offset(index_carriers), Gvec(index_carriers), params->numtol_eps);
+      dev_new = dev_non_carriers + get_logist_dev(Y1(index_carriers), pivec, mask(index_carriers));
+      get_wvec(pivec, wvec, mask(index_carriers));
+    } else {
+      get_pvec(etavec, pivec, betavec, offset, Gvec, params->numtol_eps);
+      dev_new = get_logist_dev(Y1, pivec, mask);
+      get_wvec(pivec, wvec, mask);
+    }
+    XtWX_diag = Gvec_sq * wvec;
+    XtWX = XtWX_diag.sum();
+    // compute deviance
+    dev_new -= log(XtWX);
+
+    // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
+    hvec = XtWX_diag / XtWX;
+    // compute pseudo-response 
+    ystar = (fastFirth ? Y1(index_carriers) : Y1) + hvec * (0.5 - pivec); 
+    // compute modified score & step size
+    score = (Gvec_mask * (ystar - pivec)).sum();
+
+    // stopping criterion using modified score function
+    // edit 5.31.12 for edge cases with approx Firth
+    if( (fabs(score) < tol) && (niter_cur >= 2) ) {
+      if(params->debug) cerr << "stopping criterion met (|" << score << "| < " << tol << ")\n";
+      break;
+    }
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec << "...); score=" << score << "\n";
+
+    // check for change in beta at iteration 15 (if too large, try with NR)
+    if(niter_cur == 14) beta_itr_14 = betavec;
+    if((niter_cur == 15) && (fabs(betavec - beta_itr_14) > .1)) return 1;
+
+    // fit unpenalized logistic on transformed Y
+    niter_log = 0;
+    bdiff = 1e16;
+    //dev_log0 = std::numeric_limits<double>::max();
+    while(niter_log++ < niter_max){
+
+      // force absolute step size to be less than maxstep for each entry of beta
+      step_size = score / XtWX;
+      bdiff_new = fabs(step_size);
+      if(bdiff_new > bdiff) { // step size should get smaller closer to soln
+        if(params->debug) cerr << "WARNING: bdiff in pseudo-firth increased (" << bdiff << " -> " << bdiff_new << ")\n";
+        return 2; 
+      }
+      mx = bdiff_new / maxstep;
+
+      // parameter estimate
+      if( mx > 1 ) {
+        betanew = betavec + step_size / mx;
+        if(params->debug) cerr << "step = " << step_size << " -- mx = " << mx << " -- beta = " << betanew << "\n";
+      } else betanew = betavec + step_size;
+
+      // compute score at new beta
+      if(fastFirth) get_pvec(etavec, pivec, betanew, offset(index_carriers), Gvec(index_carriers), params->numtol_eps); 
+      else get_pvec(etavec, pivec, betanew, offset, Gvec, params->numtol_eps);
+      score = (Gvec_mask * (ystar - pivec)).sum();
+      if( fabs(score) < tol ) break; // prefer for score to be below tol
+
+      if(params->debug) cerr << "[[" << niter_log <<setprecision(16) << "]] beta=(" << betanew << "...); bdiff=" << bdiff_new << "; score=" << score << "\n";
+
+      // p*(1-p) and check for zeroes
+      if( get_wvec(pivec, wvec, (fastFirth ? mask(index_carriers) : mask), params->numtol_eps) ) {
+        if(params->debug) cerr << "WARNING: pseudo-firth gave fitted p=0 in logistic reg step\n";
+        return 3;
+      }
+      XtWX_diag = Gvec_sq * wvec;
+      XtWX = XtWX_diag.sum();
+
+      betavec = betanew;
+      bdiff = bdiff_new;
+      //dev_log0 = dev_log1;
+    }
+    if( niter_log > params->niter_max ) return 1;
+
+    betavec = betanew;
+  }
+
+  if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta=(" << betavec << "); score=" << score << "\n";
+
+  // If didn't converge
+  if( niter_cur > niter_firth ) return 1;
+
+  lrt = dev0 - dev_new;
+  if(lrt < 0) return 4;
+
+  sevec = sqrt(1/XtWX);
+
+  return 0;
+}
+
+// for approx firth testing step (using NR)
+bool fit_firth(double const& dev0, const Ref<const ArrayXd>& Y1, const Ref<const VectorXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, const Ref<const ArrayXi>& index_carriers, double& betavec, double& sevec, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+
+  bool fastFirth = index_carriers.size() > 0;
+  int niter_cur = 0, niter_search;
+  double dev_old=0, dev_new=0, dev_non_carriers = 0, denum, mx;
+  double bdiff=1e16;
+
+  double score, betanew = 0, step_size, XtWX = 0;
+  ArrayXd hvec, etavec, pivec, wvec, XtWX_diag, Gvec_mask, Gvec_sq;
+ 
+  get_pvec(etavec, pivec, betavec, offset, X1, params->numtol_eps);
+  dev_old = get_logist_dev(Y1, pivec, mask);
+  if(fastFirth) {
+    get_pvec(etavec, pivec, betavec, offset(index_carriers), X1(index_carriers), params->numtol_eps);
+    dev_non_carriers = dev_old - get_logist_dev(Y1(index_carriers), pivec, mask(index_carriers));
+    get_wvec(pivec, wvec, mask(index_carriers));
+    Gvec_mask = X1(index_carriers);
+  } else {
+    get_wvec(pivec, wvec, mask);
+    Gvec_mask = mask.select(X1.array(),0);
+  }
+  Gvec_sq = Gvec_mask.square();
+
+  // solve S'(beta) = S(beta) + X'(h*(0.5-p)) = 0
+  // starting values
+  if(params->debug) cerr << "\nFirth starting beta = " << betavec << "\n";
+  // compute deviance
+  XtWX_diag = Gvec_sq * wvec;
+  XtWX = XtWX_diag.sum();
+  dev_old -= log(XtWX);
+
+  while(niter_cur++ < niter_firth){
+
+    // compute diag(H), H = U(U'U)^{-1}U', U = Gamma^(1/2)X
+    hvec = XtWX_diag / XtWX;
+    // compute modified score
+    score = (Gvec_mask * ((fastFirth ? Y1(index_carriers) : Y1) - pivec + hvec * (0.5 - pivec))).sum();
+    // stopping criterion using modified score function
+    // edit 5.31.12 for edge cases with approx Firth
+    if( (fabs(score) < tol) && (niter_cur >= 2) ) break;
+
+    // force absolute step size to be less than maxstep for each entry of beta
+    step_size = score / XtWX;
+    bdiff = fabs(step_size);
+    mx = bdiff / maxstep_firth;
+    if( mx > 1 ) step_size /= mx;
+
+    // start step-halving and stop when deviance decreases 
+    denum = 2;
+    for( niter_search = 1; niter_search <= params->niter_max_line_search; niter_search++ ){
+
+      // adjusted step size
+      if(niter_search > 1) step_size /= denum;
+
+      betanew = betavec + step_size;
+
+      ///////// compute corresponding deviance
+      if(fastFirth) {
+        get_pvec(etavec, pivec, betanew, offset(index_carriers), X1(index_carriers), params->numtol_eps); 
+        dev_new = dev_non_carriers + get_logist_dev(Y1(index_carriers), pivec, mask(index_carriers));
+      } else {
+        get_pvec(etavec, pivec, betanew, offset, X1, params->numtol_eps);
+        dev_new = get_logist_dev(Y1, pivec, mask);
+      }
+      get_wvec(pivec, wvec, (fastFirth ? mask(index_carriers) : mask));
+      XtWX_diag = Gvec_sq * wvec;
+      XtWX = XtWX_diag.sum();
+      dev_new -= log(XtWX);
+
+      if(params->debug) cerr << "["<<niter_cur << ":" << niter_search <<"] L1=" << setprecision(16)<< dev_new << "/L0="<< dev_old<< "\n";
+      if( dev_new < dev_old ) break;
+    }
+
+    if( niter_search > params->niter_max_line_search ) step_size += 1e-6;
+
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta=(" << betanew << "...); beta_diff.max=" << bdiff << "; score=" << score << "\n";
+
+    betavec += step_size;
+    dev_old = dev_new;
+
+  }
+  if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta=(" << betavec << "); score=" << score << "\n";
+
+  // If didn't converge
+  if( niter_cur > niter_firth ) return false;
+
+  lrt = dev0 - dev_new;
+  if(lrt < 0) return false;
+
+  sevec = sqrt(1/XtWX);
 
   return true;
 }
@@ -1352,7 +1651,7 @@ void run_firth_correction_snp(int const& chrom, int const& ph, int const& isnp, 
     // fit full model and compute deviance
     fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, gblock.Gmat.col(isnp), block_info, dt_thr, sout);
   } else // approx firth - only fit full model
-    fit_firth_logistic_snp(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, dt_thr->Gres.cwiseQuotient(m_ests.Gamma_sqrt.col(ph)), block_info, dt_thr, sout);
+    fit_firth_logistic_snp_fast(chrom, ph, isnp, false, &params, &pheno_data, &m_ests, &fest, dt_thr->Gres.cwiseQuotient(m_ests.Gamma_sqrt.col(ph)), block_info, dt_thr, sout);
 
 }
 
