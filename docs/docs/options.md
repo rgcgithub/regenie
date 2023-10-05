@@ -750,3 +750,42 @@ The conditioning variants will automatically be ignored from the analysis.
 |`--condition-file `| FORMAT,FILE| Optional| get conditioning variants from external file (same argument format as `--interaction-file`)|
 |`--condition-file-sample `| FILE| Optional| accompagnying sample file for BGEN format|
 |`--max-condition-vars `| INT| Optional| maximum number of conditioning variants [default is 10,000]|
+
+
+
+## LD computation
+REGENIE can calculate LD between a group of variants on the same chromosome 
+(note that this can be quite memory intensive for large froups of variants [memory ~$8M^2$ bytes for $M$ variants]).
+
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--compute-corr`| FLAG| Required| compute LD matrix and write to binary file|
+|`--output-corr-text`| FLAG| Optional| write Pearson correlations to text file|
+|`--forcein-vars`| FLAG| Optional| retain all variants from `--extract` file absent from the genetic data in the LD matrix|
+|`--ld-extract`| FILE| Optional| file listing single variants as well as burden masks to include in LD matrix (see below)|
+
+### Output
+
+**Using`--step 2 --out file`** 
+
+By default, the LD matrix is stored in a binary compressed file `file.corr`.
+This also prints out the list of variants corresponding to the columns of the matrix in `file.corr.snplist`.
+The R script ‘scripts/parseLD.r’ contains the function `get.corr.sq.matrix()` which can read the binary file and output the LD matrix (e.g. `get.corr.sq.matrix("file.corr")`).
+Using `--output-corr-text` will write the Pearson correlations to a text file instead.
+
+When using `--forcein-vars`, variants not present in the genetic data will be added as extra column/rows in the LD matrix. 
+For these variants, the diagonal entries in the matrix will be set to 1 and the off-diagonal entries 0.
+
+**Using`--ld-extract info.txt`** 
+
+This option can compute LD between single variants and burden masks generated on-the-fly in REGENIE; it requires specifying [annotation files](#annotation-input-files).
+The file `info.txt` should have three columns: variant type ('sv' or 'mask'), variant name, followed by the set (e.g. gene) name (this can be 'NA' for single variant). For example, it would look like:
+
+```
+sv 1:1111:A:G NA 
+sv 1:2222:C:T NA 
+mask PCSK9.M1.0.01 PCSK9
+.
+```
+
+Note that the set and mask names must match that used in REGENIE based on provided annotation files and allele frequency cutoffs. Variant/masks not present in the data will be kept in the LD matrix but will have the correlations set to 0.
