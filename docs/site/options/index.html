@@ -184,6 +184,9 @@
             <li class="second-level"><a href="#output_2">Output</a></li>
                 
         <li class="first-level "><a href="#conditional-analyses">Conditional analyses</a></li>
+        <li class="first-level "><a href="#ld-computation">LD computation</a></li>
+            <li class="second-level"><a href="#output_3">Output</a></li>
+                
     </ul>
 </div></div>
         <div class="col-md-9" role="main">
@@ -1032,7 +1035,8 @@ sites where AAF is below 1%).
 By default, the AAF for each variant is computed from the sample but
 alternatively, the user can specify variant AAFs using this file.</p>
 <p>Each line contains the variant name followed by its AAF 
-(it should correspond to ALT allele used in the genetic data input). </p>
+(it should be for the ALT allele used in the genetic data input). 
+AAF must be a numerical value (i.e. it cannot be '.').</p>
 <pre><code class="language-bash">7:6187101:C:T 1.53918207864341e-05
 7:6190395:C:A 2.19920388819247e-06
 .
@@ -1523,7 +1527,63 @@ The conditioning variants will automatically be ignored from the analysis.</p>
 <td>maximum number of conditioning variants [default is 10,000]</td>
 </tr>
 </tbody>
-</table></div>
+</table>
+<h2 id="ld-computation">LD computation</h2>
+<p>REGENIE can calculate LD between a group of variants on the same chromosome. </p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--compute-corr</code></td>
+<td>FLAG</td>
+<td>Required</td>
+<td>compute LD matrix and write to binary file</td>
+</tr>
+<tr>
+<td><code>--output-corr-text</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>write Pearson correlations to text file</td>
+</tr>
+<tr>
+<td><code>--forcein-vars</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>retain all variants specified in <code>--extract</code> which absent from the genetic data in the LD matrix</td>
+</tr>
+<tr>
+<td><code>--ld-extract</code></td>
+<td>FILE</td>
+<td>Optional</td>
+<td>file listing single variants as well as burden masks to include in LD matrix (see below)</td>
+</tr>
+</tbody>
+</table>
+<p>Note that this can be quite memory intensive for large groups of variants (memory ~$8M^2$ bytes for $M$ variants).</p>
+<h3 id="output_3">Output</h3>
+<p><strong>Using<code>--step 2 --out file</code></strong> </p>
+<p>By default, the LD matrix is stored in a binary compressed file <code>file.corr</code> and
+the list of variants corresponding to the columns of the LD matrix are stored in <code>file.corr.snplist</code>.
+The R script <a href="https://github.com/rgcgithub/regenie/blob/master/scripts/parseLD.r">scripts/parseLD.r</a> contains a function which returns the LD matrix, e.g. <code>get.corr.sq.matrix("file.corr")</code>.
+Using <code>--output-corr-text</code> will write the Pearson correlations to a text file instead.</p>
+<p>When using <code>--forcein-vars</code>, variants not present in the genetic data will be added as extra column/rows in the LD matrix. 
+For these variants, the diagonal entries in the matrix will be set to 1 and the off-diagonal entries 0.</p>
+<p><strong>Using<code>--ld-extract info.txt</code></strong> </p>
+<p>This option is used compute LD between single variants and burden masks generated on-the-fly in REGENIE; it requires specifying <a href="#annotation-input-files">annotation files</a>.
+The file <code>info.txt</code> should have three columns: variant type ('sv' or 'mask'), variant name, followed by the set (e.g. gene) name (this can be 'NA' for single variant). For example, it would look like:</p>
+<pre><code>sv 1:1111:A:G NA 
+sv 1:2222:C:T NA 
+mask PCSK9.M1.0.01 PCSK9
+.
+</code></pre>
+<p>Note that the set and mask names must match that used in REGENIE based on provided annotation files and allele frequency cutoffs. Variant/masks not present in the data will be kept in the LD matrix but will have the corresponding correlations set to 0.</p></div>
         
         
     </div>
