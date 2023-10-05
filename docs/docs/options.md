@@ -464,7 +464,8 @@ By default, the AAF for each variant is computed from the sample but
 alternatively, the user can specify variant AAFs using this file.
 
 Each line contains the variant name followed by its AAF 
-(it should correspond to ALT allele used in the genetic data input). 
+(it should be for the ALT allele used in the genetic data input). 
+AAF must be a numerical value (i.e. it cannot be '.').
 
 ```bash
 7:6187101:C:T 1.53918207864341e-05
