@@ -274,7 +274,7 @@ to combine the p-values from the different SKATO models.
 
 
 #### Cauchy combination tests
-The ACATV[@RN339] test uses the Cauchy combination method to combine single variant p-values $p_i$ as
+The ACATV[@RN339] test uses the Cauchy combination method ACAT to combine single variant p-values $p_i$ as
 $$Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}$$
 where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.
@@ -313,6 +313,20 @@ it can lead to boost in power performance when multiple burden masks are causal 
 This test has the nice property that it combines 
 model selection of the masks (via the sparsity induced by the non-negative assumption) 
 with model inference (it is well calibrated and powerful).
+
+
+#### GENE_P
+As the different gene-based tests in REGENIE can be more powerful under different genetic architectures,
+we propose a unified strategy, named GENE_P, that combines the strengths of these tests.
+It uses ACAT to combine the p-values of the SKATO, ACATV, Burden and SBAT tests 
+and obtain an overall assessment of significance for a genetic region (e.g. gene).
+The diagram below illustrates the GENE_P test using 4 masks (i.e. combination of variant annotations) and 3 allele frequency cutoffs 
+when performing gene-based tests.
+
+![GENE_P_flow](img/GENE_P_diagram.png){ style="text-align:center;padding: 10px;width:70%;border: 1px solid #ddd;display: block;margin-left: auto;margin-right: auto"}
+<br>
+
+
 
 ### Step 2 : Interaction testing
 

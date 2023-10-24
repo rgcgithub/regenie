@@ -609,6 +609,7 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--skato-rho`| FLOAT,...,FLOAT| Optional| comma-separated list of $\rho$ values used for SKATO models|
 |`--vc-MACthr`| FLOAT| Optional| MAC threshold below which to collapse variants in SKAT/ACAT-type tests [default is 10]|
 |`--joint`| STRING| Optional| comma-separated list of joint tests to apply on the generated burden masks|
+|`--rgc-gene-p`| FLAG| Optional| to compute the GENE_P test|
 |`--skip-test`| FLAG| Optional| to skip computing association tests after building masks and writing them to file|
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
 |`--lovo-snplist`| FILE| Optional| File with list of variants for which to compute LOVO masks|
@@ -644,6 +645,10 @@ AAF across sites included in the mask.
 If using `--write-mask`, the masks will be saved to 
 `file_masks.{bed,bim,fam}` and if using `--write-mask-snplist`, 
 the list of variants included in each mask will be saved to `file_masks.snplist`. 
+
+When using `--rgc-gene-p`, it will apply the single p-value per gene GENE_P strategy 
+using all masks (see [here](../overview/#gene_p) for details).
+
 
 ### Example run
 Using Step 1 results from the [Step 1 command above](https://rgcgithub.github.io/regenie/options/#getting-started), we use the following command to build and test masks in Step 2
