@@ -1272,6 +1272,12 @@ listed last in the bim file).</p>
 <td>comma-separated list of joint tests to apply on the generated burden masks</td>
 </tr>
 <tr>
+<td><code>--rgc-gene-p</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>to compute the GENE_P test</td>
+</tr>
+<tr>
 <td><code>--skip-test</code></td>
 <td>FLAG</td>
 <td>Optional</td>
@@ -1336,6 +1342,8 @@ AAF across sites included in the mask.</p>
 <p>If using <code>--write-mask</code>, the masks will be saved to 
 <code>file_masks.{bed,bim,fam}</code> and if using <code>--write-mask-snplist</code>, 
 the list of variants included in each mask will be saved to <code>file_masks.snplist</code>. </p>
+<p>When using <code>--rgc-gene-p</code>, it will apply the single p-value per gene GENE_P strategy 
+using all masks (see <a href="../overview/#gene_p">here</a> for details).</p>
 <h3 id="example-run">Example run</h3>
 <p>Using Step 1 results from the <a href="https://rgcgithub.github.io/regenie/options/#getting-started">Step 1 command above</a>, we use the following command to build and test masks in Step 2</p>
 <pre><code>./regenie \

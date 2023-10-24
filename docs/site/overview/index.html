@@ -167,6 +167,7 @@
                 <li class="third-level"><a href="#variance-component-tests">Variance component tests</a></li>
                 <li class="third-level"><a href="#cauchy-combination-tests">Cauchy combination tests</a></li>
                 <li class="third-level"><a href="#sparse-burden-association-test">Sparse Burden Association Test</a></li>
+                <li class="third-level"><a href="#gene_p">GENE_P</a></li>
             <li class="second-level"><a href="#step-2-interaction-testing">Step 2 : Interaction testing</a></li>
                 
             <li class="second-level"><a href="#missing-phenotype-data">Missing Phenotype data</a></li>
@@ -405,7 +406,7 @@ We also implement a modification of SKATO, named SKATO-ACAT,
 which instead uses the Cauchy combination method<sup id="fnref:14"><a class="footnote-ref" href="#fn:14">14</a></sup> 
 to combine the p-values from the different SKATO models.</p>
 <h4 id="cauchy-combination-tests">Cauchy combination tests</h4>
-<p>The ACATV<sup id="fnref:15"><a class="footnote-ref" href="#fn:15">15</a></sup> test uses the Cauchy combination method to combine single variant p-values $p_i$ as
+<p>The ACATV<sup id="fnref:15"><a class="footnote-ref" href="#fn:15">15</a></sup> test uses the Cauchy combination method ACAT to combine single variant p-values $p_i$ as
 <script type="math/tex; mode=display">Q_{ACATV} = \sum_i \widetilde{w}_i^2\tan{\{\pi(0.5 - p_i)\}}</script>
 where we set $\widetilde{w}_i = w_i \sqrt{MAF(1-MAF)}$. 
 This test is highly computationally tractable and is robust to correlation between the single variant tests.</p>
@@ -442,6 +443,15 @@ it can lead to boost in power performance when multiple burden masks are causal 
 This test has the nice property that it combines 
 model selection of the masks (via the sparsity induced by the non-negative assumption) 
 with model inference (it is well calibrated and powerful).</p>
+<h4 id="gene_p">GENE_P</h4>
+<p>As the different gene-based tests in REGENIE can be more powerful under different genetic architectures,
+we propose a unified strategy, named GENE_P, that combines the strengths of these tests.
+It uses ACAT to combine the p-values of the SKATO, ACATV, Burden and SBAT tests 
+and obtain an overall assessment of significance for a genetic region (e.g. gene).
+The diagram below illustrates the GENE_P test using 4 masks (i.e. combination of variant annotations) and 3 allele frequency cutoffs 
+when performing gene-based tests.</p>
+<p><img alt="GENE_P_flow" src="../img/GENE_P_diagram.png" style="text-align:center;padding: 10px;width:70%;border: 1px solid #ddd;display: block;margin-left: auto;margin-right: auto" />
+<br></p>
 <h3 id="step-2-interaction-testing">Step 2 : Interaction testing</h3>
 <p>The GxE tests are of the form
 <script type="math/tex; mode=display">
