@@ -92,6 +92,11 @@ div.source-links {
 
 /* Show and affix the side nav when space allows it */
 @media (min-width: 992px) {
+		/* Allow the sidebar to scroll if it overflows the page. */
+    .bs-sidebar {
+        overflow-y: scroll;
+    }
+
     .bs-sidebar .nav > .active > ul {
         display: block;
     }
