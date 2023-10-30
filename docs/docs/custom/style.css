@@ -1,0 +1,12 @@
+@media (min-width: 992px) {
+    /* Allow the sidebar to scroll if it overflows the page. */
+    .bs-sidebar {
+        overflow-y: scroll;
+    }
+}
+
+.btn.btn-primary {
+    /* Change for github issues buttons. */
+    border-radius: 30px;
+    font-size: 15px;
+}

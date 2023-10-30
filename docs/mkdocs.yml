@@ -28,3 +28,5 @@ google_analytics:
   - UA-166859683-2
   - auto
   
+extra_css:
+  - custom/style.css

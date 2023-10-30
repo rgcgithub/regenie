@@ -40,6 +40,9 @@ If you have any questions about **regenie** please contact
 If you want to submit a issue concerning the software please do so
 using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/issues).
 
+<a href="https://github.com/rgcgithub/regenie/issues/new"><button class="btn btn-primary btn-sm" type="submit"><i class="fab fa-github fa-2x"></i> Report Issue</button></a>
+<a href="https://github.com/rgcgithub/regenie/issues"><button class="btn btn-primary btn-sm" type="submit"><i class="fab fa-github fa-2x"></i> Active Issues </button></a>
+
 <!--
 ## Version history
 
