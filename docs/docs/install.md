@@ -5,10 +5,13 @@ The **regenie** source code is hosted on
 
 ##Installation
 
-Note: **regenie** requires compilation with 
-[GCC](https://gcc.gnu.org) version >= 5.1 (on Linux) 
+<div class="bs-callout bs-callout-default">
+  <h4>Pre-requisites</h4>
+    <b>regenie</b> requires compilation with 
+<a href="https://gcc.gnu.org">GCC</a> version >= 5.1 (on Linux) 
 or Clang version >=3.3 (on Mac OSX). 
 It also requires having GFortran library installed.
+    </div>
 
 ### Pre-compiled binaries
 
