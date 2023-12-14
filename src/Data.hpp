@@ -150,12 +150,19 @@ class Data {
 
     // for LD computation
     void ld_comp();
-    void get_G_masks(SpMat&,ArrayXb&,std::map<std::string,int>&);
-    void get_G_svs(int const&,int const&);
     void get_G_indices(Eigen::ArrayXi&,std::map<std::string,int>&);
     void write_snplist(ArrayXb&);
+    // dosage-mode
+    void compute_ld_dosages(Files*);
+    void get_G_masks(SpMat&,ArrayXb&,std::map<std::string,int>&);
+    void get_G_svs(int const&,int const&);
     void print_ld(MatrixXd&,Eigen::ArrayXi&,ArrayXb&,Files*);
-
+    // hard-call mode
+    void compute_ld_hardcalls(Files*);
+    void get_G_svs(SpMat&,ArrayXb&,std::map<std::string,int>&);
+    void get_G_masks_hc(SpMat&,ArrayXb&,std::map<std::string,int>&);
+    void print_ld(SpMat&,Eigen::ArrayXi&,ArrayXb&,Files*);
+    
     Data();
     ~Data();
 };
