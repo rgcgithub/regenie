@@ -2557,7 +2557,6 @@ void Data::test_joint() {
       } else if(!block_init_pass) block_init_pass = true;
 
       sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << jt.setinfo[chrom - 1][bb].ID << " - " << bs << " variants..." << flush;
-
       if(params.joint_test && !params.build_mask) allocate_mat(Gblock.Gmat, params.n_samples, bs);
       block_info.resize(bs);
 
@@ -2722,7 +2721,7 @@ void Data::set_groups_for_testing() {
     if(params.skato_rho.size() > 1) params.skato_rho = params.skato_rho.min(0.999); 
 
     // single p per gene
-    if(params.apply_gene_pval_strategy) 
+    if(params.apply_gene_pval_strategy)
       sout << " * applying ACAT to output overall gene p-value\n";
   }
 
@@ -2834,7 +2833,7 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   sout << "\n     -reading in genotypes" << ( params.vc_test ? ", computing gene-based tests" : "" ) << " and building masks..." << flush;
 
   if(params.debug) sout << "(1)" << print_mem() << "..." << flush;
-  bm.prepMasks(params.n_samples, set_info->ID);  
+  bm.prepMasks(params.n_samples, set_info->ID);
   allocate_mat(Gblock.Gmat, params.n_samples, bsize);
   if(params.vc_test) {
     set_info->Jmat = MatrixXb::Constant(n_snps + bm.nmasks_total, bm.nmasks_total, false); // MxKm (last S rows are for ultra-rare masks)

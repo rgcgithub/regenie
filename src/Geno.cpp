@@ -3517,7 +3517,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
   sout << left << std::setw(20) << " * annotations " << ": [" << files->anno_file << "] " << endl;
   myfile.openForRead (files->anno_file, sout);
   if(params->vc_with_weights && (params->vc_weight_col < 4))
-   throw "invalid column index specified for user-defined weights (=" + to_string( params->vc_weight_col );
+   throw "invalid column index specified for user-defined weights (=" + to_string( params->vc_weight_col ) + ")";
 
   while (myfile.readLine(line)) {
 

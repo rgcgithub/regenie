@@ -898,7 +898,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   flip_rho_sqrt = flipped_skato_rho.sqrt();
 
   ArrayXi snp_indices = get_true_indices(Jmat.rowwise().any());
-  int bs = snp_indices.size(); // subset to snps included in at least 1 skat mask
+  int bs = snp_indices.size();
 
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // M x Mall
@@ -1004,8 +1004,9 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
         for(int i = 0; i < npass; i++)
           Jtmp.insert(m_indices(i), i) = 1;
 
-        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), GtWX(all, m_indices), XWsqrt, GWs * Jtmp, Wsqrt, phat, Y, mask, fest.cov_blup_offset, params))
+        if(!correct_vcov_burden(ph, rfrac, Qb(jcol), Kmat(m_indices, m_indices).sum(), GtWX(all, m_indices), XWsqrt, GWs * Jtmp, Wsqrt, phat, Y, mask, fest.cov_blup_offset, params)) {
           continue; // failed to correct with burden mask
+        }
       }
       if(apply_correction) block_info->cf_burden(ph) = rfrac;
 
@@ -1134,7 +1135,7 @@ void compute_vc_mats_bt(Ref<ArrayXd> Svals, Ref<MatrixXd> Kmat, const Ref<const 
 }
 
 void compute_skat_q(VectorXd& Qs, VectorXd& Qb, const Ref<const ArrayXd>& Svals, Ref<MatrixXd> Kmat, const Ref<const MatrixXb>& Jmat, bool const& debug){
-
+    
     Qs = Jmat.transpose().cast<double>() * Svals.square().matrix();
     // burden
     Qb = (Jmat.transpose().cast<double>() * Svals.matrix()).array().square().matrix();

@@ -625,6 +625,8 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
     }
 
   }
+  if( ind_in_cov_and_geno.count() == 0 )
+    throw "none of the individuals have covariate data (check sample IDs across files)";
   //cerr << endl<<pheno_data->new_cov.block(0,0,3,pheno_data->new_cov.cols())<< endl;
   //if(params->w_interaction && !params->interaction_snp && !params->interaction_prs) cerr << inter_cov_column.head(3);
 
