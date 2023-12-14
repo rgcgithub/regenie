@@ -1456,9 +1456,9 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
 
   total_ram *= params->n_samples * sizeof(double);
   total_ram += params->nvs_stored * sizeof(struct snp);
-  if( params->getCorMat ){
+  if( params->getCorMat ){ // M^2 (x2 with txt output) + 3NB
       total_ram += (params->cor_out_txt && (params->ld_sparse_thr == 0) ? 2 : 1) * params->extract_vars_order.size() * params->extract_vars_order.size() * sizeof(double);
-      if(params->dosage_mode) total_ram += params->n_samples * params->extract_vars_order.size() * (params->file_type == "bgen" ? 1.0 : 0.5) * sizeof(double);
+      total_ram += params->n_samples * params->block_size * sizeof(double);
   }
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   if( params->mask_loo ) total_ram += 1e9; // at most 1GB

@@ -3630,203 +3630,105 @@ void Data::ld_comp() {
   initialize_thread_data(Gblock.thread_data, params);
   params.ld_n = params.extract_vars_order.size();
   ArrayXb ld_var_absent = ArrayXb::Constant(params.ld_n, true);
-  map<string, int> colnames_full_mat;// to track id of cols in full_mat
+  map<string, int> colnames_ld_mat;// to track id of cols in full_mat
   ArrayXi indices_ld(params.ld_n);
+  MatrixXd LD = MatrixXd::Zero(params.ld_n, params.ld_n);
 
-  if((params.file_type == "bgen") && params.dosage_mode){ // use dense matrix with dosages in BGEN format
-    MatrixXd full_mat = MatrixXd::Zero(params.n_samples, params.ld_n);
-    // read in SVs
-    get_G_svs(full_mat, ld_var_absent, colnames_full_mat);
-    // read in masks
-    if(params.build_mask) get_G_masks(full_mat, ld_var_absent, colnames_full_mat);
-    // to set columns of LD mat in right order 
-    get_G_indices(indices_ld, colnames_full_mat);
-    // compute LD matrix
-    print_cor(full_mat, indices_ld, ld_var_absent, &ofile);
-  } else { // use sparse natrix
-    SpMat full_mat(params.n_samples, params.ld_n);
-    // read in SVs
-    get_G_svs(full_mat, ld_var_absent, colnames_full_mat);
-    // read in masks
-    if(params.build_mask) get_G_masks(full_mat, ld_var_absent, colnames_full_mat);
-    // to set columns of LD mat in right order 
-    get_G_indices(indices_ld, colnames_full_mat);
-    // compute LD matrix
-    print_cor(full_mat, indices_ld, ld_var_absent, &ofile);
+  // LD matrix will have first SVs then the burden masks
+  for(size_t isnp = 0; isnp < params.ld_sv_offsets.size(); isnp++) {
+    uint32_t snp_index = params.ld_sv_offsets[isnp];
+    colnames_ld_mat[ snpinfo[ snp_index ].ID ] = colnames_ld_mat.size();
+    ld_var_absent(params.extract_vars_order[snpinfo[ snp_index ].ID]) = false;
   }
 
-}
+  // build and read in masks (use sparse matrix)
+  SpMat Gmask;
+  MatrixXd Gmask_X;
+  if(params.build_mask) {
+    get_G_masks(Gmask, ld_var_absent, colnames_ld_mat);
+    // project covariates
+    Gmask_X = Gmask.transpose() * pheno_data.new_cov; // MxK
+  }
 
-void Data::get_G_svs(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
+  // to set columns of LD mat in right order 
+  get_G_indices(indices_ld, colnames_ld_mat);
 
-  int n_snps = params.ld_sv_offsets.size();
-  if( n_snps == 0) return;
+  // compute LD blocks for SVs with burden masks
+  int nblocks_sv = ceil( params.ld_sv_offsets.size() * 1.0 / params.block_size );
+  if(params.debug) cout << print_mem() << "\n";
+  sout << "** Computing LD matrix " << (params.skip_scaleG ? "(=GtG) " : "") << "**\n";
+  if(nblocks_sv > 0) sout << "  -> splitting across " << nblocks_sv << " SV blocks\n";
+  MeasureTime mt_chunk;
 
-  bool last_chunk = false;
-  int nchunks, bsize, chrom, nvar_read = 0; 
-  vector<variant_block> all_snps_info;
-  vector< vector < uchar > > snp_data_blocks;
-  vector< uint32_t > insize, outsize;
+  for(int snp_row = 0; snp_row < nblocks_sv; snp_row++){
+    int row_start = params.block_size * snp_row;
+    int row_nsnps = (snp_row == (nblocks_sv - 1)) ? (params.ld_sv_offsets.size() - snp_row *  params.block_size) : params.block_size;
+    MatrixXd Grow(params.n_samples, row_nsnps);
 
-  // read in variants in chunks storing as sparse matrix
-  nchunks = ceil( n_snps * 1.0 / params.block_size );
-  sout << "** reading in single variant genotypes **\n  + " << n_snps << " variants in total split across " << nchunks << " blocks\n";
-  MeasureTime mt, mt_chunk;
-  mt.start_ms();
-  if(params.debug) cerr << print_mem() << "...";
-
-  // do it in chunks to reduce memory usage when reading as dense
-  bsize = params.block_size; // default number of SNPs to read at a time
-  allocate_mat(Gblock.Gmat, params.n_samples, bsize);
-  all_snps_info.resize(bsize);
-  chrom = snpinfo[ params.ld_sv_offsets[0] ].chrom;
-
-  for(int i = 0; i < nchunks; i++){
-
-    sout << "  block [" << i + 1 << "/" << nchunks << "] : reading in genotypes..." << flush;
+    sout << "     - row " << snp_row + 1 << "\n";
     mt_chunk.start_ms();
 
-    last_chunk = ( i == (nchunks-1) );
-    if( last_chunk ) {
-      bsize = n_snps - i * bsize;// use remainder number of variants
-      allocate_mat(Gblock.Gmat, params.n_samples, bsize);
+    // read in G
+    get_G_svs(snp_row, row_nsnps);
+    Grow = Gblock.Gmat;
+    // project covariates
+    MatrixXd GtX_row = Grow.transpose() * pheno_data.new_cov; // MxK
+    // compute diagonal
+    LD.block(row_start, row_start, row_nsnps, row_nsnps).noalias() = -GtX_row * GtX_row.transpose();
+    LD.block(row_start, row_start, row_nsnps, row_nsnps) += Grow.transpose() * Grow;
+    sout << "       -> LD diagonal block computation..." << (params.debug ? print_mem() : "") << "..." << mt_chunk.stop_ms() << "\n";
+    if((nblocks_sv > 1) && (snp_row < (nblocks_sv - 1))) {
+      sout << "       -> computing LD with other variants (" << nblocks_sv - snp_row - 1 << " blocks)... " << flush;
+      mt_chunk.start_ms();
     }
 
-    vector<uint64> indices (params.ld_sv_offsets.begin() + nvar_read, params.ld_sv_offsets.begin() + nvar_read + bsize);
-    readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
+    for(int snp_col = (snp_row + 1); snp_col < nblocks_sv; snp_col++){
+      int col_start = params.block_size * snp_col;
+      int col_nsnps = (snp_col == (nblocks_sv - 1)) ? (params.ld_sv_offsets.size() - snp_col *  params.block_size) : params.block_size;
+      if(params.debug) sout << snp_col - snp_row << "..." << flush;
 
-#if defined(_OPENMP)
-    setNbThreads(1);
-#pragma omp parallel for schedule(dynamic)
-#endif
-    for(int isnp = 0; isnp < bsize; isnp++) {
+      get_G_svs(snp_col, col_nsnps);
+      // project covariates
+      MatrixXd GtX_col = Gblock.Gmat.transpose() * pheno_data.new_cov; // MxK
 
-      uint32_t snp_index = indices[isnp];
-      variant_block* block_info = &(all_snps_info[isnp]);
-
-      // build genotype matrix
-      if( ((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") 
-        parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
-
-      // impute missing if present
-      MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
-      mean_impute_g(block_info->af1*2, Geno, in_filters.ind_in_analysis);
-
-      // check if in LD matrix 
-      is_absent(params.extract_vars_order[snpinfo[ snp_index ].ID]) = false;
+      // compute ld block
+      LD.block(row_start, col_start, row_nsnps, col_nsnps).noalias() = -GtX_row * GtX_col.transpose();
+      LD.block(row_start, col_start, row_nsnps, col_nsnps) += Grow.transpose() * Gblock.Gmat;
     }
-#if defined(_OPENMP)
-    setNbThreads(params.threads);
-#endif
+    if((nblocks_sv > 1) && (snp_row < (nblocks_sv - 1))) sout << mt_chunk.stop_ms() << "\n";
 
-    // convert to sparse
-    sout << mt_chunk.stop_ms() << "...converting to sparse..."; mt_chunk.start_ms();
-    Gmat.middleCols(nvar_read, bsize) = Gblock.Gmat.sparseView();
-    // store ID in Gmat (can't do it multithreaded)
-    for(int isnp = 0; isnp < bsize; isnp++) {
-      uint32_t snp_index = indices[isnp];
-      colnames_Gmat[ snpinfo[ snp_index ].ID ] = colnames_Gmat.size();
+    // compute LD block for burden mask
+    if(Gmask.cols() > 0){
+      mt_chunk.start_ms();
+      LD.block(row_start, params.ld_sv_offsets.size(), row_nsnps, Gmask.cols()).noalias() = -GtX_row * Gmask_X.transpose();
+      LD.block(row_start, params.ld_sv_offsets.size(), row_nsnps, Gmask.cols()) += Grow.transpose() * Gmask;
+      sout << "       -> computing LD with burden masks..." << mt_chunk.stop_ms() << "\n";
     }
-
-    if(params.debug) cout << print_mem() << "...";
-    sout << mt_chunk.stop_ms() << "\n";
-    nvar_read += bsize;
   }
 
-  if(params.debug) cout << print_mem() << "...";
-  sout << " -> " << mt.stop_ms() << "\n";
-
-}
-
-void Data::get_G_svs(MatrixXd& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
-
-  int n_snps = params.ld_sv_offsets.size();
-  if( n_snps == 0) return;
-
-  bool last_chunk = false;
-  int nchunks, bsize, chrom, nvar_read = 0; 
-  vector<variant_block> all_snps_info;
-  vector< vector < uchar > > snp_data_blocks;
-  vector< uint32_t > insize, outsize;
-
-  // read in variants in chunks storing as sparse matrix
-  nchunks = ceil( n_snps * 1.0 / params.block_size );
-  sout << "** reading in single variant genotypes **\n  + " << n_snps << " variants in total split across " << nchunks << " blocks\n";
-  MeasureTime mt, mt_chunk;
-  mt.start_ms();
-  if(params.debug) cout << print_mem() << "...";
-
-  // do it in chunks to reduce memory usage when reading as dense
-  bsize = params.block_size; // default number of SNPs to read at a time
-  allocate_mat(Gblock.Gmat, params.n_samples, bsize);
-  all_snps_info.resize(bsize);
-  chrom = snpinfo[ params.ld_sv_offsets[0] ].chrom;
-
-  for(int i = 0; i < nchunks; i++){
-
-    sout << "  block [" << i + 1 << "/" << nchunks << "] : reading in genotypes..." << flush;
+  // compute LD diagonal block for burden mask
+  if(Gmask.cols() > 0){
     mt_chunk.start_ms();
-
-    last_chunk = ( i == (nchunks-1) );
-    if( last_chunk ) {
-      bsize = n_snps - i * bsize;// use remainder number of variants
-      allocate_mat(Gblock.Gmat, params.n_samples, bsize);
-    }
-
-    vector<uint64> indices (params.ld_sv_offsets.begin() + nvar_read, params.ld_sv_offsets.begin() + nvar_read + bsize);
-    readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
-
-#if defined(_OPENMP)
-    setNbThreads(1);
-#pragma omp parallel for schedule(dynamic)
-#endif
-    for(int isnp = 0; isnp < bsize; isnp++) {
-
-      uint32_t snp_index = indices[isnp];
-      variant_block* block_info = &(all_snps_info[isnp]);
-
-      // build genotype matrix
-      if( ((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") 
-        parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
-
-      // impute missing if present
-      MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
-      mean_impute_g(block_info->af1*2, Geno, in_filters.ind_in_analysis);
-
-      // check if in LD matrix 
-      is_absent(params.extract_vars_order[snpinfo[ snp_index ].ID]) = false;
-    }
-#if defined(_OPENMP)
-    setNbThreads(params.threads);
-#endif
-
-    // convert to sparse
-    sout << mt_chunk.stop_ms() << "...storing variants..."; mt_chunk.start_ms();
-    Gmat.middleCols(nvar_read, bsize) = Gblock.Gmat;
-    // store ID in Gmat (can't do it multithreaded)
-    for(int isnp = 0; isnp < bsize; isnp++) {
-      uint32_t snp_index = indices[isnp];
-      colnames_Gmat[ snpinfo[ snp_index ].ID ] = colnames_Gmat.size();
-    }
-
-    if(params.debug) cout << print_mem() << "...";
-    sout << mt_chunk.stop_ms() << "\n";
-    nvar_read += bsize;
+    LD.block(params.ld_sv_offsets.size(), params.ld_sv_offsets.size(), Gmask.cols(), Gmask.cols()).noalias() = -Gmask_X * Gmask_X.transpose();
+    LD.block(params.ld_sv_offsets.size(), params.ld_sv_offsets.size(), Gmask.cols(), Gmask.cols()) += Gmask.transpose() * Gmask;
+    sout << "     - computing LD between burden masks..." << mt_chunk.stop_ms() << "\n";
   }
 
-  if(params.debug) cout << print_mem() << "...";
-  sout << " -> " << mt.stop_ms() << "\n";
+  // write out LD matrix
+  print_ld(LD, indices_ld, ld_var_absent, &ofile);
 
+  return;
 }
+
 
 void Data::get_G_masks(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
 
   MeasureTime mt;
   int block = 0, chrom_nb, bs;
-  int nvar_read = colnames_Gmat.size();
   vector< variant_block > block_info;
+  MatrixXd burden_mat;
 
-  sout << "\n** Building burden masks **\n";
+  sout << "** Building burden masks **\n";
   mt.start_ms();
 
   // start analyzing each chromosome
@@ -3857,77 +3759,69 @@ void Data::get_G_masks(SpMat& Gmat, ArrayXb& is_absent, map<string, int>& colnam
       for(size_t mask = 0; mask < set_info->snp_indices.size(); mask++)
         if(in_map(snpinfo[ set_info->snp_indices[mask] ].ID, params.extract_vars_order)){
           is_absent(params.extract_vars_order[ snpinfo[ set_info->snp_indices[mask] ].ID ]) = false;
-          colnames_Gmat[ snpinfo[ set_info->snp_indices[mask] ].ID ] = colnames_Gmat.size();
+          colnames_Gmat[ snpinfo[ set_info->snp_indices[mask] ].ID ] = colnames_Gmat.size(); // burden are after SV
           indices_mask_keep.push_back(mask);
         }
 
       // store in Gmat
       if(indices_mask_keep.size() > 0){
-        Gmat.middleCols(nvar_read, indices_mask_keep.size()) = Gblock.Gmat(Eigen::placeholders::all, indices_mask_keep).sparseView();
-        nvar_read += indices_mask_keep.size();
+        burden_mat.conservativeResize(Gblock.Gmat.rows(), burden_mat.cols() + indices_mask_keep.size());
+        burden_mat.rightCols(indices_mask_keep.size()) = Gblock.Gmat(Eigen::placeholders::all, indices_mask_keep);
       }
+
+      block++;
     }
 
   }
 
+  Gmat = burden_mat.sparseView();
+
   if(params.debug) cout << print_mem() << "...";
-  sout << " -> " << mt.stop_ms() << "\n";
+  sout << " -> " << mt.stop_ms() << "\n\n";
 
 }
 
-void Data::get_G_masks(MatrixXd& Gmat, ArrayXb& is_absent, map<string, int>& colnames_Gmat){
 
-  MeasureTime mt;
-  int block = 0, chrom_nb, bs;
-  int nvar_read = colnames_Gmat.size();
-  vector< variant_block > block_info;
+void Data::get_G_svs(int const& sv_block, int const& bsize){
 
-  sout << "\n** Building burden masks **\n";
-  mt.start_ms();
+  int chrom; 
+  if( bsize == 0) return;
+  int nvar_read = params.block_size * sv_block;
 
-  // start analyzing each chromosome
-  for (auto const& chrom : files.chr_read){
+  vector<variant_block> all_snps_info;
+  vector< vector < uchar > > snp_data_blocks;
+  vector< uint32_t > insize, outsize;
 
-    if( !in_map(chrom, chr_map) ) continue;
-    chrom_nb = chr_map[chrom][1];
-    // if no sets in chromosome, skip
-    if(chrom_nb == 0)  continue;
+  allocate_mat(Gblock.Gmat, params.n_samples, bsize);
+  all_snps_info.resize(bsize);
+  chrom = snpinfo[ params.ld_sv_offsets[0] ].chrom;
 
-    // go through each set
-    for(int bb = 0; bb < chrom_nb ; bb++) {
+  vector<uint64> indices (params.ld_sv_offsets.begin() + nvar_read, params.ld_sv_offsets.begin() + nvar_read + bsize);
+  readChunk(indices, chrom, snp_data_blocks, insize, outsize, all_snps_info);
 
-      vector< vector < uchar > > snp_data_blocks;
-      vector< uint32_t > insize, outsize;
-      vector<int> indices_mask_keep;
+#if defined(_OPENMP)
+  setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+  for(int isnp = 0; isnp < bsize; isnp++) {
 
-      vset* set_info = &(jt.setinfo[chrom - 1][bb]);
-      bs = set_info->snp_indices.size();
+    uint32_t snp_index = indices[isnp];
+    variant_block* block_info = &(all_snps_info[isnp]);
 
-      sout << " set [" << block + 1 << "/" << params.total_n_block << "] : " << set_info->ID << " - " << bs << " variants..." << flush;
+    // build genotype matrix
+    if( ((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") 
+      parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
 
-      // build the masks
-      block_info.resize(bs);
-      getMask(chrom, bb, snp_data_blocks, insize, outsize, block_info);
-
-      // store only the ones used in ld matrix
-      for(size_t mask = 0; mask < set_info->snp_indices.size(); mask++)
-        if(in_map(snpinfo[ set_info->snp_indices[mask] ].ID, params.extract_vars_order)){
-          is_absent(params.extract_vars_order[ snpinfo[ set_info->snp_indices[mask] ].ID ]) = false;
-          colnames_Gmat[ snpinfo[ set_info->snp_indices[mask] ].ID ] = colnames_Gmat.size();
-          indices_mask_keep.push_back(mask);
-        }
-
-      // store in Gmat
-      if(indices_mask_keep.size() > 0){
-        Gmat.middleCols(nvar_read, indices_mask_keep.size()) = Gblock.Gmat(Eigen::placeholders::all, indices_mask_keep);
-        nvar_read += indices_mask_keep.size();
-      }
+    // impute missing if present
+    if(block_info->ns1 < params.n_analyzed){
+      MapArXd Geno (Gblock.Gmat.col(isnp).data(), params.n_samples, 1);
+      mean_impute_g(block_info->af1*2, Geno, in_filters.ind_in_analysis);
     }
 
   }
-
-  if(params.debug) cout << print_mem() << "...";
-  sout << " -> " << mt.stop_ms() << "\n";
+#if defined(_OPENMP)
+  setNbThreads(params.threads);
+#endif
 
 }
 
@@ -3968,99 +3862,17 @@ void Data::write_snplist(ArrayXb& is_absent){
 
 }
 
-void Data::print_cor(SpMat& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Files* ofile){
+void Data::print_ld(MatrixXd& LDmat, ArrayXi& indices_ld, ArrayXb& is_absent, Files* ofile){
 
   MeasureTime mt;
   int bits = 16; // break [0,1] into 2^bits intervals
   double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
 
-  sout << "\n** computing LD matrix " << (params.skip_scaleG ? "(=GtG) " : "") << "**\n";
-  mt.start_ms();
-
   // write list of snps to file (corresponding to columns in LD matrix)
   write_snplist(is_absent);
 
-  // get LD matrix - first project covariates
-  MatrixXd GtX = Gmat.transpose() * pheno_data.new_cov; // MxK
-  MatrixXd LDmat = -GtX * GtX.transpose();
-  LDmat += Gmat.transpose() * Gmat;
-  if(params.debug) cout << print_mem() << "...raw covariance matrix:\n" << LDmat << "\n";
-
-  if(!params.skip_scaleG) { // get cormat
-    ArrayXd sds = (LDmat.diagonal().array() == 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt());
-    LDmat.diagonal().array() = sds.square();
-    if(params.debug) cout << print_mem() << "...thresholded covariance matrix:\n" << LDmat << "\n";
-    LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
-    if(params.debug) cout << print_mem() << "...correlation matrix:\n" << LDmat << "\n";
-  } else 
-    LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
-  sout << " -> " << mt.stop_ms() << "\n";
-
-  // print corr
-  sout << "\n** writing to file **\n";
-  mt.start_ms();
-
-  if(params.ld_sparse_thr > 0){ // apply sparse threshold to LD matrix for off diagonal entries
-
-    double out_val;
-    // first diagonal entries (single line)
-    ArrayXd sds = LDmat.diagonal().array().sqrt();
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","\n");
-    (*ofile) << sds(indices_ld).matrix().transpose().format(Fmt);
-    // off diagonal entries above thr based on corr (fmt = row/col/value [1-based])
-    for(int i = 0; i < LDmat.rows(); i++)
-      for(int j = i+1; j < LDmat.cols(); j++){
-        out_val = LDmat(indices_ld(i),indices_ld(j)) / sds(indices_ld(i)) / sds(indices_ld(i));
-        if(fabs(out_val) >= params.ld_sparse_thr)
-          (*ofile) << i+1 << " " << j+1 << " " << out_val << "\n";
-      }
-    ofile->closeFile();
-
-  } else if(params.cor_out_txt){
-
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    (*ofile) << LDmat(indices_ld, indices_ld).format(Fmt);
-    ofile->closeFile();
-
-  } else {
-
-    ArrayXt vals;
-    vals.resize( (LDmat.rows() * (LDmat.rows() - 1)) / 2 ); // m choose 2
-
-    for(int i = 0, k = 0; i < LDmat.rows(); i++)
-      for(int j = i+1; j < LDmat.cols(); j++)
-        vals(k++) = LDmat(indices_ld(i),indices_ld(j)) * LDmat(indices_ld(i),indices_ld(j)) * mult + 0.5; // round to nearest integer
-
-    //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
-     // vals.head(5) << "\n-->" << vals.size() << endl;
-
-    ofile->writeBinMode(vals, sout);
-    ofile->closeFile();
-  }
-
-  sout << " -> " << mt.stop_ms() << "\n";
-
-  exit_early();
-
-}
-
-void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Files* ofile){
-
-  MeasureTime mt;
-  int bits = 16; // break [0,1] into 2^bits intervals
-  double mult = (1ULL << bits) - 1; // map to 0,...,2^bits-1
-
-  sout << "\n** computing LD matrix " << (params.skip_scaleG ? "(=GtG) " : "") << "**\n";
-  mt.start_ms();
-
-  // write list of snps to file (corresponding to columns in LD matrix)
-  write_snplist(is_absent);
-
-  // get LD matrix - first project covariates
-  MatrixXd GtX = Gmat.transpose() * pheno_data.new_cov; // MxK
-  MatrixXd LDmat = Gmat.transpose() * Gmat - GtX * GtX.transpose();
-  if(params.debug) cout << print_mem() << "...raw covariance matrix:\n" << LDmat << "\n";
-  Gmat.resize(0,0);
+  // only upper tri is loaded
+  if(params.debug) cout << "     - raw covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
 
   // check if any of the diagonal entries are negative (but numerically zero -- due to rounding error)
   ArrayXb sd_G_zero = (LDmat.diagonal().array() < 0) && (LDmat.diagonal().array().abs() < params.tol) ;
@@ -4070,17 +3882,16 @@ void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
   }
 
   if(!params.skip_scaleG) { // get cormat
-    ArrayXd sds = (LDmat.diagonal().array() == 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt());
+    ArrayXd sds = (LDmat.diagonal().array() <= 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt()); // bug fix for negative but numerically zero diagonal entries
     LDmat.diagonal().array() = sds.square();
-    if(params.debug) cout << print_mem() << "...thresholded covariance matrix:\n" << LDmat << "\n";
+  if(params.debug) cout << "     - thresholded covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
     LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
-    if(params.debug) cout << print_mem() << "...correlation matrix:\n" << LDmat << "\n";
+  if(params.debug) cout << "     - correlation matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
   } else 
     LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
-  sout << " -> " << mt.stop_ms() << "\n";
 
   // print corr
-  sout << "\n** writing to file **\n";
+  sout << "     - writing to file...";
   mt.start_ms();
 
   if(params.ld_sparse_thr > 0){ // apply sparse threshold to LD matrix for off diagonal entries
@@ -4093,7 +3904,10 @@ void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
     // off diagonal entries above thr based on corr (fmt = row/col/value [1-based])
     for(int i = 0; i < LDmat.rows(); i++)
       for(int j = i+1; j < LDmat.cols(); j++){
-        out_val = LDmat(indices_ld(i),indices_ld(j)) / sds(indices_ld(i)) / sds(indices_ld(i));
+        if( indices_ld(i) < indices_ld(j) )
+          out_val = LDmat(indices_ld(i),indices_ld(j)) / sds(indices_ld(i)) / sds(indices_ld(j));
+        else
+          out_val = LDmat(indices_ld(j),indices_ld(i)) / sds(indices_ld(i)) / sds(indices_ld(j));
         if(fabs(out_val) >= params.ld_sparse_thr)
           (*ofile) << i+1 << " " << j+1 << " " << out_val << "\n";
       }
@@ -4102,7 +3916,8 @@ void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
   } else if(params.cor_out_txt){
 
     IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    (*ofile) << LDmat(indices_ld, indices_ld).format(Fmt);
+    MatrixXd full_LDmat = LDmat.selfadjointView<Eigen::Upper>();
+    (*ofile) << full_LDmat(indices_ld, indices_ld).format(Fmt);
     ofile->closeFile();
 
   } else {
@@ -4112,7 +3927,10 @@ void Data::print_cor(MatrixXd& Gmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
 
     for(int i = 0, k = 0; i < LDmat.rows(); i++)
       for(int j = i+1; j < LDmat.cols(); j++)
-        vals(k++) = LDmat(indices_ld(i),indices_ld(j)) * LDmat(indices_ld(i),indices_ld(j)) * mult + 0.5; // round to nearest integer
+        if( indices_ld(i) < indices_ld(j) )
+          vals(k++) = LDmat(indices_ld(i),indices_ld(j)) * LDmat(indices_ld(i),indices_ld(j)) * mult + 0.5; // round to nearest integer
+        else
+          vals(k++) = LDmat(indices_ld(j),indices_ld(i)) * LDmat(indices_ld(j),indices_ld(i)) * mult + 0.5; // round to nearest integer
 
     //cerr << "\norig:\n" << LDmat.block(0,0,5,5).array().square().matrix() << "\nbin:\n" << 
      // vals.head(5) << "\n-->" << vals.size() << endl;
