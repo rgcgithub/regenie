@@ -46,6 +46,7 @@ class Data {
     f_ests firth_est;
     // HLM
     HLM nullHLM; // for null model fitting of HLM
+    remeta_sumstat_writer remeta_sumstats;
 
     std::string model_type, correction_type, test_string, wgr_string;
 

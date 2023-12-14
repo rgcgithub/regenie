@@ -218,16 +218,16 @@ bool get_custom_weights(string const& setname, Ref<ArrayXd> weights, vector<snp>
   return true;
 }
 
-void compute_vc_masks(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, SpMat& vc_rare_mask, Ref<MatrixXb> vc_rare_non_miss, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres,  const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, MatrixXb& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXb>& in_analysis, struct param const& params){
+void compute_vc_masks(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights_acat, SpMat& vc_rare_mask, Ref<MatrixXb> vc_rare_non_miss, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres,  const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, MatrixXb& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXb>& in_analysis, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   prep_ultra_rare_mask(mat, weights, weights_acat, vc_rare_mask, vc_rare_non_miss, Jmat, in_analysis, params);
 
   //if(params.debug) check_sizes(mat, vc_rare_mask, Jmat);
 
   if(params.trait_mode==0)
-    compute_vc_masks_qt(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params);
+    compute_vc_masks_qt(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params, remeta_sumstats);
   else if(params.trait_mode==1)
-    compute_vc_masks_bt(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params);
+    compute_vc_masks_bt(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params, remeta_sumstats);
   else throw "not yet implemented";
 
 }
@@ -285,17 +285,17 @@ void prep_ultra_rare_mask(SpMat& mat, Ref<ArrayXd> weights, Ref<ArrayXd> weights
 ///// QTs
 /////////////////////
 /////////////////////
-void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, struct param const& params){
+void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   if(params.skato_rho.size() == 1)
-    compute_vc_masks_qt_fixed_rho(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params.skato_rho(0), params.skat_tol, params.nl_dbl_dmin, params.vc_test, params.debug);
+    compute_vc_masks_qt_fixed_rho(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params.skato_rho(0), params.skat_tol, params.nl_dbl_dmin, params.vc_test, params.debug, params, remeta_sumstats);
   else
-    compute_vc_masks_qt(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params.skato_rho, params.skat_tol, params.nl_dbl_dmin, params.vc_test, params.debug);
+    compute_vc_masks_qt(mat, weights, weights_acat, X, yres, Jmat, all_snps_info, params.skato_rho, params.skat_tol, params.nl_dbl_dmin, params.vc_test, params.debug, params, remeta_sumstats);
 
 }
 
 // for a given rho value
-void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, double const& rho, double const& skat_lambda_tol, double const& nl_dbl_dmin, uint const& vc_test, bool const& debug){
+void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, double const& rho, double const& skat_lambda_tol, double const& nl_dbl_dmin, uint const& vc_test, bool const& debug, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_skat = (vc_test>>1)&15;
@@ -312,8 +312,16 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // Mall x M
   Jstar.reserve(bs);
-  for(int i = 0; i < bs; i++)
+  MatrixXd weights_ordered;
+  if(params.remeta_save_ld) {
+    weights_ordered.resize(bs, 1);
+  }
+  for(int i = 0; i < bs; i++) {
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+    if(params.remeta_save_ld) {
+        weights_ordered(i) = weights(snp_indices(i));
+    }
+  }
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
@@ -323,6 +331,32 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   Kmat.resize(bs, bs); // MxM
   compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
   mat2.setZero(); mat2.resize(0,0); mat2.data().squeeze(); // not needed anymore
+
+#ifdef WITH_HTSLIB
+  if(params.remeta_save_ld && remeta_sumstats.skat_snplist->size() > 0) {
+    MatrixXd weight_inv = weights_ordered.array()
+                                  .inverse()
+                                  .matrix()
+                                  .asDiagonal();
+    MatrixXd unweighted_Kmat = weight_inv * Kmat * weight_inv;
+    for(int i = 0; i < n_pheno; ++i) {
+      if(remeta_sumstats.sparsity_threshold > 0) {
+        remeta_sumstats.skat_matrix_writers[i].write_matrix_sparse(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist,
+          remeta_sumstats.sparsity_threshold
+        );
+      } else {
+        remeta_sumstats.skat_matrix_writers[i].write_matrix_dense(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist
+        );      
+      }
+    }
+  }
+#endif
 
   // SKAT for all masks & traits
   compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
@@ -378,7 +412,7 @@ void compute_vc_masks_qt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
 }
 
-void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXd>& rho_vec, double const& skat_lambda_tol, double const& nl_dbl_dmin, uint const& vc_test, bool const& debug){
+void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& yres, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXd>& rho_vec, double const& skat_lambda_tol, double const& nl_dbl_dmin, uint const& vc_test, bool const& debug, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_omnibus = (vc_test>>2)&7; // any of the omnibus tests
@@ -405,8 +439,17 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // Mall x M
   Jstar.reserve(bs);
-  for(int i = 0; i < bs; i++)
+  MatrixXd weights_ordered;
+  if(params.remeta_save_ld) {
+    weights_ordered.resize(bs, 1);
+  }
+  for(int i = 0; i < bs; i++) {
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+    if(params.remeta_save_ld) {
+        weights_ordered(i) = weights(snp_indices(i));
+    }
+  }
+    
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
@@ -416,6 +459,32 @@ void compute_vc_masks_qt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   Kmat.resize(bs, bs); // MxM
   compute_vc_mats_qt(Svals, Kmat, X, yres, mat2);
   mat2.setZero(); mat2.resize(0,0); mat2.data().squeeze(); // not needed anymore
+
+#ifdef WITH_HTSLIB
+  if(params.remeta_save_ld && remeta_sumstats.skat_snplist->size() > 0) {
+    MatrixXd weight_inv = weights_ordered.array()
+                                  .inverse()
+                                  .matrix()
+                                  .asDiagonal();
+    MatrixXd unweighted_Kmat = weight_inv * Kmat * weight_inv;
+    for(int i = 0; i < n_pheno; ++i) {
+      if(remeta_sumstats.sparsity_threshold > 0) {
+        remeta_sumstats.skat_matrix_writers[i].write_matrix_sparse(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist,
+          remeta_sumstats.sparsity_threshold
+        );
+      } else {
+        remeta_sumstats.skat_matrix_writers[i].write_matrix_dense(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist
+        );      
+      }
+    }
+  }
+#endif
 
   // SKAT for all masks & traits
   compute_skat_q(Qs, Qb, Svals, Kmat, pvals, weights(snp_indices) != 0, Jmat(snp_indices, all), with_acatv, debug);
@@ -627,16 +696,16 @@ void get_single_pvs(Ref<MatrixXd> pvals, const Ref<const MatrixXd>& chisq_vals){
 /////////////////////
 /////////////////////
 
-void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, struct param const& params){
+void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   if(params.skato_rho.size() == 1)
-    compute_vc_masks_bt_fixed_rho(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params.skato_rho(0), params.skat_tol, params.nl_dbl_dmin, params.firth || params.use_SPA, params.vc_test, params.debug, params);
+    compute_vc_masks_bt_fixed_rho(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params.skato_rho(0), params.skat_tol, params.nl_dbl_dmin, params.firth || params.use_SPA, params.vc_test, params.debug, params, remeta_sumstats);
   else 
-    compute_vc_masks_bt(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params.skato_rho, params.skat_tol, params.nl_dbl_dmin, params.firth || params.use_SPA, params.vc_test, params.debug, params);
+    compute_vc_masks_bt(mat, weights, weights_acat, X, m_ests, fest, yres, yraw, masked_indivs, Jmat, all_snps_info, params.skato_rho, params.skat_tol, params.nl_dbl_dmin, params.firth || params.use_SPA, params.vc_test, params.debug, params, remeta_sumstats);
 
 }
 
-void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, double const& rho, double const& skat_lambda_tol, double const& nl_dbl_dmin, bool const& apply_correction, uint const& vc_test, bool const& debug, struct param const& params){
+void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, double const& rho, double const& skat_lambda_tol, double const& nl_dbl_dmin, bool const& apply_correction, uint const& vc_test, bool const& debug, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_skat = (vc_test>>1)&15;
@@ -660,8 +729,16 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // M x Mall
   Jstar.reserve(bs);
-  for(int i = 0; i < bs; i++)
+  MatrixXd weights_ordered;
+  if(params.remeta_save_ld) {
+    weights_ordered.resize(bs, 1);
+  }
+  for(int i = 0; i < bs; i++) {
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+    if(params.remeta_save_ld) {
+        weights_ordered(i) = weights(snp_indices(i));
+    }
+  }
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
@@ -685,6 +762,30 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
       correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+
+  #ifdef WITH_HTSLIB
+    if(params.remeta_save_ld && remeta_sumstats.skat_snplist->size() > 0) {
+      MatrixXd weight_inv = weights_ordered.array()
+                                    .inverse()
+                                    .matrix()
+                                    .asDiagonal();
+      MatrixXd unweighted_Kmat = weight_inv * Kmat * weight_inv;
+      if(remeta_sumstats.sparsity_threshold > 0) {
+        remeta_sumstats.skat_matrix_writers[ph].write_matrix_sparse(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist,
+          remeta_sumstats.sparsity_threshold
+        );
+      } else {
+        remeta_sumstats.skat_matrix_writers[ph].write_matrix_dense(
+          unweighted_Kmat,
+          *remeta_sumstats.gene_name,
+          *remeta_sumstats.skat_snplist
+        );
+      }
+    }
+  #endif
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -762,7 +863,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
 
 }
 
-void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXd>& rho_vec, double const& skat_lambda_tol, double const& nl_dbl_dmin, bool const& apply_correction, uint const& vc_test, bool const& debug, struct param const& params){
+void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Ref<const ArrayXd>& weights_acat, const Ref<const MatrixXd>& X, struct ests const& m_ests, struct f_ests const& fest, const Ref<const MatrixXd>& yres, const Ref<const MatrixXd>& yraw, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXb>& Jmat, vector<variant_block> &all_snps_info, const Ref<const ArrayXd>& rho_vec, double const& skat_lambda_tol, double const& nl_dbl_dmin, bool const& apply_correction, uint const& vc_test, bool const& debug, struct param const& params, struct remeta_sumstat_writer& remeta_sumstats){
 
   bool with_acatv = CHECK_BIT(vc_test,0);
   bool with_omnibus = (vc_test>>2)&7;
@@ -802,8 +903,16 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
   // slice sparse matrix (cannot use indexing)
   SpMat Jstar (Jmat.rows(), bs); // M x Mall
   Jstar.reserve(bs);
-  for(int i = 0; i < bs; i++)
+  MatrixXd weights_ordered;
+  if(params.remeta_save_ld) {
+    weights_ordered.resize(bs, 1);
+  }
+  for(int i = 0; i < bs; i++) {
     Jstar.insert(snp_indices(i), i) = weights(snp_indices(i));
+    if(params.remeta_save_ld) {
+        weights_ordered(i) = weights(snp_indices(i));
+    }
+  }
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
@@ -825,8 +934,34 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     // apply firth/spa corrections (set R=0 if failed)
     masked_sites = (weights(snp_indices) > 0);
     Rvec_sqrt = masked_sites.cast<double>();
-    if(apply_correction)
+    if(apply_correction) {
       correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
+    }
+
+    #ifdef WITH_HTSLIB
+      if(params.remeta_save_ld && remeta_sumstats.skat_snplist->size() > 0) {
+        MatrixXd weight_inv = weights_ordered.array()
+                                      .inverse()
+                                      .matrix()
+                                      .asDiagonal();
+        MatrixXd unweighted_Kmat = weight_inv * Kmat * weight_inv;
+
+        if(remeta_sumstats.sparsity_threshold > 0) {
+          remeta_sumstats.skat_matrix_writers[ph].write_matrix_sparse(
+            unweighted_Kmat,
+            *remeta_sumstats.gene_name,
+            *remeta_sumstats.skat_snplist,
+            remeta_sumstats.sparsity_threshold
+          );
+        } else {
+          remeta_sumstats.skat_matrix_writers[ph].write_matrix_dense(
+            unweighted_Kmat,
+            *remeta_sumstats.gene_name,
+            *remeta_sumstats.skat_snplist
+          );
+        }
+      }
+    #endif
 
     if(with_acatv) {
       pvals.resize(Svals.size()); // Mx1
@@ -989,6 +1124,7 @@ void compute_vc_mats_bt(Ref<ArrayXd> Svals, Ref<MatrixXd> Kmat, const Ref<const 
   GtWX = XWsqrt.transpose() * GWs ; // CxM
 
   // get score stats for all variants (Mx1)
+  // yres is Wsqrt^{-1}(Y-pi)
   Svals = (GWs.transpose() * yres).array();
 
   // kernel matrix for all variants (MxM)
@@ -1758,7 +1894,7 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
         std::ostringstream buffer;
 
         if(params->htp_out) 
-          buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params, params->missing_value_double, -1, ( (params->firth || params->use_SPA) && ((itr->first == "SKATO-ACAT") || (itr->first == "SKATO")) ) ? block_info->cf_burden(i): -1.0);
+          buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params, params->missing_value_double, -1, ( (params->firth || params->use_SPA) && ((itr->first == "SKATO-ACAT") || (itr->first == "SKATO")) ) ? block_info->cf_burden(i): -1.0, params->missing_value_double);
         else 
           buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, params->pheno_counts.row(i).sum(), params->pheno_counts(i, 0), params->pheno_counts(i, 1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
 

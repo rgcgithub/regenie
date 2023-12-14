@@ -82,6 +82,7 @@ struct data_thread {
   Eigen::ArrayXd pval_log;
   Eigen::ArrayXd bhat;
   Eigen::ArrayXd se_b;
+  Eigen::ArrayXd skat_var;
   // for spa
   bool pos_score;
   double val_a, val_b, val_c, val_d; 

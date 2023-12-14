@@ -54,6 +54,10 @@
 #include "Masks.hpp"
 #include "Data.hpp"
 
+#ifdef WITH_HTSLIB
+#include "remeta/regenie_ld_matrix_writer.hpp"
+#endif
+
 using namespace std;
 using namespace Eigen;
 using namespace boost;
@@ -2484,6 +2488,25 @@ void Data::test_joint() {
   if(params.trait_mode) set_nullreg_mat();
   sout << endl;
 
+#ifdef WITH_HTSLIB
+  if (params.remeta_save_ld) {
+    for (size_t i = 0; i < files.pheno_names.size(); ++i) {
+      if(params.pheno_pass(i)) {
+        remeta_sumstats.skat_matrix_writers.emplace_back(
+          RegenieLDMatrixWriter(
+            files.out_file + "_" + files.pheno_names[i],
+            params.pheno_counts(i, 0)
+          )
+        );
+      } else {
+        remeta_sumstats.skat_matrix_writers.emplace_back(
+          RegenieLDMatrixWriter()
+        );
+      }
+    }
+    remeta_sumstats.sparsity_threshold = params.remeta_ld_spr;
+  }
+#endif
 
   // start analyzing each chromosome
   bool block_init_pass = false;
@@ -2703,6 +2726,9 @@ void Data::set_groups_for_testing() {
       sout << " * applying ACAT to output overall gene p-value\n";
   }
 
+  if(params.remeta_save_ld)
+    sout << " * saving SKAT LD matrices for REMETA\n";
+
 }
 
 // test SNPs in block
@@ -2885,7 +2911,11 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
   if(params.debug) sout << "(3)" << print_mem() << "..." << flush;
 
   if(params.vc_test) {
-    compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, set_info->Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
+    #ifdef WITH_HTSLIB
+      remeta_sumstats.skat_snplist = &bm.remeta_snplist;
+      remeta_sumstats.gene_name = &set_info->ID;
+    #endif
+    compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, set_info->Jmat, all_snps_info, in_filters.ind_in_analysis, params, remeta_sumstats); 
 
     set_info->Jmat.resize(0,0);
     set_info->ultra_rare_ind.resize(0);
@@ -3039,7 +3069,7 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
       vc_weights_chunk.head(vc_weights.size()) = vc_weights;
       vc_weights_acat_chunk.head(vc_weights_acat.size()) = vc_weights_acat;
 
-      compute_vc_masks(vc_sparse_gmat_chunk, vc_weights_chunk, vc_weights_acat_chunk, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, Jmat, all_snps_info, in_filters.ind_in_analysis, params); 
+      compute_vc_masks(vc_sparse_gmat_chunk, vc_weights_chunk, vc_weights_acat_chunk, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, Jmat, all_snps_info, in_filters.ind_in_analysis, params, remeta_sumstats); 
 
     }
 

@@ -61,6 +61,9 @@ class GenoMask {
     std::vector<std::vector<uchar>> gvec;
     uchar last_byte_correction_factor = 0u;
 
+    bool remeta_save_ld = false;
+    std::vector<std::string> remeta_snplist; // list of snps contained in any mask
+
     // functions
     void prep_run(struct param&,struct in_files const&);
     void setBins(struct param*,mstream&);

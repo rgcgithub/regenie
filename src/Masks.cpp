@@ -59,6 +59,7 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   write_snplist = params.write_mask_snplist;
   force_singleton = params.aaf_file_wSingletons;
   verbose = params.verbose || params.debug;
+  remeta_save_ld = params.remeta_save_ld;
 
   if(!take_max && !take_comphet) params.htp_out = false; // due to genocounts with sum rule
   if(write_masks) gfile_prefix = files.out_file + "_masks";
@@ -173,6 +174,9 @@ void GenoMask::prepMasks(int const& ntotal, const string& setID) {
       list_snps[i].resize(0);
   }
 
+  if(remeta_save_ld) {
+    remeta_snplist.clear();
+  }
 }
 
 void GenoMask::updateMasks(int const& start, int const& bs, struct param* params, struct filter* filters, const Ref<const MatrixXb>& masked_indivs, struct geno_block* gblock, const Ref<const ArrayXd>& vc_weights, vector<variant_block> &all_snps_info, vset& setinfo, vector<snp>& snpinfo, mstream& sout){
@@ -210,6 +214,23 @@ void GenoMask::updateMasks(int const& start, int const& bs, struct param* params
       }
     }
 
+  }
+
+  if(w_vc_tests && remeta_save_ld) {
+    // Find the column for VC tests.
+    int vc_col_idx = -1;
+    for (int j = 1; j < n_aaf_bins; j++) {
+      if (aafs(j-1) == vc_aaf) {
+        vc_col_idx = j;
+        break;
+      }
+    }
+    ArrayXb snp_in_any_mask = (keepmask.rowwise().maxCoeff().array() > 0) && (keepaaf.col(vc_col_idx).array() > 0);
+    for (int k = 0; k < snp_in_any_mask.size(); ++k) {
+      if(snp_in_any_mask(k)) {
+        remeta_snplist.push_back(snpinfo[ setinfo.snp_indices[start + k] ].ID);
+      }
+    }
   }
 
   // update each mask 

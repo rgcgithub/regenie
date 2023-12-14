@@ -337,6 +337,10 @@ struct param {
   std::string forced_MAC_snpfile;
   double forced_MAC = -1;
 
+  // for use with remeta
+  bool remeta_save_ld = false;
+  double remeta_ld_spr = 0.01;
+
   // snp sets (masks/joint tests)
   bool snp_set = false; 
   bool build_mask = false; 
