@@ -2137,7 +2137,7 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 }
 
 
-std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden) {
+std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden, const double& skat_var) {
 
   std::ostringstream buffer;
   bool print_beta = test_pass && (se>=0);
@@ -2221,7 +2221,8 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
   // score test statistic 
   if(score != params->missing_value_double) infoCol.push_back( "SCORE=" + to_string(score) );
-  if(cal_factor != -1) infoCol.push_back( "CF=" + to_string(cal_factor) );
+  if(skat_var != params->missing_value_double) infoCol.push_back("SKATV=" + to_string(skat_var*abs(cal_factor)));
+  //if(cal_factor != -1) infoCol.push_back( "CF=" + to_string(cal_factor) );
   if(cal_factor_burden != -1) infoCol.push_back( "CF_BURDEN=" + to_string(cal_factor_burden) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
