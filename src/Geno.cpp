@@ -1322,6 +1322,9 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
 
       if( tmp_str_vec.size() < 1 )
         throw "incorrectly formatted file.";
+
+      removeCarriageReturn( tmp_str_vec[0] );
+
       if( in_map(tmp_str_vec[0], params->extract_vars_order) ) 
         continue; // ignore duplicates
 
@@ -1355,6 +1358,7 @@ ArrayXb check_in_map_from_files(map <string, uint32_t>& map_ID, vector<string> c
       if( tmp_str_vec.size() < 1 )
         throw "incorrectly formatted file.";
 
+      removeCarriageReturn( tmp_str_vec[0] );
       if( in_map(tmp_str_vec[0], map_ID) ) 
         mask( map_ID[ tmp_str_vec[0] ] ) = true;
     }
@@ -1385,6 +1389,7 @@ ArrayXb check_in_map_from_files_IDs(vector<string> const& file_list, struct para
       if( tmp_str_vec.size() < 2 )
         throw "incorrectly formatted file.";
 
+      removeCarriageReturn( tmp_str_vec[1] );
       person = getIndivIndex(tmp_str_vec[0], tmp_str_vec[1], params, sout);
       if(!person.is_found) continue;
       mask(person.index) = true;
@@ -1435,6 +1440,7 @@ void check_ld_list(map <string, uint32_t>& map_ID, struct in_files* files, struc
       if( tmp_str_vec.size() < 3 )
         throw "incorrectly formatted file (fewer than 3 entries)";
       // store gene name for extraction
+      removeCarriageReturn( tmp_str_vec[2] );
       set_keep_names.push_back( tmp_str_vec[2] );
 
     } else throw "unrecognized entry in first column (=" + tmp_str_vec[0] + "). Should be sv/mask";
@@ -1445,6 +1451,7 @@ void check_ld_list(map <string, uint32_t>& map_ID, struct in_files* files, struc
   params->keep_sets = params->set_select_list = set_keep_names.size() > 0;
   if(params->keep_sets)
     files->file_sets_include = {print_csv(set_keep_names)};
+  if(set_keep_names.size() == 0) params->build_mask = false;
 
   myfile.closeFile();
 }
@@ -3453,6 +3460,7 @@ void read_anno_cat(const struct in_files* files, struct param* params, map<strin
   while (myfile.readLine(line)) {
 
     new_anno.id = null_cat;
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ,");
 
     if( tmp_str_vec.size() != 2 )
@@ -3524,6 +3532,7 @@ void read_anno(struct param* params, const struct in_files* files, struct filter
     ainfo.id = null_id;
     ainfo.regionid = null_region;
 
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ,");
     if(lineread == 0) {
       // for LOVO with region
@@ -3667,6 +3676,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
 
   // check if there is a header line
   myfile.readLine(line);
+  removeCarriageReturn( line );
   tmp_str_vec = string_split(line,"\t ,");
   if( tmp_str_vec.size() < ncols_min ) 
     throw "incorrectly formatted file at line " + to_string( lineread+1 );
@@ -3698,6 +3708,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
 
   while (myfile.readLine(line)) {
 
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ,");
 
     if( tmp_str_vec.size() < ncols_min ) 
@@ -3766,6 +3777,7 @@ void read_masks(const struct in_files* files, struct param* params, map<string, 
     id = 0ULL;
     if(params->check_mask_files) anno_problem.resize(0);
 
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ,");
     ncat = tmp_str_vec.size() - 1;
 

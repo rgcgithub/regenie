@@ -147,7 +147,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
   sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
   fClass.openForRead(files->pheno_file, sout);
   fClass.readLine(line);
-  check_str(line); // remove carriage returns at the end of line if any
+  removeCarriageReturn(line); // remove carriage returns at the end of line if any
 
   // check that FID and IID are first two entries in header
   tmp_str_vec = string_split(line,"\t ");
@@ -306,7 +306,7 @@ void tpheno_read(struct param* params, struct in_files* files, struct filter* fi
   sout << left << std::setw(20) << " * phenotypes" << ": [" << files->pheno_file << "] ";
   fClass.openForRead(files->pheno_file, sout);
   fClass.readLine(line);
-  check_str(line); // remove carriage returns at the end of line if any
+  removeCarriageReturn(line); // remove carriage returns at the end of line if any
   header = string_split(line,"\t ");
 
   // parse first line
@@ -514,7 +514,7 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
   sout << left << std::setw(20) << " * covariates" << ": [" << files->cov_file << "] " << flush;
   fClass.openForRead(files->cov_file, sout);
   fClass.readLine(line);
-  check_str(line); // remove carriage returns at the end of line if any
+  removeCarriageReturn(line); // remove carriage returns at the end of line if any
 
   // check header
   tmp_str_vec = string_split(line,"\t ");
@@ -1704,14 +1704,6 @@ void rescale_mat(Ref<MatrixXd> mat, struct param const* params){
 
     // scale
     mat.array().rowwise() /= scf.matrix().transpose().array();
-
-}
-
-void check_str(string& mystring ){
-
-  // check there are no '\r' at the end
-  if( !mystring.empty() && mystring[mystring.size() - 1] == '\r' )
-    mystring.erase(mystring.size() - 1);
 
 }
 

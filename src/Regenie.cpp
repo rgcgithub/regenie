@@ -1680,6 +1680,12 @@ std::string print_sv(const std::vector<T>& vlist, const string& delim)
   return buffer.str();
 }
 
+void removeCarriageReturn(std::string& str) {
+  if (!str.empty() && str.back() == '\r') {
+    str.pop_back();
+  }
+}
+
 Eigen::ArrayXi get_true_indices(const Ref<const ArrayXb>&  bool_arr){
 
   ArrayXi v_indices ( bool_arr.count() );

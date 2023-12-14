@@ -510,6 +510,7 @@ std::string print_csv(const std::vector<std::string>&);
 std::string print_scsv(const std::vector<std::string>&);
 template <typename T>
 std::string print_sv(const std::vector<T>&,const std::string&);
+void removeCarriageReturn(std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
 void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
