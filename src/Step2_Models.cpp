@@ -1071,6 +1071,8 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
       break;
     }
     if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << mod_score.abs().maxCoeff() << "\n";
+    // to catch convergence failure sooner
+    if( (niter_cur > 50) && ((mod_score.abs().maxCoeff() > 1000) || (betavec.abs().maxCoeff() > 1e12)) ) return false;
 
     // fit unpenalized logistic on transformed Y
     niter_log = 0;
