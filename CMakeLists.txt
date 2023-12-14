@@ -1,8 +1,8 @@
 # For Intel MKL, set MKLROOT=<MKL_path> when running cmake
 #   e.g. MKLROOT=/opt/mkl/ cmake -S regenie_dir/ -B regenie_dir/build/
-# For OpenBLAS, set OPENBLAS_ROOT=<OpenBLAS_path> when running cmake 
+# For OpenBLAS, set OPENBLAS_ROOT=<OpenBLAS_path> when running cmake
 #   note: it also requires lapacke library
-# For static compilation on Linux systems, set STATIC=1 when running cmake 
+# For static compilation on Linux systems, set STATIC=1 when running cmake
 #   -> this excludes GLIBC
 
 
@@ -44,13 +44,13 @@ else()
 endif()
 
 # check for static compilation
-if($ENV{STATIC}) 
+if($ENV{STATIC})
   set(BUILD_STATIC ON CACHE INTERNAL "Static compilation")
   message( STATUS "Static compilation mode")
 endif()
 
 # check Boost IOStreams
-if($ENV{HAS_BOOST_IOSTREAM}) 
+if($ENV{HAS_BOOST_IOSTREAM})
   set(HAS_BOOST_IOSTREAM 1 CACHE INTERNAL "Add Boost IO")
   set(RG_VERSION "${RG_VERSION}.gz" CACHE INTERNAL "Update version")
 else()
@@ -64,6 +64,15 @@ if(NOT "$ENV{MKLROOT}" STREQUAL "")
     message( FATAL_ERROR "Specified MKL library directory '${MKLROOT}' does not exist")
   endif()
   message( STATUS "Will compile with Intel MKL library")
+endif()
+
+# check HTSlib
+if(NOT "$ENV{HTSLIB_PATH}" STREQUAL "")
+  set(HTSLIB_PATH "$ENV{HTSLIB_PATH}" CACHE INTERNAL "Set HTSlib library path")
+  if (NOT EXISTS ${HTSLIB_PATH})
+    message( FATAL_ERROR "Specified HTSlib library directory '${HTSLIB_PATH}' does not exist")
+  endif()
+  message( STATUS "Will compile with HTSlib")
 endif()
 
 # check OpenBLAS
@@ -84,8 +93,8 @@ set(Boost_USE_DEBUG_LIBS     OFF)
 set(Boost_USE_MULTITHREADED  ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 
-# list each file specifically 
-add_executable(regenie 
+# list each file specifically
+add_executable(regenie
   ${CMAKE_SOURCE_DIR}/src/Data.cpp
   ${CMAKE_SOURCE_DIR}/src/Files.cpp
   ${CMAKE_SOURCE_DIR}/src/Geno.cpp
@@ -171,8 +180,25 @@ target_link_libraries(regenie PRIVATE ${PGEN_PATH}/pgenlib.a)
 target_include_directories(regenie PRIVATE ${PGEN_PATH} ${PGEN_PATH}/simde/ ${PGEN_PATH}/include/)
 add_dependencies(regenie pgenlib)
 
+# REMETA library
+if(EXISTS ${HTSLIB_PATH})
+  set(REMETA_PATH "${EXTERN_LIBS_PATH}/remeta")
+  add_custom_target(
+     remeta
+     COMMAND make HTSLIB_PATH=${HTSLIB_PATH}
+     WORKING_DIRECTORY ${REMETA_PATH}
+  )
+  target_link_libraries(regenie PUBLIC ${REMETA_PATH}/remeta.a)
+  target_include_directories(regenie PUBLIC ${REMETA_PATH})
+  add_dependencies(regenie remeta)
+
+  add_definitions(-DWITH_HTSLIB)
+  find_library(HTSLIB libhts.a HINTS ${HTSLIB_PATH})
+  target_link_libraries(regenie PUBLIC ${HTSLIB})
+endif()
+
 # Intel MKL
-if(EXISTS ${MKLROOT}) 
+if(EXISTS ${MKLROOT})
   add_definitions(-DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE)
   target_include_directories(regenie PRIVATE ${MKLROOT}/include/)
   if(${BUILD_STATIC}) # specify static libs
@@ -204,7 +230,7 @@ target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/LBFGSpp/include/)
 target_include_directories(regenie PRIVATE ${EXTERN_LIBS_PATH}/eigen-3.4.0/)
 
 # Boost IO
-if(${HAS_BOOST_IOSTREAM}) 
+if(${HAS_BOOST_IOSTREAM})
   if("${UNAME_S}" STREQUAL "Darwin")
     find_library(BOOST_LIB_IO libboost_iostreams libboost_iostreams.a REQUIRED)
     target_link_libraries(regenie PRIVATE ${BOOST_LIB_IO})
@@ -220,14 +246,23 @@ endif()
 
 # Other libraries
 find_library(ZLIB_LIBRARY libz.a z REQUIRED)
-find_library(M_LIB m REQUIRED) 
-find_library(DL_LIB dl REQUIRED) 
+find_library(M_LIB m REQUIRED)
+find_library(DL_LIB dl REQUIRED)
+find_library(BZ2_LIB libbz2.so)
+find_library(LZMA_LIB liblzma.so)
+find_library(CURL_LIB libcurl.so)
+find_library(CRYPTO_LIB libcrypto.so)
 if("${UNAME_S}" STREQUAL "Linux")
   set(GFORTRAN_LIBRARY "-lgfortran")
 elseif("${UNAME_S}" STREQUAL "Darwin")
   find_library(GFORTRAN_LIBRARY gfortran REQUIRED)
 endif()
-target_link_libraries(regenie PRIVATE ${ZLIB_LIBRARY} ${M_LIB} ${DL_LIB} ${PTHREAD_LIB} ${GFORTRAN_LIBRARY})
+target_link_libraries(
+  regenie PRIVATE
+  ${ZLIB_LIBRARY} ${M_LIB} ${DL_LIB} ${PTHREAD_LIB}
+  ${BZ2_LIB} ${LZMA_LIB}
+  ${CURL_LIB} ${CRYPTO_LIB} ${GFORTRAN_LIBRARY}
+)
 
 install(TARGETS regenie RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 message( STATUS "REGENIE v" ${RG_VERSION})
