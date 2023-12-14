@@ -122,6 +122,10 @@ void print_header(std::ostream& o){
   o << "Compiled with Boost Iostream library.\n";
 #endif
 
+#if defined(WITH_HTSLIB)
+  o << "Compiled with HTSlib.\n";
+#endif
+
   // adding BLAS/LAPACK external routines
 #if defined(WITH_MKL)
   o << "Using Intel MKL with Eigen.\n";
@@ -328,6 +332,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("mcc", "apply MCC test for quantitative traits")
     ("mcc-skew", "absolute phenotypic skewness to activate MCC [default value is 0]", cxxopts::value<double>(params->mcc_skew),"FLOAT(=0)")
     ("mcc-thr", "threshold to apply MCC if activated [default value is 0.01]", cxxopts::value<double>(params->mcc_thr),"FLOAT(=0.01)")
+    ("remeta-save-ld", "store SKAT matrices for use with remeta")
+    ("remeta-ld-spr", "sparsity threshold for SKAT matrices", cxxopts::value<double>(params->remeta_ld_spr),"FLOAT(=0.01)")
     ("multiphen", "run MultiPhen test")
     ("multiphen-thr", "threshold to apply LRT for MultiPhen [default value is 0.01]", cxxopts::value<double>(params->multiphen_thr),"FLOAT(=0.001)")
     ("multiphen-test", "type of MultiPhen test", cxxopts::value<std::string>(params->multiphen_test),"STRING")
@@ -1287,6 +1293,20 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       }
     }
     if(vm.count("lovo-snplist")) check_file(params->masks_loo_snpfile, "lovo-snplist");
+
+    if(vm.count("remeta-save-ld") > 0) {
+  #ifndef WITH_HTSLIB
+    throw "--remeta-save-ld option requires compilation with HTSlib";
+  #else
+      params->remeta_save_ld = true;
+      if(vm.count("remeta-ld-spr") > 0) {
+        params->remeta_ld_spr = vm["remeta-ld-spr"].as<double>();
+      }
+      if(params->skat_collapse_MAC > 0) {
+        throw "--remeta-save-ld option requires --vc-MACthr 0";
+      }
+  #endif
+    }
 
     check_seed(params->rng_seed, vm.count("seed"));
     print_args(arguments, valid_args, sout);

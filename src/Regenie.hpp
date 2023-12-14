@@ -55,6 +55,10 @@
 #include "mkl_lapacke.h"
 #endif
 
+#ifdef WITH_HTSLIB
+#include "remeta/regenie_ld_matrix_writer.hpp"
+#endif
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
@@ -462,6 +466,21 @@ struct filter {
   std::vector<std::vector<Eigen::ArrayXi>> case_control_indices; //case-control indices across traits
 
 };
+
+struct remeta_sumstat_writer {
+
+#ifdef WITH_HTSLIB
+  // one matrix per trait
+  std::vector<RegenieLDMatrixWriter> skat_matrix_writers;
+  // Placeholders for the list of variants in the SKAT matrix and
+  // the gene name for the SKAT matrix. These get updated as we scan
+  // through each gene.
+  std::vector<std::string> *skat_snplist;
+  std::string *gene_name;
+  double sparsity_threshold;
+#endif
+};
+
 
 void start_log(const std::string&,MeasureTime*,mstream&);
 template <typename T> 
