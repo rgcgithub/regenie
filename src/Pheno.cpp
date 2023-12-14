@@ -970,6 +970,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   }
 
   // orthonormal basis (save number of lin. indep. covars.)
+  if(params->print_cov_betas) pheno_data->new_cov_raw = pheno_data->new_cov;
   params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
   if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
@@ -1026,7 +1027,15 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   if( !params->getCorMat && (!params->test_mode || (params->trait_mode==0)) ) 
     residualize_phenotypes(params, pheno_data, files->pheno_names, sout);
 
-  if(params->print_cov_betas) print_cov_betas(params, files, pheno_data, sout);
+  if(params->print_cov_betas) {
+    // get covariate orthonormal basis and refit null models (more stable)
+    if(params->trait_mode){
+      params->ncov = getBasis(pheno_data->new_cov_raw, params);
+      pheno_data->new_cov = pheno_data->new_cov_raw;
+      pheno_data->new_cov_raw.resize(0,0);
+    }
+    print_cov_betas(params, files, sout);
+  }
 
   // if using step 1 preds as covariate
   check_cov_blup(pheno_data, params);
@@ -1429,7 +1438,7 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
 
 }
 
-void print_cov_betas(struct param* params, struct in_files const* files, struct phenodt* pheno_data, mstream& sout){
+void print_cov_betas(struct param* params, struct in_files const* files, mstream& sout){
 
   sout << " * covariate effects written to file : [ " << files->out_file << "_cov_betas.txt ]";
 
