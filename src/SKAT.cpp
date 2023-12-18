@@ -1645,6 +1645,7 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, const boo
   double val = tstar * cvals(3) + cvals(2);
 
   if(val < 0) return -1;
+  if(cvals(4) < 0){cerr << "Liu Chisq param<0!\n"; return -1;}
 
   // 0 ncp gives strange behavior with non_central_chi_squared (returns -cdf instead of 1-cdf)
   if(cvals(5) == 0) pv = cdf(complement(chi_squared(cvals(4)), val));
@@ -1730,6 +1731,7 @@ void get_cvals(int const& irho, Ref<MatrixXd> cvals, const Ref<const VectorXd>& 
   cvals(irho, 1) = lambdas.squaredNorm();
   cvals(irho, 2) = lambdas.array().pow(3).sum();
   cvals(irho, 3) = lambdas.array().pow(4).sum();
+  if(cvals(irho, 1) == 0) cerr << "WARNING: cvals(1) = 0!\n";
   s1 = cvals(irho, 2) / cvals(irho, 1) / sqrt(cvals(irho, 1));
   s1_sq = s1 * s1;
   s2 = cvals(irho, 3) / (cvals(irho, 1) * cvals(irho, 1));
@@ -1752,6 +1754,7 @@ void get_cvals(Ref<ArrayXd> cvals, const Ref<const VectorXd>& lambdas){
   c2 = lambdas.squaredNorm();
   c3 = lambdas.array().pow(3).sum();
   c4 = lambdas.array().pow(4).sum();
+  if(c2 == 0) cerr << "WARNING: c2 = 0!\n";
   s1 = c3 / c2 / sqrt(c2);
   s1_sq = s1 * s1;
   s2 = c4 / (c2 * c2);
