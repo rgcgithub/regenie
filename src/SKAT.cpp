@@ -1622,11 +1622,16 @@ double Kpp_lambda (const double& t, const Ref<const ArrayXd>& lambdas){
 
 double get_spa_pv(const double& root,const double& q, const Ref<const ArrayXd>& lambdas){
 
-  double u,w,r;
+  double u,w,r, kl;
   normal nd(0,1);
 
-  w = sgn(root) * sqrt( 2 * (q * root - K_lambda(root, lambdas)));
-  u = root * sqrt(Kpp_lambda(root, lambdas));
+  kl = K_lambda(root, lambdas);
+  if((q * root) < kl) {cerr << "WARNING: could not compute SPA p-value!\n"; return -1;}
+  w = sgn(root) * sqrt( 2 * (q * root - kl));
+  if(w == 0) {cerr << "WARNING: could not compute SPA p-value (w=0)!\n"; return -1;}
+  kl = Kpp_lambda(root, lambdas);
+  if(kl < 0) {cerr << "WARNING: could not compute SPA p-value (K''(r)<0)!\n"; return -1;}
+  u = root * sqrt(kl);
   if( fabs(u) < 1e-4 ) return -1;
 
   r = w + log(u/w) / w;
