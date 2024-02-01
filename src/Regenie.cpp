@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2023 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2024 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -116,7 +116,7 @@ void print_header(std::ostream& o){
     left << std::setw(total_width - out_width) << vnumber << "|" << endl;
   o << left << std::setw(14) << " " << "|" << std::string(total_width, '=')<< "|\n\n";
 
-  o << "Copyright (c) 2020-2023 Joelle Mbatchou, Andrey Ziyatdinov and Jonathan Marchini." << endl;
+  o << "Copyright (c) 2020-2024 Joelle Mbatchou, Andrey Ziyatdinov and Jonathan Marchini." << endl;
   o << "Distributed under the MIT License.\n";
 #ifdef HAS_BOOST_IOSTREAM
   o << "Compiled with Boost Iostream library.\n";
