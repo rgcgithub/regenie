@@ -337,12 +337,19 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("multiphen", "run MultiPhen test")
     ("multiphen-thr", "threshold to apply LRT for MultiPhen [default value is 0.01]", cxxopts::value<double>(params->multiphen_thr),"FLOAT(=0.001)")
     ("multiphen-test", "type of MultiPhen test", cxxopts::value<std::string>(params->multiphen_test),"STRING")
+    ("multiphen-optim", "type of MultiPhen optimization algorithm", cxxopts::value<std::string>(params->multiphen_optim),"STRING")
     ("multiphen-tol", "toleance level for Firth [default value is 1e-4]", cxxopts::value<double>(params->multiphen_tol),"FLOAT(=0.0001)")
     ("multiphen-trace", "trace model fitting performance for MultiPhen")
     ("multiphen-firth-mult", "Firth penalty multiplier [default value is 1]", cxxopts::value<double>(params->multiphen_firth_mult),"FLOAT(=1.0)")
     ("multiphen-verbose", "MultiPhen verbose level", cxxopts::value<int>(params->multiphen_verbose),"INT(=0)")
     ("multiphen-maxstep", "Maximum step in IRLS for MultiPhen [default value is 100]", cxxopts::value<double>(params->multiphen_maxstep),"FLOAT(=25.0)")
-    ("multiphen-approx-offset", "approximate Firth for MultiPhen")
+    ("multiphen-approx-offset", "MAC to disable MultiPhen offset approximation", cxxopts::value<int>(params->multiphen_approx_offset),"INT(=-1)")
+    ("multiphen-maxit", "MultiPhen maximum number of IRLS iterations", cxxopts::value<int>(params->multiphen_maxit),"INT(=150)")
+    ("multiphen-maxit2", "MultiPhen maximum number of step-halving IRLS iterations", cxxopts::value<int>(params->multiphen_maxit2),"INT(=5)")
+    ("multiphen-strict", "strict mode for MultiPhen IRLS")
+    ("multiphen-pseudo-stophalf", "Threshold to stop step-halving in pseudo algorithm [default value is 0.0]", cxxopts::value<double>(params->multiphen_pseudo_stophalf),"FLOAT(=0.0)")
+    ("multiphen-reset-start", "reset start values when failed convergence in MultiPhen")
+    ("multiphen-offset", "offset mode for MultiPhen", cxxopts::value<std::string>(params->multiphen_offset),"STRING")
     ;
 
   try
@@ -459,7 +466,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("mcc") ) params->mcc_test = true;
     if( vm.count("multiphen") ) params->multiphen = true;
     if( vm.count("multiphen-trace") ) params->multiphen_trace = true;
-    if( vm.count("multiphen-firth-approx") ) params->multiphen_approx_offset = true;
+    if( vm.count("multiphen-strict") ) params->multiphen_strict = true;
+    if( vm.count("multiphen-reset-start") ) params->multiphen_reset_start = true;
+    if( vm.count("multiphen-strict") ) params->multiphen_strict = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;

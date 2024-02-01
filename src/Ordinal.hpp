@@ -27,15 +27,6 @@
 #ifndef ORDINAL_H
 #define ORDINAL_H
 
-#include <iostream>
-#include <vector>
-#include <set>
-#include <algorithm>
-
-#include <boost/math/distributions.hpp>
-
-#include "Eigen/Dense"
-
 //-------------------
 // Class FitOrdinal
 //-------------------
@@ -43,11 +34,14 @@
 class FitOrdinal 
 {
   public:
+    unsigned int cnt_fit;
     unsigned int verbose;
     bool executed, converged;
     bool trace;
-    unsigned int it, it2, maxit, maxit2, cnt_updates;
-    double tol;
+    unsigned int it, it2, maxit, maxit2, maxit3, cnt_updates;
+    bool strict;
+    double stop_value, tol;
+    double pseudo_stophalf;
 
     bool check_step;
     double max_step;
@@ -58,6 +52,7 @@ class FitOrdinal
     Eigen::VectorXd yo; // offset vector (linear predictor Xb)
     Eigen::VectorXd yo_int; // offset intercepts for Multinomial model
     bool exclude_intercepts; // exclude intercepts, e.g., offset is given
+    bool exclude_intercepts_offset; // exclude intercepts when applying offset
     Eigen::VectorXd bhat;
     double loglik;
 
@@ -66,8 +61,8 @@ class FitOrdinal
                    
     std::string response; // response type = [binom, multinom]
     std::string model; // model = [POM: Proportional Odds Model, ACL: Adjacent Category Logit]
-    std::string optim; // optimization algorithm = [FisherScoring, WeightHalving]
-    bool firth_binom; // Firth correction
+    std::string optim; // optimization algorithm = [FisherScoring, WeightHalving, Pseudo]
+    bool firth_binom, firth_multinom; // Firth correction
     double firth_mult;
 
     unsigned int N, Neff; // sample size
@@ -98,6 +93,9 @@ class FitOrdinal
     // binomial
     Eigen::VectorXd mub, wb;
     Eigen::MatrixXd XtW;
+    // firth
+    Eigen::VectorXd ystar;
+    Eigen::MatrixXd Ystar;
 
     void setup_defaults();
     void check_setup_model();
@@ -114,26 +112,33 @@ class FitOrdinal
 
     // optimization functions
     bool stop_criterion();
-    void update_par(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
+    bool update_par(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & , bool pseudo = false);
     bool optimize(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & X);
     bool optimize_FisherScoring(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & X);
+    bool optimize_FisherScoringPseudo(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & X);
     bool optimize_WeightHalving(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & X);
+    bool optimize_WeightHalvingPseudo(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & X);
     void update_fit();
 
     // multinom (POM only)
     void fit_multinom_pom(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & );
     void setup_start_multinom();
     void setup_par_multinom();
-    void update_par_multinom(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
+    bool update_par_multinom(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & , bool pseudo = false);
     double loglik_multinom(const VectorXb &, const MatrixXb &);
+    double loglik_multinom_firth(const VectorXb &, const MatrixXb &, const Eigen::LLT<Eigen::MatrixXd> &, bool add = false, double base_loglik = 0.0);
+  /* cur_loglik = firth_multinom ? loglik_multinom_firth(Mask, Y, cur_Info) : loglik_multinom(Mask, Y); */
+  /* cur_loglik =  loglik_multinom(Mask, Y); */
+    double loglik_multinom_firth(const VectorXb &, const MatrixXb &, const Eigen::MatrixXd &);
     /* void update_fit_multinom(FitOrdinal & ); */
 
     // binom (logistic regression)
     void fit_binom(const VectorXb &, const MatrixXb &, const Eigen::Ref<const Eigen::MatrixXd> &);
     void setup_start_binom();
     void setup_par_binom();
-    void update_par_binom(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
-    void update_par_binom_firth(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
+    bool update_par_binom(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
+    bool update_par_binom_firth(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
+    bool update_par_binom_pseudo(const VectorXb & , const MatrixXb & , const Eigen::Ref<const Eigen::MatrixXd> & , const Eigen::VectorXd & );
     double loglik_binom(const VectorXb &, const MatrixXb &);
     double loglik_binom_firth(const VectorXb &, const MatrixXb &, const Eigen::LLT<Eigen::MatrixXd> &);
 
@@ -153,10 +158,12 @@ class Ordinal
     std::string response; // response type = [binom, multinom]
     std::string model; // model = [POM: Proportional Odds Model, ACL: Adjacent Category Logit]
     std::string optim; // optimization algorithm = [FisherScoring, WeightHalving]
-    bool firth_binom; // Firth correction
+    bool firth_binom, firth_multinom; // Firth correction
 
-    unsigned int it, it2, maxit, maxit2;
+    unsigned int it, it2, maxit, maxit2, maxit3;
+    bool strict;
     double tol;
+    double pseudo_stophalf;
     bool converged;
 
     bool check_step;
@@ -245,29 +252,36 @@ class Ordinal
 class MultiPhen 
 {
   public:
+    unsigned int cnt_fit; // fit index/counter
     unsigned int verbose; // verbose level
     std::string response; // response type = [binom, multinom]
     std::string model; // model = [POM: Proportional Odds Model, ACL: Adjacent Category Logit]
     std::string optim; // optimization algorithm = [FisherScoring, WeightHalving]
-    bool firth_binom; // Firth correction
+    bool firth_binom, firth_multinom; // Firth correction
     double firth_mult; 
-    bool reuse_start;
+    bool reuse_start, reset_start;
     bool approx_offset;
+    int mac_approx_offset;
     Eigen::VectorXd b0;
     Eigen::VectorXd yo;
     Eigen::VectorXd yo_int; 
+    Eigen::VectorXd w0;
+    Eigen::MatrixXd Yres0;
 
-    unsigned int maxit, maxit2; // maximum number of interations in Outer/Inner loops of the IRLS
+    unsigned int maxit, maxit2, maxit3; // maximum number of interations in Outer/Inner loops of the IRLS
+    bool strict;
     double tol;
+    double pseudo_stophalf;
     bool check_step;
     double max_step;
+    std::string offset_mode;
 
     bool trace; // trace updates
     unsigned int it, cnt_updates;
                           
     unsigned int N, Neff; // sample size
     VectorXb Mask; // masked samples = samples with missing values 
-    unsigned int Nx, Nx1, Ny, Ny1; // columns in XY matrix
+    unsigned int Nx, Nx1, Ny, Ny1, Ny21; // columns in XY matrix
     /* unsigned int Ncov, Nb; // number of covariates in X & number of covariates + all intercepts */
     /* unsigned int  Ncov0, Ncov1; // number of last covariates in X: the effects are fixed to zero */
                     
@@ -275,28 +289,34 @@ class MultiPhen
 
     unsigned int ncat, ncat1, ncat1sq; // number of categories 
     Eigen::VectorXi Ncat;
+    int Ncat_minor;
 
     MatrixXb Ym; // N x ncat matrix: Y[i,j] = sample i is in j category. Response for multinomial model.
     Eigen::VectorXd yb;
 
-    bool set_x;
+    bool set_x, set_y;
 
     bool executed, converged;
     double pval_test;
     double pval_thr;
     std::string test; // test type = [none, nocov_score, nocov_addcov]
+    Eigen::VectorXd bhat_y;
 
     void setup_x(const VectorXb& , const Eigen::MatrixXd& , unsigned int , unsigned int , bool , bool );
     void setup_y(const Eigen::VectorXd & );
+    void setup_approx_offset();
     void reset_model();
 
     FitOrdinal setup_fit(bool , bool , bool use_offset = false);
-    FitOrdinal fit(const Eigen::Ref<const Eigen::MatrixXd> & , bool , bool );
+    FitOrdinal fit(const Eigen::Ref<const Eigen::MatrixXd> & , bool , bool , bool use_res = false);
 
     void run(const Eigen::VectorXd & , const Eigen::MatrixXd & , unsigned int , unsigned int );
+    void run_test_offset(const Eigen::Ref<const Eigen::MatrixXd> &);
+    void run_test_qt(const Eigen::Ref<const Eigen::MatrixXd> &);
     void run_test_score(const Eigen::Ref<const Eigen::MatrixXd> & , bool );
     void run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & , bool );
     void run_test_addcov(const Eigen::Ref<const Eigen::MatrixXd> & );
+    void run_test_add_offset(const Eigen::Ref<const Eigen::MatrixXd> & );
 
     void run0(const Eigen::VectorXi & , const Eigen::MatrixXd& , const Eigen::MatrixXd& , bool );
 
@@ -325,5 +345,5 @@ class MultiPhen
     MultiPhen(unsigned int );
     ~MultiPhen() { };
 };
-
+ 
 #endif

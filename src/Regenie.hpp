@@ -29,6 +29,7 @@
 
 
 #include <vector>
+#include <set>
 #include <string>
 #include <iostream>
 #include <algorithm>
@@ -394,13 +395,20 @@ struct param {
   // MultiPhen test
   bool multiphen = false;
   double multiphen_thr = 0.001; // significance p-value threshold below which to use LRT 
-  std::string multiphen_test = "nocov_score_addcov"; // type of MultiPhen test
-  double multiphen_tol = 1e-4; // tolerance level for MultiPhen
+  std::string multiphen_test = "nocov_score_offset"; // type of MultiPhen test
+  std::string multiphen_optim = "WeightHalvingPseudo"; // type of MultiPhen optimization algo.
+  double multiphen_tol = 2.5e-4; // tolerance level for MultiPhen
   bool multiphen_trace = false; // trace model fitting performance for MultiPhen
   double multiphen_firth_mult = 1.0; // multiplier for the Firth penalty
   int multiphen_verbose = 0; // multiphen verbose level
-  double multiphen_maxstep = 100.0; // max step
-  bool multiphen_approx_offset = false; // approximate Firth
+  double multiphen_maxstep = 200.0; // max step
+  int multiphen_approx_offset = -1; // MAC when to not use offset for the full MultiPhen model 
+  int multiphen_maxit = 150; // maximum number of IRLS iterations 
+  int multiphen_maxit2 = 5; // maximum number of step-halving IRLS iterations 
+  bool multiphen_strict = false; // strict mode for MultiPhen IRLS
+  double multiphen_pseudo_stophalf = 0.0; // stop step-halving in pseudo model fitting algo.
+  bool multiphen_reset_start = false; // reset start when convergence failure & reusing start
+  std::string multiphen_offset = "offset_int";
 
   // ld computation
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;

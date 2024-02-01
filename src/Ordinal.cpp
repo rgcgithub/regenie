@@ -40,8 +40,11 @@ using namespace std;
 
 Eigen::MatrixXd orth_matrix(const Eigen::MatrixXd & , const MatrixXb &);
 void exp_matrix(Eigen::MatrixXd &);
+void exp_matrix_ord(Eigen::MatrixXd &);
 void exp_vector(Eigen::VectorXd &);
-
+Eigen::VectorXd dlog_vector(const Eigen::VectorXd & );
+Eigen::MatrixXd dlog_matrix(const Eigen::MatrixXd & );
+bool check_nan(double );
 
 //-------------------
 // Class MultiPhen
@@ -50,18 +53,21 @@ void exp_vector(Eigen::VectorXd &);
 void MultiPhen::setup_defaults()
 {
   // settings
+  cnt_fit = 0;
   verbose = 0;
   response = "unknown";
   optim = "WeightHalving";
-  firth_binom = false;
+  firth_binom = false; firth_multinom = false;
   firth_mult = 1.0;
-  reuse_start = false;
+  reuse_start = false; reset_start = false;
   approx_offset = false;
-  maxit = 150; maxit2 = 10; 
-  tol = 1e-4;
+  mac_approx_offset = 0;
+  offset_mode = "offset";
+  maxit = 150; maxit2 = 10; maxit3 = 10; strict = false;
+  tol = 1e-4; pseudo_stophalf = 0.0;
   check_step = true; max_step = 10.0;
   // statuses
-  set_x = false;
+  set_x = false; set_y = false;
   // data dimenstions
   N = 0; Neff = 0; // sample size
   /* Ncov = 0, Nb = 0, Ncov0 = 0; Ncov1 = 0; // number of covariates */ 
@@ -105,11 +111,11 @@ FitOrdinal MultiPhen::setup_fit(bool inc_cov, bool inc_phen, bool use_offset)
   fit.response = response; // response type = [binom, multinom]
   fit.model = model; // model = [POM: Proportional Odds Model, ACL: Adjacent Category Logit]
   fit.optim = optim; // optimization algorithm = [FisherScoring, WeightHalving]
-  fit.firth_binom = firth_binom; // Firth correction
+  fit.firth_binom = firth_binom; fit.firth_multinom = firth_multinom; // Firth correction
   fit.firth_mult = firth_mult; 
       
-  fit.maxit = maxit; fit.maxit2 = maxit2; 
-  fit.tol = tol;
+  fit.maxit = maxit; fit.maxit2 = maxit2; fit.maxit3 = maxit3; fit.strict = strict;
+  fit.tol = tol; fit.pseudo_stophalf = pseudo_stophalf;
 
   fit.check_step = check_step;
   fit.max_step = max_step;
@@ -155,33 +161,46 @@ FitOrdinal MultiPhen::setup_fit(bool inc_cov, bool inc_phen, bool use_offset)
   fit.trace = trace;
   fit.it = 0; fit.it2 = 0; fit.cnt_updates = 0;
 
+  fit.cnt_fit = cnt_fit++;
+
   return(fit);
 }
 
 void MultiPhen::run(const Eigen::VectorXd & g, 
-  const Eigen::MatrixXd& XY, unsigned int n_cov, unsigned int n_phen)
+  const Eigen::MatrixXd& XYR, unsigned int n_cov, unsigned int n_phen)
 {
-  // check if XY is set up
+  reset_model();
+
+  // check if XYR is set up
   if(!set_x) throw std::runtime_error("run: set_x is false");
   // set y
   setup_y(g); // -> Ym, yb
+  if(!set_y) return; // early stop (example #cat = 1 for imputed variant due to rounding)
+  setup_approx_offset(); // approx_offset
+  // print info
+  if(verbose) cout << "MultiPhen: Nx = " << Nx << " Ny = " << Ny << endl;
+
   // test
   if(test == "none") {
     reset_model();
     // do nothing
   } else if(test == "cov_score_it1") {
     maxit = 1; optim = "FisherScoring";
-    run_test_score(XY, true); // inc_cov = false
+    run_test_score(XYR, true); // inc_cov = false
   } else if(test == "nocov_score") {
-    run_test_score(XY, false); // inc_cov = false
+    run_test_score(XYR, false); // inc_cov = false
   } else if(test == "cov_score") {
-    run_test_score(XY, true); // inc_cov = true
+    run_test_score(XYR, true); // inc_cov = true
   } else if(test == "nocov_lrt") {
-    run_test_lrt(XY, false); // inc_cov = false
+    run_test_lrt(XYR, false); // inc_cov = false
   } else if(test == "cov_lrt") {
-    run_test_lrt(XY, true); // inc_cov = true
+    run_test_lrt(XYR, true); // inc_cov = true
+  } else if(test == "offset") {
+    run_test_offset(XYR);
   } else if(test == "nocov_score_addcov") {
-    run_test_addcov(XY);
+    run_test_addcov(XYR);
+  } else if(test == "nocov_score_offset") {
+    run_test_add_offset(XYR);
   } else {
     throw std::runtime_error("run: unknown test");
   }
@@ -191,9 +210,9 @@ void MultiPhen::run0(const Eigen::VectorXi & g, const Eigen::MatrixXd& X, const 
 {
   // set up Ordinal model (no Firth)
   Ordinal ord;
-  ord.optim = optim; ord.tol = tol; ord.maxit = maxit; ord.maxit2 = maxit2;
+  ord.optim = optim; ord.tol = tol; ord.pseudo_stophalf = pseudo_stophalf; ord.maxit = maxit; ord.maxit2 = maxit2; ord.maxit3 = maxit3; ord.strict = strict;
   ord.check_step = check_step; ord.max_step = max_step;
-  ord.firth_binom = false;
+  ord.firth_binom = false; 
 
   if(score_lrt) { // Score test
     executed = true; converged = false; pval_test = -1.0;
@@ -230,9 +249,11 @@ void MultiPhen::run0(const Eigen::VectorXi & g, const Eigen::MatrixXd& X, const 
   }
 }
 
-// XY = [Intercept, X, Y, Inercept]
-FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc_cov, bool inc_phen)
+// XYR = [Intercept, X, Y, Inercept, R]
+FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XYR, bool inc_cov, bool inc_phen, bool use_res)
 {
+  if(use_res) throw std::runtime_error("use_res is not implemented yet");
+
   // initialize defaults settings 
   bool inc_phen_null = false, inc_phen_firth = inc_phen;
   bool use_offset = (inc_phen && approx_offset);
@@ -240,6 +261,11 @@ FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc
   // update settings for Binom: no firth / firth
   if(response == "binom") {
     inc_phen_null = firth_binom && !inc_phen && !approx_offset;
+    inc_phen_firth = inc_phen_null ? true : inc_phen;
+  } 
+  // update settings for Multinom: no firth / firth
+  if(response == "multinom") {
+    inc_phen_null = firth_multinom && !inc_phen && !approx_offset;
     inc_phen_firth = inc_phen_null ? true : inc_phen;
   } 
   // create a fit object
@@ -259,6 +285,13 @@ FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc
     bool last0 = !reverse_last;
     if(inc_phen_null) fit.setup_ncov0(Ny, last0, false); // preproc_cov = false
   }
+  // refine fit for Multinom only
+  if(response == "multinom") {
+    // constraint some par. to zero?
+    bool reverse_last = firth_multinom && !inc_cov && inc_phen_firth;
+    bool last0 = !reverse_last;
+    if(inc_phen_null) fit.setup_ncov0(Ny, last0, false); // preproc_cov = false
+  }
 
   // store offset?
   if(!inc_phen && approx_offset) fit.store_offset = true;
@@ -269,31 +302,33 @@ FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc
     else throw std::runtime_error("unknown response");
   }
 
-  // do model fitting & control the columns in XY passed
+  // do model fitting & control the columns in XYR passed
   if(response == "binom") {
     if(use_offset) { 
-      if(inc_phen_firth) fit.fit_binom(Mask, Ym, XY.rightCols(Ny1).leftCols(Ny)); // matrix of phenotypes Y 
-      else throw std::runtime_error("use offset for the null model");
+      if(inc_phen_firth) {
+        /* fit.fit_binom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny)); // matrix of phenotypes Y */ 
+        fit.fit_binom(Mask, Ym, Yres0); // matrix of phenotypes Y 
+      } else throw std::runtime_error("use offset for the null model");
     } else { 
       if(inc_cov) {
-        if(inc_phen_firth) fit.fit_binom(Mask, Ym, XY.leftCols(Nx1 + Ny)); // X + Y + Intercept
-        else fit.fit_binom(Mask, Ym, XY.leftCols(Nx1)); // X + Intercept
+        if(inc_phen_firth) fit.fit_binom(Mask, Ym, XYR.leftCols(Nx1 + Ny)); // X + Y + Intercept
+        else fit.fit_binom(Mask, Ym, XYR.leftCols(Nx1)); // X + Intercept
       } else {
-        if(inc_phen_firth) fit.fit_binom(Mask, Ym, XY.rightCols(Ny1)); // matrix of phenotypes Y + Intercept
-        else fit.fit_binom(Mask, Ym, XY.leftCols(1)); // Intercept
+        if(inc_phen_firth) fit.fit_binom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny1)); // matrix of phenotypes Y + Intercept
+        else fit.fit_binom(Mask, Ym, XYR.leftCols(1)); // Intercept
       }
     }
   } else if(response == "multinom") {
     if(use_offset) {
-      if(inc_phen) fit.fit_multinom_pom(Mask, Ym, XY.rightCols(Ny1).leftCols(Ny)); // matrix of phenotypes Y 
+      if(inc_phen_firth) fit.fit_multinom_pom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny)); // matrix of phenotypes Y 
       else throw std::runtime_error("use offset for the null model");
     } else {
       if(inc_cov) {
-        if(inc_phen) fit.fit_multinom_pom(Mask, Ym, XY.leftCols(Nx1 + Ny).rightCols(Nx + Ny)); // X + Y
-        else fit.fit_multinom_pom(Mask, Ym, XY.leftCols(Nx1).rightCols(Nx)); // X
+        if(inc_phen_firth) fit.fit_multinom_pom(Mask, Ym, XYR.leftCols(Nx1 + Ny).rightCols(Nx + Ny)); // X + Y
+        else fit.fit_multinom_pom(Mask, Ym, XYR.leftCols(Nx1).rightCols(Nx)); // X
       } else {
-        if(inc_phen) fit.fit_multinom_pom(Mask, Ym, XY.rightCols(Ny1).leftCols(Ny)); // matrix of phenotypes Y 
-        else fit.fit_multinom_pom(Mask, Ym, XY.leftCols(0)); // 0 columns
+        if(inc_phen_firth) fit.fit_multinom_pom(Mask, Ym, XYR.rightCols(Ny1).leftCols(Ny)); // matrix of phenotypes Y 
+        else fit.fit_multinom_pom(Mask, Ym, XYR.leftCols(0)); // 0 columns
       }
     }
   } else {
@@ -308,34 +343,380 @@ FitOrdinal MultiPhen::fit(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc
   return(fit);
 }
 
-void MultiPhen::run_test_addcov(const Eigen::Ref<const Eigen::MatrixXd> & XY)
+void MultiPhen::run_test_addcov(const Eigen::Ref<const Eigen::MatrixXd> & XYR)
 {
-  // run score test
-  run_test_score(XY, false); // inc_cov = false
-
-
+  run_test_score(XYR, false); // inc_cov = false
   if(pval_test < pval_thr) {
-    run_test_lrt(XY, true); // inc_cov = true
+    run_test_lrt(XYR, true); // inc_cov = true
   }
 }
 
-void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc_cov)
+void MultiPhen::run_test_add_offset(const Eigen::Ref<const Eigen::MatrixXd> & XYR)
+{
+  run_test_score(XYR, false); // inc_cov = false
+  if(pval_test < pval_thr) {
+    run_test_offset(XYR);
+  }
+}
+
+void MultiPhen::run_test_offset(const Eigen::Ref<const Eigen::MatrixXd> & XYR)
+{
+  FitOrdinal null0, null, full;
+  VectorXd b0_fit;
+  double ll_null, ll_full;
+  boost::math::chi_squared dist(Ny);
+  double stat_lrt;
+  unsigned int i;
+
+  reset_model(); // reset model fit results
+                 
+  if(response == "binom") {
+    executed = true; 
+
+    // fit null model
+    null0 = setup_fit(true, false, false); // inc_cov = true, inc_phen = false, use_offset = false
+    null0.store_offset = true;
+    null0.fit_binom(Mask, Ym, XYR.leftCols(Nx1)); // covariates X + Intercept
+
+    if(trace) { cnt_updates += null0.cnt_updates; it += null0.it; }
+
+    if(!null0.converged) return;
+
+    // store offset/weights from the null model
+    yo = null0.yo;
+    yo_int = null0.yo;
+    yo_int.array() -= null0.bhat(0); // substract intercept bhat
+    w0 = null0.wb;
+
+    // residualize phenotypes
+    Yres0 = XYR.rightCols(Ny21).leftCols(Ny); // matrix of phenotypes Y 
+    ColPivHouseholderQR<MatrixXd> qrXw;
+    qrXw.compute(MatrixXd(Nx1, Nx1).setZero().selfadjointView<Lower>().rankUpdate((XYR.leftCols(Nx1).array().colwise() * w0.array().sqrt()).matrix().adjoint()));
+    Yres0 -= XYR.leftCols(Nx1).matrix() * qrXw.solve((XYR.leftCols(Nx1).array().colwise() * w0.array()).matrix().transpose() * Yres0);
+    for(i = 0; i < Yres0.cols(); i++) {
+      Yres0.col(i) = Mask.select(Yres0.col(i), 0.0);
+    }
+
+    // extract quantities from null model
+    VectorXd mub0 = yo;
+    exp_vector(mub0); 
+    mub0.array() /= (1.0 + mub0.array()); 
+
+    // fit full model
+    if(offset_mode == "offset") {
+      // full model: logit(g) = offset + Y beta
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny; full.Nb = Ny; // overwrite Ncov, Nb
+      full.setup_offset_binom(yo, false); // decrement_Nb = false
+      full.fit_binom(Mask, Ym, Yres0); // Logistic phenotype residuals
+
+      if(!full.converged) return;
+      converged = true;
+
+      /* ll_null = 0.0; */ 
+      /* ll_null += Ym.col(0).select((1.0 - mub0.array()).log(), 0.0).array().sum(); // controls */
+      /* ll_null += Ym.col(1).select(mub0.array().log(), 0.0).array().sum(); // cases */
+      ll_null = null.loglik_multinom(Mask, Ym); // depends on Y, P, Pk, Mask
+      if(firth_binom) {
+        MatrixXd null_Info = Yres0.transpose() * (Yres0.array().colwise() * w0.array()).matrix();
+        LLT<MatrixXd> llt_null(null_Info);
+        ll_null += llt_null.matrixL().toDenseMatrix().diagonal().array().log().sum();
+      }
+
+      ll_full = full.loglik;
+
+      stat_lrt = 2 * (ll_full - ll_null);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+    } else if(offset_mode == "offsetcov") {
+      if(!firth_binom) throw std::runtime_error("offsetcov for firth_binom only");
+
+      // null model: logit(g) = [offsetcov; Y] [beta0, betaY] wrt betaY = 0
+      MatrixXd Yres0_Int(N, Ny1);
+      Yres0_Int.leftCols(1) = Mask.select(yo_int, 0.0);
+      Yres0_Int.rightCols(Ny) = Yres0;
+
+      null = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      null.Ncov = Ny1; null.Nb = Ny1; // overwrite Ncov, Nb
+      null.setup_ncov0(Ny, true, false); // last0 = true, preproc_cov = false
+      null.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
+
+      if(!null.converged) return;
+
+      // full model: logit(g) = [offset; Y] beta
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny1; full.Nb = Ny1; // overwrite Ncov, Nb
+      full.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += full.cnt_updates; it += full.it; }
+
+      if(!full.converged) return;
+      converged = true;
+
+      stat_lrt = 2 * (full.loglik - null.loglik);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+    } else if(offset_mode == "offsetcov_int") {
+      if(!firth_binom) throw std::runtime_error("offsetcov_int for firth_binom only");
+
+      b0_fit.resize(2);
+      b0_fit << null0.bhat(0), 1.0;
+
+      // null model: logit(g) = [1, offsetcov; Y] [beta0, betaY] wrt betaY = 0
+      MatrixXd Yres0_Int(N, Ny1 + 1);
+      Yres0_Int.leftCols(1) = XYR.leftCols(1);
+      Yres0_Int.leftCols(2).rightCols(1) = Mask.select(yo_int, 0.0);
+      Yres0_Int.rightCols(Ny) = Yres0;
+
+      null = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      null.Ncov = Ny1 + 1; null.Nb = Ny1 + 1; // overwrite Ncov, Nb
+      null.setup_ncov0(Ny, true, false); // last0 = true, preproc_cov = false
+      null.setup_restart(b0_fit);
+      null.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
+
+      if(!null.converged) return;
+
+      // full model: logit(g) = [1, offset; Y] beta
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny1 + 1; full.Nb = Ny1; // overwrite Ncov, Nb
+      null.setup_restart(b0_fit);
+      full.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += full.cnt_updates; it += full.it; }
+
+      if(!full.converged) return;
+      converged = true;
+
+      stat_lrt = 2 * (full.loglik - null.loglik);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+    } else if(offset_mode == "offset_int") {
+      if(!firth_binom) throw std::runtime_error("offset_int for firth_binom only");
+
+      // null model: logit(g) = offset + [1; Y] [beta0, betaY] wrt betaY = 0
+      MatrixXd Yres0_Int(N, Ny1);
+      Yres0_Int.leftCols(1) = XYR.leftCols(1);
+      Yres0_Int.rightCols(Ny) = Yres0;
+
+      null = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      null.Ncov = Ny1; null.Nb = Ny1; // overwrite Ncov, Nb
+      null.setup_offset_binom(yo_int, false); // decrement_Nb = false
+      null.setup_ncov0(Ny, true, false); // last0 = true, preproc_cov = false
+      null.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
+
+      if(!null.converged) return;
+
+      // full model: logit(g) = offset + [1; Y] beta
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny1; full.Nb = Ny1; // overwrite Ncov, Nb
+      full.setup_offset_binom(yo_int, false); // decrement_Nb = false
+      full.fit_binom(Mask, Ym, Yres0_Int); // Logistic phenotype residuals
+
+      if(trace) { cnt_updates += full.cnt_updates; it += full.it; }
+
+      if(!full.converged) return;
+      converged = true;
+
+      stat_lrt = 2 * (full.loglik - null.loglik);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+    } else {
+      throw std::runtime_error("unknown offset mode");
+    }
+  } else if(response == "multinom") {
+    executed = true; 
+
+    // fit null model
+    if(verbose) cout << "fitting initial null model" << endl;
+    null = setup_fit(true, false, false); // inc_cov = true, inc_phen = false, use_offset = false
+    null.store_offset = true;
+    null.fit_multinom_pom(Mask, Ym, XYR.leftCols(Nx1).rightCols(Nx)); // covariates X without Intercept
+
+    if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
+
+    if(!null.converged) return;
+    if(verbose) cout << "initial null converged" << endl;
+
+    // store offset/weights from the null model
+    yo = null.yo;
+    yo_int = null.yo_int;
+
+    // !NB! not residuals
+    MatrixXd Yres0 = XYR.rightCols(Ny21).leftCols(Ny); // Phenotypes
+
+    if(offset_mode == "offset") {
+      // full model: logit(gamma) = offset + Y betaY
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny; full.Nb = Ny; // overwrite Ncov, Nb
+      full.setup_offset_multinom_pom(yo, yo_int); // manually set up offset
+      full.exclude_intercepts = true; full.exclude_intercepts_offset = false;
+      full.fit_multinom_pom(Mask, Ym, Yres0);
+
+      if(trace) { cnt_updates += full.cnt_updates; it += full.it; }
+
+      if(!full.converged) return;
+      converged = true;
+
+      ll_null = null.loglik_multinom(Mask, Ym); // depends on Y, P, Pk, Mask
+      if(firth_multinom) {
+        MatrixXd null_Info = MatrixXd(Ny, Ny).setZero().selfadjointView<Lower>().
+          rankUpdate((Yres0.array().colwise() * null.WSS1.array()).matrix().adjoint());
+        LLT<MatrixXd> llt_null(null_Info);
+        ll_null += llt_null.matrixL().toDenseMatrix().diagonal().array().log().sum();
+      }
+                                                                         
+      stat_lrt = 2 * (full.loglik - ll_null);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+    } else if(offset_mode == "offset_int") {
+      if(!firth_multinom) throw std::runtime_error("offset_int for firth_multinom only");
+
+      b0_fit.resize(2);
+      b0_fit << yo_int;
+
+      // null model: logit(gamma) = offset + Y betaY wrt betaY = 0
+      null = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      null.Ncov = Ny; null.Nb = Ny + ncat1; // overwrite Ncov, Nb
+      null.setup_offset_multinom_pom(yo, yo_int); // manually set up offset
+      null.exclude_intercepts = false; null.exclude_intercepts_offset = true;
+      null.setup_ncov0(Ny, true, false); // last0 = true, preproc_cov = false
+      null.setup_restart(b0_fit);
+      null.fit_multinom_pom(Mask, Ym, Yres0);
+
+      if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
+
+      if(!null.converged) return;
+      if(verbose) cout << "null converged" << endl;
+
+      // full model: logit(gamma) = offset + Y betaY
+      full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true
+      full.Ncov = Ny; full.Nb = Ny + ncat1; // overwrite Ncov, Nb
+      full.setup_offset_multinom_pom(yo, yo_int); // manually set up offset
+      full.exclude_intercepts = false; full.exclude_intercepts_offset = true;
+      full.setup_restart(b0_fit);
+      full.fit_multinom_pom(Mask, Ym, Yres0);
+
+      if(trace) { cnt_updates += full.cnt_updates; it += full.it; }
+
+      if(!full.converged) return;
+      converged = true;
+      if(verbose) cout << "full converged" << endl;
+
+      stat_lrt = 2 * (full.loglik - null.loglik);
+      pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+      if(verbose) cout << "pval_test =  " << pval_test << endl;
+    } else {
+      throw std::runtime_error("unknown offset mode");
+
+      /* // residualize phenotypes */
+      /* // !NB! not implemented yet */
+
+      /* // full model */
+      /* full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true */
+      /* full.setup_offset_multinom_pom(yo, yo_int); // manually set up offset */
+      /* full.exclude_intercepts = true; */
+      /* full.Ncov = Ny; full.Nb = Ny; // overwrite Ncov, Nb */
+      /* full.fit_multinom_pom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny)); // Phenotypes */
+      /* /1* if(offset_mode == "offset") { *1/ */
+      /* /1*   full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true *1/ */
+      /* /1*   full.setup_offset_multinom_pom(yo, yo_int); // manually set up offset *1/ */
+      /* /1*   full.exclude_intercepts = true; *1/ */
+      /* /1*   full.Ncov = Ny; full.Nb = Ny; // overwrite Ncov, Nb *1/ */
+      /* /1*   full.fit_multinom_pom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny)); // Phenotypes *1/ */
+      /* /1* } else if(offset_mode == "offset_int") { *1/ */
+      /* /1*   full = setup_fit(false, true, true); // inc_cov = false, inc_phen = true, use_offset = true *1/ */
+      /* /1*   full.setup_offset_multinom_pom(yo, yo_int); // manually set up offset *1/ */
+      /* /1*   full.exclude_intercepts = false; *1/ */
+      /* /1*   full.Ncov = Ny; full.Nb = ncat1 + Ny; // overwrite Ncov, Nb *1/ */
+      /* /1*   full.fit_multinom_pom(Mask, Ym, XYR.rightCols(Ny21).leftCols(Ny)); // Phenotypes *1/ */
+      /* /1* } else { *1/ */
+      /* /1*   throw std::runtime_error("unknown offset mode"); *1/ */
+      /* /1* } *1/ */
+
+      /* if(trace) { cnt_updates += full.cnt_updates; it += full.it; } */
+
+      /* if(!full.converged) return; */
+      /* converged = true; */
+
+      /* stat_lrt = 2 * (full.loglik - null.loglik); */
+      /* pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt)); */
+    }
+  } else {
+    throw std::runtime_error("unknown response");
+  }
+
+  // store results
+  if(converged) {
+    bhat_y = full.bhat.tail(Ny);
+  }
+}
+
+void MultiPhen::run_test_qt(const Eigen::Ref<const Eigen::MatrixXd> & XYR)
+{
+  reset_model(); // reset model fit results
+
+  if(response == "binom") {
+    executed = true; 
+    converged = true; 
+    VectorXd beta_qt = XYR.leftCols(Nx1).transpose() * yb;
+    // residualize
+    VectorXd y_qt = yb - XYR.leftCols(Nx1) * beta_qt;
+    VectorXd x_qt = XYR.leftCols(Nx1 + 1).rightCols(1);
+    // regression
+    /* VectorXd bhat_qt = (y_qt.transpose() * x_qt) / x2; */
+    /* bhat = (Y.col(i).transpose() * G).array().rowwise() / G2.array().transpose(); */
+    /* /1* B.row(i) = bhat; *1/ */
+    /* // residuals, s2 */
+    /* s2 = (((G.array().rowwise() * bhat.array().transpose()). // predicted yp = X bhat */
+    /*   colwise() - Y.col(i).array()). // residuals = y - yp */
+    /*   matrix().colwise().squaredNorm()). // residuals^2 */
+    /*   array() / (N_data - 1.0); // s2 = residuals^2 / (N - 1) */
+    /* Z.row(i) = bhat.array() * (G2.array() / s2.array()).sqrt(); */
+    
+    /* // regression */
+    /* bhat = (Y.col(i).transpose() * G).array().rowwise() / G2.array().transpose(); */
+    /* /1* B.row(i) = bhat; *1/ */
+    /* // residuals, s2 */
+    /* s2 = (((G.array().rowwise() * bhat.array().transpose()). // predicted yp = X bhat */
+    /*   colwise() - Y.col(i).array()). // residuals = y - yp */
+    /*   matrix().colwise().squaredNorm()). // residuals^2 */
+    /*   array() / (N_data - 1.0); // s2 = residuals^2 / (N - 1) */
+    /* Z.row(i) = bhat.array() * (G2.array() / s2.array()).sqrt(); */
+
+
+    /* yb */ 
+  /* pval_test = test_score(null, Mask, Ym, yb, XYR, inc_cov); */ 
+  } else {
+    return;
+  }
+
+}
+
+void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XYR, bool inc_cov)
 {
   reset_model(); // reset MultiPhen model fit results
   executed = true; 
+  
+  FitOrdinal null, full;
 
-  if(reuse_start) {
+  if(reuse_start & !approx_offset) {
     if(!inc_cov) throw std::runtime_error("reuse_start in not available for inc_cov = false");
-    if(approx_offset) throw std::runtime_error("reuse_start is not compatible with approx_offset");
+    /* if(approx_offset) throw std::runtime_error("reuse_start is not compatible with approx_offset"); */
 
     // null model: logit(g) = X alpha 
-    FitOrdinal null = fit(XY, inc_cov, false); // inc_cov, inc_phen = false
+    null = fit(XYR, inc_cov, false); // inc_cov, inc_phen = false
     if(!null.converged) return;
 
     b0 = null.bhat;
 
     // full model: logit(g) = X alpha + Y beta
-    FitOrdinal full = fit(XY, inc_cov, true); // inc_cov, inc_phen = true
+    full = fit(XYR, inc_cov, true); // inc_cov, inc_phen = true
+    // give another chance if reuse_start & reset_start
+    if(reset_start) {
+      reuse_start = false;
+      full = fit(XYR, inc_cov, true); // inc_cov, inc_phen = true
+    }
     if(!full.converged) return;
 
     converged = true;
@@ -344,17 +725,22 @@ void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool 
     pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
   } else if(approx_offset && response == "binom") {
     // null model: logit(g) = X alpha 
-    FitOrdinal null = fit(XY, inc_cov, false); // inc_cov, inc_phen = false
+    null = fit(XYR, inc_cov, false); // inc_cov, inc_phen = false
     if(!null.converged) return;
 
-    // store offset vector
+    // store offset/weights from the null mode 
     yo = null.yo;
+    w0 = null.wb;
+
+    Yres0 = XYR.rightCols(Ny21).leftCols(Ny); // matrix of phenotypes Y 
+    ColPivHouseholderQR<MatrixXd> qrXw;
+    qrXw.compute(MatrixXd(Nx1, Nx1).setZero().selfadjointView<Lower>().rankUpdate((XYR.leftCols(Nx1).array().colwise() * w0.array().sqrt()).matrix().adjoint()));
+    Yres0 -= XYR.leftCols(Nx1).matrix() * qrXw.solve((XYR.leftCols(Nx1).array().colwise() * w0.array()).matrix().transpose() * Yres0);
 
     // full model: logit(g) = X alpha + Y beta
-    FitOrdinal full = fit(XY, inc_cov, true); // inc_cov, inc_phen = true
+    full = fit(XYR, inc_cov, true); // inc_cov, inc_phen = true
     if(!full.converged) return;
     converged = true;
-
 
     // problem: null.mub is not at scale [0, 1]
     /* cout << "null.mub = " << null.mub.head(5).transpose() << endl; */
@@ -362,12 +748,12 @@ void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool 
     exp_vector(mub); // mub <- exp(mub)
     mub.array() /= (1.0 + mub.array()); // mub <- exp(mub) / (1 + exp(mub))
                                         //
-    double ll_null = 0.0; //null.loglik_binom(Mask, Ym);
-    ll_null += Ym.col(0).select((1.0 - mub.array()).log(), 0.0).array().sum(); // controls
-    ll_null += Ym.col(1).select(mub.array().log(), 0.0).array().sum(); // cases
-    if(null.firth_binom) {
-      /* MatrixXd Y = XY.rightCols(Ny1).leftCols(Ny); // phenotypes Y */
-      MatrixXd null_Info = XY.rightCols(Ny1).leftCols(Ny).transpose() * (XY.rightCols(Ny1).leftCols(Ny).array().colwise() * null.wb.array()).matrix();
+    double ll_null = null.loglik_binom(Mask, Ym);
+    /* double ll_null = 0.0; */ 
+    /* ll_null += Ym.col(0).select((1.0 - mub.array()).log(), 0.0).array().sum(); // controls */
+    /* ll_null += Ym.col(1).select(mub.array().log(), 0.0).array().sum(); // cases */
+    if(firth_binom) {
+      MatrixXd null_Info = Yres0.transpose() * (Yres0.array().colwise() * w0.array()).matrix();
       LLT<MatrixXd> llt_null(null_Info);
       ll_null += llt_null.matrixL().toDenseMatrix().diagonal().array().log().sum();
     }
@@ -386,7 +772,7 @@ void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool 
     pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
   } else if(approx_offset && response == "multinom") {
     // null model
-    FitOrdinal null = fit(XY, inc_cov, false); // inc_cov, inc_phen = false
+    null = fit(XYR, inc_cov, false); // inc_cov, inc_phen = false
     if(!null.converged) return;
 
     // store offset vectors
@@ -394,7 +780,7 @@ void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool 
     yo_int = null.yo_int;
 
     // full model: logit(g) = X alpha + Y beta
-    FitOrdinal full = fit(XY, inc_cov, true); // inc_cov, inc_phen = true
+    full = fit(XYR, inc_cov, true); // inc_cov, inc_phen = true
     if(!full.converged) return;
     converged = true;
 
@@ -404,49 +790,53 @@ void MultiPhen::run_test_lrt(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool 
     pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
   } else {
     // null model: logit(g) = X alpha 
-    FitOrdinal null = fit(XY, inc_cov, false); // inc_cov, inc_phen = false
+    null = fit(XYR, inc_cov, false); // inc_cov, inc_phen = false
     if(!null.converged) return;
 
     // full model: logit(g) = X alpha + Y beta
-    FitOrdinal full = fit(XY, inc_cov, true); // inc_cov, inc_phen = true
+    full = fit(XYR, inc_cov, true); // inc_cov, inc_phen = true
     if(!full.converged) return;
 
     converged = true;
     boost::math::chi_squared dist(Ny);
     double stat_lrt = 2 * (full.loglik - null.loglik);
+    /* cout << " lrt = " << stat_lrt << " = " << full.loglik << " - " << null.loglik << endl; */
     pval_test = (stat_lrt < 0) ? 1 : boost::math::cdf(boost::math::complement(dist, stat_lrt));
+  }
+  // store results
+  if(converged) {
+    bhat_y = full.bhat.tail(Ny);
   }
 }
 
-void MultiPhen::run_test_score(const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc_cov)
+void MultiPhen::run_test_score(const Eigen::Ref<const Eigen::MatrixXd> & XYR, bool inc_cov)
 {
-  bool _firth_binom = firth_binom, _approx_offset = approx_offset;
-  firth_binom = false; approx_offset = false;
+  bool _firth_binom = firth_binom, _firth_multinom = firth_multinom, _approx_offset = approx_offset;
+  firth_binom = false; firth_multinom = false; approx_offset = false;
  
   reset_model(); // reset model fit results
   executed = true; 
 
-  FitOrdinal null = fit(XY, inc_cov, false); // inc_cov, inc_phen = false
+  FitOrdinal null = fit(XYR, inc_cov, false); // inc_cov, inc_phen = false
   if(!null.converged) { return; }
 
   converged = true; 
   if(trace) { cnt_updates += null.cnt_updates; it += null.it; }
-  pval_test = test_score(null, Mask, Ym, yb, XY, inc_cov); 
+  pval_test = test_score(null, Mask, Ym, yb, XYR, inc_cov); 
 
-  firth_binom = _firth_binom;
-  approx_offset = _approx_offset;
+  firth_binom = _firth_binom; firth_multinom = _firth_multinom; approx_offset = _approx_offset;
 }
 
-void MultiPhen::setup_x(const VectorXb & _Mask,  const Eigen::MatrixXd& XY, unsigned int n_cov, unsigned int n_phen, 
+void MultiPhen::setup_x(const VectorXb & _Mask,  const Eigen::MatrixXd& XYR, unsigned int n_cov, unsigned int n_phen, 
     bool _pos_intercept_first, bool _pos_phen_first)
 {
   // check
-  if(XY.cols() != 2 + n_cov + n_phen) throw std::runtime_error("setup_x: dimensions XY");
-  if(XY.rows() != _Mask.size()) throw std::runtime_error("setup_x: dimensions XY and Mask");
-  // extract dimensions from XY
-  N = XY.rows();
+  if(XYR.cols() != 2 + n_cov + 2*n_phen) throw std::runtime_error("setup_x: dimensions XYR");
+  if(XYR.rows() != _Mask.size()) throw std::runtime_error("setup_x: dimensions XYR and Mask");
+  // extract dimensions from XYR
+  N = XYR.rows();
   /* Ncov = n_cov; // Nb = ncat1 + Ncov, where ncat1 depend on g */
-  Nx = n_cov; Nx1 = n_cov + 1; Ny = n_phen; Ny1 = n_phen + 1;
+  Nx = n_cov; Nx1 = n_cov + 1; Ny = n_phen; Ny1 = n_phen + 1; Ny21 = Ny1 + n_phen;
   pos_intercept_first = _pos_intercept_first;
   pos_phen_first = _pos_phen_first;
   // Mask
@@ -463,6 +853,20 @@ void MultiPhen::reset_model()
   it = 0; cnt_updates = 0;
 }
 
+void MultiPhen::setup_approx_offset()
+{
+  if(!set_y) throw std::runtime_error("setup_approx_offset: set_y is false");
+
+  if(mac_approx_offset == 0) {
+    approx_offset = false;
+  } else if(mac_approx_offset == 1) {
+    approx_offset = true;
+  } else if(mac_approx_offset > 1) {
+    if(Ncat_minor <= mac_approx_offset) approx_offset = false;
+    else approx_offset = true;
+  }
+}
+
 void MultiPhen::setup_y(const Eigen::VectorXd & _g)
 {
   // Eigen::VectorXi g = _g.cast<int>(); // 1.6 -> 1
@@ -477,16 +881,20 @@ void MultiPhen::setup_y(const Eigen::VectorXd & _g)
   if(g.size() != N) throw std::runtime_error("setup_y: g.size() != N");
 
   // assign category levels 
-  for(i = 0; i < g.size(); i++) {
-    genotypes.insert(g[i]);
-  }
+  for(i = 0; i < g.size(); i++) if(Mask(i)) genotypes.insert(g[i]);
+
   // check genotypes levels: 0/1 or 0/1/2
+  /* for(i = 0, it_set = genotypes.begin(); i < genotypes.size(); i++, it_set++) cout << "genotypes " << i << " = " << *it_set << endl; */
+  /* cout << "genotypes.size() = " << genotypes.size() << endl; */
+  if(genotypes.size() == 1) {
+    /* cerr << "WARNING: number of genotype categories is 1" << endl; */
+    return;
+  }
   if(!(genotypes.size() == 2 || genotypes.size() == 3)) throw std::runtime_error("setup_y: number of genotype categories must be 2 or 3");
 
   // assign ncat, ncat1
   ncat = genotypes.size();
-  ncat1 = ncat - 1;
-  ncat1sq = ncat1 * ncat1;
+  ncat1 = ncat - 1; ncat1sq = ncat1 * ncat1;
   
   // assign response
   if(ncat == 2) response = "binom";
@@ -499,15 +907,25 @@ void MultiPhen::setup_y(const Eigen::VectorXd & _g)
   // assign Ym
   Ym.resize(N, ncat);
   Ncat = VectorXi::Constant(ncat, 0);
+  Ncat_minor = 0;
+  int Ncat_max = 0;
   // loop over a a few genotype categories
   for(i = 0, it_set = genotypes.begin(); i < ncat; i++, it_set++) {
     Ym.col(i) = Mask.select(g.array() == *it_set, false);
+    /* Ym.col(i) = (g.array() == *it_set); */
+    /* Ym.col(i) = Mask.select(Ym.col(i), false); */
     Ncat(i) = Ym.col(i).cast<int>().sum();
+    // get the maximum value in Ncat & minor counts in Ncat (all except the maximum)
+    if(Ncat(i) > Ncat_max) Ncat_max = Ncat(i);
+    Ncat_minor += Ncat(i);
   }
+  Ncat_minor -= Ncat_max;
   // assign yb if binomial
   if(response == "binom") {
     yb = Ym.col(1).cast<double>(); // booleans -> 0/1
   }
+  // update status
+  set_y = true;
 }
 
 void MultiPhen::test0(const Eigen::VectorXi & g, const Eigen::MatrixXd& X, const Eigen::MatrixXd& Y,
@@ -522,7 +940,7 @@ void MultiPhen::test0(const Eigen::VectorXi & g, const Eigen::MatrixXd& X, const
   
   // set up Ordinal model (no Firth)
   Ordinal ord;
-  ord.optim = optim; ord.tol = tol; ord.maxit = maxit;
+  ord.optim = optim; ord.tol = tol; ord.pseudo_stophalf = pseudo_stophalf; ord.maxit = maxit;
   ord.check_step = check_step; ord.max_step = max_step;
   ord.firth_binom = false;
   
@@ -587,7 +1005,7 @@ void MultiPhen::test_addcov(const Eigen::VectorXi & g, const Eigen::MatrixXd& X,
   
   // set up Ordinal model (no Firth)
   Ordinal ord;
-  ord.optim = optim; ord.tol = tol; ord.maxit = maxit;
+  ord.optim = optim; ord.tol = tol; ord.pseudo_stophalf = pseudo_stophalf; ord.maxit = maxit;
   ord.check_step = check_step; ord.max_step = max_step;
   ord.firth_binom = false;
   
@@ -649,6 +1067,7 @@ void MultiPhen::test_addcov(const Eigen::VectorXi & g, const Eigen::MatrixXd& X,
 
 void FitOrdinal::setup_defaults()
 { 
+  cnt_fit = 0;
   verbose = 0;
   // model parameters
   N = 0; Neff = 0; // sample size
@@ -684,8 +1103,12 @@ void FitOrdinal::check_setup_model()
   if(verbose >= 2) {
     cout << "check_setup_model" << endl;
     cout << " --  N = " << N << " Neff = " << Neff << " Nb = " << Nb << " Ncov = " << Ncov 
-      << " apply_start = " << apply_start << " apply_offset = " << apply_offset << " store_offset = " << store_offset << " exclude_intercepts = " << exclude_intercepts 
+      << " Ncov0 = " << Ncov0 << " Ncov1 = " << Ncov1
+      << " apply_start = " << apply_start << " apply_offset = " << apply_offset << " store_offset = " << store_offset << " exclude_intercepts = " << exclude_intercepts << "exclude_intercepts_offset = " << exclude_intercepts_offset 
+      << " firth_multinom = " << firth_multinom << " firth_binom = " << firth_binom << " firth_mult = " << firth_mult << " check_step = " << check_step << " max_step = " << max_step 
+      << " maxit = " << maxit << " maxit2 = " << maxit2 << " maxit3 = " << maxit3
       << endl;
+    cout << " Ncat = " << Ncat << endl;
   }
 
   check_setup_model_common();
@@ -745,11 +1168,11 @@ void Ordinal::setup_defaults()
 {
   response = "multinom";
   optim = "WeightHalving";
-  firth_binom = false;
+  firth_binom = false; firth_multinom = false;
 
-  maxit = 100; 
-  maxit2 = 7; it2 = 0;
-  tol = 1e-4;
+  maxit = 100; maxit2 = 7; maxit3 = 25;
+  it2 = 0; strict = false;
+  tol = 1e-4; pseudo_stophalf = 0.0;
 
   check_step = false;
   max_step = 10.0;
@@ -769,10 +1192,10 @@ FitOrdinal Ordinal::setup_fit()
   fit.response = response; // response type = [binom, multinom]
   fit.model = model; // model = [POM: Proportional Odds Model, ACL: Adjacent Category Logit]
   fit.optim = optim; // optimization algorithm = [FisherScoring, WeightHalving]
-  fit.firth_binom = firth_binom; // Firth correction
+  fit.firth_binom = firth_binom; fit.firth_multinom = firth_multinom; // Firth correction
       
-  fit.maxit = maxit; fit.maxit2 = maxit2; 
-  fit.tol = tol;
+  fit.maxit = maxit; fit.maxit2 = maxit2; fit.maxit3 = maxit3; fit.strict = strict;
+  fit.tol = tol; fit.pseudo_stophalf = pseudo_stophalf;
 
   fit.check_step = check_step;
   fit.max_step = max_step;
@@ -796,15 +1219,15 @@ FitOrdinal Ordinal::setup_fit()
 
 double MultiPhen::test_score(const FitOrdinal & null, 
     const VectorXb & Mask, const MatrixXb & Ym, const Eigen::VectorXd & yb, 
-    const Eigen::Ref<const Eigen::MatrixXd> & XY, bool inc_cov)
+    const Eigen::Ref<const Eigen::MatrixXd> & XYR, bool inc_cov)
 {
   double pval;
   if(response == "multinom") {
-    if(inc_cov) pval = test_score_multinom_pom(null, Mask, Ym, XY.leftCols(Nx1).rightCols(Nx), XY.rightCols(Ny1).leftCols(Ny)); // covariates X (no intercept); phenotypes Y
-    else pval = test_score_multinom_pom(null, Mask, Ym, XY.leftCols(0), XY.rightCols(Ny1).leftCols(Ny)); // 0 covarites (no intercept); phenotypes Y
+    if(inc_cov) pval = test_score_multinom_pom(null, Mask, Ym, XYR.leftCols(Nx1).rightCols(Nx), XYR.rightCols(Ny21).leftCols(Ny)); // covariates X (no intercept); phenotypes Y
+    else pval = test_score_multinom_pom(null, Mask, Ym, XYR.leftCols(0), XYR.rightCols(Ny21).leftCols(Ny)); // 0 covarites (no intercept); phenotypes Y
   } else if(response == "binom") {
-    if(inc_cov) pval = test_score_binom(null, Mask, yb, XY.leftCols(Nx1).rightCols(Nx), XY.rightCols(Ny1).leftCols(Ny)); // covariates X (no intercept); phenotypes Y
-    else pval = test_score_binom(null, Mask, yb, XY.leftCols(0), XY.rightCols(Ny1).leftCols(Ny)); // 0 covarites (no intercept); phenotypes Y
+    if(inc_cov) pval = test_score_binom(null, Mask, yb, XYR.leftCols(Nx1).rightCols(Nx), XYR.rightCols(Ny21).leftCols(Ny)); // covariates X (no intercept); phenotypes Y
+    else pval = test_score_binom(null, Mask, yb, XYR.leftCols(0), XYR.rightCols(Ny21).leftCols(Ny)); // 0 covarites (no intercept); phenotypes Y
   } else {
     throw std::runtime_error("unknown response");
   }
@@ -1149,16 +1572,13 @@ void FitOrdinal::setup_ncov0(unsigned int _Ncov0, bool _last0, bool preproc_cov)
   last0 = _last0;
 
   if(Ncov0) {
-    if(Ncov0 > Ncov) {
-      throw std::runtime_error("Ncov0 >= Ncov");
-    }
-    if(preproc_cov) {
-      throw std::runtime_error("preproc_cov is on when Ncov0 != 0");
-    }
+    if(preproc_cov) throw std::runtime_error("preproc_cov is on when Ncov0 != 0");
 
     if(response == "multinom") {
+      if(Ncov0 > Ncov) throw std::runtime_error("Ncov0 > Ncov (multinom)");
       Ncov1 = Ncov - Ncov0;
     } else if(response == "binom") {
+      if(Ncov0 > Nb) throw std::runtime_error("Ncov0 > Nb (binom)");
       Ncov1 = Nb - Ncov0;
     } else {
       throw std::runtime_error("unknown response");
@@ -1222,7 +1642,7 @@ void FitOrdinal::fit_multinom_pom(const VectorXb & Mask, const MatrixXb & Y, con
     if(Ncov) Xb0 = X * bhat.tail(Ncov);
     else Xb0.setZero();
     if(apply_offset) Xb0.array() += yo.array();
-    yo = Xb0; // overwrite offset vector yo if present
+    yo = Mask.select(Xb0, 0.0); // overwrite offset vector yo if present
     // intercepts
     yo_int = bhat.head(ncat1);
   }
@@ -1251,6 +1671,16 @@ void FitOrdinal::setup_start_multinom()
         n_denom -= Ncat(i);
         b0[i] = log((double)(n_nom)/(double)(n_denom));
       }
+      // v3
+      /* Eigen::VectorXd Ncat_half(ncat); */
+      /* for(i = 0; i < ncat; i++) Ncat_half(i) = (double)(Ncat(i)) + 0.5; */
+
+      /* double n_nom_half, n_denom_half; */
+      /* for(i = 0, n_nom_half = 0.0, n_denom_half= (double)(Neff) + ncat*0.5; i < ncat1; i++) { */
+      /*   n_nom_half+= Ncat_half(i); */
+      /*   n_denom_half -= Ncat_half(i); */
+      /*   b0[i] = log(n_nom_half/n_denom_half); */
+      /* } */
     }
 
     // initialize covariate effects
@@ -1296,12 +1726,28 @@ void FitOrdinal::setup_par_multinom()
   cur_Score.resize(Nb);
   cur_Info.resize(Nb, Nb);
   cur_v.resize(Nb); cur_b.resize(Nb);
+
+  if(Ncov0) {
+    if(last0) {
+      cur_Score.tail(Ncov0).setZero();
+      cur_v.tail(Ncov0).setZero();
+      cur_b.tail(Ncov0).setZero();
+    } else {
+      cur_Score.head(Ncov0).setZero();
+      cur_v.head(Ncov0).setZero();
+      cur_b.head(Ncov0).setZero();
+    }
+  }
+
+  if(firth_multinom) {
+    Ystar.resize(N, ncat);
+  }
 }
 
-void FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
+bool FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b, 
+    bool pseudo)
 {
-  if(verbose >= 2) cout << " - update_par_multinom\n"; 
-  /* if(verbose >= 3) cout << "   b = " << b.transpose() << endl; */
+  if(verbose >= 2) cout << " - update_par_multinom " << (pseudo ? "(pseudo)" : "") << "\n"; 
 
   unsigned int i, k,  l, m, start;
 
@@ -1309,63 +1755,64 @@ void FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, 
   if(exclude_intercepts) b_cov = b;
   else b_cov = b.segment(ncat1, Ncov);
 
-  if(Ncov) Xb0 = X * b_cov;
-  else Xb0.setZero(); 
+  if(Ncov) {
+    if(Ncov0) {
+      if(last0) Xb0 = X.leftCols(Ncov1) * b_cov.head(Ncov1);
+      else throw std::runtime_error("!last0 not implemented yet");
+    } else Xb0 = X * b_cov;
+  } else Xb0.setZero(); 
+
   if(apply_offset) Xb0.array() += yo.array(); // offset 
 
   // update linear predictor Xb with intercepts
-  if(exclude_intercepts) {
-    for(i = 0; i < ncat1; i++) {
-      Xb.col(i).array() = Xb0.array(); 
-    }
-  } else {
+  if(exclude_intercepts) for(i = 0; i < ncat1; i++) Xb.col(i).array() = Xb0.array();
+  else {
     VectorXd b_int = b.head(ncat1);
-    for(i = 0; i < ncat1; i++) {
-      Xb.col(i).array() = Xb0.array() + b_int(i);
-    }
+    for(i = 0; i < ncat1; i++) Xb.col(i).array() = Xb0.array() + b_int(i);
   }
-  if(apply_offset) {
-    for(i = 0; i < ncat1; i++) {
-      Xb.col(i).array() += yo_int(i);
-    }
-  }
-  exp_eta = Xb; exp_matrix(exp_eta);
+  if(apply_offset & !exclude_intercepts_offset) for(i = 0; i < ncat1; i++) Xb.col(i).array() += yo_int(i);
+
+  exp_eta = Xb; exp_matrix_ord(exp_eta);
   gamma.array() = exp_eta.array() / (1.0 + exp_eta.array());
 
   P = gamma;
-  for(i = 1; i < ncat1; i++) {
-    P.col(i).array() -= gamma.col(i - 1).array();
-  }
+  for(i = 1; i < ncat1; i++) P.col(i).array() -= gamma.col(i - 1).array();
   Psum = P.rowwise().sum();
-  
-  bool error_psum = (Psum.array() >= 1.0).any();
-  if(error_psum) {
-    throw std::runtime_error("some elements in Psum >= 1.0");
+  if((Psum.array() >= 1.0).any()) {
+    cerr << "WARNING: some elements in Psum >= 1.0" << endl;
+    return(false);
   }
+
   Pk.array() = 1.0 - Psum.array();
+
+  // interim computation of log-lik
+  if(!pseudo) {
+    cur_loglik = loglik_multinom(Mask, Y); // depends on Y, P, Pk, Mask
+    if(verbose > 2) cout << "  -- (iterim) loglik: " << cur_loglik << endl;
+    if(check_nan(cur_loglik)) {
+      cerr << "WARNING: log-lik is NaN or Inf" << endl;
+      return(false);
+    }
+  }
  
   // D = (Y[, -ncat] / P) - (Y[, ncat] / Pk)
-  for(i = 0; i < ncat1; i++) {
-    D.col(i).array() = Y.col(i).cast<double>().array() / P.col(i).array() - 
-      Y.col(ncat1).cast<double>().array() / Pk.array();
-  } 
+  if(!pseudo) for(i = 0; i < ncat1; i++) D.col(i).array() = Y.col(i).cast<double>().array() / P.col(i).array() - Y.col(ncat1).cast<double>().array() / Pk.array();
+  else for(i = 0; i < ncat1; i++) D.col(i).array() = Ystar.col(i).array() / P.col(i).array() - Ystar.col(ncat1).array() / Pk.array();
 
   // Q = dh / deta
   PQ.array() = gamma.array() * (1.0 - gamma.array());
+
   for(m = 0; m < ncat1; m++) {
-    l = m;
-    start = l * ncat1;
+    l = m; start = l * ncat1;
     Q.col(start + m).array() = PQ.col(m).array();
   }
   for(m = 1; m < ncat1; m++) {
-    l = m - 1;
-    start = l * ncat1;
+    l = m - 1; start = l * ncat1;
     Q.col(start + m).array() = -1.0 * PQ.col(l).array();
   }
 
   // V
   for(k = 0; k < ncat1; k++) {
-    // R code:
     // cols_Q = (k - 1)*ncat1 + seq(ncat1)
     // V[, k] = rowSums(D * Q[, cols_Q])
     V.col(k).array() = (D.array() * Q(all, seqN(k*ncat1, ncat1)).array()).rowwise().sum(); 
@@ -1404,17 +1851,18 @@ void FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, 
   }
 
   // Account for miss. via Mask
-  for(unsigned int i = 0; i < V.cols(); i++) {
-    V.col(i) = Mask.select(V.col(i), 0.0);
-  }
-  for(unsigned int i = 0; i < W.cols(); i++) {
-    W.col(i) = Mask.select(W.col(i), 0.0);
-  }
+  for(unsigned int i = 0; i < V.cols(); i++) V.col(i) = Mask.select(V.col(i), 0.0);
+  for(unsigned int i = 0; i < W.cols(); i++) W.col(i) = Mask.select(W.col(i), 0.0);
 
   // Score
   // Score = c(colSums(V), colSums((crossprod(V, X))))
   if(!exclude_intercepts) cur_Score.head(ncat1) = V.colwise().sum();
-  if(Ncov) cur_Score.tail(Ncov) = (V.transpose() * X).colwise().sum();
+  if(Ncov) {
+    if(Ncov0) {
+      if(last0) cur_Score.tail(Ncov).head(Ncov1) = (V.transpose() * X.leftCols(Ncov1)).colwise().sum();
+      else throw std::runtime_error("!last0 not implemented yet");
+    } else cur_Score.tail(Ncov) = (V.transpose() * X).colwise().sum();
+  }
 
   // Info
   WS2 = W.colwise().sum();
@@ -1429,10 +1877,10 @@ void FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, 
       for(k = 0; k < ncat1; k++) {
         // cols_XW = (k - 1) + seq(1, by = ncat1, length = ncat1)
         // Info[k, seq(ncat, nb)] = rowSums(XW[, cols_XW, drop = FALSE])
-          XWs = XW(all, seqN(k, ncat1, ncat1));
-          XW1 = XWs.rowwise().sum();
-          cur_Info(k, seqN(ncat1, Ncov)).array() = XW1.array();
-          cur_Info(seqN(ncat1, Ncov), k).array() = XW1.array();
+        XWs = XW(all, seqN(k, ncat1, ncat1));
+        XW1 = XWs.rowwise().sum();
+        cur_Info(k, seqN(ncat1, Ncov)).array() = XW1.array();
+        cur_Info(seqN(ncat1, Ncov), k).array() = XW1.array();
       }
     }
     // Info 2x2 block
@@ -1447,11 +1895,134 @@ void FitOrdinal::update_par_multinom(const VectorXb & Mask, const MatrixXb & Y, 
   }
 
   // solve: v = solve(Info, Score)
+  // Firth correction?
   LLT<MatrixXd> llt(cur_Info);
-  cur_v = llt.solve(cur_Score);
 
-  cur_loglik = loglik_multinom(Mask, Y);
-  cur_dev = -2.0 * cur_loglik;
+  if(verbose > 2) {
+    ColPivHouseholderQR<MatrixXd> qr;
+    qr.compute(cur_Info);
+    cout << " qr.isInvertible(cur_info) = " << qr.isInvertible() << endl;
+  }
+
+  if(!firth_multinom | pseudo) {
+    if(Ncov0) {
+      if(last0) {
+        LLT<MatrixXd> llt1(cur_Info.block(0, 0, ncat1 + Ncov1, ncat1 + Ncov1));
+        cur_v.head(ncat1 + Ncov1) = llt1.solve(cur_Score.head(ncat1 + Ncov1));
+      } else throw std::runtime_error("!last0 not implemented yet");
+    } else cur_v = llt.solve(cur_Score);
+  } else {
+    /* MatrixXd cur_Info_inv = llt.solve(MatrixXd::Identity(Nb, Nb)); */
+    MatrixXd cur_Info_inv;
+    if(Ncov0) {
+      if(last0) cur_Info_inv = cur_Info.block(0, 0, ncat1 + Ncov1, ncat1 + Ncov1).inverse();
+      else throw std::runtime_error("!last0 not implemented yet");
+    } else {
+      // v1
+      /* cur_Info_inv = cur_Info.inverse(); */ 
+      // v2
+      ColPivHouseholderQR<MatrixXd> qr;
+      qr.compute(cur_Info);
+      /* if(!qr.isInvertible()) { */
+      /*   cerr << "WARNING: Info is not invertible" << endl; */
+      /*   return(false); */
+      /* } */
+      cur_Info_inv = qr.inverse();
+    }
+    if(verbose > 2) cout << "  -- cur_Info_inv: " << cur_Info_inv.rows() << "x" << cur_Info_inv.cols() << endl;
+
+    MatrixXd diagA(N, ncat1); diagA.setZero();
+    if(Ncov0) {
+      if(last0) {
+        if(Ncov1) diagA = 2 * (X.leftCols(Ncov1) * cur_Info_inv(seqN(ncat1, Ncov1), seqN(0, ncat1))); 
+        for(i = 0; i < ncat1; i++) diagA.col(i).array() += cur_Info_inv(i, i);
+        if(Ncov1) diagA.array().colwise() += ((X.leftCols(Ncov1) * cur_Info_inv(seqN(ncat1, Ncov1), seqN(ncat1, Ncov1))).array() * X.leftCols(Ncov1).array()).rowwise().sum();
+      } else throw std::runtime_error("!last0 not implemented yet");
+    } else {
+      if(!exclude_intercepts) {
+        if(Ncov) diagA = 2 * (X * cur_Info_inv(seqN(ncat1, Ncov), seqN(0, ncat1))); 
+        for(i = 0; i < ncat1; i++) diagA.col(i).array() += cur_Info_inv(i, i);
+        if(Ncov) diagA.array().colwise() += ((X * cur_Info_inv(seqN(ncat1, Ncov), seqN(ncat1, Ncov))).array() * X.array()).rowwise().sum();
+      } else {
+        if(Ncov) diagA.array().colwise() += ((X * cur_Info_inv).array() * X.array()).rowwise().sum();
+      }
+    }
+    if(verbose > 2) cout << "  -- diagA: " << diagA.rows() << "x" << diagA.cols() << endl;
+
+    MatrixXd adj_c = 0.5 * diagA.array() * dlog_matrix(Xb).array();
+
+    // adjustment to counts
+    MatrixXd adj_a(N, ncat);
+    adj_a.leftCols(ncat1) = adj_c; 
+    adj_a.col(ncat1) *= 0;
+    adj_a.rightCols(ncat1).array() -= adj_c.array();
+
+    // Yadj = Y + adj_a
+    Ystar = Y.array().cast<double>(); 
+    Ystar.array() += adj_a.array();
+
+    // re-compute D, V (Q doesn't change as it is function of probs.)
+    for(i = 0; i < ncat1; i++) D.col(i).array() = Ystar.col(i).array() / P.col(i).array() - Ystar.col(ncat1).array() / Pk.array();
+    for(k = 0; k < ncat1; k++) V.col(k).array() = (D.array() * Q(all, seqN(k*ncat1, ncat1)).array()).rowwise().sum(); 
+    // account for miss. via Mask
+    for(unsigned int i = 0; i < V.cols(); i++) V.col(i) = Mask.select(V.col(i), 0.0);
+
+    // re-compmute Scores
+    if(!exclude_intercepts) cur_Score.head(ncat1) = V.colwise().sum();
+    if(Ncov) {
+      if(Ncov0) {
+        if(last0) cur_Score.tail(Ncov).head(Ncov1) = (V.transpose() * X.leftCols(Ncov1)).colwise().sum();
+        else throw std::runtime_error("!last0 not implemented yet");
+      } else cur_Score.tail(Ncov) = (V.transpose() * X).colwise().sum();
+    }
+    if(verbose > 2) cout << "  -- cur_Score: " << cur_Score.transpose() << endl;
+
+    if(Ncov0) {
+      if(last0) cur_v.head(ncat1 + Ncov1) = cur_Info_inv * cur_Score.head(ncat1 + Ncov1);
+      else throw std::runtime_error("!last0 not implemented yet");
+    } else cur_v = cur_Info_inv * cur_Score;
+    if(verbose > 2) cout << "  -- cur_v: " << cur_v.transpose() << endl;
+  }
+
+  if(!pseudo) {
+    if(firth_multinom) cur_loglik = loglik_multinom_firth(Mask, Y, llt, true, cur_loglik); // add = true
+    cur_dev = -2.0 * cur_loglik;
+  }
+
+  // dump
+  if(verbose >= 3) {
+    bool append = true; // (cnt_updates > 1);
+    string name = "ordinal.txt";
+    ofstream file;
+    if(append) file.open(name.c_str(), ios::out | ios::app);
+    else file.open(name.c_str(), ios::out);
+
+    double diff = cur_Score.array().abs().maxCoeff(); 
+    file << cnt_fit  << " " << b.size() << " " << cnt_updates << " " << cur_loglik << " " << cur_dev
+      << " " << diff; 
+    for(unsigned int i = 0; i < b.size(); i++) {
+      file << " " << b(i);
+    }
+    file << endl;
+    file.close();
+
+    if(verbose >= 4) {
+      const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
+      ofstream yfile("y.txt");
+      yfile << Y.col(1).format(CSVFormat);
+      yfile.close();
+      ofstream xfile("x.txt");
+      xfile << X.format(CSVFormat);
+      xfile.close();
+      ofstream mfile("m.txt");
+      mfile << Mask.format(CSVFormat);
+      mfile.close();
+
+      throw std::runtime_error("verbose level 4: exit after dumping data into y.txt, x.txt and m.txt");
+    }
+  }
+
+  return(true);
 }
 
 double FitOrdinal::loglik_multinom(const VectorXb & Mask, const MatrixXb & Y)
@@ -1460,10 +2031,35 @@ double FitOrdinal::loglik_multinom(const VectorXb & Mask, const MatrixXb & Y)
   double res = 0.0;
   // 1, 2, ..., ncat1 categories
   for(unsigned int i = 0; i < ncat1; i++) {
-    res += Y.col(i).select(P.col(i).array().log(), 0.0).array().sum();
+    res += Mask.select(Y.col(i).select(P.col(i).array().log(), 0.0), 0.0).array().sum();
   }
   // the last ncat category
-  res += Y.col(ncat1).select(Pk.array().log(), 0.0).array().sum();
+  res += Mask.select(Y.col(ncat1).select(Pk.array().log(), 0.0), 0.0).array().sum();
+
+  return(res);
+}
+
+double FitOrdinal::loglik_multinom_firth(const VectorXb & Mask, const MatrixXb & Y, const LLT<MatrixXd> & llt,
+    bool add, double base_loglik)
+{
+  double res = add ? base_loglik : loglik_multinom(Mask, Y);
+
+  // https://gist.github.com/redpony/fc8a0db6b20f7b1a3f23
+  double half_logdet = llt.matrixL().toDenseMatrix().diagonal().array().log().sum();
+  /* double half_logdet = log(llt.matrixL().determinant()); */
+
+  res += firth_mult * half_logdet;
+
+  return(res);
+}
+
+double FitOrdinal::loglik_multinom_firth(const VectorXb & Mask, const MatrixXb & Y, const MatrixXd & Info)
+{
+  double res = loglik_multinom(Mask, Y);
+
+  double half_logdet = 0.5*log(Info.determinant());
+
+  res += firth_mult * half_logdet;
 
   return(res);
 }
@@ -1490,7 +2086,7 @@ void FitOrdinal::fit_binom(const VectorXb & Mask, const MatrixXb & Y, const Eige
   if(store_offset) {
     Xb = X * bhat;
     if(apply_offset) Xb.array() += yo.array();
-    yo = Xb; // overwrite offset vector yo if present
+    yo = Mask.select(Xb, 0.0); // overwrite offset vector yo if present
   }
 }
 
@@ -1544,9 +2140,13 @@ void FitOrdinal::setup_par_binom()
       cur_b.head(Ncov0).setZero();
     }
   }
+
+  if(firth_binom) {
+    ystar.resize(N);
+  }
 }
 
-void FitOrdinal::update_par_binom(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
+bool FitOrdinal::update_par_binom(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
 {
   if(verbose >= 2) cout << " - update_par_binom\n"; 
 
@@ -1570,12 +2170,33 @@ void FitOrdinal::update_par_binom(const VectorXb & Mask, const MatrixXb & Y, con
   cur_loglik = loglik_binom(Mask, Y);
   cur_dev = -2.0 * cur_loglik;
 
+  // dump
+  if(verbose >= 3) {
+    bool append = true; // (cnt_updates > 1);
+    string name = "ordinal.txt";
+    ofstream file;
+    if(append) file.open(name.c_str(), ios::out | ios::app);
+    else file.open(name.c_str(), ios::out);
+
+    double diff = cur_Score.array().abs().maxCoeff(); 
+    file << cnt_fit << " " << b.size() << " " << cnt_updates << " " << cur_loglik << " " << cur_dev
+      << " " << diff; 
+    for(unsigned int i = 0; i < b.size(); i++) {
+      file << " " << b(i);
+    }
+    file << endl;
+    file.close();
+  }
+
+  return(true);
 }
 
-void FitOrdinal::update_par_binom_firth(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
+bool FitOrdinal::update_par_binom_firth(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
 {
   if(verbose >= 2) cout << " - update_par_binom_firth\n"; 
 
+  /* cout << Ncov0 << " " << last0 << " " << Ncov1 << endl; */
+  /* cout << b.size() << " " << X.cols() << " " << X.rows() << endl; */
   if(Ncov0) {
     if(last0) mub = X.leftCols(Ncov1) * b.head(Ncov1);
     else mub = X.rightCols(Ncov1) * b.tail(Ncov1);
@@ -1596,6 +2217,9 @@ void FitOrdinal::update_par_binom_firth(const VectorXb & Mask, const MatrixXb & 
   LLT<MatrixXd> llt(cur_Info);
   VectorXd h = (llt.solve(XtW).array() * XtW.array()).colwise().sum();
 
+  // derive pseudo response
+  ystar = Y.col(1).cast<double>().array() + firth_mult * h.array() * (0.5 - mub.array());
+
   // update Score = Ab + Sb
   /* Ab = crossprod(X, h * (0.5 - mu)) */
   /* Sb = crossprod(X, y - mu) */
@@ -1604,15 +2228,15 @@ void FitOrdinal::update_par_binom_firth(const VectorXb & Mask, const MatrixXb & 
   if(Ncov0) {
     if(last0) {
       LLT<MatrixXd> llt1(cur_Info.block(0, 0, Ncov1, Ncov1));
-      cur_Score.head(Ncov1) = (X.leftCols(Ncov1).transpose() * Mask.select((Y.col(1).cast<double>().array() - mub.array() + firth_mult * h.array() * (0.5 - mub.array())), 0.0).matrix()).array();
+      cur_Score.head(Ncov1) = (X.leftCols(Ncov1).transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix()).array();
       cur_v.head(Ncov1) = llt1.solve(cur_Score.head(Ncov1));
     } else {
       LLT<MatrixXd> llt1(cur_Info.block(Ncov0, Ncov0, Ncov1, Ncov1));
-      cur_Score.tail(Ncov1) = (X.rightCols(Ncov1).transpose() * Mask.select((Y.col(1).cast<double>().array() - mub.array() + firth_mult * h.array() * (0.5 - mub.array())), 0.0).matrix()).array();
+      cur_Score.tail(Ncov1) = (X.rightCols(Ncov1).transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix()).array();
       cur_v.tail(Ncov1) = llt1.solve(cur_Score.tail(Ncov1));
     }
   } else {
-    cur_Score = (X.transpose() * Mask.select((Y.col(1).cast<double>().array() - mub.array() + firth_mult * h.array() * (0.5 - mub.array())), 0.0).matrix()).array();
+    cur_Score = (X.transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix()).array();
     cur_v = llt.solve(cur_Score);
   }
 
@@ -1628,14 +2252,74 @@ void FitOrdinal::update_par_binom_firth(const VectorXb & Mask, const MatrixXb & 
     else file.open(name.c_str(), ios::out);
 
     double diff = cur_Score.array().abs().maxCoeff(); 
-    file << b.size() << " " << cnt_updates << " " << cur_loglik << " " << cur_dev
+    file << cnt_fit << " " << b.size() << " " << cnt_updates << " " << cur_loglik << " " << cur_dev
       << " " << diff; 
     for(unsigned int i = 0; i < b.size(); i++) {
       file << " " << b(i);
     }
     file << endl;
     file.close();
+
+    if(verbose >= 4) {
+      const static IOFormat CSVFormat(StreamPrecision, DontAlignCols, ", ", "\n");
+      ofstream yfile("y.txt");
+      yfile << Y.col(1).format(CSVFormat);
+      yfile.close();
+      ofstream xfile("x.txt");
+      xfile << X.format(CSVFormat);
+      xfile.close();
+      ofstream mfile("m.txt");
+      mfile << Mask.format(CSVFormat);
+      mfile.close();
+      
+      throw std::runtime_error("verbose level 4: exit after dumping data into y.txt, x.txt and m.txt");
+    }
   }
+
+  return(true);
+}
+
+bool FitOrdinal::update_par_binom_pseudo(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
+{
+  if(verbose >= 2) cout << " - update_par_binom_pseudo\n"; 
+
+  if(Ncov0) {
+    if(last0) mub = X.leftCols(Ncov1) * b.head(Ncov1);
+    else mub = X.rightCols(Ncov1) * b.tail(Ncov1);
+  } else {
+    mub = X * b;
+  }
+  if(apply_offset) mub.array() += yo.array();
+  exp_vector(mub); // mub <- exp(mub)
+  mub.array() /= (1.0 + mub.array()); // mub <- exp(mub) / (1 + exp(mub))
+
+  wb.array() = Mask.select(mub.array() * (1.0 - mub.array()), 1.0);
+
+  // Info = X' W X
+  XtW = X.transpose() * wb.array().sqrt().matrix().asDiagonal();
+  cur_Info = XtW * XtW.transpose();
+
+  if(Ncov0) {
+    if(last0) {
+      LLT<MatrixXd> llt1(cur_Info.block(0, 0, Ncov1, Ncov1));
+      cur_Score.head(Ncov1) = X.leftCols(Ncov1).transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix();
+      cur_v.head(Ncov1) = llt1.solve(cur_Score.head(Ncov1));
+    } else {
+      LLT<MatrixXd> llt1(cur_Info.block(Ncov0, Ncov0, Ncov1, Ncov1));
+      cur_Score.tail(Ncov1) = X.rightCols(Ncov1).transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix();
+      cur_v.tail(Ncov1) = llt1.solve(cur_Score.tail(Ncov1));
+    }
+  } else {
+    LLT<MatrixXd> llt(cur_Info);
+    cur_Score = X.transpose() * Mask.select(ystar.array() - mub.array(), 0.0).matrix();
+    cur_v = llt.solve(cur_Score);
+  }
+
+  // What is dev/loglik for pseudo response model?
+  /* cur_loglik = loglik_binom_firth(Mask, Y, llt); */
+  /* cur_dev = -2.0 * cur_loglik; */
+
+  return(true);
 }
 
 double FitOrdinal::loglik_binom(const VectorXb & Mask, const MatrixXb & Y)
@@ -1643,9 +2327,9 @@ double FitOrdinal::loglik_binom(const VectorXb & Mask, const MatrixXb & Y)
   // loglik = sum(Y*log(p) + (1-Y)*log(1-p)), where p = mu
   double res = 0.0;
   // contols
-  res += Y.col(0).select((1.0 - mub.array()).log(), 0.0).array().sum();
+  res += Mask.select(Y.col(0).select((1.0 - mub.array()).log(), 0.0), 0.0).array().sum();
   // cases
-  res += Y.col(1).select(mub.array().log(), 0.0).array().sum();
+  res += Mask.select(Y.col(1).select(mub.array().log(), 0.0), 0.0).array().sum();
 
   return(res);
 }
@@ -1666,24 +2350,26 @@ double FitOrdinal::loglik_binom_firth(const VectorXb & Mask, const MatrixXb & Y,
 
 bool FitOrdinal::stop_criterion()
 {
-  if(verbose >= 2) cout << "stop_criterion\n";
-
   bool stop;
   // v1: abs. diff. between bhat_cur and bhat_prev
   // stop = (cur_v.norm() < tol);
   // v2: abs. max. value of Scores. 
   // - Example: Regenie Firth model fitting 
-  stop = (cur_Score.array().abs().maxCoeff() < tol); 
-  /* stop = (cur_Score.segment(0, Nb - Ncov0).array().abs().maxCoeff() < tol); */ 
+  stop_value = cur_Score.array().abs().maxCoeff();
+  stop = (stop_value < tol); 
   // v3: relative diff. in deviance. 
   // - Example: glm2::glm.fit2.R
   /* stop = ((abs(cur_dev - prev_dev) / (1.0 + abs(prev_dev))) < tol); // 1.0 to prevent from division by zero */
 
+  if(verbose >= 2) cout << "stop_criterion: " << stop_value << " < " << tol << endl;
+
   return(stop);
 }
 
-void FitOrdinal::update_par(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b)
+bool FitOrdinal::update_par(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X, const Eigen::VectorXd & b, bool pseudo)
 {
+  bool ret;
+
   // count
   if(trace) { cnt_updates++; }
 
@@ -1692,16 +2378,20 @@ void FitOrdinal::update_par(const VectorXb & Mask, const MatrixXb & Y, const Eig
 
   // update directions
   if(response == "multinom") {
-    update_par_multinom(Mask, Y, X, b);
+    if(pseudo) ret = update_par_multinom(Mask, Y, X, b, true); // pseudo = true
+    else ret = update_par_multinom(Mask, Y, X, b);
   } else if(response == "binom") {
     if(firth_binom) {
-      update_par_binom_firth(Mask, Y, X, b);
+      if(pseudo) ret = update_par_binom_pseudo(Mask, Y, X, b);
+      else ret = update_par_binom_firth(Mask, Y, X, b);
     } else {
-      update_par_binom(Mask, Y, X, b);
+      ret = update_par_binom(Mask, Y, X, b);
     }
   } else {
     throw std::runtime_error("unknown response");
   }
+
+  return(ret);
 }
 
 // optimization loop for binom. response
@@ -1711,16 +2401,27 @@ bool FitOrdinal::optimize(const VectorXb & Mask, const MatrixXb & Y, const Eigen
 
   bool res;
 
+  // special case when firth_multinom is on
+  /* if(firth_multinom) { */
+  /*   res = optimize_FisherScoring(Mask, Y, X); */
+  /* } else */ 
   if(optim == "FisherScoring") {
     res = optimize_FisherScoring(Mask, Y, X);
+  } else if(optim == "FisherScoringPseudo") {
+    if(firth_binom | firth_multinom) res = optimize_FisherScoringPseudo(Mask, Y, X);
+    else res = optimize_FisherScoring(Mask, Y, X);
   } else if(optim == "WeightHalving") {
     res = optimize_WeightHalving(Mask, Y, X);
+  } else if(optim == "WeightHalvingPseudo") {
+    if(firth_binom | firth_multinom) res = optimize_WeightHalvingPseudo(Mask, Y, X);
+    else res = optimize_WeightHalving(Mask, Y, X);
   } else {
     throw std::runtime_error("unknown optimize");
   }
 
   if(verbose >= 2) cout << "optimize it = " << it << " | cnt_updates = " << cnt_updates << endl;
   if(verbose >= 3) cout << "bhat = " << cur_b.transpose() << endl;
+  if(verbose >= 3) cout << "converged = " << converged << endl;
 
   return(res);
 }
@@ -1728,41 +2429,109 @@ bool FitOrdinal::optimize(const VectorXb & Mask, const MatrixXb & Y, const Eigen
 bool FitOrdinal::optimize_FisherScoring(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X)
 {
   unsigned int i;
-  bool res, stop;
+  bool res, up = true;
   double ratio_step;
 
   cur_b = b0;
   for(i = 0; i < maxit; i++) {
     // update directions
-    update_par(Mask, Y, X, cur_b);
+    up = update_par(Mask, Y, X, cur_b);
+    if(!up) break;
 
     // check the stopping criteria
-    stop = stop_criterion();
-    if(stop) {
-      break;
-    }
+    if(stop_criterion()) break;
 
     // check the  absolute step size to be less than max_step for each entry of step (cur_v2)
     if(check_step) {
       ratio_step = cur_v.array().abs().maxCoeff() / max_step;
+      if(verbose >= 3) cout << " cur_v.array().abs().maxCoeff() = " << cur_v.array().abs().maxCoeff() << endl;
+      if(verbose >= 3) cout << " ratio_step = " << ratio_step << endl;
       if(ratio_step > 1.0) {
         cur_v.array() /= ratio_step;
       }
+      if(verbose >= 3) cout << " cur_v.array().abs().maxCoeff() = " << cur_v.array().abs().maxCoeff() << endl;
     }
 
     // update parameters
     cur_b += cur_v;
 
     // check if bhat is nan
-    if(cur_b.array().isNaN().any()) {
-      it = i;
-      return false;
-    }
+    if(cur_b.array().isNaN().any()) { it = i; return false; }
 
   }
   // assign # iterations performed
   it = i;
-  res = (i < maxit);
+  res = (it < maxit) & up;
+
+  // check if any NaN
+  if(cur_Score.array().isNaN().any() | cur_b.array().isNaN().any() | isnan(cur_dev)) {
+    return false; 
+  }
+
+  return(res);
+}
+
+bool FitOrdinal::optimize_FisherScoringPseudo(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X)
+{
+  unsigned int i, i3;
+  bool res, up = true;
+  double ratio_step;
+
+  if(!(firth_binom | firth_multinom)) throw std::runtime_error("optimize_FisherScoringPseudo is for binomial/multinomial response with Firth correction");
+
+  cur_b = b0;
+  for(i = 0; i < maxit; i++) {
+    // update directions
+    up = update_par(Mask, Y, X, cur_b);
+    if(!up) break;
+
+    // check the stopping criteria
+    if(stop_criterion()) break;
+
+    // check the  absolute step size to be less than max_step for each entry of step (cur_v2)
+    if(check_step) {
+      ratio_step = cur_v.array().abs().maxCoeff() / max_step;
+      if(verbose >= 3) cout << " cur_v.array().abs().maxCoeff() = " << cur_v.array().abs().maxCoeff() << endl;
+      if(verbose >= 3) cout << " ratio_step = " << ratio_step << endl;
+      if(ratio_step > 1.0) cur_v.array() /= ratio_step;
+      if(verbose >= 3) cout << " cur_v.array().abs().maxCoeff() = " << cur_v.array().abs().maxCoeff() << endl;
+    }
+
+    // ystar is derived & stored in update_par_binom_firth
+
+    // Pseudo loop
+    for(i3 = 0; i3 < maxit3; i3++) {
+      if(verbose >= 3) cout << " - pseudo loop it " << i3 << endl;
+
+      // update directions
+      up = update_par(Mask, Y, X, cur_b, true); // pseudo = true
+      if(!up) { it = i; return false; }
+
+      // check the stopping criteria
+      if(stop_criterion()) break;
+
+      // check step size
+      if(check_step) {
+        ratio_step = cur_v.array().abs().maxCoeff() / max_step;
+        if(ratio_step > 1.0) cur_v.array() /= ratio_step;
+      }
+
+      // update parameters
+      cur_b += cur_v;
+
+      // check if bhat is nan
+      if(cur_b.array().isNaN().any()) { it = i; return false; }
+    } // end of pseudo loop 
+  } // end of main loop
+
+  // assign # iterations performed
+  it = i;
+  res = (i < maxit) & up;
+
+  // check if any NaN
+  if(cur_Score.array().isNaN().any() | cur_b.array().isNaN().any() | isnan(cur_dev)) {
+    return false; 
+  }
 
   return(res);
 }
@@ -1772,7 +2541,7 @@ bool FitOrdinal::optimize_WeightHalving(const VectorXb & Mask, const MatrixXb & 
   if(verbose >= 2) cout << "optimize_WeightHalving\n";
 
   unsigned int i, i2;
-  bool stop, res;
+  bool res, up = true;
 
   // declare variables
   VectorXd cur_b2, cur_v2;
@@ -1781,19 +2550,20 @@ bool FitOrdinal::optimize_WeightHalving(const VectorXb & Mask, const MatrixXb & 
 
   // initial values for Outer loop
   cur_b = b0;
-  update_par(Mask, Y, X, cur_b); // get (i) the step size (cur_v); (ii) current value of dev
+  up = update_par(Mask, Y, X, cur_b); // get (i) the step size (cur_v); (ii) current value of dev
+  if(!up) { it = 0; return false; }
 
   // Outer loop
   for(i = 1; i < maxit; i++) {
     if(verbose >= 3) cout << " - outer loop it " << i << endl;
 
+    if(verbose >= 3) cout << " - cur_b = " << cur_b.transpose() << endl;
+    if(verbose >= 3) cout << " - cur_Score = " << cur_Score.transpose() << " [max = " << cur_Score.array().abs().maxCoeff() << "]" << endl;
+
     // stopping criteria is checked here in the beginning rather than in the end of loop
     // - reason: update_par was called above
     // - example: i = 0 & no covariates & initial values are proportions --> no optimization inside the Outer/Inner loop is required
-    stop = stop_criterion();
-    if(stop) {
-      break;
-    }
+    if(stop_criterion()) break;
 
     // initial values for Inner loop
     cur_b2 = cur_b; cur_v2 = cur_v;
@@ -1803,20 +2573,16 @@ bool FitOrdinal::optimize_WeightHalving(const VectorXb & Mask, const MatrixXb & 
     
     // Inner loop (step halving)
     for(i2 = 0; i2 < maxit2; i2++) {
-      if(verbose >= 3) cout << " - inner loop it " << i2 << endl;
+      if(verbose >= 3 && i2 > 0) cout << " - inner loop it " << i2 << endl;
 
       // update step according to the rule: step(i) = step(initial) / 2^i
       // one exception from the rule: skip halving at the very first iteration, i2 = 0 --> Fisher Scoring at i2 = 0
-      if(i2) { 
-        cur_v2.array() /= denom;
-      }
+      if(i2) cur_v2.array() /= denom;
 
       // check the  absolute step size to be less than max_step for each entry of step (cur_v2)
       if(check_step) {
         ratio_step = cur_v2.array().abs().maxCoeff() / max_step;
-        if(ratio_step > 1.0) {
-          cur_v2.array() /= ratio_step;
-        }
+        if(ratio_step > 1.0) cur_v2.array() /= ratio_step;
       }
 
       // update param.
@@ -1824,41 +2590,179 @@ bool FitOrdinal::optimize_WeightHalving(const VectorXb & Mask, const MatrixXb & 
       // - the increment step (cur_v2) is reduced at each iteration (see the code line above)
       cur_b = cur_b2 + cur_v2;
 
+      // check if Score is nan
+      if(cur_Score.array().isNaN().any()) { it = i; return false; }
       // check if bhat is nan
-      if(cur_b.array().isNaN().any()) {
-        it = i;
-        return false;
-      }
+      if(cur_b.array().isNaN().any()) { it = i; return false; }
 
       // update Score, Info, loglik, dev
-      update_par(Mask, Y, X, cur_b);
+      up = update_par(Mask, Y, X, cur_b);
+      if(!up) {it = i; return false; }
+
+      // check if cur_dev is nan
+      if(isnan(cur_dev)) { it = i; return false; }
 
       // stop the inner loop (step halving) if dev. is improved
-      if(cur_dev < cur_dev2) {
-        break;
-      }
+      if(cur_dev < cur_dev2) break;
     }
 
     // assign Innter loop iterations
     it2 += i2;
 
-    bool strict_WeightHalving = false;
-    if(strict_WeightHalving) {
+    /* bool strict_WeightHalving = false; */
+    if(strict) {
       // check if all Inner loop iterations are used & exit
       if(i2 == maxit2) {
         // let the first iteration (i = 0) go even when convergence failure
-        if(i) {
-          // assign & exit
-          it = i; 
-          return false;
-        }
+        if(i) { it = i; return false; }
       }
     }
   }
 
   // assign # iterations performed
   it = i;
-  res = (i < maxit);
+  res = (i < maxit) & up;
+
+  // check if any NaN
+  if(cur_Score.array().isNaN().any() | cur_b.array().isNaN().any() | isnan(cur_dev)) {
+    return false; 
+  }
+
+  return res;
+}
+
+bool FitOrdinal::optimize_WeightHalvingPseudo(const VectorXb & Mask, const MatrixXb & Y, const Eigen::Ref<const Eigen::MatrixXd> & X)
+{
+  if(verbose >= 2) cout << "optimize_WeightHalvingPseudo\n";
+
+  if(!(firth_binom | firth_multinom)) throw std::runtime_error("optimize_WeightHalvingPseudo is for binomial/multinomial response with Firth correction");
+
+  unsigned int i, i2, i3;
+  bool res, stop, up = true;
+
+  // declare variables
+  VectorXd cur_b2, cur_v2;
+  double cur_dev2;
+  double denom, ratio_step;
+
+  // initial values for Outer loop
+  cur_b = b0;
+  /* update_par(Mask, Y, X, cur_b); // get (i) the step size (cur_v); (ii) current value of dev */
+
+  // Outer loop
+  for(i = 1; i < maxit; i++) {
+    up = update_par(Mask, Y, X, cur_b); 
+    if(!up) break;
+
+    if(verbose >= 3) cout << " - outer loop it " << i << endl;
+    if(verbose >= 3) cout << " - cur_b = " << cur_b.transpose() << endl;
+    if(verbose >= 3) cout << " - cur_Score = " << cur_Score.transpose() << " [max = " << cur_Score.array().abs().maxCoeff() << "]" << endl;
+
+    // stopping criterion
+    if(stop_criterion()) break;
+
+    if(stop_value > pseudo_stophalf) {
+      // initial values for Inner loop
+      cur_b2 = cur_b; cur_v2 = cur_v;
+      cur_dev2 = cur_dev;
+
+      denom = 2.0;
+      
+      // Inner loop (step halving)
+      for(i2 = 0; i2 < maxit2; i2++) {
+        if(verbose >= 3 && i2 > 0) cout << " - inner loop it " << i2 << endl;
+
+        // update step according to the rule: step(i) = step(initial) / 2^i
+        // one exception from the rule: skip halving at the very first iteration, i2 = 0 --> Fisher Scoring at i2 = 0
+        if(i2)  cur_v2.array() /= denom;
+
+        // check the  absolute step size to be less than max_step for each entry of step (cur_v2)
+        if(check_step) {
+          ratio_step = cur_v2.array().abs().maxCoeff() / max_step;
+          if(ratio_step > 1.0) cur_v2.array() /= ratio_step;
+        }
+
+        // update param.
+        // - the baseline value (cur_b2) is fixed
+        // - the increment step (cur_v2) is reduced at each iteration (see the code line above)
+        cur_b = cur_b2 + cur_v2;
+
+        // check if Score is nan
+        /* if(cur_Score.array().isNaN().any()) { it = i; return false; } */
+        // check if bhat is nan
+        /* if(cur_b.array().isNaN().any()) { it = i; return false; } */
+
+        // update Score, Info, loglik, dev
+        up = update_par(Mask, Y, X, cur_b);
+        /* if(!up) { it = i; return false; } */
+        if(!up) continue;
+
+        // check if cur_dev is nan
+        /* if(isnan(cur_dev)) { it = i; return false; } */
+
+        // stop the inner loop (step halving) if dev.is improved
+        if(cur_dev < cur_dev2) {
+          break;
+        }
+      } // end of inner loop
+
+      // assign Inner loop iterations
+      it2 += i2;
+    } else { // end of condition to start inner loop
+      // check step size
+      if(check_step) {
+        ratio_step = cur_v.array().abs().maxCoeff() / max_step;
+        if(ratio_step > 1.0) cur_v.array() /= ratio_step;
+      }
+
+      // update parameters
+      cur_b += cur_v;
+    }
+
+    // ystar is derived & stored in update_par_binom_firth
+
+    // Pseudo loop
+    // store initial values before entering Pseudo loop
+    cur_b2 = cur_b; cur_v2 = cur_v; cur_dev2 = cur_dev;
+    bool loop_pseudo = false;
+    for(i3 = 0; i3 < maxit3; i3++) {
+      if(verbose >= 3) cout << " - pseudo loop it " << i3 << endl;
+
+      // update directions
+      up = update_par(Mask, Y, X, cur_b, true); // pseudo = true
+      if(!up) break;
+
+      // check the stopping criteria
+      stop = stop_criterion();
+      if(check_nan(stop_value)) break;
+      if(stop) { loop_pseudo = true; break; }
+
+      // check step size
+      if(check_step) {
+        ratio_step = cur_v.array().abs().maxCoeff() / max_step;
+        if(ratio_step > 1.0) cur_v.array() /= ratio_step;
+      }
+
+      // update parameters
+      cur_b += cur_v;
+
+      // check if any NaN
+      /* if(cur_Score.array().isNaN().any() | cur_b.array().isNaN().any()) return false; */ 
+    } // end of pseudo loop (i3)
+    // cancel results of Pseudo loop if it failed
+    if(!loop_pseudo) {
+      cur_b = cur_b2; cur_v = cur_v2; cur_dev = cur_dev2;
+    }
+  }
+
+  // assign # iterations performed
+  it = i;
+  res = (i < maxit) & up;
+
+  // check if any NaN
+  if(cur_Score.array().isNaN().any() | cur_b.array().isNaN().any() | isnan(cur_dev)) {
+    return false; 
+  }
 
   return res;
 }
@@ -1867,18 +2771,70 @@ bool FitOrdinal::optimize_WeightHalving(const VectorXb & Mask, const MatrixXb & 
 // Utils
 //------------------------------
 
+bool check_nan(double x) 
+{
+  /* bool res = (boost::math::isnan)(x); */
+  bool res = (boost::math::isnan)(x) | !(boost::math::isnormal)(x);
+  return(res);
+}
+
 void exp_matrix(Eigen::MatrixXd & X)
 {
   // See: mu = binomial()$linkinv(eta)
   // - https://github.com/wch/r-source/blob/trunk/src/library/stats/src/family.c
   // - https://stackoverflow.com/a/1566222
-  double EPSILON = 2.221e-16;
+  /* double EPSILON = 2.221e-16; */
+  double EPSILON = 10 * std::numeric_limits<double>::epsilon();
   double THRESH = 30.0, MTHRESH = -30.0; 
   double INVEPS = 1.0/EPSILON;
   for(unsigned int i = 0; i < X.cols(); i++) {
     X.col(i).array() = (X.col(i).array() < MTHRESH).
       select(EPSILON, (X.col(i).array() > THRESH).
           select(INVEPS, X.col(i).array().exp()));
+  }
+}
+
+void exp_matrix_ord(Eigen::MatrixXd & X)
+{
+  double EPSILON = 10 * std::numeric_limits<double>::epsilon();
+  double THRESH = 30.0, MTHRESH = -30.0; 
+  double INVEPS = 1.0/EPSILON;
+
+  unsigned int ncols = X.cols();
+  ArrayXb mask_top = (X.array() > THRESH).rowwise().all(), mask_bottom = (X.array() < MTHRESH).rowwise().all();
+  /* cout << "any(mask_top) = " << mask_top.any() << endl; */
+
+  for(unsigned int i = 0; i < ncols; i++) {
+    X.col(i).array() = (X.col(i).array() < MTHRESH).
+      select(EPSILON, (X.col(i).array() > THRESH).
+          select(INVEPS, X.col(i).array().exp()));
+  }
+  // correction for cases: eta{1,2} > THRESH & eta1 < eta2 
+  if(ncols > 1) {
+    if(mask_top.any()) { // scaling factor (0.5, 1) for columns 1,2
+      for(unsigned int i = 0; i < ncols; i++) {
+        double sc = std::pow(0.5, ncols - 1 - i);
+        X.col(i).array() = mask_top.select(sc * X.col(i).array(), X.col(i).array());
+      }
+    }
+    /* if(mask_bottom.any()) { */
+    /*   for(unsigned int i = 0; i < ncols; i++) { */
+    /*     double sc = std::pow(0.5, i); */
+    /*     X.col(i).array() = mask_bottom.select(sc * X.col(i).array(), X.col(i).array()); */
+    /*   } */
+    /* } */
+  }
+}
+
+void invlogit_matrix(Eigen::MatrixXd & X)
+{
+  double EPSILON = 10 * std::numeric_limits<double>::epsilon();
+  /* double EPSILON = 2.221e-16; */
+  double THRESH = 30.0, MTHRESH = -30.0; 
+  for(unsigned int i = 0; i < X.cols(); i++) {
+    X.col(i).array() = (X.col(i).array() > MTHRESH).
+      select(1.0 / (1.0 + EPSILON), (X.col(i).array() < THRESH).
+          select(EPSILON / (1.0 + EPSILON), 1.0 - 1.0 / (1.0 + X.col(i).array().exp())));
   }
 }
 
@@ -1892,6 +2848,44 @@ void exp_vector(Eigen::VectorXd & x)
         select(INVEPS, x.array().exp()));
 }
 
+Eigen::VectorXd dlog_vector(const Eigen::VectorXd & x)
+{
+  // dfun = function(x) exp(x)/(1+exp(x))^2 
+  // pfun = function(x) 1/(1+exp(-x)) 
+  // ddfun = function(eta) dfun(eta)*(1 - 2*pfun(eta))
+  double EPSILON = 2.221e-16;
+  double THRESH = 30.0; // , MTHRESH = -30.0; 
+  // y = extreme value or exp(x)
+  VectorXb mask_extreme = (x.array().abs() > THRESH);
+  VectorXd y = mask_extreme.select(EPSILON, x.array().exp());
+  for(unsigned int i = 0; i < y.size(); i++) {
+    if(!mask_extreme(i)) {
+      y(i) = y(i) * (1.0 - y(i)) / pow(y(i) + 1.0, 3);
+    } else if(x[i] > THRESH) {
+      y(i) *= -1;
+    }
+  }
+  /* y.array() = (x.array() < MTHRESH) */
+  /*   select(EPSILON, (x.array() > THRESH). */
+  /*       select(-1*EPSILON, */ 
+  /*         x.array().exp())); */
+  /* y.array() = (x.array() < MTHRESH). */
+  /*   select(x, (x.array() > THRESH). */
+  /*       select(x, */ 
+  /*         (y.array() * (1 - y.array())) / (y.array() + 1).pow(3))); */
+  return(y);
+}
+
+Eigen::MatrixXd dlog_matrix(const Eigen::MatrixXd & x)
+{
+  MatrixXd y(x.rows(), x.cols());
+  VectorXd ycol(x.rows());
+  for(unsigned int i = 0; i < x.cols(); i++) {
+    ycol = dlog_vector(x.col(i));
+    y.col(i).array() = ycol.array();
+  }
+  return(y);
+}
 
 MatrixXd orth_matrix(const Eigen::MatrixXd & X0, const MatrixXb & Mask)
 {
@@ -2014,8 +3008,16 @@ std::string MultiPhen::print_sum_stats_htp(const variant_block* block_info, stru
   buffer << ";NO_BETA";
   buffer << ";IT=" << it << ";UP=" << cnt_updates;
   buffer << ";BIN=" << (int)(response == "binom");
+  if(bhat_y.size() > 0) {
+    buffer << ";BHAT=";
+    for(unsigned int i = 0; i < bhat_y.size(); i++) {
+      if(i) buffer << "," << bhat_y(i);
+      else buffer << bhat_y(i);
+    }
+  }
 
   buffer << endl;
 
   return buffer.str();
 }
+
