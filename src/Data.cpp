@@ -3921,14 +3921,14 @@ void Data::print_ld(MatrixXd& LDmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
   if(!params.skip_scaleG) { // get cormat
     ArrayXd sds = (LDmat.diagonal().array() <= 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt()); // bug fix for negative but numerically zero diagonal entries
     LDmat.diagonal().array() = sds.square();
-  if(params.debug) cout << "     - thresholded covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
+    if(params.debug) cout << "     - thresholded covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
     LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
-  if(params.debug) cout << "     - correlation matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
+    if(params.debug) cout << "     - correlation matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
   } else 
     LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
 
   // print corr
-  sout << "     - writing to file...";
+  sout << "     - writing to file..." << flush;
   mt.start_ms();
 
   if(params.ld_sparse_thr > 0){ // apply sparse threshold to LD matrix for off diagonal entries
@@ -3950,11 +3950,41 @@ void Data::print_ld(MatrixXd& LDmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
       }
     ofile->closeFile();
 
-  } else if(params.cor_out_txt){
+  } else if(params.cor_out_txt){// write out to text file (in batches of rows)
 
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    MatrixXd full_LDmat = LDmat.selfadjointView<Eigen::Upper>();
-    (*ofile) << full_LDmat(indices_ld, indices_ld).format(Fmt);
+    int batch_size = 1e3;
+    int nbtaches_row = ceil(LDmat.rows() * 1.0 / batch_size), nrow_start = 0, nrows_batch = batch_size;
+
+    for(int batch = 0; batch < nbtaches_row; batch++){ 
+     if(batch == (nbtaches_row - 1)) nrows_batch = LDmat.rows() - nrow_start;
+     vector< ostringstream > buffers (nrows_batch);
+
+#if defined(_OPENMP)
+     setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+     for(int i = 0; i < nrows_batch; i++){ // store row in parallel
+       for(int j = 0; j < LDmat.cols(); j++){
+         if( indices_ld(nrow_start + i) < indices_ld(j) )
+           buffers[i] << LDmat(indices_ld(nrow_start + i),indices_ld(j));
+         else
+           buffers[i] << LDmat(indices_ld(j),indices_ld(nrow_start + i));
+         if(j < (LDmat.cols() - 1)) buffers[i] << " ";
+       }
+       if( (batch < (nbtaches_row - 1)) || ( i < (nrows_batch - 1)) ) buffers[i] << '\n';
+     }
+#if defined(_OPENMP)
+    setNbThreads(params.threads);
+#endif
+
+    // concatenante all rows
+    string combined_buffer;
+    for(int i = 0; i < nrows_batch; i++)
+      combined_buffer += buffers[i].str();
+    (*ofile) << combined_buffer; // write them to file
+    nrow_start += nrows_batch;
+   }
+
     ofile->closeFile();
 
   } else {
