@@ -20,7 +20,7 @@ jobs:
       BGEN_VERSION: v1.1.7
       CMAKE_VERSION_MAJOR: 3.28
       CMAKE_VERSION_MINOR: 0
-      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget
+      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget libcurl4-openssl-dev
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
