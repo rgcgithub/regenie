@@ -1650,6 +1650,7 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, const boo
 
   if(val < 0) return -1;
   if(cvals(4) < 0){cerr << "Liu Chisq param<0!\n"; return -1;}
+  cerr << "Liu Chisq (" << cvals(4) << "," << val << ")\n";
 
   // 0 ncp gives strange behavior with non_central_chi_squared (returns -cdf instead of 1-cdf)
   if(cvals(5) == 0) pv = cdf(complement(chi_squared(cvals(4)), val));
@@ -1832,6 +1833,7 @@ double SKATO_integral_fn_liu(double* x){ // variables used beside x are global
   // get first term in integral
   dlt = (val - skato_muQ) / skato_sdQ * sqrt(2*skato_dfQ) + skato_dfQ;
   if(dlt<0) return 0; // cdf=0
+  cerr << "SKATO integral (" << skato_dfQ << "," << dlt << ")\n";
   S = cdf(complement(chisqL, dlt));
   //cerr << *x << " " << S << " " << val << " " << skato_muQ << " " << skato_sdQ << " " << skato_dfQ << endl;
 
@@ -1866,6 +1868,7 @@ void get_skato_pv(double &logp, double& chisq, double const& minp, int const& nr
 
   double a, p_bc = minp * nrhos;
   chi_squared chisq1( 1 );
+  cerr << "SKATO pv (1 , " << skato_upper << ")\n";
   double tstar = cdf(complement(chisq1, skato_upper)); 
 
   if(minp >= (1 - std::numeric_limits<float>::epsilon())) {logp = 0; chisq=0; return;}
