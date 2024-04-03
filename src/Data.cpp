@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2023 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2024 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -3490,6 +3490,7 @@ void Data::compute_tests_mt_multiphen(int const& chrom, vector<uint64> indices,v
       MultiPhen mphen_i = mphen;
 
       // run MultiPhen test & save summary stats
+      /* cout << snpinfo[snp_index].ID << endl; */
       mphen_i.run(Gmat, pheno_data.cov_phenotypes, pheno_data.new_cov.cols() - 1, params.n_pheno); // the last 2 arg.: #cov excluding intercept; #phenotypes
 
       /* string tmp_str = mphen_i.print_sumstats(isnp, snp_index, test_string + params.condtl_suff, model_type + params.condtl_suff, block_info, snpinfo, &params); */
@@ -3543,26 +3544,31 @@ void Data::prep_multiphen()
 {
   // user parameters 
   mphen.test = params.multiphen_test;
+  mphen.optim = params.multiphen_optim;
   mphen.pval_thr = params.multiphen_thr;
-  mphen.firth_binom = (params.multiphen_firth_mult <= 0);
   mphen.firth_mult = params.multiphen_firth_mult;
+  mphen.firth_binom = (params.multiphen_firth_mult > 0);
+  mphen.firth_multinom = (params.multiphen_firth_mult > 0);
   mphen.tol = params.multiphen_tol;
   mphen.trace = params.multiphen_trace;
   mphen.verbose = params.multiphen_verbose;
   // parameters for model fitting
-  mphen.optim = "WeightHalving";
-  mphen.maxit = 250; mphen.maxit2 = 25;
-  mphen.check_step = (params.multiphen_maxstep <= 0);
+  mphen.maxit = params.multiphen_maxit; mphen.maxit2 = params.multiphen_maxit2;
+  mphen.strict = params.multiphen_strict;
+  mphen.check_step = (params.multiphen_maxstep > 0);
   mphen.max_step = params.multiphen_maxstep; 
   mphen.reuse_start = true;
-  mphen.approx_offset = params.multiphen_approx_offset;
+  mphen.mac_approx_offset = params.multiphen_approx_offset;
+  mphen.pseudo_stophalf = params.multiphen_pseudo_stophalf;
+  mphen.reset_start = params.multiphen_reset_start;
+  mphen.offset_mode = params.multiphen_offset;
 
   // prepare new matrix of covariates X + matrix of phenotypes Y
   unsigned int n_samples = pheno_data.new_cov.rows(), n_cov1 = pheno_data.new_cov.cols();
   unsigned int n_cov = n_cov1 - 1;
   unsigned int n_phen = params.n_pheno;
 
-  pheno_data.cov_phenotypes.resize(n_samples, n_cov + n_phen + 2); // +2 intercepts
+  pheno_data.cov_phenotypes.resize(n_samples, n_cov + 2*n_phen + 2); // +2 intercepts
   // column # 1 = Intercept
   pheno_data.cov_phenotypes.col(0) = ArrayXd::Constant(n_samples, 1.0);
   // next n_cov columns = covariates **without** intercept
@@ -3573,6 +3579,16 @@ void Data::prep_multiphen()
   // next n_phen columns = phenotypes (skipped here & to be filled in for each chr.)
   // next & the last column = Intercept
   pheno_data.cov_phenotypes.rightCols(1) = ArrayXd::Constant(n_samples, 1.0);
+
+  // v2
+  if(!params.strict_mode) throw std::runtime_error("--strict mode is required for MultiPhen test");
+
+  VectorXb Mask = pheno_data.masked_indivs.col(0);
+  for(unsigned int i = 1; i < pheno_data.masked_indivs.cols(); i++) {
+    Mask.col(0).array() = Mask.col(0).array() || pheno_data.masked_indivs.col(i).array();
+  }
+  pheno_data.cov_phenotypes.array().colwise() *= Mask.array().cast<double>().array();
+  mphen.setup_x(Mask, pheno_data.cov_phenotypes, n_cov, n_phen, true, false); // (ignored by MultiPhen) pos_intercept_first = true, pos_phen_first = false
 }
 
 void Data::set_multiphen()
@@ -3582,12 +3598,21 @@ void Data::set_multiphen()
   unsigned int n_phen = params.n_pheno;
 
   if(pheno_data.cov_phenotypes.rows() != n_samples) throw std::runtime_error("#rows in cov_phenotypes");
-  if(pheno_data.cov_phenotypes.cols() != n_cov + n_phen + 2) throw std::runtime_error("#rows in cov_phenotypes");
+  if(pheno_data.cov_phenotypes.cols() != n_cov + 2*n_phen + 2) throw std::runtime_error("#rows in cov_phenotypes");
 
-  pheno_data.cov_phenotypes.rightCols(n_phen + 1).leftCols(n_phen) = res;
+  // v2
+  for(unsigned i = n_cov1, k = 0; k < n_phen; i++, k++) {
+    pheno_data.cov_phenotypes.col(i) = mphen.Mask.select(res.col(k), 0.0);
+  }
+  for(unsigned i = n_cov1 + n_phen + 1, k = 0; k < n_phen; i++, k++) {
+    pheno_data.cov_phenotypes.col(i) = mphen.Mask.select(res.col(k), 0.0);
+  }
+  /* pheno_data.cov_phenotypes.rightCols(n_phen + 1).leftCols(n_phen) = res; */
+  /* pheno_data.cov_phenotypes.array().colwise() *= mphen.Mask.array().cast<double>().array(); */
 
-  if(!params.strict_mode) throw std::runtime_error("--strict mode is required for MultiPhen test");
-  mphen.setup_x(pheno_data.masked_indivs.col(0), pheno_data.cov_phenotypes, n_cov, n_phen, true, false); // (ignored by MultiPhen) pos_intercept_first = true, pos_phen_first = false
+  // v1
+  /* if(!params.strict_mode) throw std::runtime_error("--strict mode is required for MultiPhen test"); */
+  /* mphen.setup_x(pheno_data.masked_indivs.col(0), pheno_data.cov_phenotypes, n_cov, n_phen, true, false); // (ignored by MultiPhen) pos_intercept_first = true, pos_phen_first = false */
 }
 
 /////////////////////////////////////////////////
@@ -3896,14 +3921,14 @@ void Data::print_ld(MatrixXd& LDmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
   if(!params.skip_scaleG) { // get cormat
     ArrayXd sds = (LDmat.diagonal().array() <= 0).select(sqrt(params.numtol), LDmat.diagonal().array().sqrt()); // bug fix for negative but numerically zero diagonal entries
     LDmat.diagonal().array() = sds.square();
-  if(params.debug) cout << "     - thresholded covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
+    if(params.debug) cout << "     - thresholded covariance matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
     LDmat = (1/sds).matrix().asDiagonal() * LDmat * (1/sds).matrix().asDiagonal();
-  if(params.debug) cout << "     - correlation matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
+    if(params.debug) cout << "     - correlation matrix[1:5,1:5]:\n" << LDmat.block(0,0,min(params.ld_n,5),min(params.ld_n,5)) << "\n" << print_mem() << "\n";
   } else 
     LDmat.diagonal().array() = LDmat.diagonal().array().max(params.numtol);
 
   // print corr
-  sout << "     - writing to file...";
+  sout << "     - writing to file..." << flush;
   mt.start_ms();
 
   if(params.ld_sparse_thr > 0){ // apply sparse threshold to LD matrix for off diagonal entries
@@ -3925,11 +3950,41 @@ void Data::print_ld(MatrixXd& LDmat, ArrayXi& indices_ld, ArrayXb& is_absent, Fi
       }
     ofile->closeFile();
 
-  } else if(params.cor_out_txt){
+  } else if(params.cor_out_txt){// write out to text file (in batches of rows)
 
-    IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
-    MatrixXd full_LDmat = LDmat.selfadjointView<Eigen::Upper>();
-    (*ofile) << full_LDmat(indices_ld, indices_ld).format(Fmt);
+    int batch_size = 1e3;
+    int nbtaches_row = ceil(LDmat.rows() * 1.0 / batch_size), nrow_start = 0, nrows_batch = batch_size;
+
+    for(int batch = 0; batch < nbtaches_row; batch++){ 
+     if(batch == (nbtaches_row - 1)) nrows_batch = LDmat.rows() - nrow_start;
+     vector< ostringstream > buffers (nrows_batch);
+
+#if defined(_OPENMP)
+     setNbThreads(1);
+#pragma omp parallel for schedule(dynamic)
+#endif
+     for(int i = 0; i < nrows_batch; i++){ // store row in parallel
+       for(int j = 0; j < LDmat.cols(); j++){
+         if( indices_ld(nrow_start + i) < indices_ld(j) )
+           buffers[i] << LDmat(indices_ld(nrow_start + i),indices_ld(j));
+         else
+           buffers[i] << LDmat(indices_ld(j),indices_ld(nrow_start + i));
+         if(j < (LDmat.cols() - 1)) buffers[i] << " ";
+       }
+       if( (batch < (nbtaches_row - 1)) || ( i < (nrows_batch - 1)) ) buffers[i] << '\n';
+     }
+#if defined(_OPENMP)
+    setNbThreads(params.threads);
+#endif
+
+    // concatenante all rows
+    string combined_buffer;
+    for(int i = 0; i < nrows_batch; i++)
+      combined_buffer += buffers[i].str();
+    (*ofile) << combined_buffer; // write them to file
+    nrow_start += nrows_batch;
+   }
+
     ofile->closeFile();
 
   } else {

@@ -2,7 +2,7 @@
 
    This file is part of the regenie software package.
 
-   Copyright (c) 2020-2023 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+   Copyright (c) 2020-2024 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
    Permission is hereby granted, free of charge, to any person obtaining a copy
    of this software and associated documentation files (the "Software"), to deal
@@ -788,12 +788,25 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   }
 
   // check header
-  if( (tmp_str_vec.size() < 5) || 
-      (tmp_str_vec[1] != "POS") || 
-      (tmp_str_vec[2] != "ID") || 
-      (tmp_str_vec[3] != "REF") || 
-      (tmp_str_vec[4] != "ALT") )
+  if(tmp_str_vec.size() < 5)
     throw "header of pvar file does not have correct format.";
+
+  auto posIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "POS");
+  auto idIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "ID");
+  auto refIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "REF");
+  auto altIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "ALT");
+
+  if(posIter == tmp_str_vec.end() ||
+      idIter == tmp_str_vec.end() ||
+      refIter == tmp_str_vec.end() ||
+      altIter == tmp_str_vec.end())
+    throw "header of pvar file does not have correct format.";
+
+  int posIndex, idIndex, refIndex, altIndex;
+  posIndex = std::distance(tmp_str_vec.begin(), posIter);
+  idIndex = std::distance(tmp_str_vec.begin(), idIter);
+  refIndex = std::distance(tmp_str_vec.begin(), refIter);
+  altIndex = std::distance(tmp_str_vec.begin(), altIter);
 
   while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
@@ -802,10 +815,10 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
       throw "incorrectly formatted pvar file at line " + to_string( snpinfo.size()+1 );
 
     tmp_snp.chrom = chrStrToInt(tmp_str_vec[0], params->nChrom);
-    tmp_snp.physpos = std::stoul( tmp_str_vec[1],nullptr,0);
-    tmp_snp.ID = tmp_str_vec[2];
-    tmp_snp.allele1 = tmp_str_vec[3];
-    tmp_snp.allele2 = tmp_str_vec[4];
+    tmp_snp.physpos = std::stoul( tmp_str_vec.at(posIndex),nullptr,0);
+    tmp_snp.ID = tmp_str_vec.at(idIndex);
+    tmp_snp.allele1 = tmp_str_vec.at(refIndex);
+    tmp_snp.allele2 = tmp_str_vec.at(altIndex);
     tmp_snp.offset = lineread; // store index in file
 
     if (tmp_snp.chrom == -1) 
@@ -885,12 +898,22 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
   }
 
   // check header
-  if( (tmp_str_vec.size() < 5) || 
-      (tmp_str_vec[1] != "POS") || 
-      (tmp_str_vec[2] != "ID") || 
-      (tmp_str_vec[3] != "REF") || 
-      (tmp_str_vec[4] != "ALT") )
+  if(tmp_str_vec.size() < 5)
     throw "header of pvar file does not have correct format.";
+
+  auto posIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "POS");
+  auto idIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "ID");
+  auto refIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "REF");
+  auto altIter = std::find(tmp_str_vec.begin(), tmp_str_vec.end(), "ALT");
+
+  if(posIter == tmp_str_vec.end() ||
+      idIter == tmp_str_vec.end() ||
+      refIter == tmp_str_vec.end() ||
+      altIter == tmp_str_vec.end())
+    throw "header of pvar file does not have correct format.";
+
+  int idIndex;
+  idIndex = std::distance(tmp_str_vec.begin(), idIter);
 
   while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
@@ -900,7 +923,7 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
     if (chrom <= 0) 
       throw "unknown chromosome code in bgen file.";
     tmp_v[0] = lineread++, tmp_v[1] = chrom;
-    index_map[ tmp_str_vec[2] ] = tmp_v;
+    index_map[ tmp_str_vec.at(idIndex) ] = tmp_v;
   }
 
   myfile.closeFile();

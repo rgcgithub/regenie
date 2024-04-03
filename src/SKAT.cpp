@@ -2,7 +2,7 @@
 
     This file is part of the regenie software package.
 
-    Copyright (c) 2020-2023 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
+    Copyright (c) 2020-2024 Joelle Mbatchou, Andrey Ziyatdinov & Jonathan Marchini
 
     Permission is hereby granted, free of charge, to any person obtaining a copy
     of this software and associated documentation files (the "Software"), to deal
@@ -1622,11 +1622,15 @@ double Kpp_lambda (const double& t, const Ref<const ArrayXd>& lambdas){
 
 double get_spa_pv(const double& root,const double& q, const Ref<const ArrayXd>& lambdas){
 
-  double u,w,r;
+  double u,w,r,tmp;
   normal nd(0,1);
 
-  w = sgn(root) * sqrt( 2 * (q * root - K_lambda(root, lambdas)));
-  u = root * sqrt(Kpp_lambda(root, lambdas));
+  tmp = 2 * (q * root - K_lambda(root, lambdas));
+  if(tmp <= 0) return -1;
+  w = sgn(root) * sqrt( tmp );
+  tmp = Kpp_lambda(root, lambdas);
+  if(tmp < 0) return -1;
+  u = root * sqrt( tmp );
   if( fabs(u) < 1e-4 ) return -1;
 
   r = w + log(u/w) / w;
