@@ -1,5 +1,6 @@
 #ifdef WITH_HTSLIB
 #include "bgz_writer.hpp"
+#include <utility>
 
 using namespace std;
 
