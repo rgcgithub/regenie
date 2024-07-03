@@ -194,7 +194,14 @@ if(EXISTS ${HTSLIB_PATH})
 
   add_definitions(-DWITH_HTSLIB)
   find_library(HTSLIB libhts.a HINTS ${HTSLIB_PATH})
-  target_link_libraries(regenie PUBLIC ${HTSLIB})
+  find_library(BZ2_LIB bz2 REQUIRED)
+  find_library(LZMA_LIB lzma REQUIRED)
+  find_library(CURL_LIB curl REQUIRED)
+  find_library(CRYPTO_LIB crypto REQUIRED)
+  target_link_libraries(regenie PUBLIC 
+    ${HTSLIB}
+    ${BZ2_LIB} ${LZMA_LIB} ${CURL_LIB} ${CRYPTO_LIB} 
+  )
 endif()
 
 # Intel MKL
@@ -202,14 +209,32 @@ if(EXISTS ${MKLROOT})
   add_definitions(-DWITH_MKL -DEIGEN_USE_BLAS -DEIGEN_USE_LAPACKE)
   target_include_directories(regenie PRIVATE ${MKLROOT}/include/)
   if(${BUILD_STATIC}) # specify static libs
-    find_library(MKL_LP64_LIB libmkl_intel_lp64.a HINTS "${MKLROOT}/lib/intel64" REQUIRED)
-    find_library(MKL_THREAD_LIB libmkl_gnu_thread.a HINTS "${MKLROOT}/lib/intel64" REQUIRED)
-    find_library(MKL_CORE_LIB libmkl_core.a HINTS "${MKLROOT}/lib/intel64" REQUIRED)
+    find_library(MKL_LP64_LIB libmkl_intel_lp64.a 
+      HINTS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
+    find_library(MKL_THREAD_LIB libmkl_gnu_thread.a 
+      HINTS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
+    find_library(MKL_CORE_LIB libmkl_core.a 
+      HINTS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
     target_link_libraries(regenie PRIVATE "-Wl,--start-group" ${MKL_LP64_LIB} ${MKL_THREAD_LIB} ${MKL_CORE_LIB} "-Wl,--end-group" -lgomp)
   else() # use dynamic libs
-    find_library(MKL_LP64_LIB mkl_intel_lp64 PATHS "${MKLROOT}/lib/intel64" REQUIRED)
-    find_library(MKL_THREAD_LIB mkl_gnu_thread PATHS "${MKLROOT}/lib/intel64" REQUIRED)
-    find_library(MKL_CORE_LIB mkl_core PATHS "${MKLROOT}/lib/intel64" REQUIRED)
+    find_library(MKL_LP64_LIB mkl_intel_lp64 
+      PATHS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
+    find_library(MKL_THREAD_LIB mkl_gnu_thread 
+      PATHS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
+    find_library(MKL_CORE_LIB mkl_core 
+      PATHS "${MKLROOT}/lib/intel64"
+      "${MKLROOT}/lib" 
+      REQUIRED)
     target_link_libraries(regenie PRIVATE "-Wl,--no-as-needed" ${MKL_LP64_LIB} ${MKL_THREAD_LIB} ${MKL_CORE_LIB} -lgomp)
   endif()
 elseif(EXISTS ${OPENBLAS_ROOT}) # OpenBLAS
@@ -248,10 +273,6 @@ endif()
 find_library(ZLIB_LIBRARY libz.a z REQUIRED)
 find_library(M_LIB m REQUIRED)
 find_library(DL_LIB dl REQUIRED)
-find_library(BZ2_LIB bz2)
-find_library(LZMA_LIB lzma)
-find_library(CURL_LIB curl)
-find_library(CRYPTO_LIB crypto)
 if("${UNAME_S}" STREQUAL "Linux")
   set(GFORTRAN_LIBRARY "-lgfortran")
 elseif("${UNAME_S}" STREQUAL "Darwin")
@@ -260,8 +281,7 @@ endif()
 target_link_libraries(
   regenie PRIVATE
   ${ZLIB_LIBRARY} ${M_LIB} ${DL_LIB} ${PTHREAD_LIB}
-  ${BZ2_LIB} ${LZMA_LIB}
-  ${CURL_LIB} ${CRYPTO_LIB} ${GFORTRAN_LIBRARY}
+  ${GFORTRAN_LIBRARY}
 )
 
 install(TARGETS regenie RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
