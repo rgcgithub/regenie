@@ -20,7 +20,7 @@ jobs:
       BGEN_VERSION: v1.1.7
       CMAKE_VERSION_MAJOR: 3.28
       CMAKE_VERSION_MINOR: 0
-      LIB_INSTALL: g++ libgomp1 make python3 zlib1g-dev wget libcurl4-openssl-dev
+      LIB_INSTALL: g++-9 gfortran-9 libgomp1 make python3 zlib1g-dev wget libcurl4-openssl-dev
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
@@ -34,6 +34,10 @@ jobs:
       - name: Apt packages
         run: |
           sudo apt install -y --no-install-recommends ${LIB_INSTALL}
+          sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-9
+          sudo update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-9 70
+          sudo update-alternatives --install /usr/bin/f77 f77 /usr/bin/gfortran-9 70
+          sudo update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-9 70
           wget -O cmake_install.sh "http://cmake.org/files/v${CMAKE_VERSION_MAJOR}/cmake-${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}-linux-x86_64.sh"
           sudo sh cmake_install.sh --prefix=/usr/local --skip-license --exclude-subdir
           sudo rm cmake_install.sh
