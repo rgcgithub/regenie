@@ -970,7 +970,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   }
 
   // orthonormal basis (save number of lin. indep. covars.)
-  if(params->print_cov_betas) pheno_data->new_cov_raw = pheno_data->new_cov;
+  if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
   params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
   if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
@@ -1383,6 +1383,7 @@ void write_ids(struct in_files const* files, struct param* params, struct phenod
   map<string, uint32_t >::iterator itr_ind;
   string idfile;
   Files fout;
+  vector<string> ids_out_ordered ( params->n_samples );
 
     sout << " * user specified to write sample IDs for each trait"<<endl;
 
@@ -1402,9 +1403,13 @@ void write_ids(struct in_files const* files, struct param* params, struct phenod
       index = itr_ind->second;
 
       if( !pheno_data->masked_indivs(index, ph) ) continue;
-      fout << params->FIDvec[index][0] << "\t" << params->FIDvec[index][1] << endl;
+      ids_out_ordered[ index ] = params->FIDvec[index][0] + "\t" + params->FIDvec[index][1];
 
     }
+
+    for(size_t i = 0, j = 0; i < params->n_samples; i++)
+      if(pheno_data->masked_indivs(i, ph))
+        fout << ids_out_ordered[i] << ( ++j == pheno_data->Neff(ph) ? "" : "\n" );
 
     fout.closeFile();
   } 
@@ -1509,20 +1514,20 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
   int ncol_start = X.cols();
   ArrayXi index_in_analysis = get_true_indices(ind_in_analysis);
 
-  // check XtX is invertible using QR
-  MatrixXd xtx = X(index_in_analysis, all).transpose() * X(index_in_analysis, all);
-  ColPivHouseholderQR<MatrixXd> qrA(xtx);
-  int indCols = qrA.rank();
+  // check rank of X
+  ColPivHouseholderQR<MatrixXd> qrX;
+  qrX.compute(X(index_in_analysis, all));
+  int indCols = qrX.rank();
 
   if(indCols == 0)
     throw "rank of matrix is 0.";
   else if ( indCols < X.cols() ){
     vector<string> new_names;
     // get indices of columns retained
-    ArrayXi colKeep = qrA.colsPermutation().indices().head(indCols);
+    ArrayXi colKeep = qrX.colsPermutation().indices().head(indCols);
     // sort them to keep order
     std::sort(colKeep.begin(), colKeep.end());
-    //cerr << "invert:" << qrA.isInvertible() << "\ndim: " << ncol_start << "\nrank: " << indCols << "\nqr_perm_vec:"<<colKeep.transpose() << "\n";
+    //cerr << "invert:" << qrX.isInvertible() << "\ndim: " << ncol_start << "\nrank: " << indCols << "\nqr_perm_vec:"<<colKeep.transpose() << "\n";
     //for(int i = 0; i < ncol_start; i++) cerr << i << " - " << params->covar_names[i] << " | " ;
     // keep only linearly independent columns (avoid full matrix copy)
     for(int i = 0; i < indCols; i++) {
@@ -1619,10 +1624,10 @@ void residualize_phenotypes(struct param* params, struct phenodt* pheno_data, co
   // compute covariate effects
   MatrixXd beta;
   if(params->print_cov_betas) { // X is not orth basis
-    MatrixXd xtx = pheno_data->new_cov.transpose() * pheno_data->new_cov;
-    ColPivHouseholderQR<MatrixXd> qrA(xtx);
-    params->cov_betas =  qrA.solve(pheno_data->new_cov.transpose() * pheno_data->phenotypes);
-    params->xtx_inv_diag.array().colwise() = qrA.inverse().diagonal().array().sqrt();
+    HouseholderQR<MatrixXd> qrX(pheno_data->new_cov);
+    params->cov_betas = qrX.solve(pheno_data->phenotypes);
+    MatrixXd R = qrX.matrixQR().topLeftCorner(params->ncov, params->ncov).template triangularView<Upper>();
+    params->xtx_inv_diag.array().colwise() = R.inverse().array().square().rowwise().sum().sqrt();
     // get orthonormal basis so xtx_inv = I
     if(params->trait_mode == 0) params->ncov = getBasis(pheno_data->new_cov, params);
   }
@@ -1773,6 +1778,8 @@ void set_pheno_pass(struct in_files const* files, struct param* params){
   // sanity check
   if((!params->pheno_pass).all())
     throw "none of the specified phenotypes for level 1 were found.\n";
+  if(params->test_l0 && !params->use_loocv && (params->n_pheno > 1))
+    throw "--test-l0 with k-fold CV is not allowed for multi-trait runs.\n";
 
 }
 

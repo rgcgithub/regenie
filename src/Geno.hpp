@@ -105,6 +105,7 @@ struct geno_block {
 
 struct variant_block {
   bool ignored, flipped;
+  int n_rr, n_aa;
   double scale_fac, ac1, mac1, af1, info1, ns1;
   Eigen::ArrayXi ns, ns_case, ns_control, nmales;
   Eigen::ArrayXd af, af_case, af_control, mac, info, cf_burden;

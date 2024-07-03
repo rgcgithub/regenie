@@ -80,7 +80,7 @@ class GenoMask {
     void tally_masks(struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,SpMat&,MatrixXb&);
     void computeMasks(struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
     void computeMasks_loo(const Eigen::Ref<const Eigen::ArrayXi>&,bool const&,struct param*,struct filter*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,std::vector<variant_block>&,vset&,std::vector<snp>&,mstream&);
-    void buildMask(const int&,const int&,struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,variant_block*);
+    void buildMask(const int&,const int&,uint32_t const&,struct param const*,struct filter const*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&,variant_block*);
 
     void get_mafs(const int&,Eigen::ArrayXd&,std::vector<variant_block> const&);
 
@@ -97,7 +97,7 @@ class GenoMask {
     void build_map(std::map<std::string,std::vector<int>>&);
     void prep_snplist(const std::string&,mstream& sout);
     void append_snplist(int const&,ArrayXb const&, int const&,vset const&,std::vector<snp> const&);
-    void make_snplist(int const&,std::string const&);
+    void make_snplist(int const&,std::string const&,int const&,uint32_t const&);
     void prep_setlists(const std::string&,const std::string&,mstream& sout);
     void append_setlist(int const&,std::string const&);
     void make_setlist(std::string const&,int const&,uint32_t const&);

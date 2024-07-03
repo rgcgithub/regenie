@@ -46,8 +46,10 @@ struct ridgel0 {
   Eigen::MatrixXd GTY;
   std::vector<Eigen::MatrixXd> G_folds, GtY; // storage for folds at levle 0
   Eigen::MatrixXd GGt_eig_vec, GGt_eig_val;
-  Eigen::MatrixXd Wmat;
-
+  Eigen::MatrixXd Wmat, ymat_res;
+  MatrixXb picked_top_snp;
+  bool subset_l0_snps_gmat = false;
+  Eigen::ArrayXi nspns_picked_block, nspns_picked, indices_gmat_keep;
 };
 
 struct ridgel1 {
@@ -58,14 +60,15 @@ struct ridgel1 {
   std::vector<std::vector<Eigen::MatrixXd>> pred_pheno, test_pheno;
   std::vector<std::vector<Eigen::MatrixXd>> pred_pheno_raw, test_pheno_raw;
   std::vector<std::vector<Eigen::MatrixXd>> pred_offset, test_offset;
-  std::vector<Eigen::MatrixXd> cumsum_values; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
+  std::vector<Eigen::MatrixXd> cumsum_values, cumsum_values_full; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
   std::vector<std::vector<Eigen::MatrixXd>> beta_hat_level_1;
   ArrayXb pheno_l1_not_converged;
   MatrixXb l0_colkeep;
   Eigen::MatrixXd l0_pv_block;
   Eigen::ArrayXi chrom_block, chrom_map_ndiff;
   Eigen::ArrayXd ridge_param_mult;
-
+  Eigen::MatrixXd beta_snp_step1; // MxR
+  std::vector<Eigen::MatrixXd> top_snp_pgs;
 };
 
 
@@ -105,10 +108,12 @@ double compute_log_lik_poisson(const double&,const double&);
 double y_log_ypi(const double&,const double&);
 double get_deviance_logistic(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&);
 
-void test_assoc_block(int const&,int const&,struct ridgel0&,Files&,struct param const&);
+void test_assoc_block(int const&,int const&,struct ridgel0&,struct ridgel1&,struct geno_block*,struct phenodt*,snp const*,struct param const&,mstream&);
+void apply_iter_cond(int const&,int const&,int const&,struct ridgel0&,struct ridgel1&,struct geno_block*,snp const*,struct param const&);
 void read_l0(int const&,int const&,struct in_files*,struct param*,struct ridgel1*,mstream&);
 void read_l0_chunk(int const&,int const&,int const&,int const&,const std::string&,struct param*,struct ridgel1*,mstream&);
 void check_l0(int const&,int const&,struct param*,struct ridgel1*,struct phenodt const*,mstream&,bool const& silent_mode = false);
+
 
 uint64 getSize(std::string const& fname);
 #endif

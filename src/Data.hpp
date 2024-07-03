@@ -96,6 +96,7 @@ class Data {
     void make_predictions_binary_loocv(int const&,int const&);
     void make_predictions_count(int const&,int const&);
     void make_predictions_count_loocv(int const&,int const&);
+    void print_snp_betas(const Eigen::Ref<const Eigen::VectorXd>&);
     void write_predictions(int const&);
     std::string write_ID_header();
     std::string write_chr_row(int const&,int const&,const Eigen::Ref<const Eigen::VectorXd>&);

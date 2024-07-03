@@ -740,6 +740,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     }
   }
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  if (!mat2.isCompressed()) mat2.makeCompressed();
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
   Svals.resize(bs, 1); // Mx1
@@ -914,6 +915,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     }
   }
   SpMat mat2 = mat * Jstar; // mat should be pretty sparse since major-ref
+  if (!mat2.isCompressed()) mat2.makeCompressed();
   mat.setZero(); mat.resize(0,0); mat.data().squeeze(); // not needed anymore
   Jstar.setZero(); Jstar.resize(0,0); Jstar.data().squeeze(); // not needed anymore
   Svals.resize(bs, 1); // Mx1
@@ -1174,6 +1176,7 @@ void check_cc_correction(SpMat& Gsparse, const Ref<const ArrayXd>& weights, cons
   Kmat.resize(weights.size(), weights.size()); // MxM
 
   SpMat mat2 = Gsparse * weights.matrix().asDiagonal(); // include weights to G
+  if (!mat2.isCompressed()) mat2.makeCompressed();
 
   // loop over each trait
   for(int ph = 0; ph < params.n_pheno; ph++) { 
@@ -1205,6 +1208,7 @@ void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, const
 
   bool use_rvec_start = check_rvec_start && (vc_Rvec_start.size() > 0);
   int npass = Rvec.sum();
+  int ncase = mask.select(Y,0).sum(), n = mask.count(); // approx as can't track samples with missing geno
 
   // loop over the markers
 #if defined(_OPENMP)
@@ -1236,8 +1240,35 @@ void apply_correction_cc(int const& ph, const Ref<const ArrayXi>& indices, const
     if(params.use_SPA){ // SPA
       run_SPA_test_snp(chisq, pv, tstat_cur, var_score(i), true, Gsparse.col(i), Gres.array(), phat, Wsqrt, mask, test_fail, params.tol_spa, params.niter_max_spa, params.missing_value_double, params.nl_dbl_dmin);
     } else if(params.firth) { // Firth
+      // For rare variants, set entries in Gvec for non-carriers to 0
+      ArrayXi index_carriers;
+      int mac_thr_sparse = (params.skip_fast_firth ? 0 : 50), j = 0, index_j;
+      if((Gsparse.col(i).sum()/ weights(i)) < mac_thr_sparse) {
+        SpVec Gtmp = Gsparse.col(i)/ weights(i);
+        index_carriers.resize(Gtmp.nonZeros());
+        for (SpVec::InnerIterator it(Gtmp); it; ++it) {
+          index_j = it.index();
+          // check for small entries in G (eg with imputed data)
+          if(mask(index_j) && (it.value() > 1e-4)) index_carriers(j++) = index_j;
+        }
+        index_carriers.conservativeResize(j);
+      }
+      double bstart = 0;
+      // if homALT are not present, use estimated beta from firth with no covs as starting value
+      if((Gsparse.col(i).coeffs().maxCoeff()/ weights(i)) < 1.5){
+        int n11 = 0, n01 = 0;
+        SpVec Gtmp = Gsparse.col(i)/ weights(i);
+        for (SpVec::InnerIterator it(Gtmp); it; ++it) {
+          index_j = it.index();
+          if(!mask(index_j) || (it.value() < 0.5)) continue;
+          if(Y(index_j)) n11++;
+          else n01++;
+        }
+        int n10 = ncase - n11;
+        bstart = log((n11 + 0.5) * (n - n11 - n01 - n10 + 0.5) / (n01 + 0.5) / (n10 + 0.5));
+      }
       // remove skat weights as it can lead to different model fit for ur masks
-      apply_firth_snp(test_fail, chisq, Gres.cwiseQuotient(Wsqrt.matrix()) / weights(i), Y, fest.cov_blup_offset.col(ph).array(), mask, params);
+      apply_firth_snp(test_fail, chisq, bstart, Gres.cwiseQuotient(Wsqrt.matrix()) / weights(i), index_carriers, Y, fest.cov_blup_offset.col(ph).array(), mask, params);
     }
 
     if( test_fail || (chisq == 0) ) { // set R to 0 for variant
@@ -1277,10 +1308,9 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 
 }
 */
-void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param const& params) {
+void apply_firth_snp(bool& fail, double& lrt, double const& bstart, const Ref<const MatrixXd>& Gvec, const Ref<const ArrayXi>& index_carriers, const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, struct param const& params) {
 
-  double dev0 = 0, bstart = 0, betaold = bstart, se;
-  ArrayXi index_carriers;
+  double dev0 = 0, betaold = bstart, se;
 
   // get dev0
   ArrayXd pivec, wvec;
@@ -1293,9 +1323,12 @@ void apply_firth_snp(bool& fail, double& lrt, const Ref<const MatrixXd>& Gvec, c
 
   if(!fail) return;
 
-  betaold = bstart; // start at 0
+  betaold = 0; // start at 0
   fail = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params); // try NR (slower)
 
+  if(!fail || (bstart == 0)) return;
+  betaold = bstart;
+  fail = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params); // try NR (slower)
 }
 
 bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double const& var_qb, const Ref<const MatrixXd>& GtWX, const Ref<const MatrixXd>& XWsqrt, SpMat const& GWs, const Ref<const ArrayXd>& Wsqrt, const Ref<const ArrayXd>& phat, const Ref<const ArrayXd>& Y, const Ref<const ArrayXb>& mask, const Ref<const MatrixXd>& offset, struct param const& params){
@@ -1309,6 +1342,7 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
   SpVec g_burden; // not needed since not using fastSPA
   bool test_fail = true;
   double chisq, pv;
+  ArrayXi index_carriers;
 
   // get residuals for burden mask
   VectorXd g_res = GWs * VectorXd::Ones(GWs.cols()) - XWsqrt * GtWX.rowwise().sum(); // get mask residuals
@@ -1320,7 +1354,7 @@ bool correct_vcov_burden(int const& ph, double& rfrac, double const& qb, double 
       ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
 
   } else if( params.firth ){ // use firth
-    apply_firth_snp(test_fail, chisq, g_res.cwiseQuotient(Wsqrt.matrix()), Y, offset.col(ph).array(), mask, params);
+    apply_firth_snp(test_fail, chisq, 0, g_res.cwiseQuotient(Wsqrt.matrix()), index_carriers, Y, offset.col(ph).array(), mask, params);
     /*if(params.debug && !test_fail)
       cerr << "Firth // uncorrected: " << tstat_cur * tstat_cur << " -> " << chisq <<
       ";logp="<< pv << ";rfrac=" << tstat_cur * tstat_cur / chisq << "\n";*/
@@ -1634,6 +1668,7 @@ double get_spa_pv(const double& root,const double& q, const Ref<const ArrayXd>& 
   if( fabs(u) < 1e-4 ) return -1;
 
   r = w + log(u/w) / w;
+  if((boost::math::isnan)(r) || !(boost::math::isnormal)(r)) return -1;
   return cdf(complement(nd, r));
 
 }
@@ -1901,7 +1936,7 @@ void print_vc_sumstats(int const& snp_index, string const& test_string, string c
         if(params->htp_out) 
           buffer << print_sum_stats_head_htp(snp_index, files.pheno_names[i], test_string + wgr_string + "-" + itr->first, snpinfo, params) << print_sum_stats_htp(-1, -1, itr->second(i, 0), itr->second(i, 1), -1, -1, -1, block_info->genocounts, i, true, 1, params, params->missing_value_double, -1, ( (params->firth || params->use_SPA) && ((itr->first == "SKATO-ACAT") || (itr->first == "SKATO")) ) ? block_info->cf_burden(i): -1.0, params->missing_value_double);
         else 
-          buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1, -1, params->pheno_counts.row(i).sum(), params->pheno_counts(i, 0), params->pheno_counts(i, 1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
+          buffer << (!params->split_by_pheno && (i>0) ? "" : header) << print_sum_stats(-1,-1,-1,-1,-1, -1, params->pheno_counts.row(i).sum(), params->pheno_counts(i, 0), params->pheno_counts(i, 1), test_string + "-" + itr->first, -1, -1, itr->second(i, 0), itr->second(i, 1), true, 1, params, (i+1));
 
         block_info->sum_stats[print_index].append( buffer.str() );
       } else if(!params->split_by_pheno) // print NA sum stats

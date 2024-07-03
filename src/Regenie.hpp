@@ -53,6 +53,7 @@
 #define lapack_complex_double std::complex<double>
 #include "lapacke.h"
 #elif defined(WITH_MKL)
+#include "mkl.h"
 #include "mkl_lapacke.h"
 #endif
 
@@ -269,6 +270,7 @@ struct param {
   bool write_l0_pred = false; // specify whether to write level 0 predictions to file to save on RAM
   bool rm_l0_pred = true; // specify whether to delete written level 0 predictions after level 1
   bool print_block_betas = false, test_l0 = false, select_l0 = false; // print betas from level 0 within each block (for debugging)
+  double rm_l0_pct = 0;
   std::string l0_pvals_file;
   bool force_run = false; // if using more than max nvariants in step 1
   int max_step1_variants = 1e6; // prevent users using too many step 1 variants
@@ -276,6 +278,7 @@ struct param {
   int niter_max_line_search_ridge = 100; // max number of iterations for line search in ridge logistic reg.
   double l1_ridge_tol = 1e-4; // tolerance level for convergence criteria
   double l1_ridge_eps = 1e-5; // epsilon used to set weights for 0/1 probabilities
+  double l0_snp_pval_thr = -1;
   uint32_t print_snpcount = 0; 
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, Eigen::Dynamic> >  beta_print_out;
   Eigen::ArrayXd lambda; // ridge parameters at level 0
@@ -520,6 +523,7 @@ template <typename T>
 std::string print_sv(const std::vector<T>&,const std::string&);
 void removeCarriageReturn(std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
+void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&);
 void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);

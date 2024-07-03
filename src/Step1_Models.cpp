@@ -43,6 +43,7 @@ using namespace std;
 using namespace Eigen;
 using namespace boost;
 using boost::math::beta_distribution;
+using boost::math::chi_squared;
 
 
 // null models
@@ -396,19 +397,24 @@ void ridge_level_0(const int& block, struct in_files* files, struct param* param
       for(int ph = 0; ph < params->n_pheno; ++ph ) {
         if( !params->pheno_pass(ph) ) continue;
         l1->test_mat[ph][i].col(block_eff * params->n_ridge_l0 + j) = pred.row(ph).transpose();
-        l1->test_pheno[ph][i].col(0) = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-        if (params->trait_mode && (block == 0) && (j == 0) ) {
-          l1->test_pheno_raw[ph][i].col(0) = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-          l1->test_offset[ph][i].col(0) = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+        if((block == 0) && (j == 0)) { // same for all blocks & ridge params
+          l1->test_pheno[ph][i].col(0) = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+          if (params->trait_mode) {
+            l1->test_pheno_raw[ph][i].col(0) = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+            l1->test_offset[ph][i].col(0) = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+          }
         }
       }
     }
 
     cum_size_folds += params->cv_sizes(i);
   }
-  if(params->debug && (block == 0)) {
-    cerr << "Ymat (Y1):\n" << l1->test_pheno[0][0].topRows(5) << endl;
-    cerr << "Wmat (Y1):\n" << l1->test_mat[0][0].topRows(5) << endl;
+  if(params->debug && (block < 5)) {
+    if(params->test_l0)
+      cerr << "Ymat (Y1):\n" << (l1->test_pheno[0][0].topRows(5) - l1->top_snp_pgs[0].topRows(5)) << endl;
+    else
+      cerr << "Ymat (Y1):\n" << l1->test_pheno[0][0].topRows(5) << endl;
+    cerr << "Wmat (Y1):\n" << l1->test_mat[0][0].topRows(5).middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0) << endl;
   }
 
   // center and scale using the whole sample
@@ -485,7 +491,7 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
 
   sout << "   -calc level 0 ridge..." << flush;
   auto t2 = std::chrono::high_resolution_clock::now();
-  int bs = l0->GGt.rows();
+  int bs = l0->GGt_eig_val.size();
   int block_eff = params->write_l0_pred ? 0 : block; // if writing to file
   string out_pheno;
   ofstream ofile;
@@ -498,12 +504,6 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
      throw "block size must be smaller than the number of samples to perform LOOCV!";
      */
 
-
-  // make matrix of (eigen-value + lambda)^(-1)
-  MatrixXd dl = l0->GGt_eig_val.asDiagonal() * MatrixXd::Ones(bs, params->n_ridge_l0);
-  dl.rowwise() += params->lambda.matrix().transpose();
-  MatrixXd DL_inv = dl.array().inverse().matrix();
-
   uint64 max_bytes = params->chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (bs * target_size) matrix ]
   int nchunk = ceil( params->cv_folds * bs * sizeof(double) * 1.0 / max_bytes );
@@ -511,49 +511,86 @@ void ridge_level_0_loocv(const int block, struct in_files* files, struct param* 
   int chunk, size_chunk, target_size = params->cv_folds / nchunk;
   int j_start;
 
-  for(chunk = 0; chunk < nchunk; ++chunk ) {
+  // make matrix of (eigen-value + lambda)^(-1)
+  MatrixXd DL_inv = ( l0->GGt_eig_val.rowwise().replicate(params->n_ridge_l0).array().rowwise() + params->lambda.matrix().transpose().array() ).inverse().matrix(); // kxR
+
+  if(!params->test_l0 || (l0->nspns_picked_block.maxCoeff() == 0) || (params->n_pheno == 1)){
+
+    if(params->print_block_betas) // assumes P=1
+      l1->beta_snp_step1.middleRows(filters->step1_snp_count, bs) = l0->GGt_eig_vec * (DL_inv.array().colwise() * l0->Wmat.col(0).array()).matrix();// K x R
+
+    for(chunk = 0; chunk < nchunk; ++chunk ) {
+      size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
+      j_start = chunk * target_size;
+
+      if((params->n_pheno == 1) && l0->subset_l0_snps_gmat)
+        VtG = l0->GGt_eig_vec.transpose() * Gblock->Gmat(l0->indices_gmat_keep, seqN(j_start, size_chunk));
+      else
+        VtG = l0->GGt_eig_vec.transpose() * Gblock->Gmat(all, seqN(j_start, size_chunk));
+      for(int i = 0; i < size_chunk; ++i ) {
+        z1 = VtG.col(i); // Kx1
+        z2 = DL_inv.array().colwise() * z1.array(); // K x R
+        gvec = z2.transpose() * z1; // R x 1
+        if(params->test_l0)
+          pred = z2.transpose() * l0->Wmat - gvec * l0->ymat_res.row(j_start + i);
+        else
+          pred = z2.transpose() * l0->Wmat - gvec * pheno_data->phenotypes.row(j_start + i);
+        pred.array().colwise() /= 1 - gvec.array(); // R x P
+
+        for(int ph = 0; ph < params->n_pheno; ++ph )
+          if( params->pheno_pass(ph) )
+            l1->test_mat_conc[ph].block(j_start + i, block_eff * params->n_ridge_l0, 1, params->n_ridge_l0) = pred.col(ph).transpose();
+      }
+    } 
+
+  } else for(chunk = 0; chunk < nchunk; ++chunk ) {
     size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
     j_start = chunk * target_size;
-
-    VtG = l0->GGt_eig_vec.transpose() * Gblock->Gmat.block(0, j_start, bs, size_chunk);
-    for(int i = 0; i < size_chunk; ++i ) {
-      z1 = VtG.col(i);
-      z2 = DL_inv.array().colwise() * z1.array();
-      gvec = z2.transpose() * z1;
-      pred = z2.transpose() * l0->Wmat - gvec * pheno_data->phenotypes.row(j_start + i);
-      pred.array().colwise() /= 1 - gvec.array();
-      for(int ph = 0; ph < params->n_pheno; ++ph )
-        if( params->pheno_pass(ph) )
-          l1->test_mat_conc[ph].block(j_start + i, block_eff * params->n_ridge_l0, 1, params->n_ridge_l0) = pred.col(ph).transpose();
+    VtG = l0->GGt_eig_vec.transpose() * Gblock->Gmat(l0->indices_gmat_keep, seqN(j_start, size_chunk)); // k x N
+    MatrixXd gamma_rho = (DL_inv.transpose() * VtG.array().square().matrix()).transpose(); // N x R
+    for(int ph = 0; ph < params->n_pheno; ++ph ) {
+      if(!params->pheno_pass(ph) ) continue;
+      Ref<MatrixXd> X_l1 = l1->test_mat_conc[ph].block(j_start, block_eff * params->n_ridge_l0, size_chunk, params->n_ridge_l0); // NxR
+      X_l1 = VtG.transpose() * (DL_inv.array().colwise() * l0->Wmat.col(ph).array()).matrix() - (gamma_rho.array().colwise() * l0->ymat_res.col(ph).segment(j_start, size_chunk).array()).matrix(); // N x R
+      X_l1.array() /= (1 - gamma_rho.array());
     }
+  }
+
+  if(params->debug && (block < 5)) {
+    if(params->test_l0)
+      cerr << "Ymat (Y1-Y5):\n" << l0->ymat_res.topLeftCorner(5,min(5, params->n_pheno)) << endl;
+    else
+      cerr << "Ymat (Y1-Y5):\n" << pheno_data->phenotypes.topLeftCorner(5,min(5, params->n_pheno)) << endl;
+    cerr << "Wmat (Y1):\n" << l1->test_mat_conc[0].topRows(5).middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0) << endl;
   }
 
   // center and scale within the block
   for(int ph = 0; ph < params->n_pheno; ++ph ) {
     if( !params->pheno_pass(ph) ) continue;
     // mask missing first
-    l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
-    p_mean = l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).colwise().sum() / pheno_data->Neff(ph);
+    l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
+    p_mean = l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).colwise().sum() / pheno_data->Neff(ph);
     //if(i == 0)sout << i << " " << p_mean << endl;
-    l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).rowwise() -= p_mean;
+    l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).rowwise() -= p_mean;
     // mask missing again
-    l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
-    p_sd = l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).colwise().norm() / sqrt(pheno_data->Neff(ph) -1);
+    l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).array().colwise() *= pheno_data->masked_indivs.col(ph).array().cast<double>();
+    p_sd = l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).colwise().norm() / sqrt(pheno_data->Neff(ph) -1);
     //if(i == 0)sout << i << " " << p_sd << endl;
-    l1->test_mat_conc[ph].block(0, block_eff * params->n_ridge_l0, params->n_samples, params->n_ridge_l0).array().rowwise() /= p_sd.array();
+    l1->test_mat_conc[ph].middleCols(block_eff * params->n_ridge_l0, params->n_ridge_l0).array().rowwise() /= p_sd.array();
 
 
     if(params->write_l0_pred) {
-      Xout = l1->test_mat_conc[ph].block(0, 0, params->n_samples, params->n_ridge_l0);
+      Xout = l1->test_mat_conc[ph].leftCols(params->n_ridge_l0);
       write_l0_file(files->write_preds_files[ph].get(), Xout, sout);
-      //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.block(0, 0, 5, Xout.cols()) << endl;
+      //if(block < 2 && ph == 0 ) sout << endl << "Out " << endl <<  Xout.topLeftCorner(5, Xout.cols()) << endl;
     }
 
-  }
+    if(params->print_block_betas) {
+      l1->beta_snp_step1.middleRows(filters->step1_snp_count, bs) *= (1/p_sd.array()).matrix().asDiagonal();
+      //cerr << "Gb:\n"<<(Gblock->Gmat.transpose() * l1->beta_snp_step1.middleRows(filters->step1_snp_count, bs)).topRows(5) << "\n\n" << "W(centered):\n"<<
+       // l1->test_mat_conc[0].block(0, block_eff * params->n_ridge_l0, 5, params->n_ridge_l0) << "\n\n";
+    }
 
-  if(params->debug && (block == 0)) {
-    cerr << "Ymat (Y1):\n" << pheno_data->phenotypes.topRows(5) << endl;
-    cerr << "Wmat (Y1):\n" << l1->test_mat_conc[0].block(0,0,5, params->n_ridge_l0) << endl;
   }
 
   sout << "done";
@@ -579,40 +616,23 @@ void write_l0_file(ofstream* ofs, MatrixXd& Xout, mstream& sout){
 /////////////////////////////////////////////////
 void set_mem_l1(struct in_files* files, struct param* params, struct filter* filters, struct ests* m_ests, struct geno_block* Gblock, struct phenodt* pheno_data, struct ridgel1* l1, vector<MatrixXb>& masked_in_folds, mstream& sout){ // when l0 was run in parallel
 
+  if(params->use_loocv) return;
+
   // store pheno info for l1
-  if(!params->use_loocv) {
-
-    uint32_t low = 0, high = 0;
-    uint32_t i_total = 0, cum_size_folds = 0;
-    for(int i = 0; i < params->cv_folds; ++i ) {
-      // assign masking within folds
-      for(int j = 0; j < params->cv_sizes(i); ++j) {
-        masked_in_folds[i].row(j) = pheno_data->masked_indivs.row(i_total);
-        i_total++;
+  uint32_t cum_size_folds = 0;
+  for(int i = 0; i < params->cv_folds; ++i ) {
+    // assign masking within folds
+    masked_in_folds[i] = pheno_data->masked_indivs.middleRows(cum_size_folds, params->cv_sizes(i));
+    // store predictions
+    for(int ph = 0; ph < params->n_pheno; ++ph ) {
+      if( !params->pheno_pass(ph) ) continue;
+      l1->test_pheno[ph][i] = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+      if (params->trait_mode) {
+        l1->test_pheno_raw[ph][i] = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+        l1->test_offset[ph][i] = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
       }
-
-      // set lower and upper index bounds for fold
-      if(i>0) low +=  params->cv_sizes(i-1);
-      high += params->cv_sizes(i);
-
-      // store predictions
-      uint32_t jj = 0;
-      for(size_t k = 0; k < params->n_samples; ++k ) {
-        if( (k >= low) && (k < high) ) {
-          for(int ph = 0; ph < params->n_pheno; ++ph ) {
-            if( !params->pheno_pass(ph) ) continue;
-            l1->test_pheno[ph][i](jj, 0) = pheno_data->phenotypes(k, ph);
-            if (params->trait_mode) {
-              l1->test_pheno_raw[ph][i](jj, 0) = pheno_data->phenotypes_raw(k, ph);
-              l1->test_offset[ph][i](jj, 0) = m_ests->offset_nullreg(k, ph);
-            }
-          }
-          jj++;
-        }
-      }
-      cum_size_folds += params->cv_sizes(i);
     }
-
+    cum_size_folds += params->cv_sizes(i);
   }
 
 }
@@ -628,14 +648,16 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
   MatrixXd XtX_sum, XtY_sum;
 
   // to compute Rsq and MSE of predictions
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < 5; i++){
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
+    if(params->test_l0) l1->cumsum_values_full[i].setZero(params->n_pheno, params->n_ridge_l1);
+  }
 
   for(int ph = 0; ph < params->n_pheno; ++ph ) {
     if( !params->pheno_pass(ph) ) continue; // should not happen for qts
+
     sout << "   -on phenotype " << ph+1 <<" (" << files->pheno_names[ph] << ")..." << flush;
     auto ts1 = std::chrono::high_resolution_clock::now();
-
     int ph_eff = params->write_l0_pred ? 0 : ph;
     int bs_l1 = params->total_n_block * params->n_ridge_l0;
 
@@ -658,10 +680,11 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
       }
     }
 
+    uint32_t cum_size_folds = 0;
     for(int i = 0; i < params->cv_folds; ++i ) {
 
       // use either in-sample or out-of-sample predictions
-      if (params->within_sample_l0) {
+      if (params->within_sample_l0) { // DEPRECATED
         X1 = l1->pred_mat[ph][i].transpose() * l1->pred_mat[ph][i];
         X2 = l1->pred_mat[ph][i].transpose() * l1->pred_pheno[ph][i];
       } else{
@@ -690,12 +713,21 @@ void ridge_level_1(struct in_files* files, struct param* params, struct phenodt*
       if(!params->within_sample_l0) l1->beta_hat_level_1[ph][i] = beta_l1;
       // p1 is Nfold x nridge_l1 matrix
       p1 = l1->test_mat[ph_eff][i] * beta_l1;
-
       l1->cumsum_values[0].row(ph) += p1.colwise().sum();
       l1->cumsum_values[1].row(ph).array() += l1->test_pheno[ph][i].array().sum();
       l1->cumsum_values[2].row(ph) += p1.array().square().matrix().colwise().sum();
       l1->cumsum_values[3].row(ph).array() += l1->test_pheno[ph][i].array().square().sum();
       l1->cumsum_values[4].row(ph) += (p1.array().colwise() * l1->test_pheno[ph][i].col(0).array()).matrix().colwise().sum() ;
+      if(params->test_l0){ // pred = p1 + top_snp_pgs; Y is res pheno
+        p1.colwise() += l1->top_snp_pgs[0].col(ph).segment(cum_size_folds, params->cv_sizes(i));
+        l1->cumsum_values_full[0].row(ph) += p1.colwise().sum();
+        l1->cumsum_values_full[1].row(ph).array() += pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1).array().sum();
+        l1->cumsum_values_full[2].row(ph) += p1.array().square().matrix().colwise().sum();
+        l1->cumsum_values_full[3].row(ph).array() += pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1).array().square().sum();
+        l1->cumsum_values_full[4].row(ph) += (p1.array().colwise() * pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1).col(0).array()).matrix().colwise().sum() ;
+      }
+
+      cum_size_folds += params->cv_sizes(i);
     }
 
     sout << "done";
@@ -717,11 +749,14 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
   string in_pheno;
   ifstream infile;
   MatrixXd XH_chunk, Z1, Z2, dl, dl_inv, xtx, tmpMat;
-  VectorXd wvec, zvec;
-  RowVectorXd calFactor, pred;
+  VectorXd wvec, zvec, Yvec, tmpVec, calFactor, pred;
 
-  for (int i = 0; i < 5; i++)
+  for (int i = 0; i < 5; i++){
     l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
+    if(params->test_l0) l1->cumsum_values_full[i].setZero(params->n_pheno, params->n_ridge_l1);
+  }
+  if(params->test_l0) l1->cumsum_values_full[3].array().colwise() += pheno_data->Neff - params->ncov; 
+  else l1->cumsum_values[3].array().colwise() += pheno_data->Neff - params->ncov; // Sy2
 
   uint64 max_bytes = params->chunk_mb * 1e6;
   // amount of RAM used < max_mb [ creating (target_size * bs_l1) matrix ]
@@ -743,61 +778,45 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     check_l0(ph, ph_eff, params, l1, pheno_data, sout);
     bs_l1 = l1->test_mat_conc[ph_eff].cols();
     bool use_simple_ridge = (l1->ridge_param_mult == 1).all();
+    if(params->test_l0)
+      Yvec = pheno_data->phenotypes.col(ph) - l1->top_snp_pgs[0].col(ph);
+    else
+      Yvec = pheno_data->phenotypes.col(ph);
 
-    xtx = l1->test_mat_conc[ph_eff].transpose() * l1->test_mat_conc[ph_eff];
-    zvec = l1->test_mat_conc[ph_eff].transpose() * pheno_data->phenotypes.col(ph);
+    xtx = l1->test_mat_conc[ph_eff].transpose() * l1->test_mat_conc[ph_eff]; // kxk
+    SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
+    zvec = eigX.eigenvectors().transpose() * (l1->test_mat_conc[ph_eff].transpose() * Yvec); // kx1
 
-    if(use_simple_ridge){ // compute solutions for all ridge parameters at once
-      SelfAdjointEigenSolver<MatrixXd> eigX(xtx);
-      dl = eigX.eigenvalues().rowwise().replicate(params->n_ridge_l1);
-      dl.rowwise() += params->tau[ph].matrix().transpose();
-      dl_inv = dl.array().inverse().matrix();
-      wvec = eigX.eigenvectors().transpose() * zvec;
+    for(chunk = 0; chunk < nchunk; ++chunk) {
+      size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
+      j_start = chunk * target_size;
+      Ref<VectorXd> Y_chunk = Yvec.segment(j_start, size_chunk);
+      Ref<MatrixXd> X_chunk = l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk);
 
-      for(chunk = 0; chunk < nchunk; ++chunk) {
-        size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
-        j_start = chunk * target_size;
+      tmpMat = X_chunk * eigX.eigenvectors(); // N_c x k
 
-        Z1 = (l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk) * eigX.eigenvectors()).transpose();
-
-        for(int i = 0; i < size_chunk; ++i ) {
-          Z2 = (dl_inv.array().colwise() * Z1.col(i).array()).matrix();
-          calFactor = Z1.col(i).transpose() * Z2;
-          pred = wvec.transpose() * Z2;
-          pred -= pheno_data->phenotypes(j_start + i, ph) * calFactor;
-          pred.array() /= 1 - calFactor.array();
-          //if( ph == 0) sout << pred.head(5) << endl;
-
-          // compute mse and rsq
-          l1->cumsum_values[0].row(ph) += pred; // Sx
-          // Y is centered so Sy = 0
-          l1->cumsum_values[2].row(ph) += pred.array().square().matrix(); // Sx2
-          // Y is scaled so Sy2 = params->n_samples - ncov
-          l1->cumsum_values[4].row(ph).array() += pred.array() * pheno_data->phenotypes(j_start + i, ph); // Sxy
-        }
-      }
-    } else for(int j = 0; j < params->n_ridge_l1; ++j) {
-      // compute seperately for each parameter
-      tmpMat = xtx;
-      tmpMat.diagonal().array() += params->tau[ph](j) * l1->ridge_param_mult;
-      SelfAdjointEigenSolver<MatrixXd> eigMat(tmpMat);
-      tmpMat = eigMat.eigenvectors() * (1/eigMat.eigenvalues().array()).matrix().asDiagonal() * eigMat.eigenvectors().transpose();
-
-      for(chunk = 0; chunk < nchunk; ++chunk) {
-        size_chunk = chunk == nchunk - 1? params->cv_folds - target_size * chunk : target_size;
-        j_start = chunk * target_size;
-
-        XH_chunk = l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk) * tmpMat; // Nc x k
-        calFactor = (l1->test_mat_conc[ph_eff].middleRows(j_start, size_chunk).array() * XH_chunk.array()).matrix().rowwise().sum().transpose();
-        pred = (XH_chunk * zvec).transpose() - (calFactor.array() * pheno_data->phenotypes.col(ph).segment(j_start, size_chunk).transpose().array()).matrix();
+      for(int j = 0; j < params->n_ridge_l1; ++j) { // compute seperately for each parameter
+        if(use_simple_ridge)
+          tmpVec = (1/(eigX.eigenvalues().array() + params->tau[ph](j))).matrix(); // kx1
+        else
+          tmpVec = (1/(eigX.eigenvalues().array() + params->tau[ph](j) * l1->ridge_param_mult)).matrix();
+        calFactor = tmpMat.array().square().matrix() * tmpVec; //N_cx1
+        pred = tmpMat * (tmpVec.array() * zvec.array()).matrix() - (calFactor.array() * Y_chunk.array()).matrix();
         pred.array() /= (1 - calFactor.array());
 
         // compute mse and rsq
         l1->cumsum_values[0](ph, j) += pred.sum(); // Sx
-        // Y is centered so Sy = 0
-        l1->cumsum_values[2](ph, j) += pred.array().square().sum(); // Sx2
-        // Y is scaled so Sy2 = params->n_samples - ncov
-        l1->cumsum_values[4](ph, j) += pred.transpose().dot(pheno_data->phenotypes.col(ph).segment(j_start, size_chunk)); // Sxy
+                                                   // Y is centered so Sy = 0
+        l1->cumsum_values[2](ph, j) += pred.squaredNorm(); // Sx2
+                                                                    // Y is scaled so Sy2 = params->n_samples - ncov
+        l1->cumsum_values[4](ph, j) += pred.dot(Y_chunk); // Sxy
+        if(params->test_l0){ // pred = p1 + top_snp_pgs; Y is res pheno
+          if(j == 0) l1->cumsum_values[3].row(ph).array() += Y_chunk.squaredNorm(); // (Y-PGS) is not standardized
+          pred += l1->top_snp_pgs[0].col(ph).segment(j_start, size_chunk);
+          l1->cumsum_values_full[0](ph, j) += pred.sum(); // Sx
+          l1->cumsum_values_full[2](ph, j) += pred.squaredNorm(); // Sx2
+          l1->cumsum_values_full[4](ph, j) += pred.dot(pheno_data->phenotypes.col(ph).segment(j_start, size_chunk)); // Sxy
+        }
       }
     }
 
@@ -806,8 +825,6 @@ void ridge_level_1_loocv(struct in_files* files, struct param* params, struct ph
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
     sout << " (" << duration.count() << "ms) "<< endl;
   }
-
-  l1->cumsum_values[3].array().colwise() += pheno_data->Neff - params->ncov; // Sy2
 
   sout << endl;
 }
@@ -1716,39 +1733,56 @@ double get_deviance_logistic(const Ref<const ArrayXd>& Y, const Ref<const ArrayX
   return dev;
 }
 
-void test_assoc_block(int const& chrom, int const& block, struct ridgel0& l0, Files& ostream_p, struct param const& params){
+void test_assoc_block(int const& chrom, int const& block, struct ridgel0& l0,struct ridgel1& l1, struct geno_block* Gblock, struct phenodt* pheno_data, snp const* snpinfo, struct param const& params, mstream& sout){
 
-  double pv, logp, chival;
-  VectorXd lambdas;
-  std::ostringstream buffer;
-  IOFormat Fmt(FullPrecision, DontAlignCols, " ", "\n", "", "","","\n");
+  sout << "   -extracting highly associated SNPs..." << flush;
+  auto t2 = std::chrono::high_resolution_clock::now();
 
-  //  test statistic = Y^TGG^TY
-  ArrayXd qstat = l0.GTY.array().square().colwise().sum();
+  bool run_algo = params.l0_snp_pval_thr > 0;
+  ArrayXi ind_g_l1;
+  MatrixXd tmpM;
+  l0.picked_top_snp = MatrixXb::Constant(l0.GGt.cols(), params.n_pheno, false);
 
-  // compute eigen values of G^TG
-  get_lambdas(lambdas, l0.GGt, params.skat_tol);
-
-  // get pv from linear comb of chisq1
-  for(int ph = 0; ph < params.n_pheno; ph++){
-
-    if(lambdas.size() == 1)
-      get_logp(logp, qstat(ph)/ lambdas.tail(1)(0)); 
-    else {
-      pv = get_chisq_mix_pv(qstat(ph), lambdas);
-      if(pv == -1) pv = max(params.nl_dbl_dmin, get_liu_pv(qstat(ph), lambdas, true));
-
-      if(pv != -1) get_logp(pv, logp, chival, params.nl_dbl_dmin);
-      else logp = -1;
-    }
-
-    // print out
-    if(logp == -1)
-      buffer << " NA";
-    else
-      buffer << " " << logp;
+  if(run_algo){
+    for(int ph = 0; ph < params.n_pheno; ph++)
+      apply_iter_cond(chrom, block, ph, l0, l1, Gblock, snpinfo, params);
+    sout << "number selected across phenotypes = [ " << l0.nspns_picked_block.matrix().transpose() << " ]...";
   }
-  ostream_p << chrom << " " << block + 1 << buffer.str() << "\n";
+
+  // discard variants that are picked across all traits
+  ArrayXb rm_var = l0.picked_top_snp.rowwise().all();
+  l0.subset_l0_snps_gmat = rm_var.any();
+  l0.indices_gmat_keep = get_true_indices(!rm_var); // resize matrices to remove the picked SNPs
+  if(l0.subset_l0_snps_gmat) {
+    if(params.use_loocv){
+      SelfAdjointEigenSolver<MatrixXd> esG(l0.GGt(l0.indices_gmat_keep,l0.indices_gmat_keep));
+      l0.GGt_eig_vec = esG.eigenvectors();
+      l0.GGt_eig_val = esG.eigenvalues();
+      l0.Wmat = l0.GGt_eig_vec.transpose() * l0.GTY(l0.indices_gmat_keep, all);
+    } else {
+      l0.GGt = MatrixXd::Zero(l0.indices_gmat_keep.size(),l0.indices_gmat_keep.size());
+      l0.GTY = MatrixXd::Zero(l0.indices_gmat_keep.size(),params.n_pheno);
+      uint32_t cum_size_folds = 0;
+      for(int i = 0; i < params.cv_folds; ++i ) {
+        tmpM = l0.G_folds[i](l0.indices_gmat_keep,l0.indices_gmat_keep); l0.G_folds[i] = tmpM;
+        l0.GGt += l0.G_folds[i];
+        tmpM = l0.GtY[i](l0.indices_gmat_keep,all); l0.GtY[i] = tmpM;
+        l0.GTY += l0.GtY[i];
+        cum_size_folds += params.cv_sizes(i);
+      }
+      tmpM = Gblock->Gmat(l0.indices_gmat_keep, all); Gblock->Gmat = tmpM;
+    }
+  } else if(params.use_loocv){ // loocv
+    SelfAdjointEigenSolver<MatrixXd> esG(l0.GGt);
+    l0.GGt_eig_vec = esG.eigenvectors();
+    l0.GGt_eig_val = esG.eigenvalues();
+    l0.Wmat = l0.GGt_eig_vec.transpose() * l0.GTY;
+  }
+
+  sout << "done";
+  auto t3 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2);
+  sout << " (" << duration.count() << "ms) "<< endl;
 
 }
 
@@ -1845,41 +1879,57 @@ void check_l0(int const& ph, int const& ph_eff, struct param* params, struct rid
     std::sort(quantile_vec.begin(), quantile_vec.end());
     if(!silent_mode && params->debug) cout << "[ Q1="<< quantile_vec[Q1] << ", Q2=" << quantile_vec[Q2] << ", Q3=" << quantile_vec[Q3] << " ]..." << flush;
 
-    // with U(0,1) independent p-values under H0, kth order statistic is Beta(k, N-k) 
-    thr = quantile_vec[N-1] + 1e-6;
-    for( int i = 0; i < (N-1); ++i ) {
-      beta_distribution<>  bd(i+1, N - i - 1);
-      beta_q = -log10( quantile(bd, conf_alpha/2.0) );
-      if((quantile_vec[N-i-1] < beta_q) || (i==(N-2))){
-        if(i>0) thr = quantile_vec[N-i];
-        break;
-      }
-    }
-    
-    int Ntop = ceil(0.05*N);
-    // threshold = median + 3*IQR
-    // or 3 SD above mean?
-    if((pv_arr >= thr).count() >= Ntop){
-      double iqr = quantile_vec[Q3] - quantile_vec[Q1];
-      thr = max(thr, quantile_vec[Q3] + 3 * iqr); 
-    }
+    if (params->rm_l0_pct != 0){ // get the threshold to use & select blocks
 
-    // if too many are selected, keep top 1%
-    if((pv_arr >= thr).count() >= Ntop){
-      thr = quantile_vec[N-Ntop]; 
-    }
-
-    if(!silent_mode) sout << (pv_arr >= thr).count() << "/" << N << " blocks selected (Upper bound = " << thr << ")..." << flush;
-
-    if( (pv_arr >= thr).any() )
-      // go through each block
+      if(!silent_mode) sout << "removing the least " << params->rm_l0_pct << "% significant block level 0 predictors..." << flush;
+      int N_rm = N * (params->rm_l0_pct/100);
+      if(N_rm >= N) throw "invalid proportion specified for --rm-l0-pct";
+      thr = quantile_vec[N_rm-1];
       for( int i = 0; i < N; ++i ) 
-        if(pv_arr(i) >= thr) { // only use last ridge parameter (min shrinkage)
-          l1->l0_colkeep.block(i * params->n_ridge_l0, ph, params->n_ridge_l0 - 1, 1).array() = false;
-          l1->ridge_param_mult( (i+1) * params->n_ridge_l0 - 1 ) = 0;
+        if(pv_arr(i) <= thr) { // throw out all level 0 predictors from block
+          l1->l0_colkeep.block(i * params->n_ridge_l0, ph, params->n_ridge_l0, 1).array() = false;
           // subtract from chr_map
-          l1->chrom_map_ndiff( l1->chrom_block(i) - 1 ) += params->n_ridge_l0 - 1;
+          l1->chrom_map_ndiff( l1->chrom_block(i) - 1 ) += params->n_ridge_l0;
         }
+
+    } else {
+
+      // with U(0,1) independent p-values under H0, kth order statistic is Beta(k, N-k) 
+      thr = quantile_vec[N-1] + 1e-6;
+      for( int i = 0; i < (N-1); ++i ) {
+        beta_distribution<>  bd(i+1, N - i - 1);
+        beta_q = -log10( quantile(bd, conf_alpha/2.0) );
+        if((quantile_vec[N-i-1] < beta_q) || (i==(N-2))){
+          if(i>0) thr = quantile_vec[N-i];
+          break;
+        }
+      }
+
+      int Ntop = ceil(0.05*N);
+      // threshold = median + 3*IQR
+      // or 3 SD above mean?
+      if((pv_arr >= thr).count() >= Ntop){
+        double iqr = quantile_vec[Q3] - quantile_vec[Q1];
+        thr = max(thr, quantile_vec[Q3] + 3 * iqr); 
+      }
+
+      // if too many are selected, keep top 1%
+      if((pv_arr >= thr).count() >= Ntop){
+        thr = quantile_vec[N-Ntop]; 
+      }
+
+      if(!silent_mode) sout << (pv_arr >= thr).count() << "/" << N << " blocks selected (Upper bound = " << thr << ")..." << flush;
+
+      if( (pv_arr >= thr).any() )
+        // go through each block
+        for( int i = 0; i < N; ++i ) 
+          if(pv_arr(i) >= thr) { // only use last ridge parameter (min shrinkage)
+            l1->l0_colkeep.block(i * params->n_ridge_l0, ph, params->n_ridge_l0 - 1, 1).array() = false;
+            l1->ridge_param_mult( (i+1) * params->n_ridge_l0 - 1 ) = 0;
+            // subtract from chr_map
+            l1->chrom_map_ndiff( l1->chrom_block(i) - 1 ) += params->n_ridge_l0 - 1;
+          }
+    }
   }
 
   // subset columns
@@ -1936,4 +1986,100 @@ uint64 getSize(string const& fname){
 
   return ( rc == 0 ? stat_buf.st_size : 0);
 
+}
+
+//////////// dev functions
+void apply_iter_cond(int const& chrom, int const& block, int const& ph, struct ridgel0& l0, struct ridgel1& l1, struct geno_block* Gblock, snp const* snpinfo, struct param const& params){
+
+  chi_squared chisq(1);
+  int bs = l0.GGt.rows(), maxIndex = 0;
+  if(bs == 1) return;
+  double chisq_thr = quantile(complement(chisq, params.l0_snp_pval_thr)), r2_thr = 0.9, ss_y, ss_x1;
+  double beta_top_snp, ggt_diag = l0.GGt(0,0); // G is residualized & scaled so GtG=N-K
+  vector<int> top_indices;
+  MapArXd GtY (l0.GTY.col(ph).data(), bs);
+  ArrayXd block_top_pgs = ArrayXd::Zero(Gblock->Gmat.cols());
+  ArrayXd snp_pgs, chisq_v, bvec, v_beta, bstart, v_y;
+  MatrixXd tmpM, X2tX1_X1tX1_inv, X1tX1_inv_X1ty, LDmat = (l0.GGt.array() / (params.n_samples - params.ncov_analyzed) ).square().matrix();
+  // initial values
+  l0.nspns_picked_block(ph) = 0;
+  bstart = GtY/ggt_diag; bvec = bstart;
+  ss_y = l0.ymat_res.col(ph).squaredNorm();
+  v_y = (ss_y - bvec * GtY) / (ggt_diag - l0.nspns_picked(ph) - 1);
+  v_beta = v_y/ggt_diag;
+  ArrayXi tmpVi, indices_start(bs); std::iota(indices_start.begin(), indices_start.end(), 0);
+  
+  for(int itr = 1; itr < bs; itr++){
+
+    if( (!l0.picked_top_snp.array().col(ph)).count() == 1 ) break; // must have at least one non-picked SNP
+
+    // run marginal tests
+    chisq_v = bvec.square() / v_beta / v_y;
+    if(chisq_v.maxCoeff(&maxIndex) < chisq_thr) break;
+
+    // keep track of top SNP
+    top_indices.push_back(indices_start(maxIndex));
+    l0.picked_top_snp.array().col(ph)(indices_start(maxIndex)) = true;
+    // get beta and update pgs
+    beta_top_snp = bvec(maxIndex);
+    if(params.debug) cout << "round " << itr << " - top SNP '" << snpinfo[indices_start(maxIndex)].ID << "'" << ": chisq=" << chisq_v(maxIndex) << "/beta=" << beta_top_snp << "/vy=" << v_y(maxIndex) << "\n";
+    l0.nspns_picked_block(ph)++;
+    snp_pgs = Gblock->Gmat.row(indices_start(maxIndex)).transpose().array() * beta_top_snp;
+    block_top_pgs += snp_pgs; // update top_snp_pgs
+    // ignore snps in high LD with top SNP
+    l0.picked_top_snp.col(ph).array() = ( LDmat.col(indices_start(maxIndex)).array() > r2_thr ).select(true, l0.picked_top_snp.col(ph).array());
+    // track indices of snps not picked
+    indices_start = get_true_indices(!l0.picked_top_snp.array().col(ph));
+
+    // quantities needed for beta &v(beta)
+    /* // with eigen decomp
+    SelfAdjointEigenSolver<MatrixXd> eig_x1tx1(l0.GGt(top_indices, top_indices));
+    tmpM = eig_x1tx1.eigenvectors() * (1/eig_x1tx1.eigenvalues().array().sqrt()).matrix().asDiagonal();
+    X2tX1_X1tX1_inv = l0.GGt(indices_start, top_indices) * tmpM;
+    X1tX1_inv_X1ty = tmpM.transpose() * GtY(top_indices).matrix();
+    // get bvec conditional on picked snps
+    bvec = bstart(indices_start) - (X2tX1_X1tX1_inv * X1tX1_inv_X1ty).array() / ggt_diag;
+    //if(params.debug) cerr << bvec.head(5).matrix().transpose() << "\n";
+    v_y = ((l0.ymat_res.col(ph) - block_top_pgs.matrix()).squaredNorm() - bvec * GtY(indices_start)) / (ggt_diag - itr - 1);
+    v_beta = (ggt_diag - X2tX1_X1tX1_inv.array().square().rowwise().sum()) / ggt_diag / ggt_diag;  
+*/
+    // switch to cholesky (X1tX1 should always be pd)
+    if(itr == 1){
+      X2tX1_X1tX1_inv = l0.GGt(indices_start,top_indices) / ggt_diag;
+      ss_x1 = GtY(top_indices).square()(0) / ggt_diag;
+    } else if(itr <5) {
+      MatrixXd inv_X1tX1 = l0.GGt(top_indices, top_indices).inverse();
+      X2tX1_X1tX1_inv = l0.GGt(indices_start,top_indices) * inv_X1tX1;
+      //if(params.debug) cerr << (inv_X1tX1 * GtY(top_indices).matrix()).transpose() << "\n";
+      ss_x1 = GtY(top_indices).matrix().transpose() * inv_X1tX1 * GtY(top_indices).matrix();
+    } else {
+      const LLT<MatrixXd> llt_X1tX1 = l0.GGt(top_indices, top_indices).llt();
+      X2tX1_X1tX1_inv = llt_X1tX1.solve(l0.GGt(top_indices, indices_start)).transpose();
+      //if(params.debug) cerr << llt_X1tX1.solve(GtY(top_indices).matrix()).transpose() << "\n";
+      ss_x1 = (GtY(top_indices).matrix().transpose() * llt_X1tX1.solve(GtY(top_indices).matrix()))(0,0);
+    }
+    // get bvec conditional on picked snps
+    bvec = bstart(indices_start) - (X2tX1_X1tX1_inv * GtY(top_indices).matrix()).array() / ggt_diag;
+    //if(params.debug) cerr << bvec.head(5).matrix().transpose() << "\n";
+    v_y = (ss_y - ss_x1 - bvec * GtY(indices_start)) / (ggt_diag - l0.nspns_picked(ph) - l0.nspns_picked_block(ph) - 1);
+    v_beta = (ggt_diag - (X2tX1_X1tX1_inv.array() * l0.GGt(indices_start,top_indices).array()).rowwise().sum()) / ggt_diag / ggt_diag;  
+  }
+
+  if(params.debug) cout << "max Tchisq in l0 block (removing top SNPs) = " << chisq_v(maxIndex) << "\n";
+  if(bs>1){ // if at least one snp was picked
+    l1.top_snp_pgs[chrom].col(ph).array() += block_top_pgs; // update top_snp_pgs (sum per chromosome)
+    l1.top_snp_pgs[0].col(ph).array() += block_top_pgs; // update top_snp_pgs (sum across chr)
+    l0.ymat_res.col(ph).array() -= block_top_pgs;
+    l0.nspns_picked(ph) += l0.nspns_picked_block(ph);
+    if(params.use_loocv){ // loocv
+      GtY = (Gblock->Gmat * l0.ymat_res.col(ph)).array();  
+    } else {
+      uint32_t cum_size_folds = 0; GtY = 0;
+      for(int i = 0; i < params.cv_folds; ++i ) {
+        l0.GtY[i].col(ph) = Gblock->Gmat.middleCols(cum_size_folds, params.cv_sizes(i)) * l0.ymat_res.col(ph).segment(cum_size_folds, params.cv_sizes(i));
+        GtY += l0.GtY[i].col(ph).array();
+        cum_size_folds += params.cv_sizes(i);
+      }
+    }
+  }
 }

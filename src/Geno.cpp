@@ -408,6 +408,7 @@ void read_bgen_sample(const string& sample_file, struct param* params, std::vect
 
   // read fid/iid information
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     std::istringstream iss(line);
 
     if( !(iss >> FID >> IID) )
@@ -467,6 +468,7 @@ void read_bgen_sample(const string& sample_file, std::vector<string> &ids, mstre
 
   // read fid/iid information
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     std::istringstream iss(line);
 
     if( !(iss >> FID >> IID) )
@@ -532,6 +534,7 @@ void read_bim(struct in_files* files, struct param* params, struct filter* filte
   //if(params->set_range) cerr << params->range_chr << "\t" << params->range_min << "\t" << params->range_max<< endl;
 
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 )
@@ -621,6 +624,7 @@ uint32_t read_bim(map<string, vector<uint64>>& index_map, geno_file_info* ext_fi
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 6 )
       throw "incorrectly formatted bim file at line " + to_string( lineread+1 );
@@ -651,6 +655,7 @@ void read_fam(struct in_files* files, struct param* params, mstream& sout) {
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 6 )
@@ -697,6 +702,7 @@ uint32_t read_fam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, Re
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) {
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 6 )
       throw "incorrectly formatted fam file at line " + to_string( tmp_ids.size() + 1 );
@@ -779,6 +785,7 @@ uint64 read_pvar(struct in_files* files, struct param* params, struct filter* fi
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) { // skip to main header line
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 )
@@ -891,6 +898,7 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) { // skip to main header line
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in pvar file.";
@@ -946,10 +954,14 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) { // skip to main header line
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
 
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in psam file.";
+
+    if( tmp_str_vec[0] == "#IID" ) 
+      throw "invalid header (must start with #FID [not #IID]).";
 
     if( tmp_str_vec[0] == "#FID" ) 
       break;
@@ -1012,9 +1024,12 @@ uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, R
   myfile.openForRead(fname, sout);
 
   while (myfile.readLine(line)) { // skip to main header line
+    removeCarriageReturn( line );
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in psam file.";
+    if( tmp_str_vec[0] == "#IID" ) 
+      throw "invalid header (must start with #FID [not #IID]).";
     if( tmp_str_vec[0] == "#FID" ) 
       break;
   }
@@ -2023,6 +2038,14 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           } else*/
           if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, phenotypes_raw);
+          if (!params->split_by_pheno){
+            if(ds >= 1.5) snp_data->n_aa++;
+            else if(ds < 0.5) snp_data->n_rr++;
+            else if(non_par && lval){
+              if (ds < 1) snp_data->n_rr++;
+              else snp_data->n_aa++;
+            }
+          }
         }
       }
 
@@ -2284,6 +2307,14 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       } else*/ 
       if( params->af_cc )
         update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
+      if (!params->split_by_pheno){
+        if(Geno(index) >= 1.5) snp_data->n_aa++;
+        else if(Geno(index) < 0.5) snp_data->n_rr++;
+        else if(non_par && lval){
+          if (Geno(index) < 1) snp_data->n_rr++;
+          else snp_data->n_aa++;
+        }
+      }
 
     }
     index++;
@@ -2421,6 +2452,14 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         else */
         if( params->af_cc )
           update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
+        if (!params->split_by_pheno){
+          if(Geno(index) >= 1.5) snp_data->n_aa++;
+          else if(Geno(index) < 0.5) snp_data->n_rr++;
+          else if(non_par && lval){
+            if (Geno(index) < 1) snp_data->n_rr++;
+            else snp_data->n_aa++;
+          }
+        }
 
       }
       index++;
@@ -2549,8 +2588,16 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
             hc = (int) (Geno(index) + 0.5); // round to nearest integer 0/1/2
           update_genocounts(params->trait_mode==1, index, hc, snp_data->genocounts, masked_indivs, phenotypes_raw);
         } else */
-          if( params->af_cc )
-          update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
+        if( params->af_cc )
+        update_af_cc(index, Geno(index), snp_data, masked_indivs, phenotypes_raw);
+        if (!params->split_by_pheno){
+          if(Geno(index) >= 1.5) snp_data->n_aa++;
+          else if(Geno(index) < 0.5) snp_data->n_rr++;
+          else if(non_par && lval){
+            if (Geno(index) < 1) snp_data->n_rr++;
+            else snp_data->n_aa++;
+          }
+        }
 
       }
     }
@@ -2785,7 +2832,7 @@ void prep_snp_stats(variant_block* snp_data, struct param const* params){
   snp_data->skip_int = false;
   snp_data->fitHLM = false;
   snp_data->flipped = false;
-  snp_data->ns1 = 0;
+  snp_data->ns1 = 0, snp_data->n_rr = 0, snp_data->n_aa = 0;
   snp_data->ignored_trait = ArrayXb::Constant(params->n_pheno, false);
 
 }
@@ -3711,6 +3758,7 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     // check if columns were found
     if( (id_col < 0) || (aaf_col < 0) ) throw "could not find 'ID' or 'ALT_FREQS' in header";
     ncols_min = max(id_col, aaf_col) + 1;
+    if(wSingletons) throw "cannot use --set-singleton with PLINK AAF file";
   } else {
     if(wSingletons) {
       if(tmp_str_vec.size() < 3) throw "not enough columns in AAF file in line 1";
@@ -3720,7 +3768,11 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     }
     if (in_map(tmp_str_vec[id_col], filters->snpID_to_ind)){ // read in AAF for variant
       snp_pos = filters->snpID_to_ind[ tmp_str_vec[id_col] ];
-      aaf = stof( tmp_str_vec[aaf_col] );
+      try {
+        aaf = stof( tmp_str_vec[aaf_col] );
+      } catch(...) {
+        throw "only numerical values are allowed in column #" + to_string(aaf_col) + " (='" + tmp_str_vec[aaf_col] + "')";
+      }
       snpinfo[ snp_pos ].aaf = aaf;
       if(wSingletons) snpinfo[ snp_pos ].force_singleton = check_singleton_column( tmp_str_vec[singleton_col] );
       npass++;
@@ -3747,7 +3799,11 @@ void read_aafs(const double tol, const struct in_files* files, struct filter* fi
     }
     snp_pos = filters->snpID_to_ind[ sname ];
 
-    aaf = stof( tmp_str_vec[aaf_col] );
+    try {
+      aaf = stof( tmp_str_vec[aaf_col] );
+    } catch(...) {
+      throw "only numerical values are allowed in column #" + to_string(aaf_col) + " (='" + tmp_str_vec[aaf_col] + "')";
+    }
 
     /* // not necessary (other checks to remove monomorphic masks)
     if( (aaf < tol) || (aaf > (1-tol)) )

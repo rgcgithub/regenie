@@ -649,7 +649,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
       if(!colset(index_start)) continue;
 
       // compute mask
-      buildMask(index_start, setinfo.chrom, params, filters, masked_indivs, ymat, &all_snps_info[index_start]);
+      buildMask(index_start, setinfo.chrom, setinfo.physpos, params, filters, masked_indivs, ymat, &all_snps_info[index_start]);
 
       colset(index_start) = !all_snps_info[index_start].ignored;
 
@@ -705,7 +705,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
       }
 
       if(!colset(index_start)) continue;
-      if(write_snplist) make_snplist(index_start, tmpsnp.ID);
+      if(write_snplist) make_snplist(index_start, tmpsnp.ID, tmpsnp.chrom, tmpsnp.physpos);
 
       // update snpinfo
       tmpsnp.offset = params->n_variants + k; // new index in snpinfo vec.
@@ -745,7 +745,7 @@ void GenoMask::computeMasks_loo(const Ref<const ArrayXi>& indices_chunk, bool co
 #pragma omp parallel for schedule(dynamic)
 #endif
   for(int i = 0; i < nmasks_total; i++) // compute mask
-    buildMask(i, setinfo.chrom, params, filters, masked_indivs, ymat, &all_snps_info[i]);
+    buildMask(i, setinfo.chrom, setinfo.physpos, params, filters, masked_indivs, ymat, &all_snps_info[i]);
 #if defined(_OPENMP)
   setNbThreads(params->threads);
 #endif
@@ -943,8 +943,9 @@ bool GenoMask::check_in_lovo_mask(const Ref<const ArrayXd>& Geno, struct filter 
 }
 
 
-void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, variant_block* snp_data){
+void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& physpos, struct param const* params, struct filter const* filters, const Ref<const MatrixXb>& masked_indivs, const Ref<const MatrixXd>& ymat, variant_block* snp_data){
 
+  bool non_par = in_non_par(chrom, physpos, params);
   int lval, nmales = 0;
   double ds, total = 0, mac = 0, mval, sum_pos;
 
@@ -996,6 +997,14 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
         } else*/
         if( params->af_cc )
             update_af_cc(index, ds, snp_data, masked_indivs, ymat);
+        if (!params->split_by_pheno){
+          if(ds >= 1.5) snp_data->n_aa++;
+          else if(ds < 0.5) snp_data->n_rr++;
+          else if(non_par && lval){
+            if (ds < 1) snp_data->n_rr++;
+            else snp_data->n_aa++;
+          }
+        }
 
       }
     }
@@ -1055,7 +1064,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, struct param const* 
   }
 
   if( params->htp_out && (take_max || take_comphet) ) 
-    compute_genocounts(params->trait_mode==1, chrom == params->nChrom, mac, maskvec, snp_data->genocounts, params->sex, filters->case_control_indices);
+    compute_genocounts(params->trait_mode==1, non_par, mac, maskvec, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   if(params->use_SPA) {
     // switch to minor allele
@@ -1336,10 +1345,10 @@ void GenoMask::append_snplist(int const& imask, ArrayXb const& colkeep, int cons
   }
 }
 
-void GenoMask::make_snplist(int const& imask, string const& mask_name){
+void GenoMask::make_snplist(int const& imask, string const& mask_name, int const& chrom, uint32_t const& pos){
   // add snplist
   if( list_snps[imask].size() > 0 )
-    snplist_out << mask_name << "\t" << print_csv( list_snps[imask] ) << endl;
+    snplist_out << mask_name << "\t" << chrom << "\t" << pos << "\t" << print_csv( list_snps[imask] ) << endl;
 }
 
 

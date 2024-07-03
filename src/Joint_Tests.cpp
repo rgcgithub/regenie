@@ -274,6 +274,7 @@ void JTests::compute_acat(const int& bs, const int& ph, const vector<variant_blo
     } else wts(isnp) = 1; // assume weight=1
   }
   //if(debug_mode) cerr << "done building acat weights\n";
+  //if(debug_mode) cerr << log10pv.matrix().transpose() << "\n\n" << wts.matrix().transpose() << "\n";
 
   // get ACAT test stat
   get_chisq(get_acat(log10pv, wts));
@@ -285,7 +286,7 @@ double get_acat_robust(const Eigen::Ref<const ArrayXd>& logpvals, const Eigen::R
   // if single pval, return log10p
   int n_pv = ((weights!=0) && (logpvals >= 0)).count();
   if(n_pv == 0) return -1;
-  else if(n_pv == 1) return logpvals.maxCoeff();
+  else if(n_pv == 1) return (weights!=0).select(logpvals, 0).maxCoeff();
 
   cauchy dc(0,1);
   double lpv_thr = 15, lpval_out;
@@ -761,7 +762,7 @@ void JTests::run_single_p_acat(int const& bs, const int& chrom, const int& block
       good_vars(imask) = in_map(mname, itr->second) && !block_info[imask].ignored && !block_info[imask].ignored_trait(ph) && !block_info[imask].test_fail(ph);
       //if(params->debug) cerr << mname << " " << std::boolalpha << in_map(mname, itr->second) << " && " << (!block_info[imask].ignored && !block_info[imask].ignored_trait(ph) && !block_info[imask].test_fail(ph)) << " -> " << good_vars(imask) << "\n";
       if(!good_vars(imask)) continue;
-      //cerr << mname << ":" << log10pv(imask) << "\n";
+      //if(params->debug) cerr << mname << ":" << log10pv(imask) << "\n";
       if( get_top_mask && (log10pv(imask) > max_logp) && (log10pv(imask) > 0) ){ // check strongest signal also in burden-only test
         max_logp_mask = mname;
         max_logp = log10pv(imask);
@@ -889,6 +890,7 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
       if(params->split_by_pheno) buffer << params->pheno_counts(ipheno-1, 0) << " " << params->pheno_counts(ipheno-1, 1) << " ";
       else buffer << "NA NA ";
     }
+    if(!params->split_by_pheno) buffer << "NA NA NA "; // genotype counts
     // test
     buffer << burden_str << tname << " ";
   }
@@ -981,6 +983,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
       if(params->split_by_pheno) buffer << params->pheno_counts(ipheno-1, 0) << " " << params->pheno_counts(ipheno-1, 1) << " ";
       else buffer << "NA NA ";
     }
+    if(!params->split_by_pheno) buffer << "NA NA NA "; // genotype counts
     // test
     buffer << mname << " ";
   }

@@ -367,12 +367,12 @@ void Data::set_blocks() {
 
   if(!params.run_l1_only){
     IOFormat Fmt(FullPrecision, DontAlignCols, " ", " ", "", "","","");
-    sout << left << std::setw(20) << " * ridge data_l0" << ": [" << params.n_ridge_l0 << " : " << params.lambda.format(Fmt) << " ]\n";
+    sout << left << std::setw(20) << " * ridge data_l0" << ": [ " << params.n_ridge_l0 << " : " << params.lambda.format(Fmt) << " ]\n";
   }
 
   if(!params.run_l0_only){
     IOFormat Fmt(FullPrecision, DontAlignCols, " ", " ", "", "","","");
-    sout << left << std::setw(20) << " * ridge data_l1" << ": [" << params.n_ridge_l1 << " : " << params.tau[0].format(Fmt) << " ]\n";
+    sout << left << std::setw(20) << " * ridge data_l1" << ": [ " << params.n_ridge_l1 << " : " << params.tau[0].format(Fmt) << " ]\n";
   }
 
   // if using maf dependent prior
@@ -477,6 +477,7 @@ void Data::setmem() {
 
   set_folds();
   l1_ests.cumsum_values.resize(6);
+  if(params.test_l0) l1_ests.cumsum_values_full.resize(6);
   predictions.resize(1);
   predictions[0] = MatrixXd::Zero(params.n_samples, total_chrs_loco);
 
@@ -499,7 +500,11 @@ void Data::setmem() {
     if(!params.use_loocv) l1_ests.test_offset.resize(params.n_pheno);
   }
   masked_in_folds.resize(params.cv_folds);
-  if(params.print_block_betas) params.beta_print_out.resize(params.n_pheno);
+  if(params.print_block_betas) {
+    if(params.n_pheno>1) throw "cannot have run --print in multi-trait mode!";
+    params.beta_print_out.resize(params.n_pheno);
+    l1_ests.beta_snp_step1.resize(params.n_variants, params.n_ridge_l0);
+  }
 
   for(int i = 0; i < params.n_pheno; ++i ) {
 
@@ -583,7 +588,7 @@ void Data::level_0_calculations() {
     return;
   }
 
-  int block = 0, bs;
+  int block = 0, bs; 
   if(params.print_block_betas) params.print_snpcount = 0;
   ridgel0 l0;
 
@@ -607,10 +612,13 @@ void Data::level_0_calculations() {
     }
   }
 
-  Files ofile_p;
-  if(params.test_l0){ // check strength of association for each block
-    params.l0_pvals_file = files.out_file + "_p.txt";
-    ofile_p.openForWrite(params.l0_pvals_file, sout);
+  if(params.test_l0){
+    l0.ymat_res = pheno_data.phenotypes;
+    l1_ests.top_snp_pgs.assign(params.nChrom + 1, MatrixXd::Zero(params.n_samples, params.n_pheno));
+    l0.nspns_picked = l0.nspns_picked_block = ArrayXi::Zero(params.n_pheno);
+    if(params.l0_snp_pval_thr < 0)
+      params.l0_snp_pval_thr = 0.05 / min((uint)1e6, params.n_variants);
+    sout << " * p-value threshold for selecting top SNPs in level 0 blocks = " <<  params.l0_snp_pval_thr << "\n\n";
   }
 
   // start level 0
@@ -643,13 +651,16 @@ void Data::level_0_calculations() {
 
       // test association for block
       if(params.test_l0)
-        test_assoc_block(chrom, block, l0, ofile_p, params);
+        test_assoc_block(chrom, block, l0, l1_ests, &Gblock, &pheno_data, &snpinfo[in_filters.step1_snp_count], params, sout);
 
       // calc level 0 ridge regressions
       if(params.use_loocv)
         ridge_level_0_loocv(block, &files, &params, &in_filters, &m_ests, &Gblock, &pheno_data, snpinfo, &l0, &l1_ests, sout);
       else
         ridge_level_0(block, &files, &params, &in_filters, &m_ests, &Gblock, &pheno_data, snpinfo, &l0, &l1_ests, masked_in_folds, sout);
+
+      if(params.print_block_betas && params.use_loocv) // keep on raw scale
+        l1_ests.beta_snp_step1.middleRows(in_filters.step1_snp_count, bs).array().colwise() /= scale_G.array() / pheno_data.scale_Y(0);
 
       block++; in_filters.step1_snp_count += bs;
     }
@@ -661,8 +672,17 @@ void Data::level_0_calculations() {
     for( auto &yfile : files.write_preds_files)
       if(yfile->is_open()) yfile->close();
 
-  if(params.test_l0)
-    ofile_p.closeFile();
+  if(params.test_l0) {
+    if(params.use_loocv) {
+    } else {
+      uint32_t cum_size_folds = 0;
+      for(int ph = 0; ph < params.n_pheno; ph++)
+        for(int i = 0; i < params.cv_folds; ++i ) {
+          l1_ests.test_pheno[ph][i] = pheno_data.phenotypes.block(cum_size_folds, ph, params.cv_sizes(i), 1) - l1_ests.top_snp_pgs[0].block(cum_size_folds, ph, params.cv_sizes(i), 1);
+          cum_size_folds += params.cv_sizes(i);
+        }
+    }
+  }
 
   if(params.early_exit) {
     sout << "\nDone printing out level 0 predictions. There are " <<
@@ -674,6 +694,7 @@ void Data::level_0_calculations() {
     sout << "\nDone writing level 0 predictions to file.\n";
     exit_early();
   }
+  if(params.test_l0) sout << "\n* # picked top SNPs at level 0 for each trait = [ " << l0.nspns_picked.matrix().transpose() << " ]\n";
 
   // free up memory not used anymore
   Gblock.Gmat.resize(0,0);
@@ -704,22 +725,31 @@ void Data::calc_cv_matrices(struct ridgel0* l0) {
 
     for( int i = 0; i < params.cv_folds; ++i ) {
       MapMatXd Gmat (&(Gblock.Gmat(0,cum_size_folds)), bs, params.cv_sizes(i));
-      l0->GtY[i] = Gmat * pheno_data.phenotypes.middleRows(cum_size_folds, params.cv_sizes(i));
+      if(params.test_l0)
+        l0->GtY[i] = Gmat * l0->ymat_res.middleRows(cum_size_folds, params.cv_sizes(i));
+      else
+        l0->GtY[i] = Gmat * pheno_data.phenotypes.middleRows(cum_size_folds, params.cv_sizes(i));
       l0->GTY += l0->GtY[i];
       l0->G_folds[i] = Gmat * Gmat.transpose();
       l0->GGt += l0->G_folds[i];
-
       cum_size_folds += params.cv_sizes(i);
     }
-
+    
   } else { // loocv
 
-    l0->GGt = Gblock.Gmat * Gblock.Gmat.transpose();
-    l0->GTY = Gblock.Gmat * pheno_data.phenotypes;
-    SelfAdjointEigenSolver<MatrixXd> esG(l0->GGt);
-    l0->GGt_eig_vec = esG.eigenvectors();
-    l0->GGt_eig_val = esG.eigenvalues();
-    l0->Wmat = l0->GGt_eig_vec.transpose() * l0->GTY;
+    l0->GGt.setZero(bs,bs);
+    l0->GGt.selfadjointView<Lower>().rankUpdate(Gblock.Gmat);
+    l0->GGt.triangularView<Eigen::Upper>() = l0->GGt.transpose(); // fill upper-triangular part
+    if(params.test_l0)
+      l0->GTY = Gblock.Gmat * l0->ymat_res;
+    else
+      l0->GTY = Gblock.Gmat * pheno_data.phenotypes;
+    if(!params.test_l0){
+      SelfAdjointEigenSolver<MatrixXd> esG(l0->GGt);
+      l0->GGt_eig_vec = esG.eigenvectors();
+      l0->GGt_eig_val = esG.eigenvalues();
+      l0->Wmat = l0->GGt_eig_vec.transpose() * l0->GTY;
+    }
 
   }
 
@@ -1004,6 +1034,11 @@ void Data::output() {
 
       sout << " : " 
         << "Rsq = " << rsq;
+      if(params.test_l0){ // pred = p1 + top_snp_pgs; Y is res pheno
+          double rsq_pgs = l1_ests.cumsum_values_full[4](ph,j) - l1_ests.cumsum_values_full[0](ph,j) * l1_ests.cumsum_values_full[1](ph,j) / pheno_data.Neff(ph); // num = Sxy - SxSy/n
+      rsq_pgs = (rsq_pgs * rsq_pgs) / ((l1_ests.cumsum_values_full[2](ph,j) - l1_ests.cumsum_values_full[0](ph,j) * l1_ests.cumsum_values_full[0](ph,j) / pheno_data.Neff(ph)) * (l1_ests.cumsum_values_full[3](ph,j) - l1_ests.cumsum_values_full[1](ph,j) * l1_ests.cumsum_values_full[1](ph,j) / pheno_data.Neff(ph))); // num^2 / ( (Sx2 - Sx^2/n)* (Sy2 - Sy^2/n) )
+        sout << " (with top_snps_pgs = " << rsq_pgs << ")"; 
+      }
       if(params.trait_mode!=2) 
         sout  << ", MSE = " << sse/pheno_data.Neff(ph);
       if(params.trait_mode) 
@@ -1145,7 +1180,7 @@ void Data::make_predictions(int const& ph, int const& val) {
   string outname;
   ofstream ofile;
 
-  if(params.within_sample_l0){
+  if(params.within_sample_l0){ // DEPRECATED
     X1 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_mat[ph_eff][0];
     X2 = l1_ests.test_mat[ph_eff][0].transpose() * l1_ests.test_pheno[ph][0];
     for(int i = 1; i < params.cv_folds; ++i ) {
@@ -1186,6 +1221,7 @@ void Data::make_predictions(int const& ph, int const& val) {
         predictions[0].block(cum_size_folds, chr_ctr, params.cv_sizes(i), 1) = l1_ests.test_mat[ph_eff][i].block(0, ctr, params.cv_sizes(i), nn) * beta_l1.block(ctr, 0, nn, 1);
         cum_size_folds += params.cv_sizes(i);
       }
+      if(params.test_l0) predictions[0].col(chr_ctr) += l1_ests.top_snp_pgs[chrom].col(ph);
       chr_ctr++;
       ctr += nn;
     }
@@ -1213,7 +1249,7 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
 
   int bs_l1 = l1_ests.test_mat_conc[ph_eff].cols();
   MatrixXd b0, xtx, tmpMat, HX_chunk;
-  VectorXd zvec, bvec;
+  VectorXd zvec, bvec, Yvec;
   ArrayXd calFactor, yres;
 
   uint64 max_bytes = params.chunk_mb * 1e6;
@@ -1222,16 +1258,20 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
   if (params.verbose) sout << nchunk << " chunks..." << flush;
   int chunk, size_chunk, target_size = params.cv_folds / nchunk;
   int j_start;
+  if(params.test_l0)
+    Yvec = pheno_data.phenotypes.col(ph) - l1_ests.top_snp_pgs[0].col(ph);
+  else
+    Yvec = pheno_data.phenotypes.col(ph);
 
   xtx = l1_ests.test_mat_conc[ph_eff].transpose() * l1_ests.test_mat_conc[ph_eff];
   xtx.diagonal().array() += params.tau[ph](val) * l1_ests.ridge_param_mult;
-  zvec = l1_ests.test_mat_conc[ph_eff].transpose() * pheno_data.phenotypes.col(ph);
+  zvec = l1_ests.test_mat_conc[ph_eff].transpose() * Yvec;
 
   // fit model on whole data again for optimal ridge param
   SelfAdjointEigenSolver<MatrixXd> eigMat(xtx);
   tmpMat = eigMat.eigenvectors() * (1/eigMat.eigenvalues().array()).matrix().asDiagonal() * eigMat.eigenvectors().transpose();
   bvec = tmpMat * zvec;
-  yres = (pheno_data.phenotypes.col(ph) - l1_ests.test_mat_conc[ph_eff] * bvec).array();
+  yres = (Yvec - l1_ests.test_mat_conc[ph_eff] * bvec).array();
 
   for(chunk = 0; chunk < nchunk; ++chunk ) {
     size_chunk = chunk == nchunk - 1? params.cv_folds - target_size * chunk : target_size;
@@ -1251,10 +1291,16 @@ void Data::make_predictions_loocv(int const& ph, int const& val) {
       nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
       if(nn > 0) {
         predictions[0].block(j_start, chr_ctr, size_chunk, 1) = (l1_ests.test_mat_conc[ph_eff].block(j_start, ctr, size_chunk, nn).array() * b0.block(ctr, 0, nn, size_chunk).transpose().array()).rowwise().sum();
+        if(params.test_l0) predictions[0].block(j_start, chr_ctr, size_chunk, 1) += l1_ests.top_snp_pgs[chrom].block(j_start, ph, size_chunk, 1);
         chr_ctr++;
         ctr += nn;
       }
     }
+  }
+
+  if(params.print_block_betas) {
+    //cerr << "Wb:\n"<<l1_ests.test_mat_conc[ph_eff].topRows(5) * bvec << "\n\nPRS:\n"<< predictions[0].rowwise().sum().head(5) << "\n\n";
+    print_snp_betas(bvec);
   }
 
   write_predictions(ph);
@@ -1635,6 +1681,45 @@ void Data::make_predictions_count_loocv(int const& ph, int const& val) {
   sout << " (" << duration.count() << "ms) "<< endl << endl;
 }
 
+void Data::print_snp_betas(const Ref<const VectorXd>& l1_betas){
+
+  ofstream ofile;
+  std::ostringstream buffer;
+  string outname = files.out_file + "_step1_betas.txt";
+  openStream(&ofile, outname, ios::out, sout);
+  buffer << "SNP\tCHROM\tGENPOS\tALLELE0\tALLELE1\tBETA_level_0\tBETA\n";
+
+  // go through each block and update the betas for all SNPs in block
+  int block = 0, bs, snp_tally = 0;
+  MatrixXd beta_l1;
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+
+    int chrom = files.chr_read[itr];
+    if( !in_map(chrom, chr_map) ) continue;
+
+    int chrom_nsnps = chr_map[chrom][0];
+    int chrom_nb = chr_map[chrom][1];
+    if(chrom_nb == 0) continue;
+
+    for(int bb = 0; bb < chrom_nb ; bb++) {
+      get_block_size(params.block_size, chrom_nsnps, bb, bs);
+      beta_l1 = l1_ests.beta_snp_step1.middleRows(snp_tally, bs) * l1_betas.segment(block * params.n_ridge_l0, params.n_ridge_l0).asDiagonal();
+
+      // print out to file (step1_betas.txt)
+      for(int i = 0; i < bs ; i++) { // snp/chr/pos/ref/alt/beta_l0/beta_step1
+        snp* vinfo = &(snpinfo[snp_tally + i]);
+        buffer << vinfo->ID << "\t" << vinfo->chrom << "\t" << vinfo->physpos << "\t" << vinfo->allele1 << "\t" << vinfo->allele2 << "\t" << l1_ests.beta_snp_step1.row(snp_tally+i).sum() << "\t" << beta_l1.row(i).sum() << "\n";
+      }
+
+      block++; snp_tally += bs;
+    }
+
+  }
+
+  ofile << buffer.str();
+  ofile.close();
+
+}
 
 void Data::write_predictions(int const& ph){
   // output predictions to file

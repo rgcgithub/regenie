@@ -306,7 +306,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("prior-alpha", "alpha value used when speifying the MAF-dependent prior on SNP effect sizes", cxxopts::value<double>(params->alpha_prior),"FLOAT(=-1)")
     ("prs-cov", "include step 1 predictions as covariate rather than offset")
     ("test-l0", "test association for each level 0 block")
+    ("l0-pval-thr", "p-value threshold for identifying top SNPs at level 0", cxxopts::value<double>(params->l0_snp_pval_thr),"FLOAT")
     ("select-l0", "file with p-values for each level 0 block (use as flag if with --test-l0)", cxxopts::value<std::string>(params->l0_pvals_file)->implicit_value(""),"FILE")
+    ("rm-l0-pct", "remove least x% significant blocks from level 1 models", cxxopts::value<double>(params->rm_l0_pct),"FLOAT(=0)")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
@@ -855,8 +857,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
 
     if( vm.count("test") && (params->run_mode !=2)) 
       throw "can only use --test in step 2 (association testing).";
+    if( (params->test_type > 0) && params->vc_test) 
+      throw "cannot use --test with --vc-tests.";
     if( !params->getCorMat && params->joint_test ){
-      if( vm.count("test") && !vm.count("rgc-gene-p")) 
+      if( (params->test_type > 0) && !vm.count("rgc-gene-p")) 
         throw "cannot use --test with --joint.";
       else if ( vm.count("sbat-napprox") && params->nnls_napprox < 1 )
         throw "must pass positive integer for --sbat-napprox.";
@@ -1029,6 +1033,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if(params->set_aaf && !params->build_mask) params->set_aaf = false;
     if(params->run_l0_only && params->test_l0)
       throw "cannot use --test-l0 with --run-l0";
+    if(params->test_l0 && params->print_block_betas) 
+      throw "cannot use --test-l0 with --print";
     if(params->test_l0 && (params->l0_pvals_file != ""))
       throw "--select-l0 must be specified without an argument";
     if(params->print_cov_betas && (params->w_interaction || params->blup_cov))
@@ -1052,6 +1058,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       params->split_l0 = params->run_l0_only = params->run_l1_only = false;
       valid_args[ "split-l0" ] = valid_args[ "run-l0" ] = valid_args[ "run-l1" ] = false;
     }
+    if(params->test_l0 && 
+        (vm.count("split-l0")||vm.count("run-l0")||vm.count("run-l1")) ) 
+      throw "cannot use --test-l0 with --split-l0/--run-l0/--run-l1";
     if( vm.count("run-l0") || vm.count("run-l1") ) 
       check_file(files->split_file, "run-l0/l1");
 
@@ -1472,9 +1481,9 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
   if( params->use_loocv ) total_ram += params->chunk_mb * 1e6; // max amount of memory used for LOO computations involved
   if( params->mask_loo ) total_ram += 1e9; // at most 1GB
   if( params->vc_test ) total_ram += 2 * params->max_bsize * params->max_bsize * sizeof(double); // MxM matrices
-  total_ram /= 1024.0 * 1024.0; 
+  total_ram /= 1000.0 * 1000.0; 
   if( total_ram > 1000 ) {
-    total_ram /= 1024.0; 
+    total_ram /= 1000.0; 
     ram_unit = "GB";
   } else ram_unit = "MB";
 
@@ -1704,6 +1713,18 @@ Eigen::ArrayXi get_true_indices(const Ref<const ArrayXb>&  bool_arr){
   return v_indices;
 }
 
+void get_both_indices(std::vector<Eigen::ArrayXi>& res, const Eigen::Ref<const ArrayXb>& bool_arr){
+
+  res.resize(2);
+  int Ntot = bool_arr.size();
+  res[0].resize(bool_arr.count()); // true entries
+  res[1].resize(Ntot - res[0].size()); // false entries
+  for(int i = 0, j_t = 0, j_f = 0; i < Ntot; i++) {
+    if(bool_arr(i)) res[0](j_t++) = i;
+    else res[1](j_f++) = i;
+  }
+
+}
 void get_both_indices(std::vector<Eigen::ArrayXi>& res, const Eigen::Ref<const ArrayXb>& bool_arr, const Eigen::Ref<const ArrayXb>& mask){
 
   res.resize(2);
@@ -1843,6 +1864,9 @@ void set_threads(struct param* params) {
 #if defined(_OPENMP)
   omp_set_num_threads(params->threads); // set threads in OpenMP
   params->neff_threads = params->threads;
+#endif
+#if defined(WITH_MKL)
+  mkl_set_num_threads(params->threads);
 #endif
   setNbThreads(params->threads);
 
