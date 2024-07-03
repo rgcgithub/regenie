@@ -40,6 +40,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 3.5](https://github.com/rgcgithub/regenie/releases/tag/v3.5) (Added CHR/POS columns to snplist output file when using `--write-mask-snplist`; Genotype counts are now reported in the sumstats file when using `--no-split`; Improved efficiency of LOOCV scheme in ridge level 0; Detect carriage return in fam/psam/bim/pvar/sample files; Minor bug fixes)
+
 [Version 3.4.1](https://github.com/rgcgithub/regenie/releases/tag/v3.4.1) (Reduction in memory usage for LD computation when writing to text files; Fix bug rejecting valid PVAR files)
 
 [Version 3.4](https://github.com/rgcgithub/regenie/releases/tag/v3.4) (Reduction in memory usage for LD computation with dosages; Minor bug fixes for LD computation; Bug fix for when carriage returns are in optional input files)
