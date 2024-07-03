@@ -5,7 +5,7 @@ ARG LIB_INSTALL
 ARG LIB_INSTALL2
 
 
-FROM ubuntu:18.04 AS builder
+FROM public.ecr.aws/ubuntu/ubuntu:22.04 AS builder
 
 ARG BOOST_IO
 ARG LIB_INSTALL
@@ -19,12 +19,16 @@ WORKDIR /src
 ADD http://cmake.org/files/v${CMAKE_VERSION_MAJOR}/cmake-${CMAKE_VERSION_MAJOR}.${CMAKE_VERSION_MINOR}-Linux-x86_64.sh cmake_install.sh
 ADD http://code.enkre.net/bgen/tarball/release/v1.1.7 v1.1.7.tgz
 ADD https://github.com/samtools/htslib/releases/download/$HTSLIB_VERSION/htslib-$HTSLIB_VERSION.tar.bz2 htslib-$HTSLIB_VERSION.tar.bz2
+ADD https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB intel_key.PUB
+COPY . /src/regenie
 
 # install BGEN and HTSlib libraries
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      gcc \
-      g++ \
+      gcc-9 \
+      g++-9 \
+      gfortran-9 \
       libz-dev \
+      bzip2 \
       libbz2-dev \
       liblzma-dev \
       libcurl4-openssl-dev \
@@ -32,10 +36,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       make \
       gnupg \
       python3 \
-      gfortran \
       zlib1g-dev \
       apt-transport-https ca-certificates \
       $LIB_INSTALL \
+      && update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 60 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
+      && update-alternatives --install /usr/bin/gfortran gfortran /usr/bin/gfortran-9 70 \
+      && update-alternatives --install /usr/bin/f77 f77 /usr/bin/gfortran-9 70 \
+      && update-alternatives --install /usr/bin/cc cc /usr/bin/gcc-9 70 \
       && tar -xf htslib-$HTSLIB_VERSION.tar.bz2 \
       && cd htslib-$HTSLIB_VERSION/ \
       && ./configure \
@@ -48,29 +55,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       && rm v1.1.7.tgz \
       && cd v1.1.7 \
       && python3 waf configure \
-      && python3 waf
-
-# install MKL library 
-ADD https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB intel_key.PUB
-RUN apt-key add intel_key.PUB \
-      && sh -c 'echo deb https://apt.repos.intel.com/mkl all main > /etc/apt/sources.list.d/intel-mkl.list' \
+      && python3 waf \
+      && cd .. \
+      && sh -c 'cat intel_key.PUB | gpg --dearmor | tee /usr/share/keyrings/oneapi-archive-keyring.gpg > /dev/null' \
+      && sh -c 'echo "deb [signed-by=/usr/share/keyrings/oneapi-archive-keyring.gpg] https://apt.repos.intel.com/oneapi all main" | tee /etc/apt/sources.list.d/oneAPI.list' \
       && apt-get update \
-      && apt-get install intel-mkl-64bit-2018.2-046 -y --no-install-recommends \
-      && echo "MKL_THREADING_LAYER=GNU" >> /etc/environment
-
-COPY . /src/regenie
-
-WORKDIR /src/regenie
-
-# compile with MKL as static
-RUN BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=/opt/intel/mkl/ HTSLIB_PATH=/usr/local/lib/ STATIC=1 cmake . \
+      && apt-get install intel-oneapi-mkl-devel -y --no-install-recommends \
+      && . /opt/intel/oneapi/setvars.sh \
+      && echo "MKL_THREADING_LAYER=GNU" >> /etc/environment \
+      && cd /src/regenie \
+      && BGEN_PATH=/src/v1.1.7 HAS_BOOST_IOSTREAM=$BOOST_IO MKLROOT=$MKLROOT HTSLIB_PATH=/usr/local/lib/ STATIC=1 cmake . \
       && make
 
 # no need to install Boost IO and MKL here (static linking)
-FROM ubuntu:18.04
+FROM public.ecr.aws/ubuntu/ubuntu:22.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgomp1 gfortran \
+      libgomp1 gfortran-9 \
       libz-dev libbz2-dev liblzma-dev libcurl4-openssl-dev libssl-dev \
       && rm -rf /var/lib/apt/lists/*
 
