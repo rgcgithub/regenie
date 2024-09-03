@@ -1315,11 +1315,18 @@ void apply_firth_snp(bool& fail, double& lrt, double const& bstart, const Ref<co
   double dev0 = 0, betaold = bstart, se;
 
   // get dev0
-  ArrayXd pivec, wvec;
+  ArrayXd pivec, wvec, Gvec_mask;
   get_pvec(pivec, offset, params.numtol_eps);
   dev0 = get_logist_dev(Y, pivec, mask);
-  get_wvec(pivec, wvec, mask);
-  dev0 -= log( mask.select(Gvec.array().square() * wvec, 0).sum() );
+  if((index_carriers.size() > 0)) { // bug fix to use the right deviance fn if using approximate penalty based on carrier status
+    get_pvec(pivec, offset(index_carriers), params.numtol_eps);
+    get_wvec(pivec, wvec, mask(index_carriers));
+    Gvec_mask = Gvec.col(0)(index_carriers);
+  } else {
+    get_wvec(pivec, wvec, mask);
+    Gvec_mask = mask.select(Gvec.array(),0);
+  }
+  dev0 -= log( (Gvec_mask.square() * wvec).sum() );
 
   fail = fit_firth_pseudo(dev0, Y, Gvec.col(0), offset, mask, index_carriers, betaold, se, lrt, params.maxstep, params.niter_max_firth/2, params.numtol_firth, &params); // try pseudo
 
