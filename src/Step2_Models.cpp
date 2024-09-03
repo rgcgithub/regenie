@@ -1039,7 +1039,10 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
     if(!null_fit) { // reset beta
       if(params->firth_approx) betaold = ArrayXd::Zero(col_incl); 
       else betaold = dt_thr->beta_null_firth.col(0);
-    }
+    } else if (fabs(betaold(0))>1e12) {
+      if(params->firth_approx) betaold = 0;
+      else betaold.head(col_incl) = params->cov_betas.col(ph);
+  }
     success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, !null_fit, lrt, maxstep, niter/2, tol, params); // try NR (slower)
 
     if(!success){
@@ -1182,8 +1185,8 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
-  int niter_cur = 0, niter_search, nc = X1.cols();
-  double dev_old=0, dev_new=0, denum, mx, bdiff = 1;
+  int niter_cur = 0, niter_search, nc = X1.cols(), n_score_inc = 0;
+  double dev_old=0, dev_new=0, denum, mx, bdiff = 1, score_max_new, score_max_old = 1e16;
 
   ArrayXd hvec, mod_score;
   ArrayXd betanew, step_size, wvec;
@@ -1222,7 +1225,15 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 
     // stopping criterion using modified score function
     // edit 5.31.12 for edge cases with approx Firth
-    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) break;
+    score_max_new = mod_score.abs().maxCoeff();
+    if( ( score_max_new < tol) && (niter_cur >= 2) ) break;
+
+    // try to catch convergence failures early
+    if(!comp_lrt){
+      if( score_max_new > score_max_old ) n_score_inc++; // track consecutive increases
+      else n_score_inc = 0;
+      if( n_score_inc > 10 ) return false;
+    }
 
     // force absolute step size to be less than maxstep for each entry of beta
     mx = step_size.abs().maxCoeff() / maxstep_firth;
@@ -1269,6 +1280,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     else
       betavec += step_size;
     dev_old = dev_new;
+    score_max_old = score_max_new;
 
   }
   if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta.head=(" << betavec.head(min(15,cols_incl)).matrix().transpose() << "); score.max=" << mod_score.abs().maxCoeff() << "\n";
@@ -1292,9 +1304,10 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
-  int niter_cur = 0, niter_log = 0, niter_search, niter_max = 25, nc = X1.cols();
+  int niter_cur = 0, niter_log = 0, niter_search, niter_max = 25, nc = X1.cols(), niter_score_max_unchanged = 0;
   double dev_new=0, mx, maxstep = (comp_lrt && cols_incl == 1) ? 5 : maxstep_firth;
   double bdiff=1e16, bdiff_new=1e16;
+  double score_max_old = 1e16, score_max_new;
   //double dev_log0, dev_log1=0;
 
   ArrayXd hvec, mod_score, ystar, score;
@@ -1333,13 +1346,16 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
 
     // stopping criterion using modified score function
     // edit 5.31.12 for edge cases with approx Firth
-    if( (mod_score.abs().maxCoeff() < tol) && (niter_cur >= 2) ) {
-      if(params->debug) cerr << "stopping criterion met (" << mod_score.abs().maxCoeff() << " < " << tol << ")\n";
+    score_max_new = mod_score.abs().maxCoeff();
+    if( (score_max_new < tol) && (niter_cur >= 2) ) {
+      if(params->debug) cerr << "stopping criterion met (" << score_max_new << " < " << tol << ")\n";
       break;
     }
-    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << mod_score.abs().maxCoeff() << "\n";
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << score_max_new << "\n";
     // to catch convergence failure sooner
-    if( (niter_cur > 50) && ((mod_score.abs().maxCoeff() > 1000) || (betavec.abs().maxCoeff() > 1e12)) ) return false;
+    if( (niter_cur > 2) && (fabs(betavec(0)) > 1e13) ) return false;
+    if(niter_score_max_unchanged > 3) return false;
+    if( (niter_cur > 50) && ((score_max_new > 1000) || (betavec.abs().maxCoeff() > 1e12)) ) return false;
 
     // fit unpenalized logistic on transformed Y
     niter_log = 0;
@@ -1401,6 +1417,10 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
     if( niter_log > params->niter_max ) return false;
 
     betavec = betanew;
+    if(score_max_new < score_max_old) {
+      score_max_old = score_max_new;
+      niter_score_max_unchanged = 0;
+    } else niter_score_max_unchanged++;
   }
 
   if(params->debug) cerr << "Ni=" << niter_cur<<setprecision(16) << "; beta.head=(" << betavec.head(min(15,cols_incl)).matrix().transpose() << "); score.max=" << mod_score.abs().maxCoeff() << "\n";
