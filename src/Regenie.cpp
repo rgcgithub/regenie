@@ -754,6 +754,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       else if( params->mask_rule == "comphet") { 
         params->mask_rule_max = false, params->mask_rule_comphet = true; 
       } else throw "unrecognized argument for option --build-mask (=" + params->mask_rule + ").";
+      if((params->mask_rule == "sum") && params->htp_out){
+        sout << "WARNING: option --htp cannot be used with '--build-mask sum' and will be ignored.\n";
+        params->htp_out = false; valid_args[ "htp" ] = false;
+      }
     }
     if( vm.count("acat-beta") ) {
       tmp_str_vec = string_split(vm["acat-beta"].as<string>(),",");
