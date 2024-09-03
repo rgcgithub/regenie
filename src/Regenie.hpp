@@ -187,7 +187,7 @@ struct param {
   // global options
   int run_mode; // running in null model fitting (=1) or association testing (=2)
   bool test_mode = false; // step 1: false; step 2 = true
-  int trait_mode = 0; // 0=QT,1=BT,2=CT
+  int trait_mode = 0; // 0=QT,1=BT,2=CT,3=T2E
   bool strict_mode = false; // remove individuals with any NA
   bool bgenSample = false; // .sample file for bgen file
   bool gzOut = false; // to compress output files (.loco and .regenie files)
@@ -218,12 +218,19 @@ struct param {
   bool CC_ZeroOne = true; // BT: 0/1 encoding?
   int mcc = 10; // minimum case count
   double numtol = 1e-6, qr_tol = 1e-7;
+  double numtol_cox = 2.5e-4; // tolerance level for cox
+  double numtol_beta_cox = 1e-8; // tolerance level for cox
   double numtol_firth = 2.5e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
   double tol = 1e-8; // for logistic regression
   double eigen_val_rel_tol = 1e-15;
+  double const_cov_cox_tol = 1e-6;
   double nl_dbl_dmin = 10.0 * std::numeric_limits<double>::min();
   int threads = 0, neff_threads = 1;
+  bool t2e_event_l0 = false;
+  bool t2e_l1_pi6 = false;
+  bool cox_nofirth = false;
+  bool coxscore_exact = false;
   bool verbose = false, debug = false;
   bool early_exit = false, l1_full_samples = false, rint = false, rerint = false, rerintcov = false;
   bool split_l0 = false, run_l0_only = false, run_l1_only = false; // run level 0 in parallel across different jobs
@@ -272,6 +279,7 @@ struct param {
   bool print_block_betas = false, test_l0 = false, select_l0 = false; // print betas from level 0 within each block (for debugging)
   double rm_l0_pct = 0;
   std::string l0_pvals_file;
+  bool l0_event = false;
   bool force_run = false; // if using more than max nvariants in step 1
   int max_step1_variants = 1e6; // prevent users using too many step 1 variants
   int niter_max_ridge = 100, niter_max_ridge_adam = 25; // max number of iterations for ridge logistic reg.
@@ -326,6 +334,7 @@ struct param {
   int niter_max_firth = 250, niter_max_firth_adam = 25; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
+  int niter_max_line_search_cox = 50; // max number of iterations for line search in logistic reg.
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
   bool fix_maxstep_null = false; // if user specifies max step size
@@ -449,6 +458,7 @@ struct in_files {
   std::map<std::string, std::string> blup_files;
   std::vector<std::string> null_firth_files;
   std::vector<std::string> pheno_names;
+  std::map<std::string, std::string> t2e_map;
   std::vector<int> chr_counts, chr_read;
   uint64 bed_block_size; // prevent overflow
   std::ifstream geno_ifstream;

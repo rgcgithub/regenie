@@ -30,6 +30,8 @@
 #include "Pheno.hpp"
 #include "NNLS.hpp"
 #include "Joint_Tests.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "SKAT.hpp"

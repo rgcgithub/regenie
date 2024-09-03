@@ -36,7 +36,7 @@ struct f_ests {
   std::vector<std::shared_ptr<Files>> firth_est_files;
   double deviance_logistic;
   double bhat_firth, se_b_firth;
-
+  
 };
 
 struct spa_data {
@@ -60,6 +60,7 @@ void compute_score_qt(int const&,int const&,int const&,std::string const&,std::s
 void compute_score_qt_mcc(int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::RowVectorXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct in_files const&,mstream&);
 void compute_score_bt(int const&,int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct ests const&,struct f_ests&,struct in_files const&,mstream&);
 void compute_score_ct(int const&,int const&,int const&,int const&,std::string const&,std::string const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct param const&,struct phenodt&,struct geno_block&,variant_block*,std::vector<snp> const&,struct ests const&,struct f_ests&,struct in_files const&,mstream&);
+void compute_score_cox(int const&, int const&, int const&, int const&, std::string const&, std::string const&, struct param const&, struct phenodt&, struct geno_block&, variant_block*, std::vector<snp> const&, struct ests const&, struct f_ests&, struct in_files const&, mstream&);
 
 void check_pval_snp(variant_block*,data_thread*,int const&,int const&,int const&,struct phenodt&,struct geno_block&,struct ests const&,struct f_ests&,struct param const&,mstream&);
 void get_sumstats(bool const&,int const&,data_thread*);
@@ -81,6 +82,9 @@ std::string print_null_firth_info(struct in_files const&,struct f_ests&,struct p
 void check_beta_start_firth(struct in_files&,struct param const&,mstream&);
 void get_beta_start_firth(const int&,struct f_ests*,struct in_files*,struct param const*,mstream&);
 void get_beta_start_firth(struct f_ests*,struct ests const*);
+void fit_null_firth_cox(bool const&, int const&, struct f_ests*, struct phenodt*, struct ests const*, struct in_files*, struct param*, mstream&);
+void fit_firth_cox_snp(int const&, int const&, int const&, struct param const*, struct phenodt*, struct ests const*, struct f_ests const*, const Eigen::Ref<const Eigen::MatrixXd>&, variant_block*, data_thread*, mstream&);
+void fit_firth_cox_snp_fast(int const&, int const&, int const&, struct param const*, struct phenodt*, struct ests const*, struct f_ests const*, const Eigen::Ref<const Eigen::VectorXd>&, variant_block*, data_thread*, mstream&);
 
 
 // spa (multithreading in openmp)

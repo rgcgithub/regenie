@@ -37,6 +37,8 @@ struct ests {
   Eigen::MatrixXd Gamma_sqrt, Y_hat_p;
   std::vector<Eigen::MatrixXd> X_Gamma;
   Eigen::MatrixXd bhat_start; // for interaction tests
+  std::vector<cox_mle> cox_MLE_NULL;
+  std::vector<survival_data> survival_data_pheno;
 
 };
 
@@ -60,6 +62,7 @@ struct ridgel1 {
   std::vector<std::vector<Eigen::MatrixXd>> pred_pheno, test_pheno;
   std::vector<std::vector<Eigen::MatrixXd>> pred_pheno_raw, test_pheno_raw;
   std::vector<std::vector<Eigen::MatrixXd>> pred_offset, test_offset;
+  std::vector<Eigen::VectorXi> fold_id; //cox cv fold id
   std::vector<Eigen::MatrixXd> cumsum_values, cumsum_values_full; // storage of values to compute rsq and values [Sx, Sy, Sx2, Sy2, Sxy]
   std::vector<std::vector<Eigen::MatrixXd>> beta_hat_level_1;
   ArrayXb pheno_l1_not_converged;
@@ -80,6 +83,9 @@ void fit_null_poisson(const int&,struct param*,struct phenodt*,struct ests*,stru
 bool fit_poisson(const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,Eigen::ArrayXd&,Eigen::ArrayXd&,Eigen::ArrayXd&,struct param const*,mstream&);
 double get_poisson_dev(const Eigen::Ref<const Eigen::ArrayXd>& Y, const Eigen::Ref<const Eigen::ArrayXd>& pi, const Eigen::Ref<const ArrayXb>& mask);
 
+void fit_null_cox(bool const&, const int&, struct param*, struct phenodt*, struct ests*, struct in_files*, mstream&, bool const& save_betas = false);
+double getCoxLambdaMax(const Eigen::MatrixXd&, const Eigen::VectorXd&);
+
 void ridge_level_0(const int&,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_level_0_loocv(const int,struct in_files*,struct param*,struct filter*,struct ests*,struct geno_block*,struct phenodt*,std::vector<snp>&,struct ridgel0*,struct ridgel1*,mstream&);
 void write_l0_file(std::ofstream*,Eigen::MatrixXd&,mstream&);
@@ -96,6 +102,8 @@ void run_log_ridge_loocv_adam(const int&,const double&,const Eigen::Ref<const Ei
 void ridge_poisson_level_1(struct in_files*,struct param*,struct phenodt*,struct ridgel1*,std::vector<MatrixXb>&,mstream&);
 void ridge_poisson_level_1_loocv(struct in_files*,struct param*,struct phenodt*,struct ests*,struct ridgel1*,mstream&);
 bool run_ct_ridge_loocv(const double&,const Eigen::Ref<const Eigen::ArrayXd>&,const int&,const int&,Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const Eigen::ArrayXd>&,Eigen::Ref<Eigen::MatrixXd>,const Eigen::Ref<const Eigen::ArrayXd>&,const Eigen::Ref<const ArrayXb>&,struct param*,mstream&);
+
+void ridge_cox_level_1(struct in_files*, struct param*, struct phenodt*, struct ridgel1*, struct ests*, mstream&);
 
 void get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&);
 bool get_wvec(Eigen::ArrayXd&,Eigen::ArrayXd&,const Eigen::Ref<const ArrayXb>&,const double&);

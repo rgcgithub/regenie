@@ -2067,7 +2067,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
     }
 
     if( params->htp_out ) 
-      compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
+      compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
     // for SPA switch effect allele to minor allele
     flip_geno(total, Geno, snp_data, params);
@@ -2335,7 +2335,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
   }
 
   if( params->htp_out ) 
-    compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
+    compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   // for SPA switch effect allele to minor allele
   flip_geno(total, Geno, snp_data, params);
@@ -2475,7 +2475,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
   compute_aaf_info(total, 0, snp_data, params);
 
   if( params->htp_out ) 
-    compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
+    compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   // for SPA switch effect allele to minor allele
   flip_geno(total, Geno, snp_data, params);
@@ -2616,9 +2616,9 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
       snp_data->ignored = true; continue;
     }
 
-    if( params->htp_out ) 
-      compute_genocounts(params->trait_mode==1, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
-
+    if( params->htp_out )
+      compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
+    
     // for SPA switch effect allele to minor allele
     flip_geno(total, Geno, snp_data, params);
 
@@ -2927,23 +2927,22 @@ void compute_genocounts(bool const& binary_mode, bool const& non_par, double con
 
   int mac_thr = 100, Nmin = 1e3;
   bool snp_ur = (Geno.size() > Nmin) && (mac <= mac_thr); // for sparse G with QTs
-
   for(size_t ph = 0; ph < cc_indices_phenos.size(); ph++) {
-    if(!binary_mode & snp_ur) // ultra-rare variants
+    if(!binary_mode & snp_ur) {// ultra-rare variants
       update_genocounts_sp(binary_mode, non_par, genocounts.col(ph), sex, Geno, cc_indices_phenos[ph]);
-    else
+    } else {
       update_genocounts(binary_mode, non_par, genocounts.col(ph), sex, Geno, cc_indices_phenos[ph]);
+    }
   }
 }
 
 // for each trait
 void update_genocounts(bool const& bt_mode, bool const& non_par, Ref<VectorXi> genocounts, const Eigen::Ref<const Eigen::ArrayXi>& sex, const Eigen::Ref<const Eigen::ArrayXd>& Geno, std::vector<Eigen::ArrayXi> const& cc_indices){
-
   int miss_cases = 0, miss_controls = 0;
   bool is_maleC;
   double val;
-
   // get counts in non-missing cases (or samples for QTs)
+  if (cc_indices.size() == 0) return;
   for(int k = 0; k < cc_indices[0].size(); k++){
     val = Geno( cc_indices[0](k) ); is_maleC = sex( cc_indices[0](k) ) != 1;
     if(val < 0) miss_cases++;
@@ -2970,16 +2969,15 @@ void update_genocounts(bool const& bt_mode, bool const& non_par, Ref<VectorXi> g
     genocounts(3) = cc_indices[1].size() - genocounts(4) - genocounts(5) - miss_controls;
 
   }
-
 }
 
 // with sparse Geno (per-trait)
 void update_genocounts_sp(bool const& bt_mode, bool const& non_par, Ref<VectorXi> genocounts, const Eigen::Ref<const Eigen::ArrayXi>& sex, const Eigen::Ref<const Eigen::ArrayXd>& Geno, std::vector<Eigen::ArrayXi> const& cc_indices){
-
   bool not_male = true;
   int miss_cases = 0, miss_controls = 0, index;
   double val;
-
+  
+  if (cc_indices.size() == 0) return;
   SpVec Gsp;
   if(!bt_mode && (cc_indices[0].size() == Geno.size())) // no need to subset 
     Gsp = Geno.matrix().sparseView();

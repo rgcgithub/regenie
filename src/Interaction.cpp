@@ -27,6 +27,8 @@
 #include "Regenie.hpp"
 #include "Files.hpp"
 #include "Geno.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"

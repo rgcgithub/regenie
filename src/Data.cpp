@@ -43,6 +43,8 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
@@ -82,10 +84,11 @@ void Data::run() {
 
   if(params.streamBGEN) check_bgen(files.bgen_file, params.file_type, params.zlib_compress, params.streamBGEN, params.BGENbits, params.nChrom);
 
-  if(params.test_mode)  // step 2
+  if(params.test_mode){  // step 2
     run_step2();
-  else  // step 1
+  } else {  // step 1
     run_step1();
+  }
 
 }
 
@@ -121,6 +124,8 @@ void Data::run_step1(){
   } else if(params.trait_mode == 2){ // CT
     if(params.use_loocv) ridge_poisson_level_1_loocv(&files, &params, &pheno_data, &m_ests, &l1_ests, sout);
     else ridge_poisson_level_1(&files, &params, &pheno_data, &l1_ests, masked_in_folds, sout);
+  } else if(params.trait_mode == 3){ // T2E
+    ridge_cox_level_1(&files, &params, &pheno_data, &l1_ests, &m_ests, sout);
   }
   // output results
   output();
@@ -424,7 +429,7 @@ void Data::set_folds() {
     }
 
   } else // loocv
-    params.cv_sizes = ArrayXi::Constant(params.cv_folds, 1);;
+    params.cv_sizes = ArrayXi::Constant(params.cv_folds, 1);
 
 
   // check sd(Y) in folds
@@ -486,10 +491,13 @@ void Data::setmem() {
     l1_ests.pred_pheno.resize(params.n_pheno);
   } else if(!params.use_loocv) l1_ests.beta_hat_level_1.resize(params.n_pheno);
 
-  if(!params.use_loocv) {
+  if (params.use_loocv || params.trait_mode == 3) {
+    l1_ests.test_mat_conc.resize(params.n_pheno);
+    l1_ests.fold_id.resize(params.n_pheno);
+  } else {
     l1_ests.test_pheno.resize(params.n_pheno);
     l1_ests.test_mat.resize(params.n_pheno);
-  } else l1_ests.test_mat_conc.resize(params.n_pheno);
+  }
 
   if(params.trait_mode){ // non-QT
     if (params.within_sample_l0) {
@@ -515,11 +523,14 @@ void Data::setmem() {
       l1_ests.pred_pheno[i].resize(params.cv_folds);
     } else if(!params.use_loocv) l1_ests.beta_hat_level_1[i].resize(params.cv_folds);
 
-    if(!params.use_loocv) {
+    if (params.use_loocv || params.trait_mode == 3) {
+      l1_ests.test_mat_conc[i] = MatrixXd::Zero(params.n_samples, params.n_ridge_l0 * ( params.write_l0_pred ? 1 : params.total_n_block) );
+      l1_ests.fold_id[i].resize(params.n_samples);
+    } else {
       l1_ests.test_pheno[i].resize(params.cv_folds);
       l1_ests.test_mat[i].resize(params.cv_folds);
-    } else l1_ests.test_mat_conc[i] = MatrixXd::Zero(params.n_samples, params.n_ridge_l0 * ( params.write_l0_pred ? 1 : params.total_n_block) );
-
+    }
+    
     if(params.trait_mode) {
       if (params.within_sample_l0) {
         l1_ests.pred_pheno_raw[i].resize(params.cv_folds);
@@ -536,7 +547,7 @@ void Data::setmem() {
         l1_ests.pred_pheno[i][j] = MatrixXd::Zero(params.n_samples - params.cv_sizes(j), 1);
       } else if(!params.use_loocv) l1_ests.beta_hat_level_1[i][j] = MatrixXd::Zero(params.total_n_block * params.n_ridge_l0, params.n_ridge_l1);
 
-      if(!params.use_loocv) {
+      if(!params.use_loocv && params.trait_mode != 3) {
         l1_ests.test_pheno[i][j] = MatrixXd::Zero(params.cv_sizes(j), 1);
         l1_ests.test_mat[i][j] = MatrixXd::Zero(params.cv_sizes(j), params.n_ridge_l0 * ( params.write_l0_pred ? 1 : params.total_n_block));
       }
@@ -547,7 +558,7 @@ void Data::setmem() {
           l1_ests.pred_offset[i][j] = MatrixXd::Zero(params.n_samples - params.cv_sizes(j), 1);
         }
         l1_ests.test_pheno_raw[i][j] = MatrixXd::Zero(params.cv_sizes(j), 1);
-        if(!params.use_loocv) l1_ests.test_offset[i][j] = MatrixXd::Zero(params.cv_sizes(j), 1);
+        if(!params.use_loocv && params.trait_mode != 3) l1_ests.test_offset[i][j] = MatrixXd::Zero(params.cv_sizes(j), 1);
       }
 
     }
@@ -664,14 +675,16 @@ void Data::level_0_calculations() {
 
       block++; in_filters.step1_snp_count += bs;
     }
-
   }
 
   // close streams
-  if(params.write_l0_pred)
-    for( auto &yfile : files.write_preds_files)
-      if(yfile->is_open()) yfile->close();
-
+  if(params.write_l0_pred) {
+    for(int ph = 0; ph < params.n_pheno; ph++){
+      if( !params.pheno_pass(ph) ) continue;
+      if(files.write_preds_files[ph]->is_open()) files.write_preds_files[ph]->close();
+    }
+  }
+  
   if(params.test_l0) {
     if(params.use_loocv) {
     } else {
@@ -698,17 +711,19 @@ void Data::level_0_calculations() {
 
   // free up memory not used anymore
   Gblock.Gmat.resize(0,0);
-  if(params.write_l0_pred && (params.n_pheno > 1) ) 
+  if(params.write_l0_pred && (params.n_pheno > 1) ){
     // free level 0 predictions for (P-1) indices in test_mat
     for(int ph = 1; ph < params.n_pheno; ++ph ) {
       if( !params.pheno_pass(ph) ) continue;
-      if(!params.use_loocv){ // k-fold
+      if((!params.use_loocv) && (params.trait_mode != 3)){ // k-fold
         for(int i = 0; i < params.cv_folds; ++i ) 
           l1_ests.test_mat[ph][i].resize(0,0);
         l1_ests.test_mat[ph].resize(0);
-      } else l1_ests.test_mat_conc[ph].resize(0,0); // loocv
+      } else {
+        l1_ests.test_mat_conc[ph].resize(0,0); // loocv
+      }
     }
-
+  }
 }
 
 void Data::calc_cv_matrices(struct ridgel0* l0) {
@@ -911,9 +926,13 @@ void Data::write_inputs(){
   ofile.close();
 
   // write offset
-  if(params.trait_mode != 0){
+  if(params.trait_mode != 0 && params.trait_mode != 3){
     openStream(&ofile, files.out_file + "_offset.txt", ios::out, sout);
     ofile << m_ests.offset_nullreg.format(Fmt) << "\n";
+    ofile.close();
+  } else if (params.trait_mode == 3) {
+    openStream(&ofile, files.out_file + "_offset.txt", ios::out, sout);
+    ofile << firth_est.cov_blup_offset.format(Fmt) << "\n";
     ofile.close();
   }
 }
@@ -1008,7 +1027,7 @@ void Data::output() {
       else
         performance_measure = l1_ests.cumsum_values[5](ph, j);
 
-      performance_measure /= pheno_data.Neff(ph);
+      if(params.trait_mode != 3) performance_measure /= pheno_data.Neff(ph);
 
       if( performance_measure < min_val) {
         min_index = j;
@@ -1020,6 +1039,13 @@ void Data::output() {
       rate = pheno_data.phenotypes_raw.col(ph).sum() / pheno_data.Neff(ph); // separate for each trait
 
     for(int j = 0; j < params.n_ridge_l1; ++j ) {
+      if (params.trait_mode == 3) {
+        sout << " " << setw(5) << params.tau[ph](j) << " : " << "Deviance = " << l1_ests.cumsum_values[5](ph, j);
+        if(j == min_index) 
+          sout << "<- min value";
+        sout << endl;
+        continue;
+      }
 
       if(params.trait_mode == 2){
         zv = exp(l1_ests.l0_colkeep.col(ph).count() / params.tau[ph](j)) - 1; 
@@ -1066,6 +1092,9 @@ void Data::output() {
         make_predictions_count_loocv(ph, min_index);
       else 
         make_predictions_count(ph, min_index);
+    } else if(params.trait_mode == 3){
+      if (!params.use_loocv)
+        make_predictions_cox(ph, min_index);
     }
 
     // check if firth estimates converged (should have been written to file)
@@ -1681,6 +1710,47 @@ void Data::make_predictions_count_loocv(int const& ph, int const& val) {
   sout << " (" << duration.count() << "ms) "<< endl << endl;
 }
 
+// predictions for t2e traits
+void Data::make_predictions_cox(int const& ph, int const& val) {
+
+  sout << "  * making predictions..." << flush;
+  auto t1 = std::chrono::high_resolution_clock::now();
+  int ph_eff = params.write_l0_pred ? 0 : ph;
+
+  // read in level 0 predictions from file
+  if(params.write_l0_pred)
+    read_l0(ph, ph_eff, &files, &params, &l1_ests, sout);
+  check_l0(ph, ph_eff, &params, &l1_ests, &pheno_data, sout, true);
+
+  // compute predictor for each chr
+  int ctr = 0, chr_ctr = 0;
+  int nn, cum_size_folds;
+  MatrixXd beta;
+
+  for (size_t itr = 0; itr < files.chr_read.size(); ++itr) {
+    int chrom = files.chr_read[itr];
+    if( !in_map(chrom, chr_map) ) continue;
+
+    nn = chr_map[chrom][1] * params.n_ridge_l0 - l1_ests.chrom_map_ndiff(chrom-1);
+    if(nn > 0) {
+      cum_size_folds = 0;
+      for(int i = 0; i < params.cv_folds; ++i ) {
+        beta = l1_ests.beta_hat_level_1[ph][i].col(val);
+        predictions[0].block(cum_size_folds, chr_ctr, params.cv_sizes(i), 1) = l1_ests.test_mat_conc[ph_eff].block(cum_size_folds, ctr, params.cv_sizes(i), nn) * beta.block(ctr, 0, nn, 1);
+        cum_size_folds += params.cv_sizes(i);
+      }
+      chr_ctr++;
+      ctr += nn;
+    }
+  }
+
+  write_predictions(ph);
+
+  sout << "done";
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  sout << " (" << duration.count() << "ms) "<< endl << endl;
+}
 void Data::print_snp_betas(const Ref<const VectorXd>& l1_betas){
 
   ofstream ofile;
@@ -1993,7 +2063,7 @@ void Data::print_test_info(){
   if(params.firth || params.use_SPA) {
 
     sout << " * using " << (params.firth_approx ? "fast ": "") << (params.firth ? "Firth ": "SPA ");
-    sout << "correction for logistic regression p-values less than " << params.alpha_pvalue << endl;
+    sout << "correction for logistic/cox regression p-values less than " << params.alpha_pvalue << endl;
     if(params.back_correct_se) sout << "    - using back-correction to compute Firth SE\n";
     if(params.firth && params.use_adam) sout << "    - using " << (params.adam_mini? "mini-":"") << "batch ADAM to get starting values\n";
     n_corrected = 0;
@@ -2026,6 +2096,8 @@ void Data::print_test_info(){
     else if((params.trait_mode==1) & params.use_SPA) correction_type = "-SPA";
     else if(params.trait_mode==1) correction_type = "-LOG";
     else if(params.trait_mode==2) correction_type = "-POISSON";
+    else if((params.trait_mode==3) & params.firth) correction_type = "-FIRTH";
+    else if(params.trait_mode==3) correction_type = "-COX";
     else correction_type = "-LR";
 
     model_type = test_string + wgr_string + correction_type;
@@ -2106,15 +2178,25 @@ void Data::set_blocks_for_testing() {
 }
 
 void Data::set_nullreg_mat(){
-
-  m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
-  m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
-  m_ests.X_Gamma.resize(params.n_pheno);
+  if(params.trait_mode == 3){
+    m_ests.cox_MLE_NULL.resize(params.n_pheno);
+    m_ests.survival_data_pheno.resize(params.n_pheno);
+    if (params.firth) {
+      firth_est.beta_null_firth = MatrixXd::Zero(pheno_data.new_cov.cols(), params.n_pheno);
+      firth_est.cov_blup_offset = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    }
+  } else {
+    m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    m_ests.X_Gamma.resize(params.n_pheno);
+  }
 
   // for firth  approx
   if(params.firth_approx){
-    firth_est.beta_null_firth = MatrixXd::Zero(pheno_data.new_cov.cols() + 1, params.n_pheno);
-    if(params.test_mode) firth_est.cov_blup_offset = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    if (params.trait_mode == 1) {
+      firth_est.beta_null_firth = MatrixXd::Zero(pheno_data.new_cov.cols() + 1, params.n_pheno);
+      if(params.test_mode) firth_est.cov_blup_offset = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    }
 
     // open streams to write firth null estimates
     if(params.write_null_firth){
@@ -2206,6 +2288,7 @@ void Data::test_snps_fast() {
       // compute phenotype residual (adjusting for BLUP [and covariates for non-QTs])
       if(params.trait_mode == 1) compute_res_bin(chrom);
       else if(params.trait_mode == 2) compute_res_count(chrom);
+      else if(params.trait_mode == 3) compute_res_cox(chrom);
       else compute_res();
 
       // print y/x/logreg offset used for level 1 
@@ -2225,7 +2308,7 @@ void Data::test_snps_fast() {
       } else if(!block_init_pass) block_init_pass = true;
 
       sout << " block [" << block + 1 << "/" << params.total_n_block << "] : " << flush;
-
+      
       allocate_mat(Gblock.Gmat, params.n_samples, bs);
       block_info.resize(bs);
 
@@ -2375,6 +2458,15 @@ void Data::compute_res_count(int const& chrom){
 
 }
 
+void Data::compute_res_cox(int const& chrom){
+
+  fit_null_cox(false, chrom, &params, &pheno_data, &m_ests, &files, sout); // for all phenotypes
+
+  if(params.firth_approx) fit_null_firth_cox(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
+
+}
+
+
 void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vector < uchar > >& snp_data_blocks, vector< uint32_t > insize, vector< uint32_t >& outsize, vector<variant_block> &all_snps_info){
   
   size_t const bs = indices.size();
@@ -2434,7 +2526,7 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
 
     // skip SNP if fails filters
     if( block_info->ignored || params.getCorMat ) continue;
-    
+
     reset_stats(block_info, params);
 
     try {
@@ -2627,6 +2719,7 @@ void Data::test_joint() {
     // compute phenotype residual (adjusting for BLUP [and covariates for BTs])
     if(params.trait_mode == 1) compute_res_bin(chrom);
     else if(params.trait_mode == 2) compute_res_count(chrom);
+    else if(params.trait_mode == 3) compute_res_cox(chrom);
     else compute_res();
 
 
@@ -2870,9 +2963,9 @@ void Data::readChunk(vector<uint64>& indices, int const& chrom, vector< vector <
 
   } else if((params.file_type == "bgen") && !params.streamBGEN) 
     readChunkFromBGENFileToG(indices, chrom, snpinfo, &params, Gblock.Gmat, Gblock.bgen, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, all_snps_info, sout);
-  else if(params.file_type == "pgen") 
+  else if(params.file_type == "pgen") {
     readChunkFromPGENFileToG(indices, chrom, &params, &in_filters, Gblock.Gmat, Gblock.pgr, pheno_data.masked_indivs, pheno_data.phenotypes_raw, snpinfo, all_snps_info);
-  else {
+  } else {
 
     snp_data_blocks.resize( n_snps );
     for(int isnp = 0; isnp < n_snps; isnp++) {

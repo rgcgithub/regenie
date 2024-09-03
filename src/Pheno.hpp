@@ -47,6 +47,7 @@ struct phenodt {
   Eigen::ArrayXd skew_Y; // skewness of phenotypes
   ArrayXb mcc_Y; // flags to apply MCC test on phenotypes
   Eigen::MatrixXd cov_phenotypes; // matrix of covariates/phenotypes for MultiPhen test
+  Eigen::VectorXd cox_max_tau;
 };
 
 
@@ -58,6 +59,7 @@ void covariate_read(struct param*,struct in_files*,struct filter*,struct phenodt
 void setMasks(struct param*,struct filter*,struct phenodt*,mstream&);
 void print_cc_info(struct param*,struct in_files*,struct phenodt*,std::vector<std::vector<Eigen::ArrayXi>>&,mstream&);
 void print_info(struct param*,struct in_files*,struct phenodt*,std::vector<std::vector<Eigen::ArrayXi>>&,mstream&);
+void print_cox_info(struct param*,struct in_files*,struct phenodt*,std::vector<std::vector<Eigen::ArrayXi>>&,mstream&);
 void check_nvals(int const&,std::string const&,struct param const*,struct phenodt const*);
 void extract_interaction_snp(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);
 void extract_condition_snps(struct param*,struct in_files*,struct filter*,struct phenodt*,struct geno_block*,Eigen::Ref<ArrayXb>,mstream&);

@@ -34,6 +34,8 @@
 #include "Joint_Tests.hpp"
 #include "MultiTrait_Tests.hpp"
 #include "Ordinal.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
@@ -352,7 +354,14 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("multiphen-pseudo-stophalf", "Threshold to stop step-halving in pseudo algorithm [default value is 0.0]", cxxopts::value<double>(params->multiphen_pseudo_stophalf),"FLOAT(=0.0)")
     ("multiphen-reset-start", "reset start values when failed convergence in MultiPhen")
     ("multiphen-offset", "offset mode for MultiPhen", cxxopts::value<std::string>(params->multiphen_offset),"STRING")
-    ;
+    ("t2e", "analyze phenotypes as time to event")
+    ("eventColList", "comma separated list of event status names to keep (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
+    ("l0-event", "use event status as response in level 0 in time-to-event analysis")
+    ("t2e-event-l0", "Use event as reponse in level0 for time-to-event phenotype")
+    ("t2e-l1-pi6", "use heritability to get penalty")
+    ("coxnofirth", "not using firth in cox model, the test uses likelihood ratio test")
+    ("coxscore-exact", "use exact score variance")
+   ;
 
   try
   {
@@ -410,6 +419,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("ref-first") ) params->ref_first = true;
     if( vm.count("bt") ) params->trait_mode = 1;
     if( vm.count("ct") ) params->trait_mode = 2;
+    if( vm.count("t2e") ) params->trait_mode = 3;
     if( vm.count("1") ) params->CC_ZeroOne = false;
     if( vm.count("loocv") ) params->use_loocv = true;
     if( vm.count("apply-rint") && !vm.count("bt")) params->rint = true;
@@ -444,6 +454,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("print") ) params->print_block_betas = true;
     if( vm.count("print-cov-betas") ) params->print_cov_betas = true;
     if( vm.count("test-l0") ) params->test_l0 = true;
+    if( vm.count("l0-event") ) params->l0_event = true;
     if( vm.count("select-l0") ) params->select_l0 = true;
     //if( vm.count("nostream") ) params->streamBGEN = params->fastMode = false;
     //if( vm.count("within") ) params->within_sample_l0 = true;
@@ -543,6 +554,26 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         for(auto cn : check_name(tmp_str_vec[i], sout))
           filters->pheno_colRm_names[cn] = true;
       }
+    }
+    if( (params->trait_mode == 3) && vm.count("eventColList") && vm.count("phenoCol") )
+      throw "You must specify TTE phenotypes using '--phenoColList' (matching in order with events in '--eventColList').";
+    if( (params->trait_mode == 3) && (!vm.count("eventColList") || !vm.count("phenoColList")) ) 
+      throw "You must specify both '--phenoColList' and '--eventColList' (same order) for time-to-event analysis.";
+    if( vm.count("eventColList") ) { // time-to-event names map
+      if( params->trait_mode != 3) 
+        throw "Option --eventColList must be used with '--t2e' for time-to-event analysis";
+      params->select_phenos = true;
+      tmp_str_vec = string_split(vm["eventColList"].as<string>(),",");
+      vector< string > tmp_str_vec_time = string_split(vm["phenoColList"].as<string>(),",");
+      for( size_t i = 0; i < tmp_str_vec.size(); i++) {
+        files->t2e_map[tmp_str_vec_time[i]] = tmp_str_vec[i];
+        for(auto cn : check_name(tmp_str_vec[i], sout))
+          filters->pheno_colKeep_names[cn] = true;
+      }
+      params->t2e_event_l0 = vm.count("t2e-event-l0");
+      params->t2e_l1_pi6 = vm.count("t2e-l1-pi6");
+      params->cox_nofirth = vm.count("coxnofirth");
+      params->coxscore_exact = vm.count("coxscore-exact");
     }
     if( vm.count("covarColList") ) {
       params->select_covs = true;
@@ -835,9 +866,9 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       }
 
     } 
-    if(params->firth && (params->trait_mode!=1)) {
-      // firth correction is only applied to binary traits
-      sout << "WARNING: option --firth will not be applied (it is only run with binary traits).\n";
+    if(params->firth && (params->trait_mode!=1 && params->trait_mode!=3)) {
+      // firth correction is only applied to binary traits and time-to-event traits
+      sout << "WARNING: option --firth will not be applied (it is only run with binary traits and time-to-event traits).\n";
       params->firth = false; valid_args[ "firth" ] = valid_args[ "approx" ] = false;
     } 
     if(params->use_SPA && (params->trait_mode!=1)) {
@@ -974,7 +1005,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: must use --write-setlist with --write-mask.\n";
       params->write_setlist = false; valid_args[ "write-setlist" ] = false;
     }
-    if((vm.count("1") || vm.count("cc12")) && (params->trait_mode != 1)) valid_args[ "1" ] = valid_args[ "cc12" ] = false;
+    if((vm.count("1") || vm.count("cc12")) && (params->trait_mode != 1 || params->trait_mode != 3)) valid_args[ "1" ] = valid_args[ "cc12" ] = false;
     if( vm.count("write-mask-snplist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
       sout << "WARNING: cannot use --write-mask-snplist with LOVO/LODO.\n";
       params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;

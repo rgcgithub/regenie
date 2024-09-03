@@ -25,9 +25,18 @@
 */
 
 #include <unordered_set>
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wint-in-bool-context"
+#endif
 #include "Regenie.hpp"
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 #include "Files.hpp"
 #include "Geno.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Pheno.hpp"
@@ -127,6 +136,8 @@ void read_pheno_and_cov(struct in_files* files, struct param* params, struct fil
     // print case-control counts per trait
     if(params->trait_mode==1)
       print_cc_info(params, files, pheno_data, filters->case_control_indices, sout);
+    else if (params->trait_mode==3)
+      print_cox_info(params, files, pheno_data, filters->case_control_indices, sout);
     else
       print_info(params, files, pheno_data, filters->case_control_indices, sout);
 
@@ -167,30 +178,36 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
     if(!keep_cols(i)) continue;
     if(params->select_phenos) // check if keeping pheno
       keep_cols(i) = in_map(tmp_str_vec[i+2], filters->pheno_colKeep_names);
-    if(params->test_mode && !params->skip_blups && keep_cols(i)) // check phenotype had prs from step 1
+    if(params->test_mode && !params->skip_blups && keep_cols(i) && params->trait_mode != 3){ // check phenotype had prs from step 1
       keep_cols(i) = has_blup(tmp_str_vec[i+2], files->blup_files, params, sout);
+    }
 
     if(keep_cols(i)) files->pheno_names.push_back( tmp_str_vec[i+2] );
   }
   params->n_pheno = keep_cols.count();
 
   // check #pheno
-  if(params->n_pheno < 1)
-    throw "need at least one phenotype.";
+  if(params->trait_mode == 3){
+    if(params->n_pheno/2 < 1) throw "need at least one phenotype.";
+    sout << "n_pheno = " << params->n_pheno/2 << endl;
+  }else{
+    if(params->n_pheno < 1) throw "need at least one phenotype.";
+    sout << "n_pheno = " << params->n_pheno << endl;
+  }
 
-  sout << "n_pheno = " << params->n_pheno << endl;
   params->strict_mode |= (params->n_pheno == 1); // drop all missing observations
 
   // how missingness is handles
   if( params->strict_mode ) sout << "   -dropping observations with missing values at any of the phenotypes" << endl;
   else if( !params->rm_missing_qt  && (params->trait_mode==0)) sout << "   -keeping and mean-imputing missing observations (done for each trait)" << endl;
 
-
   // allocate memory
   pheno_data->phenotypes = MatrixXd::Zero(params->n_samples, params->n_pheno);
   pheno_data->masked_indivs = MatrixXb::Constant(params->n_samples, params->n_pheno, true);
   if(params->trait_mode)  
     pheno_data->phenotypes_raw = MatrixXd::Zero(params->n_samples, params->n_pheno);
+  if(params->trait_mode == 3)
+    pheno_data->cox_max_tau.resize(params->n_pheno);
 
   // read in data
   while( fClass.readLine(line) ){
@@ -212,60 +229,112 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 
     // read phenotypes 
     all_miss = true;
-    for(int j = 0, i_pheno = 0; j < keep_cols.size(); j++) {
+    if (params->trait_mode == 3) {
+      for (const auto& entry: files->t2e_map) {
+        const std::string& time_name = entry.first;
+        const std::string& event_name = entry.second;
+        // find time column index
+        std::vector<std::string>::iterator it_time = std::find(files->pheno_names.begin(), files->pheno_names.end(), time_name);
+        int time_index = std::distance(files->pheno_names.begin(), it_time);
+        // find event column index
+        std::vector<std::string>::iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), event_name);
+        int event_index = std::distance(files->pheno_names.begin(), it_event);
 
-      if( !keep_cols(j) ) continue;
+        int countTrue = 0;
+        int time_ph_index = -1;
+        int event_ph_index = -1;
+        for (int i = 0; i < keep_cols.size(); ++i) {
+          if (keep_cols(i)) {
+            if (countTrue == time_index) {
+              time_ph_index = i;
+            } else if (countTrue == event_index) {
+              event_ph_index = i;
+            }
+            countTrue++;
+          }
+          if (time_ph_index != -1 && event_ph_index != -1) {
+            break;
+          }
+        }
 
-      pheno_data->phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j], params, sout);
+        pheno_data->phenotypes(indiv_index, time_index) = convertDouble(tmp_str_vec[2+time_ph_index], params, sout);
+        pheno_data->phenotypes_raw(indiv_index, time_index) = pheno_data->phenotypes(indiv_index, time_index);
 
-      // for non-QT, save raw data
-      if (params->trait_mode) {
+        pheno_data->phenotypes(indiv_index, event_index) = convertDouble(tmp_str_vec[2+event_ph_index], params, sout);
+        if(!params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, event_index) != params->missing_value_double)) 
+            pheno_data->phenotypes(indiv_index, event_index) -= 1; // if using 1/2/NA encoding for BTs
 
-        if((params->trait_mode==1) && !params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double)) 
-          pheno_data->phenotypes(indiv_index, i_pheno) -= 1; // if using 1/2/NA encoding for BTs
+        pheno_data->phenotypes_raw(indiv_index, event_index) = pheno_data->phenotypes(indiv_index, event_index);
 
-        pheno_data->phenotypes_raw(indiv_index, i_pheno) = pheno_data->phenotypes(indiv_index, i_pheno);
+        if ((pheno_data->phenotypes_raw(indiv_index, time_index) < 0) && (pheno_data->phenotypes_raw(indiv_index, time_index) != params->missing_value_double)) {
+          throw "a phenotype time value is <0 for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+time_index];
+        } else if ((pheno_data->phenotypes_raw(indiv_index, event_index) != 0) && (pheno_data->phenotypes_raw(indiv_index, event_index) != 1) && (pheno_data->phenotypes_raw(indiv_index, event_index) != params->missing_value_double)) {
+          throw "a phenotype censor value is invalid for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+event_index];
+        } else if ((pheno_data->phenotypes_raw(indiv_index, time_index) != params->missing_value_double) && (pheno_data->phenotypes_raw(indiv_index, event_index) == params->missing_value_double)) {
+          throw "a phenotype has missing censor with non-missing time for indiviudal: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1];
+        } else if ((pheno_data->phenotypes_raw(indiv_index, time_index) == params->missing_value_double)) {
+          pheno_data->masked_indivs(indiv_index, time_index) = false;
+          pheno_data->masked_indivs(indiv_index, event_index) = false;
+          pheno_data->phenotypes_raw(indiv_index, event_index) = params->missing_value_double;
+        }
 
-        // for BTs check 0/1/NA values
-        if( (params->trait_mode==1) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 0) && 
+        if (pheno_data->phenotypes_raw(indiv_index, time_index) != params->missing_value_double) {
+          all_miss = false;
+        }
+      }
+    } else {
+      for(int j = 0, i_pheno = 0; j < keep_cols.size(); j++) {
+
+        if( !keep_cols(j) ) continue;
+
+        pheno_data->phenotypes(indiv_index, i_pheno) = convertDouble(tmp_str_vec[2+j], params, sout);
+
+        // for non-QT, save raw data
+        if (params->trait_mode) {
+
+          if((params->trait_mode==1) && !params->CC_ZeroOne && (pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double)) 
+            pheno_data->phenotypes(indiv_index, i_pheno) -= 1; // if using 1/2/NA encoding for BTs
+
+          pheno_data->phenotypes_raw(indiv_index, i_pheno) = pheno_data->phenotypes(indiv_index, i_pheno);
+
+          // for BTs check 0/1/NA values
+          if( (params->trait_mode==1) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 0) && 
             (pheno_data->phenotypes_raw(indiv_index, i_pheno)!= 1) ) {
 
-          if(params->within_sample_l0)
-            throw "no missing value allowed in phenotype file with option -within";
-          else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
-            std::string msg = (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA");
-            throw "a phenotype value is not " + msg + " for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
+            if(params->within_sample_l0)
+              throw "no missing value allowed in phenotype file with option -within";
+            else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
+              std::string msg = (params->CC_ZeroOne ? "0/1/NA" : "1/2/NA");
+              throw "a phenotype value is not " + msg + " for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
+            }
+
+            pheno_data->masked_indivs(indiv_index, i_pheno) = false;
+
+          } else if( (params->trait_mode==2) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)<0) ) { // CT check non-neg
+
+            if(params->within_sample_l0)
+              throw "no missing value allowed in phenotype file with option -within";
+            else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
+              throw "a phenotype value is <0 for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
+            }
+            pheno_data->masked_indivs(indiv_index, i_pheno) = false;
           }
-
-          pheno_data->masked_indivs(indiv_index, i_pheno) = false;
-
-        } else if( (params->trait_mode==2) && (pheno_data->phenotypes_raw(indiv_index, i_pheno)<0) ) { // CT check non-neg
-
-          if(params->within_sample_l0)
-            throw "no missing value allowed in phenotype file with option -within";
-          else if( pheno_data->phenotypes_raw(indiv_index, i_pheno) != params->missing_value_double ) {
-            throw "a phenotype value is <0 for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+j];
-          }
-          pheno_data->masked_indivs(indiv_index, i_pheno) = false;
-
         }
 
-      }
-
-      if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double )
-        all_miss = false;
-      else {
-        if( params->test_mode && params->rm_missing_qt ) pheno_data->masked_indivs(indiv_index, i_pheno) = false;
-        if( params->strict_mode ) {
-          pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
-          all_miss = true;
-          break; // skip rest of the row
+        if( pheno_data->phenotypes(indiv_index, i_pheno) != params->missing_value_double )
+          all_miss = false;
+        else {
+          if( params->test_mode && params->rm_missing_qt ) pheno_data->masked_indivs(indiv_index, i_pheno) = false;
+          if( params->strict_mode ) {
+            pheno_data->masked_indivs.row(indiv_index) = MatrixXb::Constant(1, params->n_pheno, false);
+            all_miss = true;
+            break; // skip rest of the row
+          }
         }
-      }
 
-      i_pheno++;
+        i_pheno++;
+      }
     }
-
     if( all_miss ) ind_in_pheno_and_geno( indiv_index ) = false; // if individual has no phenotype data at all
   }
 
@@ -296,6 +365,9 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
 // in transposed format
 void tpheno_read(struct param* params, struct in_files* files, struct filter* filters, struct phenodt* pheno_data, Ref<ArrayXb> ind_in_pheno_and_geno, mstream& sout) {
 
+  if (params->trait_mode==3) 
+    throw "Option --tpheno-file is not supported with Time-to-Event traits";
+  
   uint32_t nid;
   string line, yname;
   std::vector< string > header, tmp_str_vec;
@@ -798,6 +870,33 @@ void print_info(struct param* params, struct in_files* files, struct phenodt* ph
     }
 }
 
+void print_cox_info(struct param* params, struct in_files* files, struct phenodt* pheno_data, std::vector<std::vector<Eigen::ArrayXi>>& case_control_indices, mstream& sout){
+
+  params->pheno_counts = MatrixXi::Constant(files->pheno_names.size(), 2, 0);
+  case_control_indices.resize(files->pheno_names.size());
+
+  // go through each trait and print number of events and censors
+  sout << " * number of observations for each trait:\n";
+  for (const auto& entry: files->t2e_map) {
+    const std::string& time_name = entry.first;
+    const std::string& event_name = entry.second;
+    // find time column index
+    std::vector<std::string>::iterator it_time = std::find(files->pheno_names.begin(), files->pheno_names.end(), time_name);
+    int time_index = std::distance(files->pheno_names.begin(), it_time);
+    // find event column index
+    std::vector<std::string>::iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), event_name);
+    int event_index = std::distance(files->pheno_names.begin(), it_event);
+    
+    // save indices of cases & controls
+    get_both_indices(case_control_indices[time_index], pheno_data->phenotypes_raw.col(event_index).array() == 1, pheno_data->masked_indivs.col(time_index).array());
+
+    params->pheno_counts(time_index, 0) = case_control_indices[time_index][0].size();
+    params->pheno_counts(time_index, 1) = case_control_indices[time_index][1].size();
+    sout << "   - '" << files->pheno_names[time_index] << "': " <<
+      params->pheno_counts(time_index, 0) << " events and " << params->pheno_counts(time_index, 1) << " censors\n";
+  }
+}
+
 void check_nvals(int const& i_pheno, string const& pheno, struct param const* params, struct phenodt const* pheno_data){
 
   map<double, bool> uniq_vals;
@@ -971,7 +1070,36 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
 
   // orthonormal basis (save number of lin. indep. covars.)
   if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
-  params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
+  if (params->trait_mode == 3) {
+    // check constant covariates
+    // std::cout << "new_cov: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
+    RowVectorXd mu = pheno_data->new_cov.colwise().mean();
+    params->cov_sds = (pheno_data->new_cov.rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed);
+    std::vector<int> nonConstantColumns;
+    for (int i = 0; i < pheno_data->new_cov.cols(); ++i) {
+      if (params->cov_sds(i) > params->const_cov_cox_tol) {
+        nonConstantColumns.push_back(i);
+      }
+    }
+
+    params->ncov = nonConstantColumns.size();
+    Eigen::ArrayXd filtered_cov_sds(params->ncov);
+    Eigen::MatrixXd new_cov_mtx(pheno_data->new_cov.rows(), params->ncov);
+    for (int i = 0; i < params->ncov; ++i) {
+        new_cov_mtx.col(i) = pheno_data->new_cov.col(nonConstantColumns[i]);
+        filtered_cov_sds(i) = params->cov_sds(nonConstantColumns[i]);
+    }
+    pheno_data->new_cov = std::move(new_cov_mtx);
+    params->cov_sds = filtered_cov_sds;
+    // std::cout << "new_cov after filter: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
+  }
+  if (pheno_data->new_cov.cols() > 0) {
+    params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
+    // params->ncov = pheno_data->new_cov.cols();
+  } else {
+    params->ncov = 0;
+  }
+
   if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
 
@@ -1110,6 +1238,7 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     if(params->trait_mode==0) mode = "linear";
     else if(params->trait_mode==1) mode = "logistic";
     else if(params->trait_mode==2) mode = "poisson";
+    else if(params->trait_mode==3) mode = "cox";
       sout << " * no step 1 predictions given. Simple " << mode << " regression will be performed" <<endl;
     return;
   } else if(params->interaction_prs) return;
@@ -1432,15 +1561,17 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
           if(params->pheno_pass(ph))
             params->pheno_pass(ph) = fit_approx_firth_null(0, ph, pheno_data, m_ests, params->cov_betas.col(ph), params, true);
 
-    } else if(params->trait_mode==2) // CT
+    } else if(params->trait_mode==2) { // CT
       fit_null_poisson(0, params, pheno_data, m_ests, files, sout, true);
-
+    } else if(params->trait_mode==3) {
+      fit_null_cox(false, 0, params, pheno_data, m_ests, files, sout, true);
+    }
   }
 
   // compute offset for nonQT (only in step 1)
   if((params->trait_mode==1) && !params->test_mode) fit_null_logistic(false, 0, params, pheno_data, m_ests, files, sout);
   else if((params->trait_mode==2) && !params->test_mode) fit_null_poisson(0, params, pheno_data, m_ests, files, sout);
-
+  else if((params->trait_mode==3) && !params->test_mode) fit_null_cox(false, 0, params, pheno_data, m_ests, files, sout); // use covariates, and make linear prediction
 }
 
 void print_cov_betas(struct param* params, struct in_files const* files, mstream& sout){
@@ -1493,11 +1624,16 @@ void print_cov_betas(struct param* params, struct in_files const* files, mstream
 int getBasis(MatrixXd& X, struct param const* params){
 
   // eigen-decompose NxK matrix
+  if (params->trait_mode == 3) {
+    RowVectorXd mu = X.colwise().mean();
+    X.rowwise() -= mu;
+    X.array().rowwise() /= params->cov_sds.matrix().transpose().array();
+  }
+  
   MatrixXd xtx = X.transpose() * X;
   SelfAdjointEigenSolver<MatrixXd> es(xtx);
   VectorXd D = es.eigenvalues();
   MatrixXd V = es.eigenvectors();
-
   // create basis set
   // eigenvalues sorted in increasing order
   int non_zero_eigen = (D.array() > D.tail(1)(0) * params->eigen_val_rel_tol).count();
@@ -1774,6 +1910,16 @@ void set_pheno_pass(struct in_files const* files, struct param* params){
       params->pheno_pass(ph) = in_map( files->pheno_names[ph], params->select_pheno_l1 );
     else
       params->pheno_pass(ph) = true;
+  
+  if (params->trait_mode == 3 && !params->t2e_event_l0) {
+    for (const auto& entry: files->t2e_map) {
+      const std::string& event_name = entry.second;
+      // find event column index
+      std::vector<std::string>::const_iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), event_name);
+      int event_index = std::distance(files->pheno_names.begin(), it_event);
+      params->pheno_pass(event_index) = false;
+    }
+  }
 
   // sanity check
   if((!params->pheno_pass).all())

@@ -28,6 +28,8 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
+#include "survival_data.hpp"
+#include "cox_score.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "Masks.hpp"
@@ -1064,7 +1066,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
   }
 
   if( params->htp_out && (take_max || take_comphet) ) 
-    compute_genocounts(params->trait_mode==1, non_par, mac, maskvec, snp_data->genocounts, params->sex, filters->case_control_indices);
+    compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, maskvec, snp_data->genocounts, params->sex, filters->case_control_indices);
 
   if(params->use_SPA) {
     // switch to minor allele

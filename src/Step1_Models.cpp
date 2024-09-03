@@ -29,6 +29,10 @@
 #include "Files.hpp"
 #include "Geno.hpp"
 #include "Joint_Tests.hpp"
+#include "survival_data.hpp"
+#include "cox_ridge.hpp"
+#include "cox_score.hpp"
+#include "cox_firth.hpp"
 #include "Step1_Models.hpp"
 #include "Step2_Models.hpp"
 #include "HLM.hpp"
@@ -337,6 +341,100 @@ bool fit_poisson(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, co
   return true;
 }
 
+// Cox regression null model
+void fit_null_cox(bool const& silent, const int& chrom, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct in_files* files, mstream& sout, bool const& save_betas){
+  if(!silent) sout << "   -fitting null cox regression on time-to-event phenotypes..." << flush;
+  
+  Eigen::VectorXd loco_offset;
+  auto t1 = std::chrono::high_resolution_clock::now();
+
+  for (const auto& entry: files->t2e_map) {
+    const std::string& time_name = entry.first;
+    const std::string& event_name = entry.second;
+    // find time column index
+    std::vector<std::string>::iterator it_time = std::find(files->pheno_names.begin(), files->pheno_names.end(), time_name);
+    int time_index = std::distance(files->pheno_names.begin(), it_time);
+    Eigen::VectorXd ph_time = pheno_data->phenotypes_raw.col(time_index);
+    MapArXb mask (pheno_data->masked_indivs.col(time_index).data(), pheno_data->masked_indivs.rows());
+
+    // find event column index
+    std::vector<std::string>::iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), event_name);
+    int event_index = std::distance(files->pheno_names.begin(), it_event);
+    Eigen::VectorXd ph_event = pheno_data->phenotypes_raw.col(event_index);
+    
+    if(params->blup_cov) {
+      pheno_data->new_cov.rightCols(1) = (m_ests->blups.col(time_index).array() * mask.cast<double>()).matrix();
+      loco_offset = Eigen::VectorXd::Zero(ph_time.size());
+    } else if(params->test_mode) 
+      loco_offset = (m_ests->blups.col(time_index).array() * mask.cast<double>()).matrix();
+    else loco_offset = Eigen::VectorXd::Zero(ph_time.size());
+
+    survival_data survivalNullData;
+    survivalNullData.setup(ph_time, ph_event, mask, !params->test_mode);
+
+    cox_ridge coxRidge_null_lamb0(survivalNullData, pheno_data->new_cov, loco_offset, mask, 0, params->niter_max, params->niter_max_line_search, params->numtol_cox);
+    coxRidge_null_lamb0.fit(survivalNullData, pheno_data->new_cov, loco_offset, mask);
+
+    if (params->test_mode) {
+      cox_mle coxMLE;
+      coxMLE.setup(survivalNullData, pheno_data->new_cov, loco_offset, mask, params->niter_max, params->niter_max_line_search, params->numtol_cox, false, coxRidge_null_lamb0.beta, coxRidge_null_lamb0.eta);
+      coxMLE.fit(survivalNullData, pheno_data->new_cov, loco_offset, mask);
+
+      if (coxMLE.converge == false) {
+        cox_firth cox_null_model;
+        cox_null_model.setup(survivalNullData, pheno_data->new_cov, loco_offset, pheno_data->new_cov.cols(), params->niter_max, params->niter_max_line_search, params->numtol_cox, params->numtol_beta_cox, params->maxstep_null, false, false);
+        cox_null_model.fit(survivalNullData, pheno_data->new_cov, loco_offset);
+
+        coxMLE.setup(survivalNullData, pheno_data->new_cov, loco_offset, mask, params->niter_max, params->niter_max_line_search, params->numtol_cox, false, cox_null_model.beta, cox_null_model.eta);
+        coxMLE.fit(survivalNullData, pheno_data->new_cov, loco_offset, mask);
+      }
+
+      if (coxMLE.converge == false) {
+        params->pheno_pass(time_index) = false; // phenotype will be ignored
+        params->pheno_fail_nullreg(time_index) = true;
+        if(!silent) sout << "\n     WARNING: step2 cox null regression did not converge for phenotype '" << time_name <<"'.";
+        continue;
+      } else {
+        coxMLE.cox_test_prep(survivalNullData, pheno_data->new_cov, loco_offset, mask);
+        m_ests->survival_data_pheno[time_index] = survivalNullData;
+        m_ests->cox_MLE_NULL[time_index] = coxMLE;
+      }
+
+      if(save_betas && params->print_cov_betas) {
+        params->cov_betas.col(time_index) = coxMLE.beta;
+        params->xtx_inv_diag.col(time_index).array() = coxMLE.XtWX.diagonal().array().sqrt();
+      }
+    } else {
+      if (coxRidge_null_lamb0.converge == false) {
+        // try cox firth, without firth
+        cox_firth cox_null_model;
+        cox_null_model.setup(survivalNullData, pheno_data->new_cov, loco_offset, pheno_data->new_cov.cols(), params->niter_max, params->niter_max_line_search, params->numtol_cox, params->numtol_beta_cox, params->maxstep_null, false, false);
+        cox_null_model.fit(survivalNullData, pheno_data->new_cov, loco_offset);
+
+        if (cox_null_model.converge == false) {
+          params->pheno_pass(time_index) = false; // phenotype will be ignored
+          params->pheno_fail_nullreg(time_index) = true;
+          if(!silent) sout << "\n     WARNING: step1 cox null regression did not converge for phenotype '" << time_name <<"'.";
+          continue;
+        } else {
+          m_ests->offset_nullreg.col(time_index) = cox_null_model.eta;
+        }
+      } else {
+        m_ests->offset_nullreg.col(time_index) = coxRidge_null_lamb0.eta;
+      }
+      
+    }
+  }
+  auto t2 = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1);
+  if(!silent) sout << "done (" << duration.count() << "ms) "<< endl;
+}
+
+double getCoxLambdaMax(const Eigen::MatrixXd& Xmat, const Eigen::VectorXd& gradient) {
+    Eigen::VectorXd g = (Xmat.transpose() * gradient).array().abs();
+    double lambda_max = g.maxCoeff() / 1e-3;
+    return lambda_max;
+}
 
 /////////////////////////////////////////////////
 /////////////////////////////////////////////////
@@ -396,20 +494,27 @@ void ridge_level_0(const int& block, struct in_files* files, struct param* param
       // store predictions
       for(int ph = 0; ph < params->n_pheno; ++ph ) {
         if( !params->pheno_pass(ph) ) continue;
-        l1->test_mat[ph][i].col(block_eff * params->n_ridge_l0 + j) = pred.row(ph).transpose();
+        if (params->trait_mode != 3) {
+          l1->test_mat[ph][i].col(block_eff * params->n_ridge_l0 + j) = pred.row(ph).transpose();
+        } else {
+          l1->test_mat_conc[ph].block(cum_size_folds, block_eff * params->n_ridge_l0 + j, params->cv_sizes(i), 1) = pred.row(ph).transpose();
+        }
         if((block == 0) && (j == 0)) { // same for all blocks & ridge params
-          l1->test_pheno[ph][i].col(0) = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-          if (params->trait_mode) {
-            l1->test_pheno_raw[ph][i].col(0) = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-            l1->test_offset[ph][i].col(0) = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+          if (params->trait_mode != 3) {
+            l1->test_pheno[ph][i].col(0) = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+            if (params->trait_mode != 0) {
+              l1->test_pheno_raw[ph][i].col(0) = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+              l1->test_offset[ph][i].col(0) = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+            }
+          } else {
+            l1->fold_id[ph](seqN(cum_size_folds, params->cv_sizes(i))) = Eigen::VectorXi::Constant(params->cv_sizes(i), i);
           }
         }
       }
     }
-
     cum_size_folds += params->cv_sizes(i);
   }
-  if(params->debug && (block < 5)) {
+  if(params->debug && (block < 5) && params->trait_mode != 3) {
     if(params->test_l0)
       cerr << "Ymat (Y1):\n" << (l1->test_pheno[0][0].topRows(5) - l1->top_snp_pgs[0].topRows(5)) << endl;
     else
@@ -434,13 +539,22 @@ void ridge_level_0(const int& block, struct in_files* files, struct param* param
 
     cum_size_folds = 0;
     for(int i = 0; i < params->cv_folds; ++i ) {
-      l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).rowwise() -= p_mean;
-      l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).array().rowwise() *= p_invsd.array();
+      if( params->trait_mode != 3){
+        l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).rowwise() -= p_mean;
+        l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).array().rowwise() *= p_invsd.array();
+      } else {
+        l1->test_mat_conc[ph].block(cum_size_folds, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).rowwise() -= p_mean;
+        l1->test_mat_conc[ph].block(cum_size_folds, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0).array().rowwise() *= p_invsd.array();
+      }
 
       if(params->write_l0_pred) {
-        Xout.block(cum_size_folds, 0, params->cv_sizes(i), params->n_ridge_l0) = l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0);
-        cum_size_folds += params->cv_sizes(i);
+        if (params->trait_mode != 3) {
+          Xout.block(cum_size_folds, 0, params->cv_sizes(i), params->n_ridge_l0) = l1->test_mat[ph][i].block(0, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0);
+        } else {
+          Xout.block(cum_size_folds, 0, params->cv_sizes(i), params->n_ridge_l0) = l1->test_mat_conc[ph].block(cum_size_folds, block_eff * params->n_ridge_l0, params->cv_sizes(i), params->n_ridge_l0);
+        }
       }
+      cum_size_folds += params->cv_sizes(i);
     }
 
     // write predictions to file if specified
@@ -483,9 +597,7 @@ void ridge_level_0(const int& block, struct in_files* files, struct param* param
   auto t3 = std::chrono::high_resolution_clock::now();
   auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(t3 - t2);
   sout << " (" << duration.count() << "ms) "<< endl;
-
 }
-
 
 void ridge_level_0_loocv(const int block, struct in_files* files, struct param* params, struct filter* filters, struct ests* m_ests, struct geno_block* Gblock, struct phenodt* pheno_data, vector<snp>& snpinfo, struct ridgel0* l0, struct ridgel1* l1, mstream& sout) {
 
@@ -616,25 +728,32 @@ void write_l0_file(ofstream* ofs, MatrixXd& Xout, mstream& sout){
 /////////////////////////////////////////////////
 void set_mem_l1(struct in_files* files, struct param* params, struct filter* filters, struct ests* m_ests, struct geno_block* Gblock, struct phenodt* pheno_data, struct ridgel1* l1, vector<MatrixXb>& masked_in_folds, mstream& sout){ // when l0 was run in parallel
 
-  if(params->use_loocv) return;
-
-  // store pheno info for l1
-  uint32_t cum_size_folds = 0;
-  for(int i = 0; i < params->cv_folds; ++i ) {
-    // assign masking within folds
-    masked_in_folds[i] = pheno_data->masked_indivs.middleRows(cum_size_folds, params->cv_sizes(i));
-    // store predictions
-    for(int ph = 0; ph < params->n_pheno; ++ph ) {
-      if( !params->pheno_pass(ph) ) continue;
-      l1->test_pheno[ph][i] = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-      if (params->trait_mode) {
-        l1->test_pheno_raw[ph][i] = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
-        l1->test_offset[ph][i] = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+  if(!(params->use_loocv || params->trait_mode == 3)) {
+    uint32_t cum_size_folds = 0;
+    for(int i = 0; i < params->cv_folds; ++i ) {
+      // assign masking within folds
+      masked_in_folds[i] = pheno_data->masked_indivs.middleRows(cum_size_folds, params->cv_sizes(i));
+      // store predictions
+      for(int ph = 0; ph < params->n_pheno; ++ph ) {
+        if( !params->pheno_pass(ph) ) continue;
+        l1->test_pheno[ph][i] = pheno_data->phenotypes.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+        if (params->trait_mode) {
+          l1->test_pheno_raw[ph][i] = pheno_data->phenotypes_raw.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+          l1->test_offset[ph][i] = m_ests->offset_nullreg.block(cum_size_folds, ph, params->cv_sizes(i), 1);
+        }
       }
+      cum_size_folds += params->cv_sizes(i);
     }
-    cum_size_folds += params->cv_sizes(i);
+  } else if (params->trait_mode == 3) {
+    uint32_t cum_size_folds = 0;
+    for(int i = 0; i < params->cv_folds; ++i ) {
+      for(int ph = 0; ph < params->n_pheno; ++ph ) {
+        if( !params->pheno_pass(ph) ) continue;
+        l1->fold_id[ph](seqN(cum_size_folds, params->cv_sizes(i))) = Eigen::VectorXi::Constant(params->cv_sizes(i), i);
+      }
+      cum_size_folds += params->cv_sizes(i);
+    }
   }
-
 }
 
 void ridge_level_1(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ridgel1* l1, mstream& sout) {
@@ -1792,7 +1911,7 @@ void read_l0(int const& ph, int const& ph_eff, struct in_files* files, struct pa
   string fin;
 
   // resize matrix
-  if(params->use_loocv)
+  if(params->use_loocv || params->trait_mode == 3)
     l1->test_mat_conc[ph_eff].resize(params->n_samples, bs_l1_tot);
   else for( int i = 0; i < params->cv_folds; ++i )
     l1->test_mat[ph_eff][i].resize(params->cv_sizes(i), bs_l1_tot);
@@ -1832,7 +1951,7 @@ void read_l0_chunk(int const& ph, int const& ph_eff, int const& start, int const
   //cerr << in_pheno << "  " << getSize(in_pheno) << endl;
 
   // store back values in test_mat
-  if(params->use_loocv) {
+  if(params->use_loocv || params->trait_mode == 3) {
 
     infile.read( reinterpret_cast<char *> (&l1->test_mat_conc[ph_eff](0, start)), params->n_samples * np * sizeof(double) );
 
@@ -1936,7 +2055,7 @@ void check_l0(int const& ph, int const& ph_eff, struct param* params, struct rid
   if(!l1->l0_colkeep.col(ph).all()){
     ArrayXi ind_keep = get_true_indices(l1->l0_colkeep.col(ph));
 
-    if(params->use_loocv){
+    if(params->use_loocv || params->trait_mode == 3){
 
       //cout << "\n\n" <<  ind_keep.matrix().transpose() << "\n" << l1->test_mat_conc[ph_eff].rows() << "," << l1->test_mat_conc[ph_eff].cols() << "\n";
       // update over row chunks to keep memory usage low
@@ -1970,7 +2089,16 @@ void check_l0(int const& ph, int const& ph_eff, struct param* params, struct rid
       double rate = pheno_data->phenotypes_raw.col(ph).sum() / pheno_data->Neff(ph); // masked entries are 0
       params->tau[ph] = l1->l0_colkeep.col(ph).count() / (1 + params->tau[ph] / (rate * (1 - params->tau[ph]))).log();
       //cerr << endl << params->tau[i].matrix().transpose() << endl;
-    } else {
+    } else if(params->trait_mode == 3){
+      if (params->t2e_l1_pi6) {
+        params->tau[ph] = l1->l0_colkeep.col(ph).count() * (1 - params->tau[ph]) / params->tau[ph];
+        // Assuming input tau is total SNP heritability on the liability scale= m * 6/pi^2 * (1-h2) / h2
+        params->tau[ph] *= 6 / (M_PI * M_PI);
+      } else {
+        Eigen::VectorXd index = Eigen::VectorXd::LinSpaced(params->n_ridge_l1, 0, params->n_ridge_l1 - 1);
+        params->tau[ph] = ((index.array() / (params->n_ridge_l1 - 1)) * log(1e-6) + log(pheno_data->cox_max_tau[ph])).exp();
+      }
+    }else {
       params->tau[ph] = l1->l0_colkeep.col(ph).count() * (1 - params->tau[ph]) / params->tau[ph];
       // Assuming input tau is total SNP heritability on the liability scale= m * 3/pi^2 * (1-h2) / h2
       if(params->trait_mode == 1) params->tau[ph] *= 3 / (M_PI * M_PI);
@@ -2082,4 +2210,83 @@ void apply_iter_cond(int const& chrom, int const& block, int const& ph, struct r
       }
     }
   }
+}
+
+void ridge_cox_level_1(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ridgel1* l1, struct ests* m_ests, mstream& sout) {
+  sout << endl << " Level 1 ridge with cox regression..." << endl << flush;
+  
+  int ph_eff, l0_idx;
+  int time_index, event_index;
+  Eigen::VectorXd ph_time, ph_event;
+  string in_pheno;
+  ifstream infile;
+  l1->pheno_l1_not_converged = ArrayXb::Constant(params->n_pheno, false);
+
+  for (int i = 0; i < 6; i++)
+    l1->cumsum_values[i].setZero(params->n_pheno, params->n_ridge_l1);
+
+  for (const auto& entry: files->t2e_map) {
+    const std::string& time_name = entry.first;
+    const std::string& event_name = entry.second;
+    // find time column index
+    std::vector<std::string>::iterator it_time = std::find(files->pheno_names.begin(), files->pheno_names.end(), time_name);
+    time_index = std::distance(files->pheno_names.begin(), it_time);
+    ph_time = pheno_data->phenotypes_raw.col(time_index);
+    // find event column index
+    std::vector<std::string>::iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), event_name);
+    event_index = std::distance(files->pheno_names.begin(), it_event);
+    ph_event = pheno_data->phenotypes_raw.col(event_index);
+
+    params->pheno_pass(event_index) = false;
+    
+    sout << "   -on phenotype " << time_name << "..." << flush;
+
+    auto ts1 = std::chrono::high_resolution_clock::now();
+    ph_eff = params->write_l0_pred ? 0 : time_index;
+    l0_idx = params->t2e_event_l0 ? event_index : time_index;
+    if(params->write_l0_pred)
+      read_l0(l0_idx, ph_eff, files, params, l1, sout);
+
+    MapArXb mask (pheno_data->masked_indivs.col(time_index).data(), pheno_data->masked_indivs.rows());
+
+    // find max lambda for each t2e trait
+    survival_data survivalNullData;
+    survivalNullData.setup(ph_time, ph_event, mask, true);
+    // initialize at lambda 0, to find lambda_max
+    cox_ridge coxRidge_null_lamb0(survivalNullData, l1->test_mat_conc[ph_eff], m_ests->offset_nullreg(all, time_index), mask, 0, params->niter_max, params->niter_max_line_search, params->numtol_cox);
+    coxRidge_null_lamb0.coxGrad(survivalNullData);
+    Eigen::VectorXd gradient = coxRidge_null_lamb0.get_gradient();
+    double lambda_max = getCoxLambdaMax(l1->test_mat_conc[ph_eff], gradient);
+    pheno_data->cox_max_tau[time_index] = lambda_max;
+
+    check_l0(time_index, ph_eff, params, l1, pheno_data, sout);
+
+    for(int i = 0; i < params->cv_folds; ++i ) {
+      ArrayXb fold_train_mask = (l1->fold_id[time_index].array() != i) && mask;
+      ArrayXb fold_test_mask = (l1->fold_id[time_index].array() == i) && mask;
+      
+      survival_data survivalData_fold;
+      survivalData_fold.setup(ph_time, ph_event, fold_train_mask, true);
+      cox_ridge_path coxRidgePath_fold(survivalData_fold, l1->test_mat_conc[ph_eff], m_ests->offset_nullreg.col(time_index), fold_train_mask, params->n_ridge_l1, 1e-4, params->tau[time_index], params->niter_max_ridge, params->niter_max_line_search_ridge, params->l1_ridge_tol, true);
+      coxRidgePath_fold.fit(survivalData_fold, l1->test_mat_conc[ph_eff], m_ests->offset_nullreg.col(time_index), fold_train_mask);
+
+      if (!coxRidgePath_fold.converge.all()) {
+        l1->pheno_l1_not_converged(time_index) = true;
+      }
+      l1->beta_hat_level_1[time_index][i] = coxRidgePath_fold.beta_mx;
+
+      // prediction (eta), and compute deviance on test set
+      survival_data survivalData_test;
+      survivalData_test.setup(ph_time, ph_event, fold_test_mask, true);
+      for (int l = 0; l < params->tau[time_index].size(); ++l) {
+        cox_ridge coxRidge_test(survivalData_test, l1->test_mat_conc[ph_eff], m_ests->offset_nullreg.col(time_index), fold_test_mask, params->tau[time_index](l), params->niter_max_ridge, params->niter_max_line_search_ridge, params->l1_ridge_tol, false, coxRidgePath_fold.beta_mx.col(l));
+        l1->cumsum_values[5](time_index, l) += coxRidge_test.get_null_deviance();
+      }
+    }
+    sout << "done";
+    auto ts2 = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(ts2 - ts1);
+    sout << " (" << duration.count() << "ms) "<< endl;
+  }
+  sout << endl;
 }

@@ -96,6 +96,7 @@ class Data {
     void make_predictions_binary_loocv(int const&,int const&);
     void make_predictions_count(int const&,int const&);
     void make_predictions_count_loocv(int const&,int const&);
+    void make_predictions_cox(int const&, int const&);
     void print_snp_betas(const Eigen::Ref<const Eigen::VectorXd>&);
     void write_predictions(int const&);
     std::string write_ID_header();
@@ -111,6 +112,7 @@ class Data {
     void residualize_res();
     void compute_res_bin(int const&);
     void compute_res_count(int const&);
+    void compute_res_cox(int const&);
     void setup_output(Files*,std::string&,std::vector<std::shared_ptr<Files>>&,std::vector<std::string>&);
 
     // step 2 using multithreading in eigen
