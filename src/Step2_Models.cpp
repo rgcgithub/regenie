@@ -1135,18 +1135,20 @@ void fit_firth_logistic_snp_fast(int const& chrom, int const& ph, int const& isn
 
   // If didn't converge, try again with NR at 0
   if(fit_state && (bstart != 0) && index_carriers.size()) {
+    if(params->debug) cerr << "WARNING: Pseudo-firth did not converge (" << fit_state << "; LRT = " << lrt << "; dev0 = " << dev0 << ") !\n";
     betaold = 0;
     fit_state = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, maxstep, 100, tol, params); // try NR (slower)
   }
 
   // If didn't converge, try with NR
   if(fit_state){
+    if(params->debug) cerr << "WARNING: NR-firth did not converge (" << fit_state << "; LRT = " << lrt << ") !\n";
     betaold = bstart; 
     fit_state = !fit_firth(dev0, Y, Gvec, offset, mask, index_carriers, betaold, se, lrt, maxstep, niter_nr, tol, params); // try NR (slower)
   }
 
   if(fit_state){
-    if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge!\n";
+    if(params->verbose) cerr << "WARNING: Logistic regression with Firth correction did not converge (" << fit_state << "; LRT = " << lrt << ") !\n";
     block_info->test_fail(ph) = true;
     return ;
   }
@@ -1272,7 +1274,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
       else return false; // step-halving failed
     }
 
-    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); beta_diff.max=" << bdiff << "; score.max=" << mod_score.abs().maxCoeff() << "\n";
+    if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betanew.head(min(5,cols_incl)).matrix().transpose() << "...); beta_diff.max=" << bdiff << "; score.max=" << score_max_new << "\n";
 
 
     if(cols_incl < nc)  
