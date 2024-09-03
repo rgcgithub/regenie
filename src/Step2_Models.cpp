@@ -1015,14 +1015,16 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
   // starting values
   if(null_fit){
 
-    // start at logit^-1(mean(Y))-mean(offset)
     betaold = ArrayXd::Zero(Xmat.cols()); // last entry in exact Firth is kept at 0
-    betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
-    betaold(0) = log( betaold(0) / (1 - betaold(0) ));
+    if(params->firth_approx){
+      // start at logit^-1(mean(Y))-mean(offset)
+      betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
+      betaold(0) = log( betaold(0) / (1 - betaold(0) ));
 
-    // LOCO prediction is offset
-    betaold(0) -= mask.select(offset,0).mean();
-
+      // LOCO prediction is offset
+      betaold(0) -= mask.select(offset,0).mean();
+    } else betaold.head(col_incl) = params->cov_betas.col(ph); // start at estimates from null firth with no snp column
+      
   } else {
     // start at 0
     if(params->firth_approx) betaold = ArrayXd::Zero(col_incl); 

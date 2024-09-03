@@ -2445,7 +2445,12 @@ void Data::compute_res_bin(int const& chrom){
 
   // if using firth approximation, fit null penalized model with only covariates and store the estimates (to be used as offset when computing LRT in full model)
   if(params.firth_approx) fit_null_firth(false, chrom, &firth_est, &pheno_data, &m_ests, &files, &params, sout);
-
+  else if(params.firth){ // get estimates of covs without tested snp
+    params.cov_betas = MatrixXd::Zero(pheno_data.new_cov.cols(), params.n_pheno);
+    for( int ph = 0; ph < params.n_pheno; ++ph ) 
+      if(params.pheno_pass(ph))
+        params.pheno_pass(ph) = fit_approx_firth_null(chrom, ph, &pheno_data, &m_ests, params.cov_betas.col(ph), &params);
+  }
 }
 
 void Data::compute_res_count(int const& chrom){
