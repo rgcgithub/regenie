@@ -977,6 +977,7 @@ void Data::output() {
   if(params.write_null_firth){
     out_firth_list = files.out_file + "_firth.list";
     outf.openForWrite(out_firth_list, sout);
+    m_ests.blups.resize(params.n_samples, params.n_pheno);
   }
 
   for(int ph = 0; ph < params.n_pheno; ++ph ) {
@@ -1872,25 +1873,23 @@ void Data::write_predictions(int const& ph){
   if(params.write_null_firth){ // store null estimates for Firth
 
     bool has_converged = true;
-    double dev, tstat;
-    ArrayXd se, etavec, pivec;
     IOFormat Fmt(StreamPrecision, DontAlignCols, " ", "\n", "", "","","");
 
     out = files.out_file + "_" + to_string(ph+1) + ".firth" + (params.gzOut ? ".gz" : "");
     sout << "writing null approximate Firth estimates..." << flush;
     ofile.openForWrite(out, sout);
 
-    ArrayXd bhat = ArrayXd::Zero(params.ncov);
     MapArXd Y (pheno_data.phenotypes_raw.col(ph).data(), pheno_data.phenotypes_raw.rows());
     MapArXb mask (pheno_data.masked_indivs.col(ph).data(), pheno_data.masked_indivs.rows());
+    // not quite matching with step 2 due to offset not being used in logreg
+    ArrayXd bhat = m_ests.bhat_start.col(ph).array();
 
     for(int chr = 0; chr < params.nChrom; chr++) {
-      // fit null approximate Firth 
+      // fit null approximate Firth
       // use warm starts from previous chromosomes
-      if(!fit_firth(ph, Y, pheno_data.new_cov, pred.col(chr).array(), mask, pivec, etavec, bhat, se, params.ncov, dev, false, tstat, params.maxstep_null, params.niter_max_firth_null, 50 * params.numtol, &params)){
-        has_converged = false;
-        break;
-      }
+      m_ests.blups.col(ph) = pred.col(chr);
+      has_converged = fit_approx_firth_null(chr, ph, &pheno_data, &m_ests, bhat, &params);
+      if(!has_converged) break;
       ofile << chr + 1 << " " << bhat.matrix().transpose().format(Fmt) << endl;
     }
 
@@ -1901,7 +1900,6 @@ void Data::write_predictions(int const& ph){
       ofile.closeFile();
 
   }
-
 
   if(params.print_prs){
 
