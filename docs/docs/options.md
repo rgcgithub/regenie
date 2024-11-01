@@ -70,6 +70,7 @@ One of the output files from these two commands is included in `example/test_bin
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
+|`--eventColList` | STRING | Optional | Comma separated list of event status to include in the survival analysis|
 |`--phenoExcludeList` | STRING | Optional | Comma separated list of phenotypes to ignore from the analysis|
 |`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
@@ -232,6 +233,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--step`| INT| Required| specify step for the regenie run (see Overview) [argument can be `1` or `2`] |
 |`--qt`| FLAG| Optional| specify that traits are quantitative (this is the default so can be ommitted)|
 |`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing|
+|`--t2e`| FLAG| Optional| specify that traits are time-to-event data with 0=censoring,1=event,NA=missing in event column|
 |`-1,--cc12`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
 |`--bsize`| INT| Required| size of the genotype blocks|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
@@ -756,7 +758,17 @@ The conditioning variants will automatically be ignored from the analysis.
 |`--condition-file-sample `| FILE| Optional| accompagnying sample file for BGEN format|
 |`--max-condition-vars `| INT| Optional| maximum number of conditioning variants [default is 10,000]|
 
+## Survival analyses
 
+Starting from **regenie** v4.0, you can conduct survival analysis for time-to-event data. This requires the following specific options in step 1, step 2 and gene-based burden tests.
+
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--t2e`| FLAG | Required| specify the traits are time-to-event data|
+|`--phenoColList` |	STRING | Required |	Comma separated list of time names to include in the analysis |
+|`--eventColList` |	STRING | Required |	Comma separated list of event names to include in the analysis, the event column has 0=censor,1=event,NA=missing |
+
+**Note:** the order of phenotype names should match between `--phenoColList` and `--eventColList`.
 
 ## LD computation
 REGENIE can calculate LD between a group of variants on the same chromosome. 
