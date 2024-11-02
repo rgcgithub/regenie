@@ -4,7 +4,7 @@ This page provides an overview of the models and methods implemented in
 **regenie**. A full description is given in our [paper](https://doi.org/10.1038/s41588-021-00870-7).
 
 **regenie** carries out genome-wide association tests for both
-  quantitative and binary (case-control) phenotypes. Starting at **regenie v4.0**, it also supports survival analysis for time-to-event data (See Time-to-event section below). It is designed to handle
+  quantitative and binary (case-control) phenotypes. Starting at **regenie v4.0**, it also supports survival analysis for time-to-event data (See Survival analysis section below). It is designed to handle
 
 1. A large number of samples. For example, it is ideally suited to the
 [UK Biobank](https://www.ukbiobank.ac.uk/) dataset with 500,000 samples.
