@@ -70,7 +70,7 @@ One of the output files from these two commands is included in `example/test_bin
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
-|`--eventColList` | STRING | Optional | Comma separated list of event status to include in the survival analysis|
+|`--eventColList` | STRING | Optional | Comma separated list of columns in the phenotype file to include in the analysis that contain the event times |
 |`--phenoExcludeList` | STRING | Optional | Comma separated list of phenotypes to ignore from the analysis|
 |`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
@@ -766,9 +766,11 @@ Starting from **regenie** v4.0, you can conduct survival analysis for time-to-ev
 |---|-------|------|----|
 |`--t2e`| FLAG | Required| specify the traits are time-to-event data|
 |`--phenoColList` |	STRING | Required |	Comma separated list of time names to include in the analysis |
-|`--eventColList` |	STRING | Required |	Comma separated list of event names to include in the analysis, the event column has 0=censor,1=event,NA=missing |
+|`--eventColList` |	STRING | Required |	Comma separated list of columns in the phenotype file to include in the analysis that contain the events. These event columns should have 0=no event,1=event,NA=missing |
 
 **Note:** the order of phenotype names should match between `--phenoColList` and `--eventColList`.
+
+The output format is the same as the output file for quantitative and binary traits, with the `Effect` column containing the estimated harzard ratio.
 
 ## LD computation
 REGENIE can calculate LD between a group of variants on the same chromosome. 

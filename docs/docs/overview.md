@@ -385,7 +385,7 @@ help with case-control imbalance and model misspecification for the effect of $E
 
 ### Survival analysis
 
-Starting with **regenie v4.0**, we have enabled the survival analysis, improving the power for analyzing common diseases where time-to-event data is available. REGENIE utilizes the Cox Proportional Harzard model for association testing.
+Starting with **regenie v4.0**, we have enabled the survival analysis, improving the power for analyzing common diseases where time-to-event data is available. REGENIE utilizes the Cox Proportional Harzard model for association testing. We assume that samples without an event are right-censored, i.e. the survival time is only known to be greater than a certain value. The user needs to encode this into the phenotypes.
 
 #### Step 1: Whole genome model using cox ridge regression
 
