@@ -760,7 +760,27 @@ The conditioning variants will automatically be ignored from the analysis.
 
 ## Survival analyses
 
-Starting from **regenie** v4.0, you can conduct survival analysis for time-to-event data. This requires the following specific options in step 1, step 2 and gene-based burden tests.
+Starting from **regenie** v4.0, you can conduct survival analysis for time-to-event data. 
+
+### Phenotype file format
+
+In this small example, there are 5 samples, and the event of interest is the diagnosis of cancer over a period of 10 years.
+
+![Survival_eg](img/survival_eg.png)
+
+Sample 1 is diagnosed with cancer during the study; the `time` variable is the number of years until the sample is diagnosed with cancer. Sample 2 drops out of the study; sample 3 dies during the study; sample 4 and 5 complete the study without being diagnosed with cancer; they are all right-censored, and the `time` variable is the last encounter or death time. The corresponding phenotype file is 
+```
+FID IID Time Cancer
+1 1 6 1
+2 2 5 0
+3 3 2 0
+4 4 10 0
+5 5 10 0
+```
+
+### Required options
+
+Survival analysis in **regenie** requires the following specific options in step 1, step 2 and gene-based burden tests.
 
 | Option | Argument | Type | Description|
 |---|-------|------|----|
@@ -768,7 +788,28 @@ Starting from **regenie** v4.0, you can conduct survival analysis for time-to-ev
 |`--phenoColList` |	STRING | Required |	Comma separated list of time names to include in the analysis |
 |`--eventColList` |	STRING | Required |	Comma separated list of columns in the phenotype file to include in the analysis that contain the events. These event columns should have 0=no event,1=event,NA=missing |
 
-**Note:** the order of phenotype names should match between `--phenoColList` and `--eventColList`.
+For the example above, the regenie call is
+```
+./regenie \
+--t2e \
+--phenoColList Time
+--eventColList Cancer
+...
+```
+
+For a phenotype file containing multiple time-to-event traits, the order of censor variables listed in `--eventColList` should match the order of time names specified in `--phenoColList`. For example, the phenotype file is
+```
+FID IID Cancer_Time Cancer Asthma_Time Asthma
+1 1 6 1 4 0
+2 2 5 0 8 1
+```
+The regenie call is
+```
+./regenie \
+--t2e \
+--phenoColList Cancer_Time,Asthma_Time \
+--eventColList Cancer,Asthma \
+```
 
 The output format is the same as the output file for quantitative and binary traits, with the `Effect` column containing the estimated harzard ratio.
 

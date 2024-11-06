@@ -4,14 +4,14 @@ This page provides an overview of the models and methods implemented in
 **regenie**. A full description is given in our [paper](https://doi.org/10.1038/s41588-021-00870-7).
 
 **regenie** carries out genome-wide association tests for both
-  quantitative and binary (case-control) phenotypes. Starting at **regenie v4.0**, it also supports survival analysis for time-to-event data (See Survival analysis section below). It is designed to handle
+  quantitative and binary (case-control) phenotypes. Starting at **regenie v4.0**, it also supports survival analysis for time-to-event data (See [Survival analysis](#survival-analysis) section below). It is designed to handle
 
 1. A large number of samples. For example, it is ideally suited to the
 [UK Biobank](https://www.ukbiobank.ac.uk/) dataset with 500,000 samples.
 2. A combination of genetic data from a micro-array, imputation and
 exome sequencing.
-3. A large number of either quantitative traits (QTs) or binary
-(case-control) traits (BTs)
+3. A large number of either quantitative traits (QTs), binary
+(case-control) traits (BTs), or time-to-event traits (TTEs)
 4. Accounting for a set of covariates
 
 An overview of the **regenie** method is provided in the figure below.
@@ -385,20 +385,20 @@ help with case-control imbalance and model misspecification for the effect of $E
 
 ### Survival analysis
 
-Starting with **regenie v4.0**, we have enabled the survival analysis, improving the power for analyzing common diseases where time-to-event data is available. REGENIE utilizes the Cox Proportional Harzard model for association testing. We assume that samples without an event are right-censored, i.e. the survival time is only known to be greater than a certain value. The user needs to encode this into the phenotypes.
+Starting with **regenie v4.0**, we have enabled survival analysis, improving the power for analyzing common diseases where time-to-event data is available by leveraging the Cox Proportional Harzard model. We assume that samples without an event are right-censored, i.e. the survival time is only known to be greater than a certain value. It is important to [encode this information correctly into the phenotypes](/options/#survival-analyses).
 
 #### Step 1: Whole genome model using cox ridge regression
 
-In step 1, Level 0 is the same as the section above. We use linear ridge regression with `time` as the response to reduce dimensionality. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression[simon2011regularization] to combine the predictions $W$ from Level 0.
+In step 1, Level 0 is run using [linear ridge regression](#ridge-regression-level-0) with the `time` variable taken as the response. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression[simon2011regularization] to combine the predictions $W$ from Level 0.
 
 $$
 \lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_i^\intercal \alpha)
 $$
-where $\lambda(t)$ is the hazard function, $\mu$ captures the effects of non-genetic covariates.
+where $\lambda_i(t)$ is the hazard function for the $i$-th individual, $\lambda_0(t)$ is the baseline hazard function, $w_i$ is the set of ridge predictors from Level 0 for the $i$-th individual, $\mu_i$ captures the effects of non-genetic covariates.
 
 We fit the cox ridge regression for a range of shrinkage parameters and select the best value using K-fold cross validation scheme.
 
-With the estimated $\hat{\alpha}$, we construct Leave One Chromosome Out genetic prediction. These LOCO predictions capture population structure, relatedness and polygenic effects.
+With the estimated $\hat{\alpha}$, we construct LOCO predictions which capture population structure, relatedness and polygenicity.
 
 #### Step 2: Single variant and gene-based burden tests
 
