@@ -294,7 +294,7 @@ Alternatively, we augment the test to include an extended set of SKATO models be
 #### Sparse Burden Association Test
 **regenie** can generate burden masks which are obtained by aggregating single variants
 using various annotation classes as well as allele frequency
-thresholds. The Sparse Burden Association Test (SBAT)[@RN629] combines these burden masks
+thresholds. The Sparse Burden Association Test (SBAT)[@RN703] combines these burden masks
 in a joint model imposing constraints of same direction of effects
 $$
 \mu = \sum_{\text{mask }i} M_i\gamma_i
