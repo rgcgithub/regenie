@@ -792,8 +792,8 @@ For the example above, the regenie call is
 ```
 ./regenie \
 --t2e \
---phenoColList Time
---eventColList Cancer
+--phenoColList Time \
+--eventColList Cancer \
 ...
 ```
 
@@ -809,9 +809,10 @@ The regenie call is
 --t2e \
 --phenoColList Cancer_Time,Asthma_Time \
 --eventColList Cancer,Asthma \
+...
 ```
 
-The output format is the same as the output file for quantitative and binary traits, with the `Effect` column containing the estimated harzard ratio.
+The output format is the same as the [output file for quantitative and binary traits](#output), with the `BETA` column containing the estimated harzard ratio (on log scale).
 
 ## LD computation
 REGENIE can calculate LD between a group of variants on the same chromosome. 

@@ -394,9 +394,9 @@ In step 1, Level 0 is run using [linear ridge regression](#ridge-regression-leve
 $$
 \lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_i^\intercal \alpha)
 $$
-where $\lambda_i(t)$ is the hazard function for the $i$-th individual, $\lambda_0(t)$ is the baseline hazard function, $w_i$ is the set of ridge predictors from Level 0 for the $i$-th individual, $\mu_i$ captures the effects of non-genetic covariates.
+where $\lambda_0(t)$ is the baseline hazard function, and, for the $i$-th individual, $\lambda_i(t)$ is the hazard function, $w_i$ is the set of ridge predictors from Level 0, and $\mu_i$ captures the effects of non-genetic covariates.
 
-We fit the cox ridge regression for a range of shrinkage parameters and select the best value using K-fold cross validation scheme.
+We fit the cox ridge regression for a range of shrinkage parameters and select the best value using a K-fold cross validation scheme.
 
 With the estimated $\hat{\alpha}$, we construct LOCO predictions which capture population structure, relatedness and polygenicity.
 
@@ -410,7 +410,7 @@ $$
 \lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_{i, LOCO} + g_i \beta)
 $$
 
-We test the null hypothesis $H_0: \beta = 0$ using the score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction[@heinze2001solution] when the p-value from the standard score test is below a threshold (default 0.05). 
+We test the null hypothesis $H_0: \beta = 0$ using a score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction[@heinze2001solution] when the p-value from the standard score test is below a threshold (default 0.05). 
 
 The firth correction provides a well-calibrated test, but comes with a computational cost. To mitigate this burden in Cox regression, we include a fast approximate test, which gives results very similar to the exact Firth test.
 
