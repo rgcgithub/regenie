@@ -185,6 +185,11 @@
             <li class="second-level"><a href="#output_2">Output</a></li>
                 
         <li class="first-level "><a href="#conditional-analyses">Conditional analyses</a></li>
+        <li class="first-level "><a href="#survival-analyses">Survival analyses</a></li>
+            <li class="second-level"><a href="#phenotype-file-format_1">Phenotype file format</a></li>
+                
+            <li class="second-level"><a href="#required-options">Required options</a></li>
+                
         <li class="first-level "><a href="#ld-computation">LD computation</a></li>
             <li class="second-level"><a href="#output_3">Output</a></li>
                 
@@ -320,6 +325,12 @@ Firth logistic regression model</p>
 <td>STRING</td>
 <td>Optional</td>
 <td>Comma separated list of phenotypes to include in the analysis</td>
+</tr>
+<tr>
+<td><code>--eventColList</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>Comma separated list of columns in the phenotype file to include in the analysis that contain the event times</td>
 </tr>
 <tr>
 <td><code>--phenoExcludeList</code></td>
@@ -512,6 +523,12 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>FLAG</td>
 <td>Optional</td>
 <td>specify that traits are binary with 0=control,1=case,NA=missing</td>
+</tr>
+<tr>
+<td><code>--t2e</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>specify that traits are time-to-event data with 0=censoring,1=event,NA=missing in event column</td>
 </tr>
 <tr>
 <td><code>-1,--cc12</code></td>
@@ -1537,6 +1554,71 @@ The conditioning variants will automatically be ignored from the analysis.</p>
 </tr>
 </tbody>
 </table>
+<h2 id="survival-analyses">Survival analyses</h2>
+<p>Starting from <strong>regenie</strong> v4.0, you can conduct survival analysis for time-to-event data. </p>
+<h3 id="phenotype-file-format_1">Phenotype file format</h3>
+<p>In this small example, there are 5 samples, and the event of interest is the diagnosis of cancer over a period of 10 years.</p>
+<p><img alt="Survival_eg" src="../img/survival_eg.png" /></p>
+<p>Sample 1 is diagnosed with cancer during the study; the <code>time</code> variable is the number of years until the sample is diagnosed with cancer. Sample 2 drops out of the study; sample 3 dies during the study; sample 4 and 5 complete the study without being diagnosed with cancer; they are all right-censored, and the <code>time</code> variable is the last encounter or death time. The corresponding phenotype file is </p>
+<pre><code>FID IID Time Cancer
+1 1 6 1
+2 2 5 0
+3 3 2 0
+4 4 10 0
+5 5 10 0
+</code></pre>
+<h3 id="required-options">Required options</h3>
+<p>Survival analysis in <strong>regenie</strong> requires the following specific options in step 1, step 2 and gene-based burden tests.</p>
+<table>
+<thead>
+<tr>
+<th>Option</th>
+<th>Argument</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--t2e</code></td>
+<td>FLAG</td>
+<td>Required</td>
+<td>specify the traits are time-to-event data</td>
+</tr>
+<tr>
+<td><code>--phenoColList</code></td>
+<td>STRING</td>
+<td>Required</td>
+<td>Comma separated list of time names to include in the analysis</td>
+</tr>
+<tr>
+<td><code>--eventColList</code></td>
+<td>STRING</td>
+<td>Required</td>
+<td>Comma separated list of columns in the phenotype file to include in the analysis that contain the events. These event columns should have 0=no event,1=event,NA=missing</td>
+</tr>
+</tbody>
+</table>
+<p>For the example above, the regenie call is</p>
+<pre><code>./regenie \
+--t2e \
+--phenoColList Time \
+--eventColList Cancer \
+...
+</code></pre>
+<p>For a phenotype file containing multiple time-to-event traits, the order of censor variables listed in <code>--eventColList</code> should match the order of time names specified in <code>--phenoColList</code>. For example, the phenotype file is</p>
+<pre><code>FID IID Cancer_Time Cancer Asthma_Time Asthma
+1 1 6 1 4 0
+2 2 5 0 8 1
+</code></pre>
+<p>The regenie call is</p>
+<pre><code>./regenie \
+--t2e \
+--phenoColList Cancer_Time,Asthma_Time \
+--eventColList Cancer,Asthma \
+...
+</code></pre>
+<p>The output format is the same as the <a href="#output">output file for quantitative and binary traits</a>, with the <code>BETA</code> column containing the estimated harzard ratio (on log scale).</p>
 <h2 id="ld-computation">LD computation</h2>
 <p>REGENIE can calculate LD between a group of variants on the same chromosome. </p>
 <table>

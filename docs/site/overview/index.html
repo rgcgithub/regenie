@@ -171,6 +171,10 @@
                 <li class="third-level"><a href="#gene_p">GENE_P</a></li>
             <li class="second-level"><a href="#step-2-interaction-testing">Step 2 : Interaction testing</a></li>
                 
+            <li class="second-level"><a href="#survival-analysis">Survival analysis</a></li>
+                
+                <li class="third-level"><a href="#step-1-whole-genome-model-using-cox-ridge-regression">Step 1: Whole genome model using cox ridge regression</a></li>
+                <li class="third-level"><a href="#step-2-single-variant-and-gene-based-burden-tests">Step 2: Single variant and gene-based burden tests</a></li>
             <li class="second-level"><a href="#missing-phenotype-data">Missing Phenotype data</a></li>
                 
             <li class="second-level"><a href="#references">References</a></li>
@@ -183,14 +187,14 @@
 <p>This page provides an overview of the models and methods implemented in
 <strong>regenie</strong>. A full description is given in our <a href="https://doi.org/10.1038/s41588-021-00870-7">paper</a>.</p>
 <p><strong>regenie</strong> carries out genome-wide association tests for both
-  quantitative and binary (case-control) phenotypes. It is designed to handle</p>
+  quantitative and binary (case-control) phenotypes. Starting at <strong>regenie v4.0</strong>, it also supports survival analysis for time-to-event data (See <a href="#survival-analysis">Survival analysis</a> section below). It is designed to handle</p>
 <ol>
 <li>A large number of samples. For example, it is ideally suited to the
 <a href="https://www.ukbiobank.ac.uk/">UK Biobank</a> dataset with 500,000 samples.</li>
 <li>A combination of genetic data from a micro-array, imputation and
 exome sequencing.</li>
-<li>A large number of either quantitative traits (QTs) or binary
-(case-control) traits (BTs)</li>
+<li>A large number of either quantitative traits (QTs), binary
+(case-control) traits (BTs), or time-to-event traits (TTEs)</li>
 <li>Accounting for a set of covariates</li>
 </ol>
 <p>An overview of the <strong>regenie</strong> method is provided in the figure below.
@@ -502,6 +506,27 @@ where we also include a non-linear effect for $E$ (not if categorical).
 The sandwich estimator HC3 is used in a Wald test for variants whose MAC is above 1000 (see <code>--rare-mac</code>) otherwise the model-based standard errors are used.
 When Firth is specified, we only apply the Firth correction using LRT if the p-value for the interaction term $\gamma$ from the Wald test is below a specified threshold (see <code>--pThresh</code>). So the added $E^2$ term as well as the use of the Firth penalty 
 help with case-control imbalance and model misspecification for the effect of $E$ on the phenotype. </p>
+<h3 id="survival-analysis">Survival analysis</h3>
+<p>Starting with <strong>regenie v4.0</strong>, we have enabled survival analysis, improving the power for analyzing common diseases where time-to-event data is available by leveraging the Cox Proportional Harzard model. We assume that samples without an event are right-censored, i.e. the survival time is only known to be greater than a certain value. It is important to <a href="/regenie/options/#survival-analyses">encode this information correctly into the phenotypes</a>.</p>
+<h4 id="step-1-whole-genome-model-using-cox-ridge-regression">Step 1: Whole genome model using cox ridge regression</h4>
+<p>In step 1, Level 0 is run using <a href="#ridge-regression-level-0">linear ridge regression</a> with the <code>time</code> variable taken as the response. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression<sup id="fnref:21"><a class="footnote-ref" href="#fn:21">21</a></sup> to combine the predictions $W$ from Level 0.</p>
+<p>
+<script type="math/tex; mode=display">
+\lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_i^\intercal \alpha)
+</script>
+where $\lambda_0(t)$ is the baseline hazard function, and, for the $i$-th individual, $\lambda_i(t)$ is the hazard function, $w_i$ is the set of ridge predictors from Level 0, and $\mu_i$ captures the effects of non-genetic covariates.</p>
+<p>We fit the cox ridge regression for a range of shrinkage parameters and select the best value using a K-fold cross validation scheme.</p>
+<p>With the estimated $\hat{\alpha}$, we construct LOCO predictions which capture population structure, relatedness and polygenicity.</p>
+<h4 id="step-2-single-variant-and-gene-based-burden-tests">Step 2: Single variant and gene-based burden tests</h4>
+<p>For time-to-event traits, the cox proportional hazard regression model is used to test the association between the phenotype and the genetic marker. <strong>Note</strong>: the only supported gene-based test is the burden test.</p>
+<p>The cox proportional hazard regression model includes the LOCO predictions from Step 1 as an offset.</p>
+<p>
+<script type="math/tex; mode=display">
+\lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_{i, LOCO} + g_i \beta)
+</script>
+</p>
+<p>We test the null hypothesis $H_0: \beta = 0$ using a score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction<sup id="fnref:22"><a class="footnote-ref" href="#fn:22">22</a></sup> when the p-value from the standard score test is below a threshold (default 0.05). </p>
+<p>The firth correction provides a well-calibrated test, but comes with a computational cost. To mitigate this burden in Cox regression, we include a fast approximate test, which gives results very similar to the exact Firth test.</p>
 <h3 id="missing-phenotype-data">Missing Phenotype data</h3>
 <p>With QTs, missing values are mean-imputed in Step 1 and they are 
 dropped when testing each phenotype in Step 2 (unless using <code>--force-impute</code>).</p>
@@ -564,7 +589,7 @@ complete data by setting the phenotype values of individuals to remove to NA.</p
 <p>Liu, Y. <em>et al.</em> ACAT: A fast and powerful p value combination method for rare-variant analysis in sequencing studies. <em>Am J Hum Genet</em> <strong>104</strong>, 410–421 (2019).&#160;<a class="footnote-backref" href="#fnref:15" title="Jump back to footnote 15 in the text">&#8617;</a><a class="footnote-backref" href="#fnref2:15" title="Jump back to footnote 15 in the text">&#8617;</a></p>
 </li>
 <li id="fn:16">
-<p>Ziyatdinov, A. <em>et al.</em> Joint testing of rare variant burden scores using non-negative least squares. <em>bioRxiv</em> (2023) doi:<a href="https://doi.org/10.1101/2023.02.22.529560">10.1101/2023.02.22.529560</a>.&#160;<a class="footnote-backref" href="#fnref:16" title="Jump back to footnote 16 in the text">&#8617;</a></p>
+<p>Ziyatdinov, A. <em>et al.</em> Joint testing of rare variant burden scores using non-negative least squares. <em>The American Journal of Human Genetics</em> <strong>111</strong>, 2139–2149 (2024).&#160;<a class="footnote-backref" href="#fnref:16" title="Jump back to footnote 16 in the text">&#8617;</a></p>
 </li>
 <li id="fn:17">
 <p>MacKinnon, J. G. &amp; White, H. Some heteroskedasticity-consistent covariance matrix estimators with improved finite sample properties. <em>Journal of Econometrics</em> <strong>29</strong>, 305–325 (1985).&#160;<a class="footnote-backref" href="#fnref:17" title="Jump back to footnote 17 in the text">&#8617;</a></p>
@@ -577,6 +602,12 @@ complete data by setting the phenotype values of individuals to remove to NA.</p
 </li>
 <li id="fn:20">
 <p>Young, A. I., Wauthier, F. L. &amp; Donnelly, P. Identifying loci affecting trait variability and detecting interactions in genome-wide association studies. <em>Nat Genet</em> <strong>50</strong>, 1608–1614 (2018).&#160;<a class="footnote-backref" href="#fnref:20" title="Jump back to footnote 20 in the text">&#8617;</a></p>
+</li>
+<li id="fn:21">
+<p>Simon, N., Friedman, J. H., Hastie, T. &amp; Tibshirani, R. Regularization paths for cox’s proportional hazards model via coordinate descent. <em>Journal of statistical software</em> <strong>39</strong>, 1–13 (2011).&#160;<a class="footnote-backref" href="#fnref:21" title="Jump back to footnote 21 in the text">&#8617;</a></p>
+</li>
+<li id="fn:22">
+<p>Heinze, G. &amp; Schemper, M. A solution to the problem of monotone likelihood in cox regression. <em>Biometrics</em> <strong>57</strong>, 114–119 (2001).&#160;<a class="footnote-backref" href="#fnref:22" title="Jump back to footnote 22 in the text">&#8617;</a></p>
 </li>
 </ol>
 </div></div>
