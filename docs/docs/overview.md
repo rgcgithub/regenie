@@ -4,14 +4,14 @@ This page provides an overview of the models and methods implemented in
 **regenie**. A full description is given in our [paper](https://doi.org/10.1038/s41588-021-00870-7).
 
 **regenie** carries out genome-wide association tests for both
-  quantitative and binary (case-control) phenotypes. It is designed to handle
+  quantitative and binary (case-control) phenotypes. Starting at **regenie v4.0**, it also supports survival analysis for time-to-event data (See [Survival analysis](#survival-analysis) section below). It is designed to handle
 
 1. A large number of samples. For example, it is ideally suited to the
 [UK Biobank](https://www.ukbiobank.ac.uk/) dataset with 500,000 samples.
 2. A combination of genetic data from a micro-array, imputation and
 exome sequencing.
-3. A large number of either quantitative traits (QTs) or binary
-(case-control) traits (BTs)
+3. A large number of either quantitative traits (QTs), binary
+(case-control) traits (BTs), or time-to-event traits (TTEs)
 4. Accounting for a set of covariates
 
 An overview of the **regenie** method is provided in the figure below.
@@ -382,6 +382,37 @@ where we also include a non-linear effect for $E$ (not if categorical).
 The sandwich estimator HC3 is used in a Wald test for variants whose MAC is above 1000 (see `--rare-mac`) otherwise the model-based standard errors are used.
 When Firth is specified, we only apply the Firth correction using LRT if the p-value for the interaction term $\gamma$ from the Wald test is below a specified threshold (see `--pThresh`). So the added $E^2$ term as well as the use of the Firth penalty 
 help with case-control imbalance and model misspecification for the effect of $E$ on the phenotype. 
+
+### Survival analysis
+
+Starting with **regenie v4.0**, we have enabled survival analysis, improving the power for analyzing common diseases where time-to-event data is available by leveraging the Cox Proportional Harzard model. We assume that samples without an event are right-censored, i.e. the survival time is only known to be greater than a certain value. It is important to [encode this information correctly into the phenotypes](/options/#survival-analyses).
+
+#### Step 1: Whole genome model using cox ridge regression
+
+In step 1, Level 0 is run using [linear ridge regression](#ridge-regression-level-0) with the `time` variable taken as the response. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression[@simon2011regularization] to combine the predictions $W$ from Level 0.
+
+$$
+\lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_i^\intercal \alpha)
+$$
+where $\lambda_0(t)$ is the baseline hazard function, and, for the $i$-th individual, $\lambda_i(t)$ is the hazard function, $w_i$ is the set of ridge predictors from Level 0, and $\mu_i$ captures the effects of non-genetic covariates.
+
+We fit the cox ridge regression for a range of shrinkage parameters and select the best value using a K-fold cross validation scheme.
+
+With the estimated $\hat{\alpha}$, we construct LOCO predictions which capture population structure, relatedness and polygenicity.
+
+#### Step 2: Single variant and gene-based burden tests
+
+For time-to-event traits, the cox proportional hazard regression model is used to test the association between the phenotype and the genetic marker. **Note**: the only supported gene-based test is the burden test.
+
+The cox proportional hazard regression model includes the LOCO predictions from Step 1 as an offset.
+
+$$
+\lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_{i, LOCO} + g_i \beta)
+$$
+
+We test the null hypothesis $H_0: \beta = 0$ using a score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction[@heinze2001solution] when the p-value from the standard score test is below a threshold (default 0.05). 
+
+The firth correction provides a well-calibrated test, but comes with a computational cost. To mitigate this burden in Cox regression, we include a fast approximate test, which gives results very similar to the exact Firth test.
 
 ### Missing Phenotype data
 

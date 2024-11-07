@@ -70,6 +70,7 @@ One of the output files from these two commands is included in `example/test_bin
 |`--phenoFile`  | FILE | Required |Phenotypes file|
 |`--phenoCol` | STRING | Optional | Use for each phenotype you want to include in the analysis|
 |`--phenoColList` | STRING | Optional | Comma separated list of phenotypes to include in the analysis|
+|`--eventColList` | STRING | Optional | Comma separated list of columns in the phenotype file to include in the analysis that contain the event times |
 |`--phenoExcludeList` | STRING | Optional | Comma separated list of phenotypes to ignore from the analysis|
 |`--covarFile`  | FILE | Optional | Covariates file|
 |`--covarCol` | STRING | Optional | Use for each covariate you want to include in the analysis|
@@ -232,6 +233,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--step`| INT| Required| specify step for the regenie run (see Overview) [argument can be `1` or `2`] |
 |`--qt`| FLAG| Optional| specify that traits are quantitative (this is the default so can be ommitted)|
 |`--bt`| FLAG| Optional| specify that traits are binary with 0=control,1=case,NA=missing|
+|`--t2e`| FLAG| Optional| specify that traits are time-to-event data with 0=censoring,1=event,NA=missing in event column|
 |`-1,--cc12`| FLAG| Optional| specify to use 1/2/NA encoding for binary traits (1=control,2=case,NA=missing)|
 |`--bsize`| INT| Required| size of the genotype blocks|
 |`--cv`| INT| Optional| number of cross validation (CV) folds [default is 5]|
@@ -756,7 +758,61 @@ The conditioning variants will automatically be ignored from the analysis.
 |`--condition-file-sample `| FILE| Optional| accompagnying sample file for BGEN format|
 |`--max-condition-vars `| INT| Optional| maximum number of conditioning variants [default is 10,000]|
 
+## Survival analyses
 
+Starting from **regenie** v4.0, you can conduct survival analysis for time-to-event data. 
+
+### Phenotype file format
+
+In this small example, there are 5 samples, and the event of interest is the diagnosis of cancer over a period of 10 years.
+
+![Survival_eg](img/survival_eg.png)
+
+Sample 1 is diagnosed with cancer during the study; the `time` variable is the number of years until the sample is diagnosed with cancer. Sample 2 drops out of the study; sample 3 dies during the study; sample 4 and 5 complete the study without being diagnosed with cancer; they are all right-censored, and the `time` variable is the last encounter or death time. The corresponding phenotype file is 
+```
+FID IID Time Cancer
+1 1 6 1
+2 2 5 0
+3 3 2 0
+4 4 10 0
+5 5 10 0
+```
+
+### Required options
+
+Survival analysis in **regenie** requires the following specific options in step 1, step 2 and gene-based burden tests.
+
+| Option | Argument | Type | Description|
+|---|-------|------|----|
+|`--t2e`| FLAG | Required| specify the traits are time-to-event data|
+|`--phenoColList` |	STRING | Required |	Comma separated list of time names to include in the analysis |
+|`--eventColList` |	STRING | Required |	Comma separated list of columns in the phenotype file to include in the analysis that contain the events. These event columns should have 0=no event,1=event,NA=missing |
+
+For the example above, the regenie call is
+```
+./regenie \
+--t2e \
+--phenoColList Time \
+--eventColList Cancer \
+...
+```
+
+For a phenotype file containing multiple time-to-event traits, the order of censor variables listed in `--eventColList` should match the order of time names specified in `--phenoColList`. For example, the phenotype file is
+```
+FID IID Cancer_Time Cancer Asthma_Time Asthma
+1 1 6 1 4 0
+2 2 5 0 8 1
+```
+The regenie call is
+```
+./regenie \
+--t2e \
+--phenoColList Cancer_Time,Asthma_Time \
+--eventColList Cancer,Asthma \
+...
+```
+
+The output format is the same as the [output file for quantitative and binary traits](#output), with the `BETA` column containing the estimated harzard ratio (on log scale).
 
 ## LD computation
 REGENIE can calculate LD between a group of variants on the same chromosome. 
