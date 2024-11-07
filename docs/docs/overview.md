@@ -389,7 +389,7 @@ Starting with **regenie v4.0**, we have enabled survival analysis, improving the
 
 #### Step 1: Whole genome model using cox ridge regression
 
-In step 1, Level 0 is run using [linear ridge regression](#ridge-regression-level-0) with the `time` variable taken as the response. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression[simon2011regularization] to combine the predictions $W$ from Level 0.
+In step 1, Level 0 is run using [linear ridge regression](#ridge-regression-level-0) with the `time` variable taken as the response. In Level 1, instead of linear/logistic ridge regression, we use Cox Ridge regression[@simon2011regularization] to combine the predictions $W$ from Level 0.
 
 $$
 \lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_i^\intercal \alpha)
@@ -410,7 +410,7 @@ $$
 \lambda_i(t) = \lambda_0(t) \exp(\mu_i + w_{i, LOCO} + g_i \beta)
 $$
 
-We test the null hypothesis $H_0: \beta = 0$ using the score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction[heinze2001solution] when the p-value from the standard score test is below a threshold (default 0.05). 
+We test the null hypothesis $H_0: \beta = 0$ using the score test. When the event rate is low, the standard score test doesn't control Type I error well at rare genetic markers. To reduce the bias and achieve a more robust test, regenie uses Firth correction[@heinze2001solution] when the p-value from the standard score test is below a threshold (default 0.05). 
 
 The firth correction provides a well-calibrated test, but comes with a computational cost. To mitigate this burden in Cox regression, we include a fast approximate test, which gives results very similar to the exact Firth test.
 
