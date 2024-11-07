@@ -7,13 +7,14 @@ using namespace std;
 
 cox_firth::cox_firth(){}
 
-void cox_firth::setup(const survival_data& survivalData, const Eigen::MatrixXd& Xmat, const Eigen::VectorXd& offset_val, const int& cols_incl, const int& max_iter, const int& max_inner_iter, const double& tolerance, const double& beta_tol, const double& max_step, const bool& use_firth, const bool& verbose_obj, const Eigen::VectorXd& beta_init) {
+void cox_firth::setup(const survival_data& survivalData, const Eigen::MatrixXd& Xmat, const Eigen::VectorXd& offset_val, const int& cols_incl, const int& max_iter, const int& max_inner_iter, const double& tolerance, const double& stephalf_tol, const double& beta_tol, const double& max_step, const bool& use_firth, const bool& verbose_obj, const Eigen::VectorXd& beta_init) {
 	converge = false;
     p = Xmat.cols();
     
 	_niter = max_iter;
     _mxitnr = max_inner_iter;
     _tol = tolerance;
+    _stephalf_tol = stephalf_tol;
     _betatol = beta_tol;
 	_maxstep = max_step;
 	_usefirth = use_firth;
@@ -173,10 +174,10 @@ void cox_firth::fit(const survival_data& survivalData, const Eigen::MatrixXd& Xm
         cox_firth_likelihood(survivalData, Xmat);
         // std::cout << "loglik_val: " << loglik_val << "\n";
         // std::cout << "diff loglik_val: " << loglik_val - loglike(iter - 1) << "\n";
-        if ((loglike(iter - 1) - loglik_val) > _tol) { // step-halving
+        if ((loglike(iter - 1) - loglik_val) > _stephalf_tol) { // step-halving
             // std::cout << "\nLoglikelihood decreases at iteration " << iter << ", start step-halving.\n";
             ii = 0;
-            while ((loglike(iter - 1) - loglik_val) > _tol) {
+            while ((loglike(iter - 1) - loglik_val) > _stephalf_tol) {
                 ++ii;
                 // std::cout << "inner iteration: " << ii << "\n";
                 if (ii > _mxitnr) {
@@ -291,10 +292,10 @@ void cox_firth::fit_1(const survival_data& survivalData, const Eigen::VectorXd& 
         // std::cout << "loglik_val: " << loglik_val << "\n";
         // std::cout << "diff loglik_val: " << loglik_val - loglike(iter - 1) << "\n";
         
-        if ((loglike(iter - 1) - loglik_val) > _tol) { // step-halving
+        if ((loglike(iter - 1) - loglik_val) > _stephalf_tol) { // step-halving
             // std::cout << "\nLoglikelihood decreases at iteration " << iter << ", start step-halving.\n";
             ii = 0;
-            while ((loglike(iter - 1) - loglik_val) > _tol) {
+            while ((loglike(iter - 1) - loglik_val) > _stephalf_tol) {
                 ++ii;
                 // std::cout << "inner iteration: " << ii << "\n";
                 if (ii > _mxitnr) {

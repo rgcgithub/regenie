@@ -271,7 +271,7 @@ void pheno_read(struct param* params, struct in_files* files, struct filter* fil
         } else if ((pheno_data->phenotypes_raw(indiv_index, event_index) != 0) && (pheno_data->phenotypes_raw(indiv_index, event_index) != 1) && (pheno_data->phenotypes_raw(indiv_index, event_index) != params->missing_value_double)) {
           throw "a phenotype censor value is invalid for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1] + " Y=" + tmp_str_vec[2+event_index];
         } else if ((pheno_data->phenotypes_raw(indiv_index, time_index) != params->missing_value_double) && (pheno_data->phenotypes_raw(indiv_index, event_index) == params->missing_value_double)) {
-          throw "a phenotype has missing censor with non-missing time for indiviudal: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1];
+          throw "a phenotype has missing censor with non-missing time for individual: FID=" + tmp_str_vec[0] + " IID=" + tmp_str_vec[1];
         } else if ((pheno_data->phenotypes_raw(indiv_index, time_index) == params->missing_value_double)) {
           pheno_data->masked_indivs(indiv_index, time_index) = false;
           pheno_data->masked_indivs(indiv_index, event_index) = false;

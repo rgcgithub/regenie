@@ -219,6 +219,7 @@ struct param {
   int mcc = 10; // minimum case count
   double numtol = 1e-6, qr_tol = 1e-7;
   double numtol_cox = 2.5e-4; // tolerance level for cox
+  double numtol_cox_stephalf = 2.5e-4; // tolerance level for cox
   double numtol_beta_cox = 1e-8; // tolerance level for cox
   double numtol_firth = 2.5e-4; // tolerance level for firth
   double numtol_eps = 10 * std::numeric_limits<double>::epsilon();
@@ -334,7 +335,6 @@ struct param {
   int niter_max_firth = 250, niter_max_firth_adam = 25; // max number of iterations in Firth logistic reg.
   int niter_max_firth_null = 1000; // max number of iterations in Firth logistic reg. null model
   int niter_max_line_search = 25; // max number of iterations for line search in logistic reg.
-  int niter_max_line_search_cox = 50; // max number of iterations for line search in logistic reg.
   int maxstep = 5; // max step size in penalized logistic regression
   int maxstep_null = 25; // max step size in null penalized logistic regression
   bool fix_maxstep_null = false; // if user specifies max step size
