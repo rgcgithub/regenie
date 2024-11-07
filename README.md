@@ -41,6 +41,8 @@ using the **regenie** [Github repository](https://github.com/rgcgithub/regenie/i
 
 
 ## Version history
+[Version 4.0](https://github.com/rgcgithub/regenie/releases/tag/v4.0) (New options `--t2e` and `--eventColList` for time-to-event analysis to specify time-to-event analysis and the event phenotype name, respectively; Fix algorithm used to fit logistic Firth model when using `--write-null-firth` to match closer to the approach used in step 2)
+
 [Version 3.6](https://github.com/rgcgithub/regenie/releases/tag/v3.6) (Bug fix for the approximate Firth test when ultra-rare variants [MAC below 50] are being tested; Address convergence failures & speed-up exact Firth by using warm starts based on null model with just covariates)
 
 [Version 3.5](https://github.com/rgcgithub/regenie/releases/tag/v3.5) (Added CHR/POS columns to snplist output file when using `--write-mask-snplist`; Genotype counts are now reported in the sumstats file when using `--no-split`; Improved efficiency of LOOCV scheme in ridge level 0; Detect carriage return in fam/psam/bim/pvar/sample files; Minor bug fixes)
