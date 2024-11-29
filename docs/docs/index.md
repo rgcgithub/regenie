@@ -12,7 +12,7 @@ traits with unbalanced case-control ratios
 - It can handle population structure and relatedness
 - It can process multiple phenotypes at once efficiently
 - For binary traits, it supports Firth logistic regression and an SPA test
-- It can perform gene/region-based tests (Burden, SKAT/SKATO, ACATV/ACATO)
+- It can perform gene/region-based tests (Burden, [SBAT](https://doi.org/10.1016/j.ajhg.2024.08.021), SKAT/SKATO, ACATV/ACATO)
 - It can perform interaction tests (GxE, GxG) as well as conditional analyses
 - It is fast and memory efficient 🔥
 - It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
