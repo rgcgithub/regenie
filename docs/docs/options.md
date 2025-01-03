@@ -252,6 +252,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--nb`| INT| Optional| number of blocks (determined from block size if not provided)|
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
+|`--htp`|STRING| Optional| to output the summary statistics file in the [HTP](https://rgcgithub.github.io/remeta/file_formats/#-htp) format (string should correspond to cohort name, e.g. 'UKB_450_EUR')|
 |`--use-relative-path`| FLAG| Optional| to use relative paths instead of absolute ones for the step 1 output pred.list file|
 |`--use-prs`|FLAG| Optional| flag to use whole genome PRS in `--pred` (this is output in step 1 when using `--print-prs`)|
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
@@ -356,6 +357,8 @@ With option `--no-split`, the summary statistics for all traits are written to a
 with the same format as above. Additionaly, an accompanying file with the trait names corresponding to Y1,Y2,... 
 will be generated in ‘file.regenie.Ydict’. Note that allele frequency, sample size and INFO score are computed using
 all analyzed samples.
+
+With option `--htp`, the summary statistics file will follow the [HTP](https://rgcgithub.github.io/remeta/file_formats/#-htp) format.
 
 If option `--write-samples` was used, IDs of samples used for each trait will be written in files
 `file_<phenotype1_name>.regenie.ids,...,file_<phenotypeP_name>.regenie.ids` (tab separated, no header).
