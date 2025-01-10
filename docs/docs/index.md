@@ -14,6 +14,7 @@ traits with unbalanced case-control ratios
 - For binary traits, it supports Firth logistic regression and an SPA test
 - It can perform gene/region-based tests (Burden, [SBAT](https://doi.org/10.1016/j.ajhg.2024.08.021), SKAT/SKATO, ACATV/ACATO)
 - It can perform interaction tests (GxE, GxG) as well as conditional analyses
+- Meta-analysis of REGENIE summary statistics can be performed using [REMETA](https://rgcgithub.github.io/remeta/)
 - It is fast and memory efficient 🔥
 - It supports the [BGEN](https://www.well.ox.ac.uk/~gav/bgen_format/), [PLINK](https://www.cog-genomics.org/plink/1.9/formats#bed) bed/bim/fam and [PLINK2](https://www.cog-genomics.org/plink/2.0/formats#pgen) pgen/pvar/psam genetic data formats
 - It is ideally suited for implementation in
