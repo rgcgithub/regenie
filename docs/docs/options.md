@@ -253,6 +253,7 @@ Samples with missing LOCO predictions must have their corresponding phenotype va
 |`--strict`|FLAG| Optional| flag to removing samples with missing data at any of the phenotypes|
 |`--ignore-pred`|FLAG| Optional| skip reading the file specified by `--pred` (corresponds to simple linear/logistic regression)|
 |`--htp`|STRING| Optional| to output the summary statistics file in the [HTP](https://rgcgithub.github.io/remeta/file_formats/#-htp) format (string should correspond to cohort name, e.g. 'UKB_450_EUR')|
+|`--exact-p`|FLAG| Optional|avoid capping p-values at 2.2E-307 in the HTP format summary statistics output|
 |`--use-relative-path`| FLAG| Optional| to use relative paths instead of absolute ones for the step 1 output pred.list file|
 |`--use-prs`|FLAG| Optional| flag to use whole genome PRS in `--pred` (this is output in step 1 when using `--print-prs`)|
 |`--gz`|FLAG| Optional| flag to output files in compressed gzip format (LOCO prediction files in step 1 and association results files in step 2) **[this only works when compiling with Boost Iostream library (see Install tab)]**. 
@@ -435,6 +436,14 @@ Masks will be generated for each domain
 to a mask combining across all domains.
 Variants can only be assigned to a single domain for each set/gene.
 
+Starting with v4.1, you can also specify custom variant weights which will be used in the burden, SKAT/SKAT-O and ACAT-V tests ($w_i$'s in the [gene-based testing overview](../overview/#step-2-gene-based-testing)). Multiple weights can be included in the annotation file after the 3rd column, e.g.
+
+```bash
+1:55039839:T:C PCSK9 LoF 0.9 0.812 1
+1:55039842:G:A PCSK9 missense 0.4 0.23 0.55
+.
+```
+Using `--weights-col 4` will use weights in the 4-th column for the gene-based tests.
 
 ##### Set list file
 
@@ -619,6 +628,7 @@ Note that this cannot be used with the LOVO/LODO schemes.
 |`--mask-lovo`| STRING| Optional| to perform LOVO scheme|
 |`--lovo-snplist`| FILE| Optional| File with list of variants for which to compute LOVO masks|
 |`--mask-lodo`| FLAG| Optional| to perform LODO scheme|
+|`--weights-col`| INT| Optional| column index (1-based) in annotation file to use custom weights in gene-based tests|
 |`--write-mask-snplist`| FLAG| Optional| to write list of variants that went into each mask to file|
 |`--check-burden-files`| FLAG| Optional| to check the concordance between annotation, set list and mask files [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
 |`--strict-check-burden`| FLAG| Optional|to exit early if the annotation, set list and mask definition files dont agree [see [below](https://rgcgithub.github.io/regenie/options/#checking-input-files)]|
