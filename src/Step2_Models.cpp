@@ -2588,6 +2588,7 @@ std::string print_summary(Files* ofile, string const& out, std::vector<std::shar
     } else {
       buffer << "\nAssociation results stored separately for each trait " << ( params.htp_out ? "(HTPv4 format) " : "" ) << "in files : \n";
       for( int j = 0; j < params.n_pheno; ++j ) {
+        if( !params.pheno_pass(j) ) continue;
         buffer << "* [" << out_split[j] << "]\n";
         ofile_split[j]->closeFile();
       }
