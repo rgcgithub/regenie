@@ -1,7 +1,7 @@
 #ifndef __PGENLIB_MISC_H__
 #define __PGENLIB_MISC_H__
 
-// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -79,7 +79,7 @@
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access to this
 // value.  Named with all caps as a consequence.
-#define PGENLIB_INTERNAL_VERNUM 1908
+#define PGENLIB_INTERNAL_VERNUM 2003
 
 #ifdef __cplusplus
 namespace plink2 {
@@ -112,6 +112,15 @@ HEADER_INLINE uintptr_t AlleleCodeCtToAlignedWordCt(uintptr_t val) {
   return kWordsPerVec * AlleleCodeCtToVecCt(val);
 }
 
+HEADER_INLINE AlleleCode* DowncastWToAC(uintptr_t* pp) {
+  return R_CAST(AlleleCode*, pp);
+}
+
+HEADER_INLINE void AlignACToVec(AlleleCode** pp) {
+  const uintptr_t addr = R_CAST(uintptr_t, *pp);
+  *pp = R_CAST(AlleleCode*, RoundUpPow2(addr, kBytesPerVec));
+}
+
 // returns a word with low bit in each pair set at each 00.
 HEADER_INLINE uintptr_t Word00(uintptr_t ww) {
   return (~(ww | (ww >> 1))) & kMask5555;
@@ -128,6 +137,10 @@ HEADER_INLINE uintptr_t Word10(uintptr_t ww) {
 
 HEADER_INLINE uintptr_t Word11(uintptr_t ww) {
   return ww & (ww >> 1) & kMask5555;
+}
+
+HEADER_INLINE Halfword Pack00ToHalfword(uintptr_t ww) {
+  return PackWordToHalfwordMask5555(~(ww | (ww >> 1)));
 }
 
 HEADER_INLINE Halfword Pack01ToHalfword(uintptr_t ww) {
@@ -176,7 +189,7 @@ void CopyNyparrNonemptySubset(const uintptr_t* __restrict raw_nyparr, const uint
 
 // Copies a bit from raw_bitarr for each genoarr entry matching match_word.
 // (match_word must be a multiple of kMask5555.)
-void CopyGenomatchSubset(const uintptr_t* __restrict raw_bitarr, const uintptr_t* __restrict genoarr, uintptr_t match_word, uint32_t write_bit_idx_start, uint32_t bit_ct, uintptr_t* __restrict output_bitarr);
+void CopyGenomatchSubset(const uintptr_t* __restrict raw_bitarr, const uintptr_t* __restrict genoarr, uintptr_t match_word, uint32_t write_bit_idx_start, uint32_t bit_ct, void* __restrict output);
 
 void ExpandBytearrFromGenoarr(const void* __restrict compact_bitarr, const uintptr_t* __restrict genoarr, uintptr_t match_word, uint32_t genoword_ct, uint32_t expand_size, uint32_t read_start_bit, uintptr_t* __restrict target);
 
@@ -185,7 +198,7 @@ void ExpandBytearrFromGenoarr(const void* __restrict compact_bitarr, const uintp
 // genovec/genoarr word are zeroed out.
 void GenovecCount12Unsafe(const uintptr_t* genovec, uint32_t sample_ct, uint32_t* __restrict raw_01_ctp, uint32_t* __restrict raw_10_ctp);
 
-void Count3FreqVec6(const VecW* geno_vvec, uint32_t vec_ct, uint32_t* __restrict even_ctp, uint32_t* __restrict odd_ctp, uint32_t* __restrict bothset_ctp);
+void Count3FreqVec6(const void* geno_vvec, uint32_t vec_ct, uint32_t* __restrict even_ctp, uint32_t* __restrict odd_ctp, uint32_t* __restrict bothset_ctp);
 
 // vector-alignment preferred.
 void GenoarrCountFreqsUnsafe(const uintptr_t* genoarr, uint32_t sample_ct, STD_ARRAY_REF(uint32_t, 4) genocounts);
@@ -194,8 +207,7 @@ void GenoarrCountFreqsUnsafe(const uintptr_t* genoarr, uint32_t sample_ct, STD_A
 // breaking ties in favor of the lower value.
 uintptr_t MostCommonGenoUnsafe(const uintptr_t* genoarr, uint32_t sample_ct);
 
-// geno_vvec now allowed to be unaligned.
-void CountSubset3FreqVec6(const VecW* __restrict geno_vvec, const VecW* __restrict interleaved_mask_vvec, uint32_t vec_ct, uint32_t* __restrict even_ctp, uint32_t* __restrict odd_ctp, uint32_t* __restrict bothset_ctp);
+void CountSubset3FreqVec6(const void* __restrict genoarr, const VecW* __restrict interleaved_mask_vvec, uint32_t vec_ct, uint32_t* __restrict even_ctp, uint32_t* __restrict odd_ctp, uint32_t* __restrict bothset_ctp);
 
 // genoarr vector-alignment preferred.
 void GenoarrCountSubsetFreqs(const uintptr_t* __restrict genoarr, const uintptr_t* __restrict sample_include_interleaved_vec, uint32_t raw_sample_ct, uint32_t sample_ct, STD_ARRAY_REF(uint32_t, 4) genocounts);
@@ -228,28 +240,28 @@ HEADER_INLINE void SetTrailingNyps(uintptr_t nyp_ct, uintptr_t* bitarr) {
 
 // GetVint31 and Vint32Append moved to plink2_base.
 
-// Input must be validated, or bufp must be >= 5 characters before the end of
-// the read buffer.  Currently unused.
-// todo: check if this has enough of a speed advantage over GetVint31() to
-// justify using this in the main loops and catching SIGSEGV.  (seems to be no
-// more than 3%?)
-/*
-HEADER_INLINE uint32_t GetVint31Unsafe(const unsigned char** buf_iterp) {
+// Input must be validated.
+HEADER_INLINE uint32_t GetVint32Unsafe(const unsigned char** buf_iterp) {
   uint32_t vint32 = *(*buf_iterp)++;
   if (vint32 <= 127) {
     return vint32;
   }
   vint32 &= 127;
-  for (uint32_t shift = 7; shift != 35; shift += 7) {
+  for (uint32_t shift = 7; ; shift += 7) {
     uint32_t uii = *(*buf_iterp)++;
     vint32 |= (uii & 127) << shift;
     if (uii <= 127) {
       return vint32;
     }
   }
-  return 0x80000000U;
 }
-*/
+
+HEADER_INLINE void SkipVintUnsafe(const unsigned char** buf_iterp) {
+  uint32_t cur_byte;
+  do {
+    cur_byte = *(*buf_iterp)++;
+  } while (cur_byte & 128);
+}
 
 // Does not update buf_iter.
 HEADER_INLINE uint32_t PeekVint31(const unsigned char* buf_iter, const unsigned char* buf_end) {
@@ -273,23 +285,6 @@ HEADER_INLINE uint32_t PeekVint31(const unsigned char* buf_iter, const unsigned 
 }
 
 /*
-HEADER_INLINE uint32_t FGetVint31(FILE* ff) {
-  // Can't be used when multiple threads are reading from ff.
-  uint32_t vint32 = getc_unlocked(ff);
-  if (vint32 <= 127) {
-    return vint32;
-  }
-  vint32 &= 127;
-  for (uint32_t shift = 7; shift != 35; shift += 7) {
-    uint32_t uii = getc_unlocked(ff);
-    vint32 |= (uii & 127) << shift;
-    if (uii <= 127) {
-      return vint32;
-    }
-  }
-  return 0x80000000U;
-}
-
 HEADER_INLINE void FPutVint31(uint32_t uii, FILE* ff) {
   // caller's responsibility to periodically check ferror
   while (uii > 127) {
@@ -299,6 +294,40 @@ HEADER_INLINE void FPutVint31(uint32_t uii, FILE* ff) {
   putc_unlocked(uii, ff);
 }
 */
+
+HEADER_INLINE BoolErr FSkipVint(FILE* ff) {
+  while (1) {
+    const uint32_t cur_byte = getc_unlocked(ff);
+    if (cur_byte <= 127) {
+      return 0;
+    }
+    if (unlikely(cur_byte > 255)) {
+      return 1;
+    }
+  }
+}
+
+HEADER_INLINE uint64_t FGetVint63(FILE* ff) {
+  // Can't be used when multiple threads are reading from ff.
+  uint64_t vint64 = getc_unlocked(ff);
+  if (vint64 <= 127) {
+    return vint64;
+  }
+  if (unlikely(vint64 > 255)) {
+    return (1LLU << 63);
+  }
+  vint64 &= 127;
+  for (uint32_t shift = 7; ; shift += 7) {
+    const uint64_t ullii = getc_unlocked(ff);
+    vint64 |= (ullii & 127) << shift;
+    if (ullii <= 127) {
+      return vint64;
+    }
+    if (unlikely((ullii > 255) || (shift == 56))) {
+      return (1LLU << 63);
+    }
+  }
+}
 
 // Need this for sparse multiallelic dosage.
 HEADER_INLINE unsigned char* Vint64Append(uint64_t ullii, unsigned char* buf) {
@@ -310,29 +339,32 @@ HEADER_INLINE unsigned char* Vint64Append(uint64_t ullii, unsigned char* buf) {
   return buf;
 }
 
-// Returns 2^63 on read-past-end, and named GetVint63 to make it more obvious
-// that a 2^63 return value can't be legitimate.
-HEADER_INLINE uint64_t GetVint63(const unsigned char* buf_end, const unsigned char** buf_iterp) {
-  if (likely(buf_end > (*buf_iterp))) {
-    uint64_t vint64 = *((*buf_iterp)++);
-    if (vint64 <= 127) {
+HEADER_INLINE uint64_t GetVint64Unsafe(const unsigned char** buf_iterp) {
+  uint64_t vint64 = *(*buf_iterp)++;
+  if (vint64 <= 127) {
+    return vint64;
+  }
+  vint64 &= 127;
+  for (uint32_t shift = 7; ; shift += 7) {
+    uint64_t ullii = *(*buf_iterp)++;
+    vint64 |= (ullii & 127) << shift;
+    if (ullii <= 127) {
       return vint64;
     }
-    vint64 &= 127;
-    uint32_t shift = 7;
-    while (likely(buf_end > (*buf_iterp))) {
-      uint64_t ullii = *((*buf_iterp)++);
-      vint64 |= (ullii & 127) << shift;
-      if (ullii <= 127) {
-        return vint64;
-      }
-      shift += 7;
-      // currently don't check for shift >= 64 (that's what ValidateVint63()
-      // will be for).
-    }
   }
-  return (1LLU << 63);
 }
+
+HEADER_INLINE void FPutVint64(uint64_t ullii, FILE* ff) {
+  // caller's responsibility to periodically check ferror
+  while (ullii > 127) {
+    putc_unlocked((ullii & 127) + 128, ff);
+    ullii >>= 7;
+  }
+  putc_unlocked(ullii, ff);
+}
+
+// TODO: make this work properly with kCacheline == 128, then fix other
+// transpose functions, etc.
 
 // main batch size
 CONSTI32(kPglNypTransposeBatch, kNypsPerCacheline);
@@ -343,6 +375,7 @@ CONSTI32(kPglNypTransposeWords, kWordsPerCacheline);
 #ifdef __LP64__
 CONSTI32(kPglNypTransposeBufbytes, (kPglNypTransposeBatch * kPglNypTransposeBatch) / 2);
 
+// buf0 and buf1 assumed to be vector-aligned.
 void TransposeNypblock64(const uintptr_t* read_iter, uint32_t read_ul_stride, uint32_t write_ul_stride, uint32_t read_batch_size, uint32_t write_batch_size, uintptr_t* __restrict write_iter, unsigned char* __restrict buf0, unsigned char* __restrict buf1);
 #else  // !__LP64__
 CONSTI32(kPglNypTransposeBufbytes, (kPglNypTransposeBatch * kPglNypTransposeBatch) / 2);
@@ -351,7 +384,8 @@ void TransposeNypblock32(const uintptr_t* read_iter, uint32_t read_ul_stride, ui
 #endif
 CONSTI32(kPglNypTransposeBufwords, kPglNypTransposeBufbytes / kBytesPerWord);
 
-// - up to 256x256; vecaligned_buf must have size 16k (64-bit) or 32k (32-bit)
+// - single block is up to 256x256 (CACHELINE64) or 512x512 (CACHELINE128)
+// - vecaligned_buf must have size 32k (CACHELINE64) or 128k (CACHELINE128)
 // - does NOT zero out trailing bits, because main application is ind-major-bed
 //   <-> plink2 format conversion, where the zeroing would be undone...
 // - important: write_iter must be allocated up to at least
@@ -361,9 +395,9 @@ CONSTI32(kPglNypTransposeBufwords, kPglNypTransposeBufbytes / kBytesPerWord);
 HEADER_INLINE void TransposeNypblock(const uintptr_t* read_iter, uint32_t read_ul_stride, uint32_t write_ul_stride, uint32_t read_batch_size, uint32_t write_batch_size, uintptr_t* write_iter, VecW* vecaligned_buf) {
 #ifdef __LP64__
   // assert(!(write_ul_stride % 2));
-  TransposeNypblock64(read_iter, read_ul_stride, write_ul_stride, read_batch_size, write_batch_size, write_iter, R_CAST(unsigned char*, vecaligned_buf), &(R_CAST(unsigned char*, vecaligned_buf)[kPglNypTransposeBufbytes / 2]));
+  TransposeNypblock64(read_iter, read_ul_stride, write_ul_stride, read_batch_size, write_batch_size, write_iter, DowncastToUc(vecaligned_buf), &(DowncastToUc(vecaligned_buf)[kPglNypTransposeBufbytes / 2]));
 #else
-  TransposeNypblock32(read_iter, read_ul_stride, write_ul_stride, read_batch_size, write_batch_size, write_iter, R_CAST(unsigned char*, vecaligned_buf), &(R_CAST(unsigned char*, vecaligned_buf)[kPglNypTransposeBufbytes / 2]));
+  TransposeNypblock32(read_iter, read_ul_stride, write_ul_stride, read_batch_size, write_batch_size, write_iter, DowncastToUc(vecaligned_buf), &(DowncastToUc(vecaligned_buf)[kPglNypTransposeBufbytes / 2]));
 #endif
 }
 
@@ -375,11 +409,30 @@ void BiallelicDosage16Invert(uint32_t dosage_ct, uint16_t* dosage_main);
 // replaces each x with -x
 void BiallelicDphase16Invert(uint32_t dphase_ct, int16_t* dphase_delta);
 
-// currently does zero trailing halfword
-void GenoarrToMissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict missingness);
+void PackWordsToHalfwordsInvmatch(const uintptr_t* __restrict genoarr, uintptr_t inv_match_word, uint32_t inword_ct, uintptr_t* __restrict dst);
 
-// currently does not zero trailing halfword
-void GenoarrToNonmissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict nonmissingness);
+void PackWordsToHalfwordsMismatch(const uintptr_t* __restrict genoarr, uintptr_t mismatch_word, uint32_t inword_ct, uintptr_t* __restrict dst);
+
+// src and dst allowed to be identical; that's why src is not marked const
+// despite not being directly written to.
+void MaskWordsToHalfwordsInvmatch(const uintptr_t* __restrict genoarr, uintptr_t inv_match_word, uint32_t inword_ct, uintptr_t* src, uintptr_t* dst);
+
+// Unsafe since it assumes trailing genoarr bits are cleared.  But if they are,
+// trailing missingness bits will be clear.
+HEADER_INLINE void GenoarrToMissingnessUnsafe(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict missingness) {
+  const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
+  PackWordsToHalfwordsInvmatch(genoarr, 0, sample_ctl2, missingness);
+  if (sample_ctl2 % 2) {
+    Halfword* __attribute__((may_alias)) missingness_alias = DowncastWToHW(missingness);
+    missingness_alias[sample_ctl2] = 0;
+  }
+}
+
+HEADER_INLINE void GenoarrToNonmissing(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict nonmissingness) {
+  const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
+  PackWordsToHalfwordsMismatch(genoarr, ~k0LU, sample_ctl2, nonmissingness);
+  ZeroTrailingBits(sample_ct, nonmissingness);
+}
 
 void SparseToMissingness(const uintptr_t* __restrict raregeno, const uint32_t* difflist_sample_ids, uint32_t sample_ct, uint32_t difflist_common_geno, uint32_t difflist_len, uintptr_t* __restrict missingness);
 
@@ -389,8 +442,15 @@ void SparseToMissingness(const uintptr_t* __restrict raregeno, const uint32_t* d
 // Also takes genoarr word count instead of sample count.
 void SplitHomRef2hetUnsafeW(const uintptr_t* genoarr, uint32_t inword_ct, uintptr_t* __restrict hom_buf, uintptr_t* __restrict ref2het_buf);
 
-
 void SplitHomRef2het(const uintptr_t* genoarr, uint32_t sample_ct, uintptr_t* __restrict hom_buf, uintptr_t* __restrict ref2het_buf);
+
+
+// Support for 1-bit-per-haplotype representation.
+// Ok for genoarr to have garbage trailing bits.
+BoolErr HapsplitMustPhased(const uintptr_t* genoarr, const uintptr_t* phasepresent, const uintptr_t* phaseinfo, uint32_t sample_ct, uint32_t phasepresent_ct, uintptr_t* hap_arr, uintptr_t* nm_arr);
+
+// Only 1 haplotype per genotype, rather than 2; het treated as missing.
+void HapsplitHaploid(const uintptr_t* __restrict genoarr, uint32_t sample_ct, uintptr_t* __restrict hap_arr, uintptr_t* __restrict nm_arr);
 
 
 // These functions use 16- or 256-element lookup tables to apply functions of
@@ -446,6 +506,13 @@ void GenoarrLookup256x4bx4(const uintptr_t* genoarr, const void* table256x4bx4, 
 void InitLookup16x4bx2(void* table16x4bx2);
 
 void InitLookup16x8bx2(void* table16x8bx2);
+
+#ifdef USE_SHUFFLE8
+// in bytes
+CONSTI32(kLookup256x1bx4Size, 1024 + 2 * kBytesPerVec);
+#else
+CONSTI32(kLookup256x1bx4Size, 1024);
+#endif
 
 void InitLookup256x1bx4(void* table256x1bx4);
 
@@ -509,6 +576,44 @@ void ClearGenoarrMissing1bit8Unsafe(const uintptr_t* __restrict genoarr, uint32_
 
 void ClearGenoarrMissing1bit16Unsafe(const uintptr_t* __restrict genoarr, uint32_t* subset_sizep, uintptr_t* __restrict subset, void* __restrict sparse_vals);
 
+// See EasyasPi's answer to
+//   https://stackoverflow.com/questions/25095741/how-can-i-multiply-64-bit-operands-and-get-128-bit-result-portably
+HEADER_INLINE uint64_t multiply64to128(uint64_t lhs, uint64_t rhs, uint64_t* high) {
+  // GCC and Clang usually provide __uint128_t on 64-bit targets, although
+  // Clang also defines it on WASM despite having to use builtins for most
+  // purposes -- including multiplication.
+#if defined(__SIZEOF_INT128__) && !defined(__wasm__)
+  __uint128_t product = S_CAST(__uint128_t, lhs) * S_CAST(__uint128_t, rhs);
+  *high = S_CAST(uint64_t, product >> 64);
+  return S_CAST(uint64_t, product & 0xffffffffffffffffLLU);
+#else
+  // Fast yet simple grade school multiply that avoids 64-bit carries with the
+  // properties of multiplying by 11 and takes advantage of UMAAL on ARMv6 to
+  // only need 4 calculations.
+
+  // First calculate all of the cross products.
+  uint64_t lo_lo = (lhs & 0xffffffff) * (rhs & 0xffffffff);
+  uint64_t hi_lo = (lhs >> 32) * (rhs & 0xffffffff);
+  uint64_t lo_hi = (lhs & 0xffffffff) * (rhs >> 32);
+  uint64_t hi_hi = (lhs >> 32) * (rhs >> 32);
+  // Now add the products together.  These will never overflow.
+  uint64_t cross = (lo_lo >> 32) + (hi_lo & 0xffffffff) + lo_hi;
+  uint64_t upper = (hi_lo >> 32) + (cross >> 32) + hi_hi;
+
+  *high = upper;
+  return (cross << 32) | (lo_lo & 0xffffffff);
+#endif
+}
+
+HEADER_INLINE double u127tod(uint64_t hi, uint64_t lo) {
+  return u63tod(hi) * 18446744073709551616.0 + S_CAST(double, lo);
+}
+
+// plus_term0 * plus_term1 - minus_term0 * minus_term1
+double u127prod_diff_d(uint64_t plus_term0, uint64_t plus_term1, uint64_t minus_term0, uint64_t minus_term1);
+
+double i127prod_diff_d(uint64_t plus_term0, uint64_t plus_term1, uint64_t minus_term0, uint64_t minus_term1);
+
 double MultiallelicDiploidMinimac3R2(const uint64_t* __restrict sums, const uint64_t* __restrict hap_ssqs_x2, uint32_t nm_sample_ct, uint32_t allele_ct, uint32_t extra_phased_het_ct);
 
 HEADER_INLINE double MultiallelicDiploidMachR2(const uint64_t* __restrict sums, const uint64_t* __restrict ssqs, uint32_t nm_sample_ct, uint32_t allele_ct) {
@@ -565,7 +670,6 @@ void PgrDifflistToGenovecUnsafe(const uintptr_t* __restrict raregeno, const uint
 // phased hardcalls and unphased dosages are simple enough for this to be
 // overkill, though.)
 typedef struct PgenVariantStruct {
-  MOVABLE_BUT_NONCOPYABLE(PgenVariantStruct);
   uintptr_t* genovec;
   uintptr_t* patch_01_set;
   AlleleCode* patch_01_vals;
@@ -614,6 +718,15 @@ extern const uint16_t kHcToAlleleCodes[1024];
 void PglMultiallelicSparseToDenseMiss(const PgenVariant* pgvp, uint32_t sample_ct, AlleleCode* __restrict wide_codes);
 
 uintptr_t PglComputeMaxAlleleCt(const uintptr_t* allele_idx_offsets, uint32_t variant_ct);
+
+HEADER_INLINE AlleleCode GetAidx(const uintptr_t* allele_idx_offsets, uint32_t variant_uidx, uintptr_t allele_idx) {
+  if (!allele_idx_offsets) {
+    return allele_idx - 2 * variant_uidx;
+  }
+  return allele_idx - allele_idx_offsets[variant_uidx];
+}
+
+uint32_t CountNybble(const void* nybblearr, uintptr_t nybble_word, uintptr_t nybble_ct);
 
 // The actual format:
 // 1. 2 magic bytes 0x6c 0x1b.
@@ -914,6 +1027,21 @@ uintptr_t PglComputeMaxAlleleCt(const uintptr_t* allele_idx_offsets, uint32_t va
 CONSTI32(kPglMaxVariantCt, 0x7ffffffd);
 
 CONSTI32(kPglMaxSampleCt, 0x7ffffffe);
+
+uint64_t PglHeaderBaseEndOffset(uint32_t variant_ct, uintptr_t vrec_len_byte_ct, uint32_t phase_or_dosage_present, uint32_t explicit_nonref_flags);
+
+// Current pgen-extension API assumes .pgen extension bodies fit comfortably in
+// memory.
+// It's easy to imagine a useful extension that breaks this assumption, e.g.
+// storage of VCF FORMAT/GQ and FORMAT/DP.  There's an escape hatch --
+// extensions are allowed to refer to additional files.  We'll see whether that
+// proves to be enough.
+typedef struct PgenExtensionLlStruct {
+  struct PgenExtensionLlStruct* next;
+  uint64_t size;
+  unsigned char* contents;
+  uint8_t type_idx;
+} PgenExtensionLl;
 
 #ifdef __cplusplus
 }  // namespace plink2

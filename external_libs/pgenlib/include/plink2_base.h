@@ -1,7 +1,7 @@
 #ifndef __PLINK2_BASE_H__
 #define __PLINK2_BASE_H__
 
-// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -106,7 +106,7 @@
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access
 // to this value.  Named with all caps as a consequence.
-#define PLINK2_BASE_VERNUM 803
+#define PLINK2_BASE_VERNUM 815
 
 
 #define _FILE_OFFSET_BITS 64
@@ -143,14 +143,36 @@
 #endif
 
 #ifdef __LP64__
+// TODO: working no-SSE2 fallback on 64-bit little-endian platforms unsupported
+// by simde.  Can perform early test by compiling on M1/M2 without simde.
+#  define USE_SSE2
 #  ifdef __x86_64__
 #    include <emmintrin.h>
 #  else
 #    define SIMDE_ENABLE_NATIVE_ALIASES
-#    include "x86/sse2.h"
+// Since e.g. an old zstd system header breaks the build, and plink2 is
+// expected to remain under active development for the next few years, we
+// currently default to using vendored copies of zstd/libdeflate/simde, which
+// are manually updated as necessary.
+// To use system headers, define IGNORE_BUNDLED_{ZSTD,LIBDEFLATE.SIMDE}.
+#    ifdef IGNORE_BUNDLED_SIMDE
+#      include <simde/x86/sse2.h>
+#    else
+#      include "../simde/x86/sse2.h"
+#    endif
+#    ifdef SIMDE_ARM_NEON_A32V8_NATIVE
+// For Apple M1, we effectively use SSE2 + constrained _mm_shuffle_epi8().
+// - We don't want to use simde's emulated _mm_shuffle_epi8 since it has an
+//   extra and-with-0x8f step that we never need.
+//   In the event the and-with-0x8f is actually needed, we'll define
+//   vec..._x86_shuffle8() helper functions.
+// - M1 also doesn't have efficient word-popcount.
+#      define USE_SHUFFLE8
+#    endif
 #  endif
 #  ifdef __SSE4_2__
 #    define USE_SSE42
+#    define USE_SHUFFLE8
 #    include <smmintrin.h>
 #    ifdef __AVX2__
 #      if defined(__BMI__) && defined(__BMI2__) && defined(__LZCNT__)
@@ -310,6 +332,10 @@ HEADER_INLINE uint64_t ctou64(char cc) {
   return S_CAST(unsigned char, cc);
 }
 
+HEADER_INLINE unsigned char* CToUc(char* pp) {
+  return R_CAST(unsigned char*, pp);
+}
+
 // Error return types.  All of these evaluate to true on error and false on
 // success, but otherwise they have slightly different semantics:
 // * PglErr is the general-purpose enum.  Unlike an enum, implicit conversion
@@ -356,6 +382,7 @@ typedef enum
   kPglRetDecompressFail, // also distinguish this from MalformedInput
   kPglRetRewindFail,
   kPglRetGpuFail,
+  kPglRetInternalUse1,
   kPglRetSampleMajorBed = 32,
   kPglRetNomemCustomMsg = 59,
   kPglRetInternalError = 60,
@@ -426,6 +453,7 @@ const PglErr kPglRetDegenerateData = PglErr::ec::kPglRetDegenerateData;
 const PglErr kPglRetDecompressFail = PglErr::ec::kPglRetDecompressFail;
 const PglErr kPglRetRewindFail = PglErr::ec::kPglRetRewindFail;
 const PglErr kPglRetGpuFail = PglErr::ec::kPglRetGpuFail;
+const PglErr kPglRetInternalUse1 = PglErr::ec::kPglRetInternalUse1;
 const PglErr kPglRetSampleMajorBed = PglErr::ec::kPglRetSampleMajorBed;
 const PglErr kPglRetWarningErrcode = PglErr::ec::kPglRetWarningErrcode;
 const PglErr kPglRetNomemCustomMsg = PglErr::ec::kPglRetNomemCustomMsg;
@@ -702,8 +730,21 @@ static const uintptr_t k0LU = S_CAST(uintptr_t, 0);
 // numbers/expressions to uintptr_t (via multiplication).
 static const uintptr_t k1LU = S_CAST(uintptr_t, 1);
 
-
 #ifdef __LP64__
+CONSTI32(kBitsPerWord, 64);
+CONSTI32(kBitsPerWordLog2, 6);
+
+typedef uint32_t Halfword;
+typedef uint16_t Quarterword;
+#else
+CONSTI32(kBitsPerWord, 32);
+CONSTI32(kBitsPerWordLog2, 5);
+
+typedef uint16_t Halfword;
+typedef uint8_t Quarterword;
+#endif
+
+#ifdef USE_SSE2
 #  ifdef USE_AVX2
 CONSTI32(kBytesPerVec, 32);
 
@@ -715,7 +756,7 @@ CONSTI32(kBytesPerVec, 32);
 // However, processor power management, numeric libraries, and my AVX2 code
 // should improve over time.  There will probably come a time where switching
 // to 32-byte fp is worthwhile.
-#define FVEC_32
+#    define FVEC_32
 
 // bleah, have to define these here, vector_size doesn't see enum values
 typedef uintptr_t VecW __attribute__ ((vector_size (32)));
@@ -727,23 +768,62 @@ typedef short VecI16 __attribute__ ((vector_size (32)));
 // intent better (char not guaranteed to be signed)
 typedef int8_t VecI8 __attribute__ ((vector_size (32)));
 typedef unsigned char VecUc __attribute__ ((vector_size (32)));
-#  else
-CONSTI32(kBytesPerVec, 16);
-typedef uintptr_t VecW __attribute__ ((vector_size (16)));
-typedef uint32_t VecU32 __attribute ((vector_size (16)));
-typedef int32_t VecI32 __attribute ((vector_size (16)));
-typedef unsigned short VecU16 __attribute__ ((vector_size (16)));
-typedef short VecI16 __attribute__ ((vector_size (16)));
-typedef int8_t VecI8 __attribute__ ((vector_size (16)));
-typedef unsigned char VecUc __attribute__ ((vector_size (16)));
-#  endif
-CONSTI32(kBitsPerWord, 64);
-CONSTI32(kBitsPerWordLog2, 6);
 
-typedef uint32_t Halfword;
-typedef uint16_t Quarterword;
+HEADER_INLINE VecW VecToW(__m256i vv) {
+  return R_CAST(VecW, vv);
+}
 
-#  ifdef USE_AVX2
+HEADER_INLINE VecU32 VecToU32(__m256i vv) {
+  return R_CAST(VecU32, vv);
+}
+
+HEADER_INLINE VecI32 VecToI32(__m256i vv) {
+  return R_CAST(VecI32, vv);
+}
+
+HEADER_INLINE VecU16 VecToU16(__m256i vv) {
+  return R_CAST(VecU16, vv);
+}
+
+HEADER_INLINE VecI16 VecToI16(__m256i vv) {
+  return R_CAST(VecI16, vv);
+}
+
+HEADER_INLINE VecUc VecToUc(__m256i vv) {
+  return R_CAST(VecUc, vv);
+}
+
+HEADER_INLINE VecI8 VecToI8(__m256i vv) {
+  return R_CAST(VecI8, vv);
+}
+
+HEADER_INLINE __m256i WToVec(VecW vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i U32ToVec(VecU32 vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i I32ToVec(VecI32 vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i U16ToVec(VecU16 vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i I16ToVec(VecI16 vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i UcToVec(VecUc vv) {
+  return R_CAST(__m256i, vv);
+}
+
+HEADER_INLINE __m256i I8ToVec(VecI8 vv) {
+  return R_CAST(__m256i, vv);
+}
 
 // _mm256_set1_... seems to have the same performance; could use that instead.
 #    define VCONST_W(xx) {xx, xx, xx, xx}
@@ -753,262 +833,269 @@ typedef uint16_t Quarterword;
 
 // vv = VCONST_W(k0LU) doesn't work (only ok for initialization)
 HEADER_INLINE VecW vecw_setzero() {
-  return R_CAST(VecW, _mm256_setzero_si256());
+  return VecToW(_mm256_setzero_si256());
 }
 
 HEADER_INLINE VecU32 vecu32_setzero() {
-  return R_CAST(VecU32, _mm256_setzero_si256());
+  return VecToU32(_mm256_setzero_si256());
 }
 
 HEADER_INLINE VecU16 vecu16_setzero() {
-  return R_CAST(VecU16, _mm256_setzero_si256());
+  return VecToU16(_mm256_setzero_si256());
 }
 
 HEADER_INLINE VecI16 veci16_setzero() {
-  return R_CAST(VecI16, _mm256_setzero_si256());
+  return VecToI16(_mm256_setzero_si256());
 }
 
 HEADER_INLINE VecUc vecuc_setzero() {
-  return R_CAST(VecUc, _mm256_setzero_si256());
+  return VecToUc(_mm256_setzero_si256());
 }
 
 HEADER_INLINE VecI8 veci8_setzero() {
-  return R_CAST(VecI8, _mm256_setzero_si256());
+  return VecToI8(_mm256_setzero_si256());
 }
 
 // "vv >> ct" doesn't work, and Scientific Linux gcc 4.4 might not optimize
 // VCONST_W shift properly (todo: test this)
 HEADER_INLINE VecW vecw_srli(VecW vv, uint32_t ct) {
-  return R_CAST(VecW, _mm256_srli_epi64(R_CAST(__m256i, vv), ct));
+  return VecToW(_mm256_srli_epi64(WToVec(vv), ct));
 }
 
 HEADER_INLINE VecW vecw_slli(VecW vv, uint32_t ct) {
-  return R_CAST(VecW, _mm256_slli_epi64(R_CAST(__m256i, vv), ct));
+  return VecToW(_mm256_slli_epi64(WToVec(vv), ct));
 }
 
 HEADER_INLINE VecU32 vecu32_srli(VecU32 vv, uint32_t ct) {
-  return R_CAST(VecU32, _mm256_srli_epi32(R_CAST(__m256i, vv), ct));
+  return VecToU32(_mm256_srli_epi32(U32ToVec(vv), ct));
 }
 
 HEADER_INLINE VecU32 vecu32_slli(VecU32 vv, uint32_t ct) {
-  return R_CAST(VecU32, _mm256_slli_epi32(R_CAST(__m256i, vv), ct));
+  return VecToU32(_mm256_slli_epi32(U32ToVec(vv), ct));
 }
 
 HEADER_INLINE VecU16 vecu16_srli(VecU16 vv, uint32_t ct) {
-  return R_CAST(VecU16, _mm256_srli_epi16(R_CAST(__m256i, vv), ct));
+  return VecToU16(_mm256_srli_epi16(U16ToVec(vv), ct));
 }
 
 HEADER_INLINE VecU16 vecu16_slli(VecU16 vv, uint32_t ct) {
-  return R_CAST(VecU16, _mm256_slli_epi16(R_CAST(__m256i, vv), ct));
+  return VecToU16(_mm256_slli_epi16(U16ToVec(vv), ct));
 }
 
 // Compiler still doesn't seem to be smart enough to use andnot properly.
 HEADER_INLINE VecW vecw_and_notfirst(VecW excl, VecW main) {
-  return R_CAST(VecW, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToW(_mm256_andnot_si256(WToVec(excl), WToVec(main)));
 }
 
 HEADER_INLINE VecU32 vecu32_and_notfirst(VecU32 excl, VecU32 main) {
-  return R_CAST(VecU32, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToU32(_mm256_andnot_si256(U32ToVec(excl), U32ToVec(main)));
 }
 
 HEADER_INLINE VecI32 veci32_and_notfirst(VecI32 excl, VecI32 main) {
-  return R_CAST(VecI32, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToI32(_mm256_andnot_si256(I32ToVec(excl), I32ToVec(main)));
 }
 
 HEADER_INLINE VecU16 vecu16_and_notfirst(VecU16 excl, VecU16 main) {
-  return R_CAST(VecU16, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToU16(_mm256_andnot_si256(U16ToVec(excl), U16ToVec(main)));
 }
 
 HEADER_INLINE VecI16 veci16_and_notfirst(VecI16 excl, VecI16 main) {
-  return R_CAST(VecI16, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToI16(_mm256_andnot_si256(I16ToVec(excl), I16ToVec(main)));
 }
 
 HEADER_INLINE VecUc vecuc_and_notfirst(VecUc excl, VecUc main) {
-  return R_CAST(VecUc, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToUc(_mm256_andnot_si256(UcToVec(excl), UcToVec(main)));
 }
 
 HEADER_INLINE VecI8 veci8_and_notfirst(VecI8 excl, VecI8 main) {
-  return R_CAST(VecI8, _mm256_andnot_si256(R_CAST(__m256i, excl), R_CAST(__m256i, main)));
+  return VecToI8(_mm256_andnot_si256(I8ToVec(excl), I8ToVec(main)));
 }
 
 HEADER_INLINE VecW vecw_set1(uintptr_t ulii) {
-  return R_CAST(VecW, _mm256_set1_epi64x(ulii));
+  return VecToW(_mm256_set1_epi64x(ulii));
 }
 
 HEADER_INLINE VecU32 vecu32_set1(uint32_t uii) {
-  return R_CAST(VecU32, _mm256_set1_epi32(uii));
+  return VecToU32(_mm256_set1_epi32(uii));
 }
 
 HEADER_INLINE VecI32 veci32_set1(int32_t ii) {
-  return R_CAST(VecI32, _mm256_set1_epi32(ii));
+  return VecToI32(_mm256_set1_epi32(ii));
 }
 
 HEADER_INLINE VecU16 vecu16_set1(unsigned short usi) {
-  return R_CAST(VecU16, _mm256_set1_epi16(usi));
+  return VecToU16(_mm256_set1_epi16(usi));
 }
 
 HEADER_INLINE VecI16 veci16_set1(short si) {
-  return R_CAST(VecI16, _mm256_set1_epi16(si));
+  return VecToI16(_mm256_set1_epi16(si));
 }
 
 HEADER_INLINE VecUc vecuc_set1_epi16(unsigned short usi) {
-  return R_CAST(VecUc, _mm256_set1_epi16(usi));
+  return VecToUc(_mm256_set1_epi16(usi));
 }
 
 HEADER_INLINE VecUc vecuc_set1(unsigned char ucc) {
-  return R_CAST(VecUc, _mm256_set1_epi8(ucc));
+  return VecToUc(_mm256_set1_epi8(ucc));
 }
 
 HEADER_INLINE VecI8 veci8_set1(char cc) {
-  return R_CAST(VecI8, _mm256_set1_epi8(cc));
+  return VecToI8( _mm256_set1_epi8(cc));
 }
 
+// TODO: on ARM, replace most movemask uses:
+// https://community.arm.com/arm-community-blogs/b/infrastructure-solutions-blog/posts/porting-x86-vector-bitmask-optimizations-to-arm-neon
 HEADER_INLINE uint32_t vecw_movemask(VecW vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(WToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecu32_movemask(VecU32 vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(U32ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci32_movemask(VecI32 vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(I32ToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecu16_movemask(VecU16 vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(U16ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci16_movemask(VecI16 vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(I16ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci8_movemask(VecI8 vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(I8ToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecuc_movemask(VecUc vv) {
-  return _mm256_movemask_epi8(R_CAST(__m256i, vv));
+  return _mm256_movemask_epi8(UcToVec(vv));
 }
 
 // Repeats elements in second lane in AVX2 case.
 HEADER_INLINE VecW vecw_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecW, _mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToW(_mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecU16 vecu16_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecU16, _mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToU16(_mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecUc vecuc_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecUc, _mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToUc(_mm256_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 // Discards last 16 arguments in SSE2/SSE4.2 case.
 HEADER_INLINE VecW vecw_setr8x(char e31, char e30, char e29, char e28, char e27, char e26, char e25, char e24, char e23, char e22, char e21, char e20, char e19, char e18, char e17, char e16, char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecW, _mm256_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToW(_mm256_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecUc vecuc_setr8x(char e31, char e30, char e29, char e28, char e27, char e26, char e25, char e24, char e23, char e22, char e21, char e20, char e19, char e18, char e17, char e16, char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecUc, _mm256_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToUc(_mm256_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16, e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
+HEADER_INLINE VecW vecw_setr32(uint32_t e3, uint32_t e2, uint32_t e1, uint32_t e0) {
+  return VecToW(_mm256_setr_epi32(e3, e2, e1, e0, e3, e2, e1, e0));
+}
+
+
 HEADER_INLINE VecW vecw_unpacklo8(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpacklo_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpacklo_epi8(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi8(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpackhi_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpackhi_epi8(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecI8 veci8_unpacklo8(VecI8 evens, VecI8 odds) {
-  return R_CAST(VecI8, _mm256_unpacklo_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToI8(_mm256_unpacklo_epi8(I8ToVec(evens), I8ToVec(odds)));
 }
 
 HEADER_INLINE VecI8 veci8_unpackhi8(VecI8 evens, VecI8 odds) {
-  return R_CAST(VecI8, _mm256_unpackhi_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToI8(_mm256_unpackhi_epi8(I8ToVec(evens), I8ToVec(odds)));
 }
 
 HEADER_INLINE VecUc vecuc_unpacklo8(VecUc evens, VecUc odds) {
-  return R_CAST(VecUc, _mm256_unpacklo_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToUc(_mm256_unpacklo_epi8(UcToVec(evens), UcToVec(odds)));
 }
 
 HEADER_INLINE VecUc vecuc_unpackhi8(VecUc evens, VecUc odds) {
-  return R_CAST(VecUc, _mm256_unpackhi_epi8(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToUc(_mm256_unpackhi_epi8(UcToVec(evens), UcToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpacklo16(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpacklo_epi16(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpacklo_epi16(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi16(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpackhi_epi16(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpackhi_epi16(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpacklo32(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpacklo_epi32(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpacklo_epi32(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi32(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm256_unpackhi_epi32(R_CAST(__m256i, evens), R_CAST(__m256i, odds)));
+  return VecToW(_mm256_unpackhi_epi32(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_permute0xd8_if_avx2(VecW vv) {
-  return R_CAST(VecW, _mm256_permute4x64_epi64(R_CAST(__m256i, vv), 0xd8));
+  return VecToW(_mm256_permute4x64_epi64(WToVec(vv), 0xd8));
 }
 
 HEADER_INLINE VecI8 veci8_permute0xd8_if_avx2(VecI8 vv) {
-  return R_CAST(VecI8, _mm256_permute4x64_epi64(R_CAST(__m256i, vv), 0xd8));
+  return VecToI8(_mm256_permute4x64_epi64(I8ToVec(vv), 0xd8));
 }
 
 HEADER_INLINE VecUc vecuc_permute0xd8_if_avx2(VecUc vv) {
-  return R_CAST(VecUc, _mm256_permute4x64_epi64(R_CAST(__m256i, vv), 0xd8));
+  return VecToUc(_mm256_permute4x64_epi64(UcToVec(vv), 0xd8));
 }
 
 // Could have a single-src gather_even function, but that should wait until
 // there is a clear SSE2 use case.
 HEADER_INLINE VecW vecw_gather_even(VecW src_lo, VecW src_hi, VecW m8) {
-  const VecW gathered_laneswapped = R_CAST(VecW, _mm256_packus_epi16(R_CAST(__m256i, src_lo & m8), R_CAST(__m256i, src_hi & m8)));
+  const VecW gathered_laneswapped = VecToW(_mm256_packus_epi16(WToVec(src_lo & m8), WToVec(src_hi & m8)));
   return vecw_permute0xd8_if_avx2(gathered_laneswapped);
 }
 
 HEADER_INLINE VecUc vecuc_gather_even(VecUc src_lo, VecUc src_hi, VecUc m8) {
-  const VecUc gathered_laneswapped = R_CAST(VecUc, _mm256_packus_epi16(R_CAST(__m256i, src_lo & m8), R_CAST(__m256i, src_hi & m8)));
+  const VecUc gathered_laneswapped = VecToUc(_mm256_packus_epi16(UcToVec(src_lo & m8), UcToVec(src_hi & m8)));
   return vecuc_permute0xd8_if_avx2(gathered_laneswapped);
 }
 
 HEADER_INLINE VecUc vecuc_gather_odd(VecUc src_lo, VecUc src_hi) {
-  const VecUc gathered_laneswapped = R_CAST(VecUc, _mm256_packus_epi16(_mm256_srli_epi16(R_CAST(__m256i, src_lo), 8), _mm256_srli_epi16(R_CAST(__m256i, src_hi), 8)));
+  const VecUc gathered_laneswapped = VecToUc(_mm256_packus_epi16(_mm256_srli_epi16(UcToVec(src_lo), 8), _mm256_srli_epi16(UcToVec(src_hi), 8)));
   return vecuc_permute0xd8_if_avx2(gathered_laneswapped);
 }
 
 HEADER_INLINE VecW vecw_shuffle8(VecW table, VecW indexes) {
-  return R_CAST(VecW, _mm256_shuffle_epi8(R_CAST(__m256i, table), R_CAST(__m256i, indexes)));
+  return VecToW(_mm256_shuffle_epi8(WToVec(table), WToVec(indexes)));
 }
 
 HEADER_INLINE VecU16 vecu16_shuffle8(VecU16 table, VecU16 indexes) {
-  return R_CAST(VecU16, _mm256_shuffle_epi8(R_CAST(__m256i, table), R_CAST(__m256i, indexes)));
+  return VecToU16(_mm256_shuffle_epi8(U16ToVec(table), U16ToVec(indexes)));
 }
 
 HEADER_INLINE VecUc vecuc_shuffle8(VecUc table, VecUc indexes) {
-  return R_CAST(VecUc, _mm256_shuffle_epi8(R_CAST(__m256i, table), R_CAST(__m256i, indexes)));
+  return VecToUc(_mm256_shuffle_epi8(UcToVec(table), UcToVec(indexes)));
 }
 
 HEADER_INLINE uintptr_t vecw_extract64_0(VecW vv) {
-  return _mm256_extract_epi64(R_CAST(__m256i, vv), 0);
+  return _mm256_extract_epi64(WToVec(vv), 0);
 }
 
 HEADER_INLINE uintptr_t vecw_extract64_1(VecW vv) {
-  return _mm256_extract_epi64(R_CAST(__m256i, vv), 1);
+  return _mm256_extract_epi64(WToVec(vv), 1);
 }
 
 // *** AVX2-only section ***
 HEADER_INLINE uintptr_t vecw_extract64_2(VecW vv) {
-  return _mm256_extract_epi64(R_CAST(__m256i, vv), 2);
+  return _mm256_extract_epi64(WToVec(vv), 2);
 }
 
 HEADER_INLINE uintptr_t vecw_extract64_3(VecW vv) {
-  return _mm256_extract_epi64(R_CAST(__m256i, vv), 3);
+  return _mm256_extract_epi64(WToVec(vv), 3);
 }
 
 // todo: permute
@@ -1022,7 +1109,7 @@ typedef uint32_t Vec8thUint;
 typedef uint64_t Vec4thUint;
 
 HEADER_INLINE VecW vecw_load(const void* mem_addr) {
-  return R_CAST(VecW, _mm256_load_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToW(_mm256_load_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 // There may be some value in adding a 4-consecutive-vector load function when
@@ -1030,98 +1117,143 @@ HEADER_INLINE VecW vecw_load(const void* mem_addr) {
 //   https://www.agner.org/optimize/blog/read.php?i=627&v=t
 
 HEADER_INLINE VecW vecw_loadu(const void* mem_addr) {
-  return R_CAST(VecW, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToW(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecU32 vecu32_loadu(const void* mem_addr) {
-  return R_CAST(VecU32, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToU32(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecI32 veci32_loadu(const void* mem_addr) {
-  return R_CAST(VecI32, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToI32(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecU16 vecu16_loadu(const void* mem_addr) {
-  return R_CAST(VecU16, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToU16(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecI16 veci16_loadu(const void* mem_addr) {
-  return R_CAST(VecI16, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToI16(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecUc vecuc_loadu(const void* mem_addr) {
-  return R_CAST(VecUc, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToUc(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
 HEADER_INLINE VecI8 veci8_loadu(const void* mem_addr) {
-  return R_CAST(VecI8, _mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
+  return VecToI8(_mm256_loadu_si256(S_CAST(const __m256i*, mem_addr)));
 }
 
-HEADER_INLINE void vecw_storeu(void* mem_addr, VecW vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
-}
-
-HEADER_INLINE void vecu32_storeu(void* mem_addr, VecU32 vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
-}
-
-HEADER_INLINE void veci32_storeu(void* mem_addr, VecI32 vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
-}
-
-HEADER_INLINE void vecu16_storeu(void* mem_addr, VecU16 vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
-}
-
-HEADER_INLINE void veci16_storeu(void* mem_addr, VecI16 vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
-}
-
-HEADER_INLINE void vecuc_storeu(void* mem_addr, VecUc vv) {
-  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), R_CAST(__m256i, vv));
+HEADER_INLINE void vec_storeu(void* mem_addr, __m256i vv) {
+  _mm256_storeu_si256(S_CAST(__m256i*, mem_addr), vv);
 }
 
 HEADER_INLINE VecI32 veci32_max(VecI32 v1, VecI32 v2) {
-  return R_CAST(VecI32, _mm256_max_epi32(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToI32(_mm256_max_epi32(I32ToVec(v1), I32ToVec(v2)));
 }
 
 HEADER_INLINE VecI16 veci16_max(VecI16 v1, VecI16 v2) {
-  return R_CAST(VecI16, _mm256_max_epi16(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToI16(_mm256_max_epi16(I16ToVec(v1), I16ToVec(v2)));
 }
 
 HEADER_INLINE VecW vecw_sad(VecW v1, VecW v2) {
-  return R_CAST(VecW, _mm256_sad_epu8(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToW(_mm256_sad_epu8(WToVec(v1), WToVec(v2)));
 }
 
 HEADER_INLINE VecUc vecuc_adds(VecUc v1, VecUc v2) {
-  return R_CAST(VecUc, _mm256_adds_epu8(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToUc(_mm256_adds_epu8(UcToVec(v1), UcToVec(v2)));
 }
 
 HEADER_INLINE VecU16 vecu16_min8(VecU16 v1, VecU16 v2) {
-  return R_CAST(VecU16, _mm256_min_epu8(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToU16(_mm256_min_epu8(U16ToVec(v1), U16ToVec(v2)));
 }
 
 HEADER_INLINE VecUc vecuc_min(VecUc v1, VecUc v2) {
-  return R_CAST(VecUc, _mm256_min_epu8(R_CAST(__m256i, v1), R_CAST(__m256i, v2)));
+  return VecToUc(_mm256_min_epu8(UcToVec(v1), UcToVec(v2)));
 }
 
 HEADER_INLINE VecW vecw_blendv(VecW aa, VecW bb, VecW mask) {
-  return R_CAST(VecW, _mm256_blendv_epi8(R_CAST(__m256i, aa), R_CAST(__m256i, bb), R_CAST(__m256i, mask)));
+  return VecToW(_mm256_blendv_epi8(WToVec(aa), WToVec(bb), WToVec(mask)));
 }
 
 HEADER_INLINE VecU32 vecu32_blendv(VecU32 aa, VecU32 bb, VecU32 mask) {
-  return R_CAST(VecU32, _mm256_blendv_epi8(R_CAST(__m256i, aa), R_CAST(__m256i, bb), R_CAST(__m256i, mask)));
+  return VecToU32(_mm256_blendv_epi8(U32ToVec(aa), U32ToVec(bb), U32ToVec(mask)));
 }
 
 HEADER_INLINE VecU16 vecu16_blendv(VecU16 aa, VecU16 bb, VecU16 mask) {
-  return R_CAST(VecU16, _mm256_blendv_epi8(R_CAST(__m256i, aa), R_CAST(__m256i, bb), R_CAST(__m256i, mask)));
+  return VecToU16(_mm256_blendv_epi8(U16ToVec(aa), U16ToVec(bb), U16ToVec(mask)));
 }
 
 HEADER_INLINE VecUc vecuc_blendv(VecUc aa, VecUc bb, VecUc mask) {
-  return R_CAST(VecUc, _mm256_blendv_epi8(R_CAST(__m256i, aa), R_CAST(__m256i, bb), R_CAST(__m256i, mask)));
+  return VecToUc(_mm256_blendv_epi8(UcToVec(aa), UcToVec(bb), UcToVec(mask)));
 }
 
-#  else  // !USE_AVX2
+#  else  // USE_SSE2, !USE_AVX2
+
+CONSTI32(kBytesPerVec, 16);
+typedef uintptr_t VecW __attribute__ ((vector_size (16)));
+typedef uint32_t VecU32 __attribute ((vector_size (16)));
+typedef int32_t VecI32 __attribute ((vector_size (16)));
+typedef unsigned short VecU16 __attribute__ ((vector_size (16)));
+typedef short VecI16 __attribute__ ((vector_size (16)));
+typedef int8_t VecI8 __attribute__ ((vector_size (16)));
+typedef unsigned char VecUc __attribute__ ((vector_size (16)));
+
+HEADER_INLINE VecW VecToW(__m128i vv) {
+  return R_CAST(VecW, vv);
+}
+
+HEADER_INLINE VecU32 VecToU32(__m128i vv) {
+  return R_CAST(VecU32, vv);
+}
+
+HEADER_INLINE VecI32 VecToI32(__m128i vv) {
+  return R_CAST(VecI32, vv);
+}
+
+HEADER_INLINE VecU16 VecToU16(__m128i vv) {
+  return R_CAST(VecU16, vv);
+}
+
+HEADER_INLINE VecI16 VecToI16(__m128i vv) {
+  return R_CAST(VecI16, vv);
+}
+
+HEADER_INLINE VecUc VecToUc(__m128i vv) {
+  return R_CAST(VecUc, vv);
+}
+
+HEADER_INLINE VecI8 VecToI8(__m128i vv) {
+  return R_CAST(VecI8, vv);
+}
+
+HEADER_INLINE __m128i WToVec(VecW vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i U32ToVec(VecU32 vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i I32ToVec(VecI32 vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i U16ToVec(VecU16 vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i I16ToVec(VecI16 vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i UcToVec(VecUc vv) {
+  return R_CAST(__m128i, vv);
+}
+
+HEADER_INLINE __m128i I8ToVec(VecI8 vv) {
+  return R_CAST(__m128i, vv);
+}
 
 #    define VCONST_W(xx) {xx, xx}
 #    define VCONST_S(xx) {xx, xx, xx, xx, xx, xx, xx, xx}
@@ -1129,127 +1261,128 @@ HEADER_INLINE VecUc vecuc_blendv(VecUc aa, VecUc bb, VecUc mask) {
 #    define VCONST_UC VCONST_C
 
 HEADER_INLINE VecW vecw_setzero() {
-  return R_CAST(VecW, _mm_setzero_si128());
+  return VecToW(_mm_setzero_si128());
 }
 
 HEADER_INLINE VecU32 vecu32_setzero() {
-  return R_CAST(VecU32, _mm_setzero_si128());
+  return VecToU32(_mm_setzero_si128());
 }
 
 HEADER_INLINE VecU16 vecu16_setzero() {
-  return R_CAST(VecU16, _mm_setzero_si128());
+  return VecToU16(_mm_setzero_si128());
 }
 
 HEADER_INLINE VecI16 veci16_setzero() {
-  return R_CAST(VecI16, _mm_setzero_si128());
+  return VecToI16(_mm_setzero_si128());
 }
 
 HEADER_INLINE VecUc vecuc_setzero() {
-  return R_CAST(VecUc, _mm_setzero_si128());
+  return VecToUc(_mm_setzero_si128());
 }
 
 HEADER_INLINE VecI8 veci8_setzero() {
-  return R_CAST(VecI8, _mm_setzero_si128());
+  return VecToI8(_mm_setzero_si128());
 }
 
-#define vecw_srli(vv, ct) R_CAST(VecW, _mm_srli_epi64(R_CAST(__m128i, vv), ct))
+// simde is incompatible with defining these as inline functions
+#    define vecw_srli(vv, ct) VecToW(_mm_srli_epi64(WToVec(vv), ct))
 
-#define vecw_slli(vv, ct) R_CAST(VecW, _mm_slli_epi64(R_CAST(__m128i, vv), ct))
+#    define vecw_slli(vv, ct) VecToW(_mm_slli_epi64(WToVec(vv), ct))
 
-#define vecu32_srli(vv, ct) R_CAST(VecU32, _mm_srli_epi32(R_CAST(__m128i, vv), ct))
+#    define vecu32_srli(vv, ct) VecToU32(_mm_srli_epi32(U32ToVec(vv), ct))
 
-#define vecu32_slli(vv, ct) R_CAST(VecU32, _mm_slli_epi32(R_CAST(__m128i, vv), ct))
+#    define vecu32_slli(vv, ct) VecToU32(_mm_slli_epi32(U32ToVec(vv), ct))
 
-#define vecu16_srli(vv, ct) R_CAST(VecU16, _mm_srli_epi16(R_CAST(__m128i, vv), ct))
+#    define vecu16_srli(vv, ct) VecToU16(_mm_srli_epi16(U16ToVec(vv), ct))
 
-#define vecu16_slli(vv, ct) R_CAST(VecU16, _mm_slli_epi16(R_CAST(__m128i, vv), ct))
+#    define vecu16_slli(vv, ct) VecToU16(_mm_slli_epi16(U16ToVec(vv), ct))
 
 HEADER_INLINE VecW vecw_and_notfirst(VecW excl, VecW main) {
-  return R_CAST(VecW, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToW(_mm_andnot_si128(WToVec(excl), WToVec(main)));
 }
 
 HEADER_INLINE VecU32 vecu32_and_notfirst(VecU32 excl, VecU32 main) {
-  return R_CAST(VecU32, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToU32(_mm_andnot_si128(U32ToVec(excl), U32ToVec(main)));
 }
 
 HEADER_INLINE VecI32 veci32_and_notfirst(VecI32 excl, VecI32 main) {
-  return R_CAST(VecI32, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToI32(_mm_andnot_si128(I32ToVec(excl), I32ToVec(main)));
 }
 
 HEADER_INLINE VecU16 vecu16_and_notfirst(VecU16 excl, VecU16 main) {
-  return R_CAST(VecU16, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToU16(_mm_andnot_si128(U16ToVec(excl), U16ToVec(main)));
 }
 
 HEADER_INLINE VecI16 veci16_and_notfirst(VecI16 excl, VecI16 main) {
-  return R_CAST(VecI16, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToI16(_mm_andnot_si128(I16ToVec(excl), I16ToVec(main)));
 }
 
 HEADER_INLINE VecUc vecuc_and_notfirst(VecUc excl, VecUc main) {
-  return R_CAST(VecUc, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToUc(_mm_andnot_si128(UcToVec(excl), UcToVec(main)));
 }
 
 HEADER_INLINE VecI8 veci8_and_notfirst(VecI8 excl, VecI8 main) {
-  return R_CAST(VecI8, _mm_andnot_si128(R_CAST(__m128i, excl), R_CAST(__m128i, main)));
+  return VecToI8(_mm_andnot_si128(I8ToVec(excl), I8ToVec(main)));
 }
 
 HEADER_INLINE VecW vecw_set1(uintptr_t ulii) {
-  return R_CAST(VecW, _mm_set1_epi64x(ulii));
+  return VecToW(_mm_set1_epi64x(ulii));
 }
 
 HEADER_INLINE VecU32 vecu32_set1(uint32_t uii) {
-  return R_CAST(VecU32, _mm_set1_epi32(uii));
+  return VecToU32(_mm_set1_epi32(uii));
 }
 
 HEADER_INLINE VecI32 veci32_set1(int32_t ii) {
-  return R_CAST(VecI32, _mm_set1_epi32(ii));
+  return VecToI32(_mm_set1_epi32(ii));
 }
 
 HEADER_INLINE VecU16 vecu16_set1(unsigned short usi) {
-  return R_CAST(VecU16, _mm_set1_epi16(usi));
+  return VecToU16(_mm_set1_epi16(usi));
 }
 
 HEADER_INLINE VecI16 veci16_set1(short si) {
-  return R_CAST(VecI16, _mm_set1_epi16(si));
+  return VecToI16(_mm_set1_epi16(si));
 }
 
 HEADER_INLINE VecUc vecuc_set1_epi16(unsigned short usi) {
-  return R_CAST(VecUc, _mm_set1_epi16(usi));
+  return VecToUc(_mm_set1_epi16(usi));
 }
 
 HEADER_INLINE VecUc vecuc_set1(unsigned char ucc) {
-  return R_CAST(VecUc, _mm_set1_epi8(ucc));
+  return VecToUc(_mm_set1_epi8(ucc));
 }
 
 HEADER_INLINE VecI8 veci8_set1(char cc) {
-  return R_CAST(VecI8, _mm_set1_epi8(cc));
+  return VecToI8(_mm_set1_epi8(cc));
 }
 
 HEADER_INLINE uint32_t vecw_movemask(VecW vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(WToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecu32_movemask(VecU32 vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(U32ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci32_movemask(VecI32 vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(I32ToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecu16_movemask(VecU16 vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(U16ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci16_movemask(VecI16 vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(I16ToVec(vv));
 }
 
 HEADER_INLINE uint32_t veci8_movemask(VecI8 vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(I8ToVec(vv));
 }
 
 HEADER_INLINE uint32_t vecuc_movemask(VecUc vv) {
-  return _mm_movemask_epi8(R_CAST(__m128i, vv));
+  return _mm_movemask_epi8(UcToVec(vv));
 }
 
 CONSTI32(kVec8thUintMax, 65535);
@@ -1261,72 +1394,52 @@ typedef uint16_t Vec8thUint;
 typedef uint32_t Vec4thUint;
 
 HEADER_INLINE VecW vecw_load(const void* mem_addr) {
-  return R_CAST(VecW, _mm_load_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToW(_mm_load_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecW vecw_loadu(const void* mem_addr) {
-  return R_CAST(VecW, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToW(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecU32 vecu32_loadu(const void* mem_addr) {
-  return R_CAST(VecU32, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToU32(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecI32 veci32_loadu(const void* mem_addr) {
-  return R_CAST(VecI32, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToI32(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecU16 vecu16_loadu(const void* mem_addr) {
-  return R_CAST(VecU16, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToU16(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecI16 veci16_loadu(const void* mem_addr) {
-  return R_CAST(VecI16, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToI16(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecUc vecuc_loadu(const void* mem_addr) {
-  return R_CAST(VecUc, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToUc(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
 HEADER_INLINE VecI8 veci8_loadu(const void* mem_addr) {
-  return R_CAST(VecI8, _mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
+  return VecToI8(_mm_loadu_si128(S_CAST(const __m128i*, mem_addr)));
 }
 
-HEADER_INLINE void vecw_storeu(void* mem_addr, VecW vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
-}
-
-HEADER_INLINE void vecu32_storeu(void* mem_addr, VecU32 vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
-}
-
-HEADER_INLINE void veci32_storeu(void* mem_addr, VecI32 vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
-}
-
-HEADER_INLINE void vecu16_storeu(void* mem_addr, VecU16 vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
-}
-
-HEADER_INLINE void veci16_storeu(void* mem_addr, VecI16 vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
-}
-
-HEADER_INLINE void vecuc_storeu(void* mem_addr, VecUc vv) {
-  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), R_CAST(__m128i, vv));
+HEADER_INLINE void vec_storeu(void* mem_addr, __m128i vv) {
+  _mm_storeu_si128(S_CAST(__m128i*, mem_addr), vv);
 }
 
 // Repeats arguments in AVX2 case.
 HEADER_INLINE VecW vecw_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecW, _mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToW(_mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecU16 vecu16_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecU16, _mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToU16(_mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecUc vecuc_setr8(char e15, char e14, char e13, char e12, char e11, char e10, char e9, char e8, char e7, char e6, char e5, char e4, char e3, char e2, char e1, char e0) {
-  return R_CAST(VecUc, _mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
+  return VecToUc(_mm_setr_epi8(e15, e14, e13, e12, e11, e10, e9, e8, e7, e6, e5, e4, e3, e2, e1, e0));
 }
 
 // Discards last 16 arguments in SSE2/SSE4.2 case.
@@ -1343,7 +1456,7 @@ HEADER_INLINE VecW vecw_setr8x(
     __maybe_unused char e5, __maybe_unused char e4,
     __maybe_unused char e3, __maybe_unused char e2,
     __maybe_unused char e1, __maybe_unused char e0) {
-  return R_CAST(VecW, _mm_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16));
+  return VecToW(_mm_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16));
 }
 
 HEADER_INLINE VecUc vecuc_setr8x(
@@ -1359,55 +1472,59 @@ HEADER_INLINE VecUc vecuc_setr8x(
     __maybe_unused char e5, __maybe_unused char e4,
     __maybe_unused char e3, __maybe_unused char e2,
     __maybe_unused char e1, __maybe_unused char e0) {
-  return R_CAST(VecUc, _mm_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16));
+  return VecToUc(_mm_setr_epi8(e31, e30, e29, e28, e27, e26, e25, e24, e23, e22, e21, e20, e19, e18, e17, e16));
+}
+
+HEADER_INLINE VecW vecw_setr32(uint32_t e3, uint32_t e2, uint32_t e1, uint32_t e0) {
+  return VecToW(_mm_setr_epi32(e3, e2, e1, e0));
 }
 
 HEADER_INLINE VecW vecw_unpacklo8(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpacklo_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpacklo_epi8(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi8(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpackhi_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpackhi_epi8(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecI8 veci8_unpacklo8(VecI8 evens, VecI8 odds) {
-  return R_CAST(VecI8, _mm_unpacklo_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToI8(_mm_unpacklo_epi8(I8ToVec(evens), I8ToVec(odds)));
 }
 
 HEADER_INLINE VecI8 veci8_unpackhi8(VecI8 evens, VecI8 odds) {
-  return R_CAST(VecI8, _mm_unpackhi_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToI8(_mm_unpackhi_epi8(I8ToVec(evens), I8ToVec(odds)));
 }
 
 HEADER_INLINE VecUc vecuc_unpacklo8(VecUc evens, VecUc odds) {
-  return R_CAST(VecUc, _mm_unpacklo_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToUc(_mm_unpacklo_epi8(UcToVec(evens), UcToVec(odds)));
 }
 
 HEADER_INLINE VecUc vecuc_unpackhi8(VecUc evens, VecUc odds) {
-  return R_CAST(VecUc, _mm_unpackhi_epi8(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToUc(_mm_unpackhi_epi8(UcToVec(evens), UcToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpacklo16(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpacklo_epi16(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpacklo_epi16(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi16(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpackhi_epi16(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpackhi_epi16(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpacklo32(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpacklo_epi32(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpacklo_epi32(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi32(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpackhi_epi32(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpackhi_epi32(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpacklo64(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpacklo_epi64(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpacklo_epi64(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_unpackhi64(VecW evens, VecW odds) {
-  return R_CAST(VecW, _mm_unpackhi_epi64(R_CAST(__m128i, evens), R_CAST(__m128i, odds)));
+  return VecToW(_mm_unpackhi_epi64(WToVec(evens), WToVec(odds)));
 }
 
 HEADER_INLINE VecW vecw_permute0xd8_if_avx2(VecW vv) {
@@ -1423,64 +1540,79 @@ HEADER_INLINE VecUc vecuc_permute0xd8_if_avx2(VecUc vv) {
 }
 
 HEADER_INLINE VecW vecw_gather_even(VecW src_lo, VecW src_hi, VecW m8) {
-  return R_CAST(VecW, _mm_packus_epi16(R_CAST(__m128i, src_lo & m8), R_CAST(__m128i, src_hi & m8)));
+  return VecToW(_mm_packus_epi16(WToVec(src_lo & m8), WToVec(src_hi & m8)));
 }
 
 HEADER_INLINE VecUc vecuc_gather_even(VecUc src_lo, VecUc src_hi, VecUc m8) {
-  return R_CAST(VecUc, _mm_packus_epi16(R_CAST(__m128i, src_lo & m8), R_CAST(__m128i, src_hi & m8)));
+  return VecToUc(_mm_packus_epi16(UcToVec(src_lo & m8), UcToVec(src_hi & m8)));
 }
 
 HEADER_INLINE VecUc vecuc_gather_odd(VecUc src_lo, VecUc src_hi) {
-  return R_CAST(VecUc, _mm_packus_epi16(_mm_srli_epi16(R_CAST(__m128i, src_lo), 8), _mm_srli_epi16(R_CAST(__m128i, src_hi), 8)));
+  return VecToUc(_mm_packus_epi16(_mm_srli_epi16(UcToVec(src_lo), 8), _mm_srli_epi16(UcToVec(src_hi), 8)));
 }
 
-#    ifdef USE_SSE42
-HEADER_INLINE VecI32 veci32_max(VecI32 v1, VecI32 v2) {
-  return R_CAST(VecI32, _mm_max_epi32(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+#    ifdef USE_SHUFFLE8
+#      ifdef SIMDE_ARM_NEON_A64V8_NATIVE
+// See simde_mm_shuffle_epi8().
+// In the future, this may need to be written more carefully in the
+// IGNORE_BUNDLED_SIMDE case.  But this is compatible with simde v0.7.x and
+// v0.8.x.
+SIMDE_FUNCTION_ATTRIBUTES simde__m128i _mm_shuffle_epi8(simde__m128i a, simde__m128i b) {
+  simde__m128i_private a_ = simde__m128i_to_private(a);
+  simde__m128i_private b_ = simde__m128i_to_private(b);
+  simde__m128i_private r_;
+  r_.neon_i8 = vqtbl1q_s8(a_.neon_i8, b_.neon_u8);
+  return simde__m128i_from_private(r_);
 }
-
+#      endif
 HEADER_INLINE VecW vecw_shuffle8(VecW table, VecW indexes) {
-  return R_CAST(VecW, _mm_shuffle_epi8(R_CAST(__m128i, table), R_CAST(__m128i, indexes)));
+  return VecToW(_mm_shuffle_epi8(WToVec(table), WToVec(indexes)));
 }
 
 HEADER_INLINE VecU16 vecu16_shuffle8(VecU16 table, VecU16 indexes) {
-  return R_CAST(VecU16, _mm_shuffle_epi8(R_CAST(__m128i, table), R_CAST(__m128i, indexes)));
+  return VecToU16(_mm_shuffle_epi8(U16ToVec(table), U16ToVec(indexes)));
 }
 
 HEADER_INLINE VecUc vecuc_shuffle8(VecUc table, VecUc indexes) {
-  return R_CAST(VecUc, _mm_shuffle_epi8(R_CAST(__m128i, table), R_CAST(__m128i, indexes)));
+  return VecToUc(_mm_shuffle_epi8(UcToVec(table), UcToVec(indexes)));
+}
+#    endif
+#    ifdef USE_SSE42
+HEADER_INLINE VecI32 veci32_max(VecI32 v1, VecI32 v2) {
+  return VecToI32(_mm_max_epi32(I32ToVec(v1), I32ToVec(v2)));
 }
 
 HEADER_INLINE uintptr_t vecw_extract64_0(VecW vv) {
-  return _mm_extract_epi64(R_CAST(__m128i, vv), 0);
+  return _mm_extract_epi64(WToVec(vv), 0);
 }
 
 HEADER_INLINE uintptr_t vecw_extract64_1(VecW vv) {
-  return _mm_extract_epi64(R_CAST(__m128i, vv), 1);
+  return _mm_extract_epi64(WToVec(vv), 1);
 }
 
 HEADER_INLINE VecW vecw_blendv(VecW aa, VecW bb, VecW mask) {
-  return R_CAST(VecW, _mm_blendv_epi8(R_CAST(__m128i, aa), R_CAST(__m128i, bb), R_CAST(__m128i, mask)));
+  return VecToW(_mm_blendv_epi8(WToVec(aa), WToVec(bb), WToVec(mask)));
 }
 
 HEADER_INLINE VecU32 vecu32_blendv(VecU32 aa, VecU32 bb, VecU32 mask) {
-  return R_CAST(VecU32, _mm_blendv_epi8(R_CAST(__m128i, aa), R_CAST(__m128i, bb), R_CAST(__m128i, mask)));
+  return VecToU32(_mm_blendv_epi8(U32ToVec(aa), U32ToVec(bb), U32ToVec(mask)));
 }
 
 HEADER_INLINE VecU16 vecu16_blendv(VecU16 aa, VecU16 bb, VecU16 mask) {
-  return R_CAST(VecU16, _mm_blendv_epi8(R_CAST(__m128i, aa), R_CAST(__m128i, bb), R_CAST(__m128i, mask)));
+  return VecToU16(_mm_blendv_epi8(U16ToVec(aa), U16ToVec(bb), U16ToVec(mask)));
 }
 
 HEADER_INLINE VecUc vecuc_blendv(VecUc aa, VecUc bb, VecUc mask) {
-  return R_CAST(VecUc, _mm_blendv_epi8(R_CAST(__m128i, aa), R_CAST(__m128i, bb), R_CAST(__m128i, mask)));
+  return VecToUc(_mm_blendv_epi8(UcToVec(aa), UcToVec(bb), UcToVec(mask)));
 }
-#    else
+#    else // USE_SSE2, !USE_SSE42
 HEADER_INLINE uintptr_t vecw_extract64_0(VecW vv) {
-  return R_CAST(uintptr_t, _mm_movepi64_pi64(R_CAST(__m128i, vv)));
+  return R_CAST(uintptr_t, _mm_movepi64_pi64(WToVec(vv)));
 }
 
+// compiler recognizes this on ARMv8
 HEADER_INLINE uintptr_t vecw_extract64_1(VecW vv) {
-  const __m128i v0 = _mm_srli_si128(R_CAST(__m128i, vv), 8);
+  const __m128i v0 = _mm_srli_si128(WToVec(vv), 8);
   return R_CAST(uintptr_t, _mm_movepi64_pi64(v0));
 }
 
@@ -1504,25 +1636,49 @@ HEADER_INLINE VecUc vecuc_blendv(VecUc aa, VecUc bb, VecUc mask) {
 #    endif
 
 HEADER_INLINE VecI16 veci16_max(VecI16 v1, VecI16 v2) {
-  return R_CAST(VecI16, _mm_max_epi16(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+  return VecToI16(_mm_max_epi16(I16ToVec(v1), I16ToVec(v2)));
 }
 
 HEADER_INLINE VecW vecw_sad(VecW v1, VecW v2) {
-  return R_CAST(VecW, _mm_sad_epu8(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+  return VecToW(_mm_sad_epu8(WToVec(v1), WToVec(v2)));
 }
 
 HEADER_INLINE VecUc vecuc_adds(VecUc v1, VecUc v2) {
-  return R_CAST(VecUc, _mm_adds_epu8(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+  return VecToUc(_mm_adds_epu8(UcToVec(v1), UcToVec(v2)));
 }
 
 HEADER_INLINE VecU16 vecu16_min8(VecU16 v1, VecU16 v2) {
-  return R_CAST(VecU16, _mm_min_epu8(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+  return VecToU16(_mm_min_epu8(U16ToVec(v1), U16ToVec(v2)));
 }
 
 HEADER_INLINE VecUc vecuc_min(VecUc v1, VecUc v2) {
-  return R_CAST(VecUc, _mm_min_epu8(R_CAST(__m128i, v1), R_CAST(__m128i, v2)));
+  return VecToUc(_mm_min_epu8(UcToVec(v1), UcToVec(v2)));
 }
-#  endif  // !USE_AVX2
+#  endif  // USE_SSE2, !USE_AVX2
+
+HEADER_INLINE void vecw_storeu(void* mem_addr, VecW vv) {
+  vec_storeu(mem_addr, WToVec(vv));
+}
+
+HEADER_INLINE void vecu32_storeu(void* mem_addr, VecU32 vv) {
+  vec_storeu(mem_addr, U32ToVec(vv));
+}
+
+HEADER_INLINE void veci32_storeu(void* mem_addr, VecI32 vv) {
+  vec_storeu(mem_addr, I32ToVec(vv));
+}
+
+HEADER_INLINE void vecu16_storeu(void* mem_addr, VecU16 vv) {
+  vec_storeu(mem_addr, U16ToVec(vv));
+}
+
+HEADER_INLINE void veci16_storeu(void* mem_addr, VecI16 vv) {
+  vec_storeu(mem_addr, I16ToVec(vv));
+}
+
+HEADER_INLINE void vecuc_storeu(void* mem_addr, VecUc vv) {
+  vec_storeu(mem_addr, UcToVec(vv));
+}
 
 HEADER_INLINE VecW vecw_bytesum(VecW src, VecW m0) {
   return vecw_sad(src, m0);
@@ -1544,12 +1700,28 @@ typedef double VecD __attribute__ ((vector_size (32)));
 #    define VCONST_F(xx) {xx, xx, xx, xx, xx, xx, xx, xx}
 #    define VCONST_D(xx) {xx, xx, xx, xx}
 
+HEADER_INLINE VecF VecToF(__m256 xxv) {
+  return R_CAST(VecF, xxv);
+}
+
+HEADER_INLINE VecD VecToD(__m256d xxv) {
+  return R_CAST(VecD, xxv);
+}
+
+HEADER_INLINE __m256 FToVec(VecF xxv) {
+  return R_CAST(__m256, xxv);
+}
+
+HEADER_INLINE __m256d DToVec(VecD xxv) {
+  return R_CAST(__m256d, xxv);
+}
+
 HEADER_INLINE VecF vecf_setzero() {
-  return R_CAST(VecF, _mm256_setzero_ps());
+  return VecToF(_mm256_setzero_ps());
 }
 
 HEADER_INLINE VecD vecd_setzero() {
-  return R_CAST(VecD, _mm256_setzero_pd());
+  return VecToD(_mm256_setzero_pd());
 }
 
 #  else  // !FVEC_32
@@ -1562,28 +1734,79 @@ typedef double VecD __attribute__ ((vector_size (16)));
 #    define VCONST_F(xx) {xx, xx, xx, xx}
 #    define VCONST_D(xx) {xx, xx}
 
+HEADER_INLINE VecF VecToF(__m128 xxv) {
+  return R_CAST(VecF, xxv);
+}
+
+HEADER_INLINE VecD VecToD(__m128d xxv) {
+  return R_CAST(VecD, xxv);
+}
+
+HEADER_INLINE __m128 FToVec(VecF xxv) {
+  return R_CAST(__m128, xxv);
+}
+
+HEADER_INLINE __m128d DToVec(VecD xxv) {
+  return R_CAST(__m128d, xxv);
+}
+
 HEADER_INLINE VecF vecf_setzero() {
-  return R_CAST(VecF, _mm_setzero_ps());
+  return VecToF(_mm_setzero_ps());
 }
 
 HEADER_INLINE VecD vecd_setzero() {
-  return R_CAST(VecD, _mm_setzero_pd());
+  return VecToD(_mm_setzero_pd());
 }
 
 #  endif  // !FVEC_32
 
-#else  // not __LP64__
+HEADER_INLINE VecUc VecWToUc(VecW vv) {
+  return R_CAST(VecUc, vv);
+}
+
+HEADER_INLINE VecW VecU16ToW(VecU16 vv) {
+  return R_CAST(VecW, vv);
+}
+
+HEADER_INLINE VecW VecUcToW(VecUc vv) {
+  return R_CAST(VecW, vv);
+}
+
+HEADER_INLINE void vecw_lo_and_hi_nybbles(VecW cur_vec, VecW m4, VecW* vec_lo_ptr, VecW* vec_hi_ptr) {
+  // Assumes m4 is VCONST_W(kMask0F0F).
+  // Returned vec_lo and vec_hi have top nybble of each byte zeroed out.
+  cur_vec = vecw_permute0xd8_if_avx2(cur_vec);
+  // AVX2:
+  //   vec_even contains {0, 2, 4, ..., 14, 32, 34, ..., 46,
+  //                      16, 18, ..., 30, 48, ... 62}
+  //   vec_odd contains {1, 3, 5, ..., 15, 33, 35, ..., 47,
+  //                     17, 19, ..., 31, 49, ..., 63}
+  // SSE2:
+  //   vec_even contains {0, 2, 4, ..., 30}
+  //   vec_odd contains {1, 3, 5, ..., 31}
+  const VecW vec_even = cur_vec & m4;
+  const VecW vec_odd = vecw_srli(cur_vec, 4) & m4;
+
+  // AVX2:
+  //   vec_lo contains {0, 1, 2, ..., 31}
+  //   vec_hi contains {32, 33, 34, ..., 63}
+  // SSE2:
+  //   vec_lo contains {0, 1, 2, ..., 15}
+  //   vec_hi contains {16, 17, 18, ..., 31}
+  *vec_lo_ptr = vecw_unpacklo8(vec_even, vec_odd);
+  *vec_hi_ptr = vecw_unpackhi8(vec_even, vec_odd);
+}
+#else  // !USE_SSE2
+#  ifdef __LP64__
+CONSTI32(kBytesPerVec, 8);
+#  else
 CONSTI32(kBytesPerVec, 4);
+#  endif
 CONSTI32(kBytesPerFVec, 4);
 CONSTI32(kBytesPerDVec, 8);
-CONSTI32(kBitsPerWord, 32);
-CONSTI32(kBitsPerWordLog2, 5);
-
-typedef uint16_t Halfword;
-typedef uint8_t Quarterword;
 
 typedef uintptr_t VecW;
-typedef uintptr_t VecU32;
+typedef uint32_t VecU32;
 typedef float VecF;
 typedef double VecD;
 // VecI16 and VecI8 aren't worth the trouble of scaling down to 32-bit
@@ -1610,10 +1833,17 @@ HEADER_INLINE VecW vecw_loadu(const void* mem_addr) {
   return *S_CAST(const VecW*, mem_addr);
 }
 
+#  ifdef __LP64__
+HEADER_INLINE VecW vecw_bytesum(VecW src, __maybe_unused VecW m0) {
+  src = (src & 0x00ff00ff00ff00ffLLU) + ((src >> 8) & 0x00ff00ff00ff00ffLLU);
+  return (src * 0x1000100010001LLU) >> 48;
+}
+#  else
 HEADER_INLINE VecW vecw_bytesum(VecW src, __maybe_unused VecW m0) {
   src = (src & 0x00ff00ff) + ((src >> 8) & 0x00ff00ff);
-  return (src + (src >> 16)) & 0xffff;
+  return (src & 0xffff) + (src >> 16);
 }
+#  endif
 
 HEADER_INLINE VecW vecw_and_notfirst(VecW excl, VecW main) {
   return (~excl) & main;
@@ -1622,7 +1852,11 @@ HEADER_INLINE VecW vecw_and_notfirst(VecW excl, VecW main) {
 HEADER_INLINE VecU32 vecu32_and_notfirst(VecU32 excl, VecU32 main) {
   return (~excl) & main;
 }
-#endif  // !__LP64__
+#endif  // !USE_SSE2
+
+HEADER_INLINE uint32_t* I32ToU32(int32_t* pp) {
+  return R_CAST(uint32_t*, pp);
+}
 
 // Unfortunately, we need to spell out S_CAST(uintptr_t, 0) instead of just
 // typing k0LU in C99.
@@ -1646,6 +1880,7 @@ CONSTI32(kBitsPerVec, kBytesPerVec * CHAR_BIT);
 // We now use Knuth's Nyp/Nybble vocabulary for 2-bit and 4-bit elements,
 // respectively.
 CONSTI32(kNypsPerVec, kBytesPerVec * 4);
+CONSTI32(kNybblesPerVec, kBytesPerVec * 2);
 
 CONSTI32(kBitsPerWordD2, kBitsPerWord / 2);
 CONSTI32(kBitsPerWordD4, kBitsPerWord / 4);
@@ -1670,7 +1905,14 @@ CONSTI32(kInt16PerVec, kBytesPerVec / 2);
 CONSTI32(kFloatPerFVec, kBytesPerFVec / 4);
 CONSTI32(kDoublePerDVec, kBytesPerDVec / 8);
 
+#if defined(__APPLE__) && defined(__LP64__) && !defined(__x86_64__)
+// TODO: make this 128 once that stops breaking code
+#  define CACHELINE128
+CONSTI32(kCacheline, 128);
+#else
+#  define CACHELINE64
 CONSTI32(kCacheline, 64);
+#endif
 
 CONSTI32(kBitsPerCacheline, kCacheline * CHAR_BIT);
 CONSTI32(kNypsPerCacheline, kCacheline * 4);
@@ -1693,7 +1935,11 @@ CONSTI32(kMaxBytesPerIO, 0x7ffff000);
 // Maximum size of "dynamically" allocated line load buffer.  (This is the
 // limit that applies to .vcf and similar files.)  Inconvenient to go higher
 // since fgets() takes a int32_t size argument.
+#if defined(__APPLE__) && defined(__LP64__) && !defined(__x86_64__)
+CONSTI32(kMaxLongLine, 0x7fffff80);
+#else
 CONSTI32(kMaxLongLine, 0x7fffffc0);
+#endif
 static_assert(!(kMaxLongLine % kCacheline), "kMaxLongLine must be a multiple of kCacheline.");
 
 #ifdef __APPLE__
@@ -1899,12 +2145,32 @@ HEADER_INLINE Halfword PackWordToHalfwordMaskAAAA(uintptr_t ww) {
   return _pext_u64(ww, kMaskAAAA);
 }
 
+HEADER_INLINE uintptr_t PackTwo5555Mask(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = PackWordToHalfwordMask5555(lo);
+  const uintptr_t hi_packed = _pext_u64(hi, kMask5555);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
 HEADER_INLINE Vec8thUint PackVec4thUintTo8th(Vec4thUint ww) {
   return _pext_u64(ww, kMask5555);
 }
 
 HEADER_INLINE Vec16thUint PackVec8thUintTo16th(Vec8thUint ww) {
   return _pext_u64(ww, kMask5555);
+}
+
+HEADER_INLINE Halfword Pack3333(uintptr_t ww) {
+  return _pext_u64(ww, kMask3333);
+}
+
+HEADER_INLINE Halfword Pack3333Mask(uintptr_t ww) {
+  return _pext_u64(ww, kMask3333);
+}
+
+HEADER_INLINE uintptr_t PackTwo3333Mask(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = Pack3333Mask(lo);
+  const uintptr_t hi_packed = _pext_u64(hi, kMask3333);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
 }
 
 HEADER_INLINE uintptr_t Unpack0F0F(uintptr_t hw) {
@@ -1917,6 +2183,16 @@ HEADER_INLINE Halfword Pack0F0F(uintptr_t ww) {
 
 HEADER_INLINE Halfword Pack0F0FMask(uintptr_t ww) {
   return _pext_u64(ww, kMask0F0F);
+}
+
+HEADER_INLINE uintptr_t PackTwo0F0F(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = _pext_u64(lo, kMask0F0F);
+  const uintptr_t hi_packed = _pext_u64(hi, kMask0F0F);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
+HEADER_INLINE uintptr_t PackTwo0F0FMask(uintptr_t lo, uintptr_t hi) {
+  return PackTwo0F0F(lo, hi);
 }
 
 HEADER_INLINE uintptr_t Unpack0303(uintptr_t qw) {
@@ -1986,10 +2262,52 @@ HEADER_INLINE Halfword PackWordToHalfwordMaskAAAA(uintptr_t ww) {
   return PackWordToHalfword((ww >> 1) & kMask5555);
 }
 
+HEADER_INLINE uintptr_t PackTwo5555Mask(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = PackWordToHalfwordMask5555(lo);
+
+  // Avoid Halfword cast here.
+  hi = hi & kMask5555;
+  hi = (hi | (hi >> 1)) & kMask3333;
+  hi = (hi | (hi >> 2)) & kMask0F0F;
+  hi = (hi | (hi >> 4)) & kMask00FF;
+#  ifdef __LP64__
+  hi = (hi | (hi >> 8)) & kMask0000FFFF;
+#  endif
+  const uintptr_t hi_packed = hi | (hi >> kBitsPerWordD4);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
+HEADER_INLINE Halfword Pack3333(uintptr_t ww) {
+  ww = (ww | (ww >> 2)) & kMask0F0F;
+  ww = (ww | (ww >> 4)) & kMask00FF;
+#  ifdef __LP64__
+  ww = (ww | (ww >> 8)) & kMask0000FFFF;
+#  endif
+  return S_CAST(Halfword, ww | (ww >> kBitsPerWordD4));
+}
+
+HEADER_INLINE Halfword Pack3333Mask(uintptr_t ww) {
+  return Pack3333(ww & kMask3333);
+}
+
+HEADER_INLINE uintptr_t PackTwo3333Mask(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = Pack3333Mask(lo);
+
+  // Avoid Halfword cast here.
+  hi = hi & kMask3333;
+  hi = (hi | (hi >> 2)) & kMask0F0F;
+  hi = (hi | (hi >> 4)) & kMask00FF;
+#  ifdef __LP64__
+  hi = (hi | (hi >> 8)) & kMask0000FFFF;
+#  endif
+  const uintptr_t hi_packed = hi | (hi >> kBitsPerWordD4);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
 HEADER_INLINE uintptr_t Unpack0F0F(uintptr_t hw) {
-#ifdef __LP64__
+#  ifdef __LP64__
   hw = (hw | (hw << 16)) & kMask0000FFFF;
-#endif
+#  endif
   hw = (hw | (hw << 8)) & kMask00FF;
   return ((hw | (hw << 4)) & kMask0F0F);
 }
@@ -2006,12 +2324,38 @@ HEADER_INLINE Halfword Pack0F0FMask(uintptr_t ww) {
   return Pack0F0F(ww & kMask0F0F);
 }
 
+HEADER_INLINE uintptr_t PackTwo0F0F(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = Pack0F0F(lo);
+
+  // Avoid Halfword cast here.
+  hi = (hi | (hi >> 4)) & kMask00FF;
+#  ifdef __LP64__
+  hi = (hi | (hi >> 8)) & kMask0000FFFF;
+#  endif
+  const uintptr_t hi_packed = hi | (hi >> kBitsPerWordD4);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
+HEADER_INLINE uintptr_t PackTwo0F0FMask(uintptr_t lo, uintptr_t hi) {
+  const Halfword lo_packed = Pack0F0FMask(lo);
+
+  // Avoid Halfword cast here.
+  hi = hi & kMask0F0F;
+  hi = (hi | (hi >> 4)) & kMask00FF;
+#  ifdef __LP64__
+  hi = (hi | (hi >> 8)) & kMask0000FFFF;
+#  endif
+  const uintptr_t hi_packed = hi | (hi >> kBitsPerWordD4);
+  return lo_packed | (hi_packed << kBitsPerWordD2);
+}
+
+
 HEADER_INLINE uintptr_t Unpack0303(uintptr_t qw) {
   // ................................................fedcba9876543210
-#ifdef __LP64__
+#  ifdef __LP64__
   qw = (qw | (qw << 24)) & kMask000000FF;
   // ........................fedcba98........................76543210
-#endif
+#  endif
   qw = qw | (qw << 12);
   // ............fedcba98....fedcba98............76543210....76543210
 
@@ -2031,21 +2375,21 @@ HEADER_INLINE Quarterword Pack0303(uintptr_t ww) {
   ww = ww | (ww >> 12);
   // ......fe....fedc..fedcbafedcba98dcba9876ba9876549876543276543210
 
-#ifdef __LP64__
+#  ifdef __LP64__
   ww = ww & kMask000000FF;
   // ........................fedcba98........................76543210
 
   return S_CAST(Quarterword, ww | (ww >> 24));
-#else
+#  else
   return S_CAST(Quarterword, ww);
-#endif
+#  endif
 }
 
 HEADER_INLINE uintptr_t Pack0303Mask(uintptr_t ww) {
   return Pack0303(ww & kMask0303);
 }
 
-#  ifdef __LP64__
+#  ifdef USE_SSE2
 HEADER_INLINE Vec4thUint UnpackVec8thUintTo4th(Vec8thUint hw) {
   hw = (hw | (hw << 8)) & 0x00ff00ffU;
   hw = (hw | (hw << 4)) & 0x0f0f0f0fU;
@@ -2086,7 +2430,7 @@ HEADER_INLINE VecUc InverseMovespreadmaskFF(Vec4thUint mask) {
 }
 #    endif
 
-#  endif
+#  endif // !USE_SSE2
 #endif  // !USE_AVX2
 
 // alignment must be a power of 2
@@ -2101,6 +2445,10 @@ HEADER_CINLINE uint64_t RoundDownPow2U64(uint64_t val, uint64_t alignment) {
 }
 
 HEADER_CINLINE uintptr_t RoundUpPow2(uintptr_t val, uintptr_t alignment) {
+  return (val + alignment - 1) & (~(alignment - 1));
+}
+
+HEADER_CINLINE uint64_t RoundUpPow2U64(uint64_t val, uint64_t alignment) {
   return (val + alignment - 1) & (~(alignment - 1));
 }
 
@@ -2149,7 +2497,7 @@ HEADER_INLINE uint32_t abs_i32(int32_t ii) {
   return (S_CAST(uint32_t, ii) ^ neg_sign_bit) - neg_sign_bit;
 }
 
-extern uintptr_t g_failed_alloc_attempt_size;
+extern uint64_t g_failed_alloc_attempt_size;
 // with NDEBUG undefined, may want to define a bunch of macros so that line
 // number is printed as well; see e.g.
 //   https://stackoverflow.com/questions/15884793/how-to-get-the-name-or-file-and-line-of-caller-method
@@ -2309,6 +2657,10 @@ HEADER_CINLINE uintptr_t WordCtToVecCt(uintptr_t val) {
   return DivUp(val, kWordsPerVec);
 }
 
+HEADER_CINLINE uintptr_t WordCtToCachelineCt(uintptr_t val) {
+  return DivUp(val, kWordsPerCacheline);
+}
+
 HEADER_CINLINE uint64_t WordCtToCachelineCtU64(uint64_t val) {
   return DivUpU64(val, kWordsPerCacheline);
 }
@@ -2406,14 +2758,46 @@ HEADER_INLINE uint32_t Popcount4Words(uintptr_t val0, uintptr_t val1, uintptr_t 
 }
 #endif
 
-#ifdef __LP64__
+#ifdef USE_SSE42
+HEADER_INLINE uint32_t PopcountHW(uint32_t val) {
+  return __builtin_popcount(val);
+}
+
+HEADER_INLINE uint32_t PopcountByte(uint32_t val) {
+  return __builtin_popcount(val);
+}
+#else
+#  ifdef __LP64__
+HEADER_INLINE uint32_t PopcountHW(uint32_t val) {
+  val = val - ((val >> 1) & 0x55555555);
+  val = (val & 0x33333333) + ((val >> 2) & 0x33333333);
+  val = (val + (val >> 4)) & 0x0f0f0f0f;
+  return (val * 0x1010101) >> 24;
+}
+#  else
+HEADER_INLINE uint32_t PopcountHW(uint32_t val) {
+  val = val - ((val >> 1) & 0x5555);
+  val = (val & 0x3333) + ((val >> 2) & 0x3333);
+  val = (val + (val >> 4)) & 0x0f0f;
+  return (val + (val >> 8)) & 0xff;
+}
+#  endif
+
+HEADER_INLINE uint32_t PopcountByte(uint32_t val) {
+  val = val - ((val >> 1) & 0x55);
+  val = (val & 0x33) + ((val >> 2) & 0x33);
+  return (val + (val >> 4)) & 0xf;
+}
+#endif
+
+#ifdef USE_SSE2
 #  ifdef USE_SSE42
 HEADER_INLINE uint32_t PopcountVec8thUint(uint32_t val) {
   return __builtin_popcount(val);
 }
 #  else
 HEADER_INLINE uint32_t PopcountVec8thUint(uint32_t val) {
-  // May as well exploit the fact that only the low 15 bits may be set.
+  // May as well exploit the fact that only the low 16 bits may be set.
   val = val - ((val >> 1) & 0x5555);
   val = (val & 0x3333) + ((val >> 2) & 0x3333);
   val = (val + (val >> 4)) & 0x0f0f;
@@ -2422,38 +2806,134 @@ HEADER_INLINE uint32_t PopcountVec8thUint(uint32_t val) {
 #  endif
 #endif
 
-HEADER_INLINE uint32_t VecIsAligned(const void* ptr) {
+// Downcasts don't risk alignment issues.
+HEADER_INLINE unsigned char* DowncastToUc(void* pp) {
+  return S_CAST(unsigned char*, pp);
+}
+
+HEADER_INLINE char* DowncastToC(void* pp) {
+  return S_CAST(char*, pp);
+}
+
+HEADER_INLINE const unsigned char* DowncastKToUc(const void* pp) {
+  return S_CAST(const unsigned char*, pp);
+}
+
+HEADER_INLINE const char* DowncastKToC(const void* pp) {
+  return S_CAST(const char*, pp);
+}
+
+HEADER_INLINE uintptr_t* DowncastVecWToW(VecW* pp) {
+  return R_CAST(uintptr_t*, pp);
+}
+
+HEADER_INLINE uint32_t* DowncastVecWToU32(VecW* pp) {
+  return R_CAST(uint32_t*, pp);
+}
+
+HEADER_INLINE Halfword* DowncastWToHW(uintptr_t* pp) {
+  return R_CAST(Halfword*, pp);
+}
+
+HEADER_INLINE uint32_t* DowncastWToU32(uintptr_t* pp) {
+  return R_CAST(uint32_t*, pp);
+}
+
+HEADER_INLINE uint16_t* DowncastWToU16(uintptr_t* pp) {
+  return R_CAST(uint16_t*, pp);
+}
+
+HEADER_INLINE int16_t* DowncastWToI16(uintptr_t* pp) {
+  return R_CAST(int16_t*, pp);
+}
+
+#ifdef USE_SSE2
+HEADER_INLINE Vec8thUint* DowncastWToV8(uintptr_t* pp) {
+  return R_CAST(Vec8thUint*, pp);
+}
+#endif
+
+HEADER_INLINE uint16_t* DowncastU32ToU16(uint32_t* pp) {
+  return R_CAST(uint16_t*, pp);
+}
+
+HEADER_INLINE const uintptr_t* DowncastKVecWToW(const VecW* pp) {
+  return R_CAST(const uintptr_t*, pp);
+}
+
+HEADER_INLINE const uint16_t* DowncastKVecWToU16(const VecW* pp) {
+  return R_CAST(const uint16_t*, pp);
+}
+
+HEADER_INLINE const Halfword* DowncastKWToHW(const uintptr_t* pp) {
+  return R_CAST(const Halfword*, pp);
+}
+
+HEADER_INLINE const uint32_t* DowncastKWToU32(const uintptr_t* pp) {
+  return R_CAST(const uint32_t*, pp);
+}
+
+HEADER_INLINE const uint16_t* DowncastKWToU16(const uintptr_t* pp) {
+  return R_CAST(const uint16_t*, pp);
+}
+
+HEADER_INLINE const uint16_t* DowncastKU64ToU16(const uint64_t* pp) {
+  return R_CAST(const uint16_t*, pp);
+}
+
+
+HEADER_INLINE uint32_t IsVecAligned(const void* ptr) {
   return !(R_CAST(uintptr_t, ptr) % kBytesPerVec);
 }
 
-HEADER_INLINE void VecAlignUp(void* pp) {
-  uintptr_t addr = *S_CAST(uintptr_t*, pp);
-#if (__GNUC__ == 4) && (__GNUC_MINOR__ < 7) && !defined(__APPLE__)
-  // bleah, need to write this way to avoid gcc 4.4 strict-aliasing warning
-  addr = RoundUpPow2(addr, kBytesPerVec);
-  memcpy(pp, &addr, sizeof(intptr_t));
+#ifdef USE_SSE2
+HEADER_INLINE void AlignWToVec(uintptr_t** pp) {
+  const uintptr_t addr = R_CAST(uintptr_t, *pp);
+  *pp = R_CAST(uintptr_t*, RoundUpPow2(addr, kBytesPerVec));
+}
 #else
-  *S_CAST(uintptr_t*, pp) = RoundUpPow2(addr, kBytesPerVec);
+HEADER_INLINE void AlignWToVec(__maybe_unused uintptr_t** pp) {
+}
 #endif
+
+HEADER_INLINE void AlignKUcToVec(const unsigned char** pp) {
+  const uintptr_t addr = R_CAST(uintptr_t, *pp);
+  *pp = R_CAST(const unsigned char*, RoundUpPow2(addr, kBytesPerVec));
 }
 
-#ifdef __LP64__
-HEADER_INLINE void VecAlignUp64(void* pp) {
-  VecAlignUp(pp);
+/*
+HEADER_INLINE uint32_t AlignToVecW(void* prestart, VecW** result_ptr) {
+  unsigned char* prestart_uc = S_CAST(unsigned char*, prestart);
+  const uint32_t lead_byte_ct = (-R_CAST(uintptr_t, prestart_uc)) % kBytesPerVec;
+  *result_ptr = R_CAST(VecW*, &(prestart_uc[lead_byte_ct]));
+  return lead_byte_ct;
 }
-#else
-HEADER_INLINE void VecAlignUp64(__maybe_unused void* pp) {
+*/
+
+HEADER_INLINE uint32_t AlignKToAW(const void* prestart, const uintptr_t** result_ptr) {
+  const unsigned char* prestart_uc = S_CAST(const unsigned char*, prestart);
+  const uint32_t lead_byte_ct = (-R_CAST(uintptr_t, prestart_uc)) % kBytesPerVec;
+  *result_ptr = R_CAST(const uintptr_t*, &(prestart_uc[lead_byte_ct]));
+  return lead_byte_ct;
 }
-#endif
+
+HEADER_INLINE uint32_t AlignKToW(const void* prestart, const uintptr_t** result_ptr) {
+  const unsigned char* prestart_uc = S_CAST(const unsigned char*, prestart);
+  const uint32_t lead_byte_ct = (-R_CAST(uintptr_t, prestart_uc)) % kBytesPerWord;
+  *result_ptr = R_CAST(const uintptr_t*, &(prestart_uc[lead_byte_ct]));
+  return lead_byte_ct;
+}
+
 
 // Turns out memcpy(&cur_word, bytearr, ct) can't be trusted to be fast when ct
 // isn't known at compile time.
 //
 // ct must be less than sizeof(intptr_t).  ct == 0 handled correctly, albeit
 // inefficiently.
+#ifndef NO_UNALIGNED
 HEADER_INLINE uintptr_t ProperSubwordLoad(const void* bytearr, uint32_t ct) {
   const unsigned char* bytearr_uc = S_CAST(const unsigned char*, bytearr);
-#ifdef __LP64__
+#  ifdef __LP64__
   if (ct >= 4) {
     const uint32_t remainder = ct - 4;
     bytearr_uc = &(bytearr_uc[remainder]);
@@ -2464,7 +2944,7 @@ HEADER_INLINE uintptr_t ProperSubwordLoad(const void* bytearr, uint32_t ct) {
     }
     return cur_word;
   }
-#endif
+#  endif
   if (ct >= 2) {
     const uint32_t remainder = ct & 1;
     uintptr_t cur_word = *R_CAST(const uint16_t*, &(bytearr_uc[remainder]));
@@ -2501,10 +2981,30 @@ HEADER_INLINE uint32_t SubU32Load(const void* bytearr, uint32_t ct) {
   return *S_CAST(const uint32_t*, bytearr);
 }
 
+// ct must be 1 or 2.
+HEADER_INLINE uint16_t SubU16Load(const void* bytearr, uint32_t ct) {
+  if (ct == 1) {
+    const unsigned char* bytearr_uc = S_CAST(const unsigned char*, bytearr);
+    return bytearr_uc[0];
+  }
+  return *S_CAST(const uint16_t*, bytearr);
+}
+
+// ct must be in 1..sizeof(Halfword).
+#ifdef __LP64__
+HEADER_INLINE Halfword SubHWLoad(const void* bytearr, uint32_t ct) {
+  return SubU32Load(bytearr, ct);
+}
+#else
+HEADER_INLINE Halfword SubHWLoad(const void* bytearr, uint32_t ct) {
+  return SubU16Load(bytearr, ct);
+}
+#endif
+
 // tried making this non-inline, loop took more than 50% longer
 HEADER_INLINE void ProperSubwordStore(uintptr_t cur_word, uint32_t byte_ct, void* target) {
   unsigned char* target_iter = S_CAST(unsigned char*, target);
-#ifdef __LP64__
+#  ifdef __LP64__
   if (byte_ct >= 4) {
     *R_CAST(uint32_t*, target_iter) = cur_word;
     if (byte_ct == 4) {
@@ -2516,7 +3016,7 @@ HEADER_INLINE void ProperSubwordStore(uintptr_t cur_word, uint32_t byte_ct, void
     *R_CAST(uint32_t*, target_iter) = cur_word;
     return;
   }
-#endif
+#  endif
   if (byte_ct & 1) {
     *target_iter++ = cur_word;
     cur_word >>= 8;
@@ -2526,22 +3026,12 @@ HEADER_INLINE void ProperSubwordStore(uintptr_t cur_word, uint32_t byte_ct, void
   }
 }
 
-HEADER_INLINE void ProperSubwordStoreMov(uintptr_t cur_word, uint32_t byte_ct, unsigned char** targetp) {
-  ProperSubwordStore(cur_word, byte_ct, *targetp);
-  *targetp += byte_ct;
-}
-
 HEADER_INLINE void SubwordStore(uintptr_t cur_word, uint32_t byte_ct, void* target) {
   if (byte_ct == kBytesPerWord) {
     *S_CAST(uintptr_t*, target) = cur_word;
     return;
   }
   ProperSubwordStore(cur_word, byte_ct, target);
-}
-
-HEADER_INLINE void SubwordStoreMov(uintptr_t cur_word, uint32_t byte_ct, unsigned char** targetp) {
-  SubwordStore(cur_word, byte_ct, *targetp);
-  *targetp += byte_ct;
 }
 
 // byte_ct must be in 1..4.
@@ -2562,17 +3052,75 @@ HEADER_INLINE void SubU32Store(uint32_t cur_uint, uint32_t byte_ct, void* target
   *S_CAST(uint32_t*, target) = cur_uint;
   return;
 }
+#else  // NO_UNALIGNED
+HEADER_INLINE uintptr_t ProperSubwordLoad(const void* bytearr, uint32_t ct) {
+  uintptr_t cur_word = 0;
+  memcpy(&cur_word, bytearr, ct);
+  return cur_word;
+}
+
+HEADER_INLINE uintptr_t SubwordLoad(const void* bytearr, uint32_t ct) {
+  uintptr_t cur_word = 0;
+  memcpy(&cur_word, bytearr, ct);
+  return cur_word;
+}
+
+HEADER_INLINE uint32_t SubU32Load(const void* bytearr, uint32_t ct) {
+  uint32_t cur_uint = 0;
+  memcpy(&cur_uint, bytearr, ct);
+  return cur_uint;
+}
+
+HEADER_INLINE Halfword SubHWLoad(const void* bytearr, uint32_t ct) {
+  Halfword cur_uint = 0;
+  memcpy(&cur_uint, bytearr, ct);
+  return cur_uint;
+}
+
+HEADER_INLINE void ProperSubwordStore(uintptr_t cur_word, uint32_t byte_ct, void* target) {
+  memcpy(target, &cur_word, byte_ct);
+}
+
+HEADER_INLINE void SubwordStore(uintptr_t cur_word, uint32_t byte_ct, void* target) {
+  memcpy(target, &cur_word, byte_ct);
+}
+
+HEADER_INLINE void SubU32Store(uint32_t cur_uint, uint32_t byte_ct, void* target) {
+  memcpy(target, &cur_uint, byte_ct);
+}
+#endif // NO_UNALIGNED
+
+HEADER_INLINE uint64_t SubU64Load(const void* bytearr, uint32_t ct) {
+#ifdef __LP64__
+  return SubwordLoad(bytearr, ct);
+#else
+  uint64_t cur_u64 = 0;
+  memcpy(&cur_u64, bytearr, ct);
+  return cur_u64;
+#endif
+}
+
+HEADER_INLINE void ProperSubwordStoreMov(uintptr_t cur_word, uint32_t byte_ct, unsigned char** targetp) {
+  ProperSubwordStore(cur_word, byte_ct, *targetp);
+  *targetp += byte_ct;
+}
+
+HEADER_INLINE void SubwordStoreMov(uintptr_t cur_word, uint32_t byte_ct, unsigned char** targetp) {
+  SubwordStore(cur_word, byte_ct, *targetp);
+  *targetp += byte_ct;
+}
 
 HEADER_INLINE void SubU32StoreMov(uint32_t cur_uint, uint32_t byte_ct, unsigned char** targetp) {
   SubU32Store(cur_uint, byte_ct, *targetp);
   *targetp += byte_ct;
 }
 
-#ifdef __LP64__
+#ifndef NO_UNALIGNED
+#  ifdef __LP64__
 HEADER_INLINE void SubU64StoreMov(uint64_t cur_u64, uint32_t byte_ct, unsigned char** targetp) {
   return SubwordStoreMov(cur_u64, byte_ct, targetp);
 }
-#else
+#  else
 HEADER_INLINE void SubU64StoreMov(uint64_t cur_u64, uint32_t byte_ct, unsigned char** targetp) {
   if (byte_ct > 4) {
     *R_CAST(uint32_t*, *targetp) = cur_u64;
@@ -2581,6 +3129,12 @@ HEADER_INLINE void SubU64StoreMov(uint64_t cur_u64, uint32_t byte_ct, unsigned c
     cur_u64 >>= 32;
   }
   return SubU32StoreMov(cur_u64, byte_ct, targetp);
+}
+#  endif
+#else
+HEADER_INLINE void SubU64StoreMov(uint64_t cur_u64, uint32_t byte_ct, unsigned char** targetp) {
+  memcpy(*targetp, &cur_u64, byte_ct);
+  *targetp += byte_ct;
 }
 #endif
 
@@ -2591,7 +3145,7 @@ HEADER_INLINE BoolErr vecaligned_malloc(uintptr_t size, void* aligned_pp) {
 #else
 #  if defined(__APPLE__) || !defined(__LP64__)
   const BoolErr ret_boolerr = pgl_malloc(size, aligned_pp);
-  assert(VecIsAligned(*S_CAST(uintptr_t**, aligned_pp)));
+  assert(IsVecAligned(*S_CAST(uintptr_t**, aligned_pp)));
   return ret_boolerr;
 #  else
   return aligned_malloc(size, kBytesPerVec, aligned_pp);
@@ -2653,13 +3207,24 @@ HEADER_INLINE void vecaligned_free_cond(void* aligned_ptr) {
 #endif
 
 
-#ifdef __LP64__
+#if defined(USE_SSE2) && !defined(NO_UNALIGNED)
 int32_t memequal(const void* m1, const void* m2, uintptr_t byte_ct);
+
+// This is also better than the June 2018 OS X/LLVM stock implementation,
+// especially for small values of ct.
+// (gcc 7.1 and clang 6.0.0 should have better stock implementations;
+// re-benchmark this once Linux build machine is upgraded to Ubuntu 18.04.)
+int32_t Memcmp(const void* m1, const void* m2, uintptr_t ct);
 #else
 HEADER_INLINE int32_t memequal(const void* m1, const void* m2, uintptr_t byte_ct) {
   return !memcmp(m1, m2, byte_ct);
 }
+
+HEADER_INLINE int32_t Memcmp(const void* m1, const void* m2, uintptr_t ct) {
+  return memcmp(m1, m2, ct);
+}
 #endif
+
 
 HEADER_INLINE char* memcpya(void* __restrict target, const void* __restrict source, uintptr_t ct) {
   memcpy(target, source, ct);
@@ -2671,20 +3236,10 @@ HEADER_INLINE unsigned char* memcpyua(void* __restrict target, const void* __res
   return &(S_CAST(unsigned char*, target)[ct]);
 }
 
-HEADER_INLINE void AppendU16(uint16_t usii, unsigned char** targetp) {
-  memcpy(*targetp, &usii, sizeof(int16_t));
-  *targetp += sizeof(int16_t);
-}
-
-HEADER_INLINE void AppendU32(uint32_t uii, unsigned char** targetp) {
-  memcpy(*targetp, &uii, sizeof(int32_t));
-  *targetp += sizeof(int32_t);
-}
-
 // Tried beating memcpy for usually-small strings not known to have length <=
 // 8, gave up.
 
-#if defined(__LP64__) && defined(__cplusplus)
+#if defined(USE_SSE2) && defined(__cplusplus) && !defined(NO_UNALIGNED)
 // See https://stackoverflow.com/questions/9510514/integer-range-based-template-specialisation .
 
 template <bool> struct TRange;
@@ -2946,7 +3501,7 @@ template <uint32_t N> char* MemcpyaK(void* __restrict dst, const void* __restric
 }
 
 #  define memcpya_k(dst, src, ct) plink2::MemcpyaK<ct>(dst, src)
-#  define memcpyua_k(dst, src, ct) R_CAST(unsigned char*, plink2::MemcpyaK<ct>(dst, src))
+#  define memcpyua_k(dst, src, ct) CToUc(plink2::MemcpyaK<ct>(dst, src))
 
 template <uint32_t N> struct MemcpyoKImpl {
   static void MemcpyoK(void* __restrict dst, const void* __restrict src) {
@@ -2984,9 +3539,9 @@ template <uint32_t N> char* MemcpyaoK(void* __restrict dst, const void* __restri
 }
 
 #  define memcpyao_k(dst, src, ct) plink2::MemcpyaoK<ct>(dst, src)
-#  define memcpyuao_k(dst, src, ct) R_CAST(unsigned char*, plink2::MemcpyaoK<ct>(dst, src))
+#  define memcpyuao_k(dst, src, ct) DowncastToUc(plink2::MemcpyaoK<ct>(dst, src))
 
-#  else  // !(defined(__LP64__) && defined(__cplusplus))
+#  else  // !(defined(__LP64__) && defined(__cplusplus) && !defined(NO_UNALIGNED))
 
 HEADER_INLINE int32_t memequal_k(const void* m1, const void* m2, uintptr_t ct) {
   return !memcmp(m1, m2, ct);
@@ -3018,13 +3573,22 @@ HEADER_INLINE unsigned char* memcpyuao_k(void* __restrict dst, const void* __res
 
 #endif
 
-#if defined(__LP64__) && (__cplusplus >= 201103L)
+HEADER_INLINE char* strcpya(char* __restrict dst, const void* __restrict src) {
+  const uintptr_t slen = strlen(S_CAST(const char*, src));
+  return memcpya(dst, src, slen);
+}
 
+#if defined(__LP64__) && (__cplusplus >= 201103L)
 constexpr uint32_t CompileTimeSlen(const char* k_str) {
   return k_str[0]? (1 + CompileTimeSlen(&(k_str[1]))) : 0;
 }
+#endif
+
+#if defined(USE_SSE2) && (__cplusplus >= 201103L) && !defined(NO_UNALIGNED)
 
 #  define strcpy_k(dst, src) plink2::MemcpyKImpl<plink2::CompileTimeSlen(src) + 1>::MemcpyK(dst, src);
+
+#  define strcpya_k(dst, src) plink2::MemcpyaoK<plink2::CompileTimeSlen(src)>(dst, src);
 
 #else
 
@@ -3032,19 +3596,286 @@ HEADER_INLINE void strcpy_k(char* __restrict dst, const void* __restrict src) {
   strcpy(dst, S_CAST(const char*, src));
 }
 
+HEADER_INLINE char* strcpya_k(char* __restrict dst, const void* __restrict src) {
+  return strcpya(dst, src);
+}
+
 #endif
 
+// A few more string-rendering functions that would normally live in
+// plink2_string, to work around PRI{d,u}PTR and PRI{d,u}64 warning on CRAN
+// Windows builds.
+
+extern const uint16_t kDigitPair[];
+
+char* u32toa(uint32_t uii, char* start);
+
+HEADER_INLINE char* uitoa_z4(uint32_t uii, char* start) {
+  uint32_t quotient = uii / 100;
+  assert(quotient < 100);
+  uii -= 100 * quotient;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+  return memcpya_k(start, &(kDigitPair[uii]), 2);
+}
+
+HEADER_INLINE char* u32toa_z6(uint32_t uii, char* start) {
+  uint32_t quotient = uii / 10000;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+  return uitoa_z4(uii - 10000 * quotient, start);
+}
+
+HEADER_INLINE char* uitoa_z8(uint32_t uii, char* start) {
+  uint32_t quotient = uii / 1000000;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+  return u32toa_z6(uii - 1000000 * quotient, start);
+}
+
+char* i64toa(int64_t llii, char* start);
+
 #ifdef __LP64__
-// This is also better than the June 2018 OS X/LLVM stock implementation,
-// especially for small values of ct.
-// (gcc 7.1 and clang 6.0.0 should have better stock implementations;
-// re-benchmark this once Linux build machine is upgraded to Ubuntu 18.04.)
-int32_t Memcmp(const void* m1, const void* m2, uintptr_t ct);
+// really just for printing line numbers
+// must be less than 2^63
+HEADER_INLINE char* wtoa(uintptr_t ulii, char* start) {
+  return i64toa(ulii, start);
+}
 #else
-HEADER_INLINE int32_t Memcmp(const void* m1, const void* m2, uintptr_t ct) {
-  return memcmp(m1, m2, ct);
+HEADER_INLINE char* wtoa(uintptr_t ulii, char* start) {
+  return u32toa(ulii, start);
 }
 #endif
+
+HEADER_INLINE void CopyFromUnalignedW(uintptr_t* dst, const unsigned char* src) {
+  memcpy_k(dst, src, kBytesPerWord);
+}
+
+HEADER_INLINE void CopyFromUnalignedU32(uint32_t* dst, const unsigned char* src) {
+  memcpy_k(dst, src, sizeof(int32_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedU16(uint16_t* dst, const unsigned char* src) {
+  memcpy_k(dst, src, sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedI16(int16_t* dst, const unsigned char* src) {
+  memcpy_k(dst, src, sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedF(float* dst, const unsigned char* src) {
+  memcpy_k(dst, src, sizeof(float));
+}
+
+// [u]int16_t (and unsigned char) arithmetic is slower than uint32_t/uint64_t
+// arithmetic on some CPUs.
+// todo: check whether uint32_t vs. uintptr_t return value matters
+HEADER_INLINE uint32_t CopyFromUnalignedU16ZX(const unsigned char* src) {
+#ifndef NO_UNALIGNED
+  return *R_CAST(const uint16_t*, src);
+#else
+  uint16_t cur_u16;
+  memcpy_k(&cur_u16, src, sizeof(int16_t));
+  return cur_u16;
+#endif
+}
+
+HEADER_INLINE int32_t CopyFromUnalignedI16ZX(const unsigned char* src) {
+#ifndef NO_UNALIGNED
+  return *R_CAST(const int16_t*, src);
+#else
+  int16_t cur_i16;
+  memcpy_k(&cur_i16, src, sizeof(int16_t));
+  return cur_i16;
+#endif
+}
+
+HEADER_INLINE void CopyToUnalignedW(unsigned char* dst, const uintptr_t* src) {
+  memcpy_k(dst, src, kBytesPerWord);
+}
+
+HEADER_INLINE void CopyToUnalignedU64(unsigned char* dst, const uint64_t* src) {
+  memcpy_k(dst, src, sizeof(int64_t));
+}
+
+HEADER_INLINE void CopyToUnalignedU32(unsigned char* dst, const uint32_t* src) {
+  memcpy_k(dst, src, sizeof(int32_t));
+}
+
+HEADER_INLINE void CopyToUnalignedF(unsigned char* dst, const float* src) {
+  memcpy_k(dst, src, sizeof(float));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetW(uintptr_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * kBytesPerWord]), kBytesPerWord);
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetHW(Halfword* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(Halfword)]), sizeof(Halfword));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetQW(Quarterword* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(Quarterword)]), sizeof(Quarterword));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetU64(uint64_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(int64_t)]), sizeof(int64_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetU32(uint32_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(int32_t)]), sizeof(int32_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetI32(int32_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(int32_t)]), sizeof(int32_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetU16(uint16_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(int16_t)]), sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetI16(int16_t* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(int16_t)]), sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyFromUnalignedOffsetF(float* dst, const unsigned char* src, uintptr_t offset) {
+  memcpy_k(dst, &(src[offset * sizeof(float)]), sizeof(float));
+}
+
+HEADER_INLINE uint32_t CopyFromUnalignedOffsetU16ZX(const unsigned char* src, uintptr_t offset) {
+#ifndef NO_UNALIGNED
+  return R_CAST(const uint16_t*, src)[offset];
+#else
+  uint16_t cur_u16;
+  memcpy_k(&cur_u16, &(src[offset * sizeof(int16_t)]), sizeof(int16_t));
+  return cur_u16;
+#endif
+}
+
+HEADER_INLINE int32_t CopyFromUnalignedOffsetI16ZX(const unsigned char* src, uintptr_t offset) {
+#ifndef NO_UNALIGNED
+  return R_CAST(const int16_t*, src)[offset];
+#else
+  int16_t cur_i16;
+  memcpy_k(&cur_i16, &(src[offset * sizeof(int16_t)]), sizeof(int16_t));
+  return cur_i16;
+#endif
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetW(unsigned char* dst, const uintptr_t* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(intptr_t)]), src, sizeof(intptr_t));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetHW(unsigned char* dst, const Halfword* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(Halfword)]), src, sizeof(Halfword));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetU64(unsigned char* dst, const uint64_t* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(int64_t)]), src, sizeof(int64_t));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetU32(unsigned char* dst, const uint32_t* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(int32_t)]), src, sizeof(int32_t));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetU16(unsigned char* dst, const uint16_t* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(int16_t)]), src, sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetI16(unsigned char* dst, const int16_t* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(int16_t)]), src, sizeof(int16_t));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetF(unsigned char* dst, const float* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(float)]), src, sizeof(float));
+}
+
+#ifdef USE_SSE2
+HEADER_INLINE void CopyToUnalignedOffsetV8(unsigned char* dst, const Vec8thUint* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(Vec8thUint)]), src, sizeof(Vec8thUint));
+}
+
+HEADER_INLINE void CopyToUnalignedOffsetV16(unsigned char* dst, const Vec16thUint* src, uintptr_t offset) {
+  memcpy_k(&(dst[offset * sizeof(Vec16thUint)]), src, sizeof(Vec16thUint));
+}
+#endif
+
+HEADER_INLINE void CopyFromUnalignedIncrW(uintptr_t* dst, const unsigned char** srcp) {
+  memcpy_k(dst, *srcp, kBytesPerWord);
+  *srcp += kBytesPerWord;
+}
+
+HEADER_INLINE void CopyFromUnalignedIncrU32(uint32_t* dst, const unsigned char** srcp) {
+  memcpy_k(dst, *srcp, sizeof(int32_t));
+  *srcp += sizeof(int32_t);
+}
+
+HEADER_INLINE void CopyFromUnalignedIncrU16(uint16_t* dst, const unsigned char** srcp) {
+  memcpy_k(dst, *srcp, sizeof(int16_t));
+  *srcp += sizeof(int16_t);
+}
+
+HEADER_INLINE void CopyFromUnalignedIncrI16(int16_t* dst, const unsigned char** srcp) {
+  memcpy_k(dst, *srcp, sizeof(int16_t));
+  *srcp += sizeof(int16_t);
+}
+
+HEADER_INLINE uint32_t CopyFromUnalignedIncrU16ZX(const unsigned char** srcp) {
+#ifndef NO_UNALIGNED
+  const uint32_t result = *R_CAST(const uint16_t*, *srcp);
+#else
+  uint16_t result;
+  memcpy_k(&result, *srcp, sizeof(int16_t));
+#endif
+  *srcp += sizeof(int16_t);
+  return result;
+}
+
+HEADER_INLINE int32_t CopyFromUnalignedIncrI16ZX(const unsigned char** srcp) {
+#ifndef NO_UNALIGNED
+  const int32_t result = *R_CAST(const int16_t*, *srcp);
+#else
+  int16_t result;
+  memcpy_k(&result, *srcp, sizeof(int16_t));
+#endif
+  *srcp += sizeof(int16_t);
+  return result;
+}
+
+// no need to spell out 'CopyToUnalignedIncr' here; and we append constants
+// often enough to justify no src pointer
+
+HEADER_INLINE void AppendW(uintptr_t ulii, unsigned char** targetp) {
+  memcpy_k(*targetp, &ulii, kBytesPerWord);
+  *targetp += kBytesPerWord;
+}
+
+HEADER_INLINE void AppendU64(uint64_t ullii, unsigned char** targetp) {
+  memcpy_k(*targetp, &ullii, sizeof(int64_t));
+  *targetp += sizeof(int64_t);
+}
+
+HEADER_INLINE void AppendU32(uint32_t uii, unsigned char** targetp) {
+  memcpy_k(*targetp, &uii, sizeof(int32_t));
+  *targetp += sizeof(int32_t);
+}
+
+HEADER_INLINE void AppendU16(uint16_t usii, unsigned char** targetp) {
+  memcpy_k(*targetp, &usii, sizeof(int16_t));
+  *targetp += sizeof(int16_t);
+}
+
+HEADER_INLINE void CAppendW(uintptr_t ulii, char** targetp) {
+  memcpy_k(*targetp, &ulii, kBytesPerWord);
+  *targetp += kBytesPerWord;
+}
+
+HEADER_INLINE void CAppendU32(uint32_t uii, char** targetp) {
+  memcpy_k(*targetp, &uii, sizeof(int32_t));
+  *targetp += sizeof(int32_t);
+}
+
+HEADER_INLINE void CAppendU16(uint16_t usii, char** targetp) {
+  memcpy_k(*targetp, &usii, sizeof(int16_t));
+  *targetp += sizeof(int16_t);
+}
 
 
 // now compiling with gcc >= 4.4 (or clang equivalent) on all platforms, so
@@ -3106,7 +3937,7 @@ HEADER_INLINE uint32_t BytesToRepresentNzU32(uint32_t uii) {
 // now.  Should revisit this after next build-machine Ubuntu upgrade, though.
 HEADER_INLINE void vecset(void* target_vec, uintptr_t ww, uintptr_t vec_ct) {
   VecW* target_vec_iter = S_CAST(VecW*, target_vec);
-#ifdef __LP64__
+#ifdef USE_SSE2
   const VecW payload = VCONST_W(ww);
   for (uintptr_t vec_idx = 0; vec_idx != vec_ct; ++vec_idx) {
     *target_vec_iter++ = payload;
@@ -3178,7 +4009,8 @@ HEADER_INLINE uintptr_t DetectAllZeroNybbles(uintptr_t ww) {
   return (kMask1111 * 8) & (~(ww | ((ww | (kMask1111 * 8)) - kMask1111)));
 }
 
-// This requires len >= 4.
+#if defined(USE_SSE2) && !defined(NO_UNALIGNED)
+// This requires nbytes >= 4.
 uintptr_t FirstUnequal4(const void* arr1, const void* arr2, uintptr_t nbytes);
 
 HEADER_INLINE uintptr_t FirstUnequal(const void* arr1, const void* arr2, uintptr_t nbytes) {
@@ -3195,6 +4027,26 @@ HEADER_INLINE uintptr_t FirstUnequal(const void* arr1, const void* arr2, uintptr
   }
   return nbytes;
 }
+#else // !(defined(USE_SSE2) && !defined(NO_UNALIGNED))
+// This requires nbytes >= kBytesPerWord.
+uintptr_t FirstUnequalW(const void* arr1, const void* arr2, uintptr_t nbytes);
+
+HEADER_INLINE uintptr_t FirstUnequal(const void* arr1, const void* arr2, uintptr_t nbytes) {
+  // Returns position of first byte mismatch, or nbytes if none was found.
+  if (nbytes >= kBytesPerWord) {
+    return FirstUnequalW(arr1, arr2, nbytes);
+  }
+  const char* s1 = S_CAST(const char*, arr1);
+  const char* s2 = S_CAST(const char*, arr2);
+  for (uintptr_t pos = 0; pos != nbytes; ++pos) {
+    if (s1[pos] != s2[pos]) {
+      return pos;
+    }
+  }
+  return nbytes;
+}
+#endif
+
 
 HEADER_INLINE uintptr_t FirstUnequalFrom(const void* arr1, const void* arr2, uintptr_t start, uintptr_t nbytes) {
   const char* s1 = S_CAST(const char*, arr1);
@@ -3256,6 +4108,32 @@ HEADER_INLINE uint32_t GetVint31(const unsigned char* buf_end, const unsigned ch
     }
   }
   return 0x80000000U;
+}
+
+#ifdef __LP64__
+uintptr_t CountVintsNonempty(const unsigned char* buf, const unsigned char* buf_end);
+
+HEADER_INLINE uintptr_t CountVints(const unsigned char* buf, const unsigned char* buf_end) {
+  if (buf == buf_end) {
+    return 0;
+  }
+  return CountVintsNonempty(buf, buf_end);
+}
+#else
+uintptr_t CountVints(const unsigned char* buf, const unsigned char* buf_end);
+
+HEADER_INLINE uintptr_t CountVintsNonempty(const unsigned char* buf, const unsigned char* buf_end) {
+  return CountVints(buf, buf_end);
+}
+#endif
+
+// Number of bytes required to encode ulii as a varint.
+HEADER_INLINE uint32_t VintBytect(uintptr_t ulii) {
+  if (ulii < 128) {
+    // bsrw(0) is undefined.
+    return 1;
+  }
+  return 1 + (bsrw(ulii) / 7);
 }
 
 // Flagset conventions:

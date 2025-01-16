@@ -1,4 +1,4 @@
-// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -31,20 +31,29 @@ static inline const uint32_t* GetSicp(PgrSampleSubsetIndex pssi) {
   return GET_PRIVATE(pssi, cumulative_popcounts);
 }
 
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in SmallGenoarrCount3FreqIncr()."
-#endif
-void SmallGenoarrCount3FreqIncr(const uintptr_t* genoarr_iter, uint32_t byte_ct, uint32_t* even_ctp, uint32_t* odd_ctp, uint32_t* bothset_ctp) {
+// The subset of this codebase used by pgenlibr (which is compiled with
+// -DNO_UNALIGNED and -DPGENLIB_NOPRINT) is now subject to additional
+// restrictions.  In particular:
+// - No unaligned loads/stores/pointers, or other undefined behavior.
+// - The PRI{d,u}PTR and PRI{d,u}64 printf format-specifiers cannot be used.  I
+//   hope to remove this restriction later, but for now they make Windows
+//   compilation a clusterfuck.
+// - No exit(), or printing to stdout/stderr.
+// - No flexible array members.
+// - Not a restriction yet, but we want to properly distinguish between
+//   __LP64__ and USE_SSE2.
+#ifdef USE_SSE2
+void SmallGenoarrCount3FreqIncr(const unsigned char* genoarrb_iter, uint32_t byte_ct, uint32_t* even_ctp, uint32_t* odd_ctp, uint32_t* bothset_ctp) {
   for (uint32_t bytes_left = byte_ct; ; ) {
     uintptr_t cur_geno_word;
     if (bytes_left < kBytesPerWord) {
       if (!bytes_left) {
         return;
       }
-      cur_geno_word = ProperSubwordLoad(genoarr_iter, bytes_left);
+      cur_geno_word = ProperSubwordLoad(genoarrb_iter, bytes_left);
       bytes_left = 0;
     } else {
-      cur_geno_word = *genoarr_iter++;
+      CopyFromUnalignedIncrW(&cur_geno_word, &genoarrb_iter);
       bytes_left -= kBytesPerWord;
     }
     const uintptr_t cur_geno_word_high = kMask5555 & (cur_geno_word >> 1);
@@ -53,49 +62,83 @@ void SmallGenoarrCount3FreqIncr(const uintptr_t* genoarr_iter, uint32_t byte_ct,
     *bothset_ctp += Popcount01Word(cur_geno_word & cur_geno_word_high);
   }
 }
+#endif
 
 void GenoarrbCountFreqs(const unsigned char* genoarrb, uint32_t sample_ct, STD_ARRAY_REF(uint32_t, 4) genocounts) {
   // does not read past the end of genoarrb
-  uint32_t lead_byte_ct = (-R_CAST(uintptr_t, genoarrb)) % kBytesPerVec;
   uint32_t even_ct = 0;
   uint32_t odd_ct = 0;
   uint32_t bothset_ct = 0;
-  const uintptr_t* genoarrb_iter;
+#ifndef USE_SSE2
+  const uintptr_t* geno_firstw_start;
+  const uint32_t lead_byte_ct = AlignKToW(genoarrb, &geno_firstw_start);
+  uint32_t byte_ct = NypCtToByteCt(sample_ct);
+  uintptr_t cur_geno_word;
+  uint32_t fullword_ct;
+  uint32_t trail_byte_ct;
+  if (lead_byte_ct) {
+    if (lead_byte_ct >= byte_ct) {
+      cur_geno_word = ProperSubwordLoad(genoarrb, byte_ct);
+      goto GenoarrbCountFreqsLastWord;
+    }
+    cur_geno_word = ProperSubwordLoad(genoarrb, lead_byte_ct);
+    const uintptr_t cur_geno_word_high = kMask5555 & (cur_geno_word >> 1);
+    even_ct += Popcount01Word(cur_geno_word & kMask5555);
+    odd_ct += Popcount01Word(cur_geno_word_high);
+    bothset_ct += Popcount01Word(cur_geno_word & cur_geno_word_high);
+    byte_ct -= lead_byte_ct;
+  }
+  fullword_ct = byte_ct / kBytesPerWord;
+  for (uint32_t widx = 0; widx != fullword_ct; ++widx) {
+    cur_geno_word = geno_firstw_start[widx];
+    const uintptr_t cur_geno_word_high = kMask5555 & (cur_geno_word >> 1);
+    even_ct += Popcount01Word(cur_geno_word & kMask5555);
+    odd_ct += Popcount01Word(cur_geno_word_high);
+    bothset_ct += Popcount01Word(cur_geno_word & cur_geno_word_high);
+  }
+  trail_byte_ct = byte_ct % kBytesPerWord;
+  if (trail_byte_ct) {
+    cur_geno_word = ProperSubwordLoad(&(geno_firstw_start[fullword_ct]), trail_byte_ct);
+  GenoarrbCountFreqsLastWord:
+    const uintptr_t cur_geno_word_high = kMask5555 & (cur_geno_word >> 1);
+    even_ct += Popcount01Word(cur_geno_word & kMask5555);
+    odd_ct += Popcount01Word(cur_geno_word_high);
+    bothset_ct += Popcount01Word(cur_geno_word & cur_geno_word_high);
+  }
+#else // USE_SSE2
+  const uint32_t lead_byte_ct = (-R_CAST(uintptr_t, genoarrb)) % kBytesPerVec;
+  const unsigned char* genoarrb_iter;
   uint32_t trail_ct;
-  if (sample_ct > lead_byte_ct * 4 + (6 * kNypsPerVec)) {
+  if (sample_ct >= lead_byte_ct * 4 + (6 * kNypsPerVec)) {
+    // Only enter this branch if we can execute at least one iteration of the
+    // main vectorized loop.
     const uint32_t remaining_sample_ct = sample_ct - 4 * lead_byte_ct;
-    // strictly speaking, this relies on undefined behavior: see e.g.
-    // http://pzemtsov.github.io/2016/11/06/bug-story-alignment-on-x86.html
-    // May want to search out all instances of NO_UNALIGNED and make the code
-    // standard-compliant, if that can be done without a speed penalty.
-    SmallGenoarrCount3FreqIncr(R_CAST(const uintptr_t*, genoarrb), lead_byte_ct, &even_ct, &odd_ct, &bothset_ct);
-    genoarrb_iter = R_CAST(const uintptr_t*, &(genoarrb[lead_byte_ct]));
+    SmallGenoarrCount3FreqIncr(genoarrb, lead_byte_ct, &even_ct, &odd_ct, &bothset_ct);
+    genoarrb_iter = &(genoarrb[lead_byte_ct]); // now vector-aligned
     const uint32_t remaining_full_vec_ct = remaining_sample_ct / kNypsPerVec;
     uint32_t even_ct_incr;
     uint32_t odd_ct_incr;
     uint32_t bothset_ct_incr;
     const uint32_t vec_ct = remaining_full_vec_ct - (remaining_full_vec_ct % 6);
-    Count3FreqVec6(R_CAST(const VecW*, genoarrb_iter), vec_ct, &even_ct_incr, &odd_ct_incr, &bothset_ct_incr);
+    Count3FreqVec6(genoarrb_iter, vec_ct, &even_ct_incr, &odd_ct_incr, &bothset_ct_incr);
     even_ct += even_ct_incr;
     odd_ct += odd_ct_incr;
     bothset_ct += bothset_ct_incr;
-    genoarrb_iter = &(genoarrb_iter[kWordsPerVec * vec_ct]);
+    genoarrb_iter = &(genoarrb_iter[kBytesPerVec * vec_ct]);
     trail_ct = remaining_sample_ct - (vec_ct * kNypsPerVec);
   } else {
-    genoarrb_iter = R_CAST(const uintptr_t*, genoarrb);
+    genoarrb_iter = genoarrb;
     trail_ct = sample_ct;
   }
   const uint32_t trail_byte_ct = NypCtToByteCt(trail_ct);
   SmallGenoarrCount3FreqIncr(genoarrb_iter, trail_byte_ct, &even_ct, &odd_ct, &bothset_ct);
+#endif
   genocounts[0] = sample_ct + bothset_ct - even_ct - odd_ct;
   genocounts[1] = even_ct - bothset_ct;
   genocounts[2] = odd_ct - bothset_ct;
   genocounts[3] = bothset_ct;
 }
 
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GenoarrbCountSubsetFreqs()."
-#endif
 void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __restrict sample_include_interleaved_vec, uint32_t raw_sample_ct, uint32_t sample_ct, STD_ARRAY_REF(uint32_t, 4) genocounts) {
   // does not read past the end of genoarrb
   const uint32_t raw_sample_ctv2 = NypCtToVecCt(raw_sample_ct);
@@ -103,8 +146,8 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
   uint32_t odd_ct;
   uint32_t bothset_ct;
   uint32_t vec_idx = raw_sample_ctv2 - (raw_sample_ctv2 % 6);
-  CountSubset3FreqVec6(R_CAST(const VecW*, genoarrb), R_CAST(const VecW*, sample_include_interleaved_vec), vec_idx, &even_ct, &odd_ct, &bothset_ct);
-  const uintptr_t* genoarrb_iter = &(R_CAST(const uintptr_t*, genoarrb)[kWordsPerVec * vec_idx]);
+  CountSubset3FreqVec6(genoarrb, R_CAST(const VecW*, sample_include_interleaved_vec), vec_idx, &even_ct, &odd_ct, &bothset_ct);
+  const unsigned char* genoarrb_iter = &(genoarrb[kBytesPerVec * vec_idx]);
 #ifdef __LP64__
   const uintptr_t* interleaved_mask_iter = &(sample_include_interleaved_vec[vec_idx * (kWordsPerVec / 2)]);
 #else
@@ -142,8 +185,8 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
       uintptr_t cur_geno_word1;
       uintptr_t cur_geno_word2;
       if (2 * vec_idx + vechalf_idx < halfvec_idx_trail) {
-        cur_geno_word1 = *genoarrb_iter++;
-        cur_geno_word2 = *genoarrb_iter++;
+        CopyFromUnalignedIncrW(&cur_geno_word1, &genoarrb_iter);
+        CopyFromUnalignedIncrW(&cur_geno_word2, &genoarrb_iter);
       } else {
         // bugfix (19 May 2022): this was in 0..31 when it needed to be in
         // 0..15
@@ -154,7 +197,7 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
           cur_geno_word1 = ProperSubwordLoad(genoarrb_iter, remaining_byte_ct);
           cur_geno_word2 = 0;
         } else {
-          cur_geno_word1 = *genoarrb_iter++;
+          CopyFromUnalignedIncrW(&cur_geno_word1, &genoarrb_iter);
           cur_geno_word2 = ProperSubwordLoad(genoarrb_iter, remaining_byte_ct - kBytesPerWord);
         }
       }
@@ -173,7 +216,7 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
   }
 #else  // not USE_AVX2
   const uint32_t vec_idx_trail = (raw_sample_ct + 3) / kNypsPerVec;
-#  ifdef __LP64__
+#  ifdef USE_SSE2
   uintptr_t mask_base1 = 0;
   uintptr_t mask_base2 = 0;
   for (; vec_idx != raw_sample_ctv2; ++vec_idx) {
@@ -191,15 +234,15 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
     uintptr_t cur_geno_word1;
     uintptr_t cur_geno_word2;
     if (vec_idx < vec_idx_trail) {
-      cur_geno_word1 = *genoarrb_iter++;
-      cur_geno_word2 = *genoarrb_iter++;
+      CopyFromUnalignedIncrW(&cur_geno_word1, &genoarrb_iter);
+      CopyFromUnalignedIncrW(&cur_geno_word2, &genoarrb_iter);
     } else {
       const uint32_t remaining_byte_ct = NypCtToByteCt(raw_sample_ct) % kBytesPerVec;
       if (remaining_byte_ct < kBytesPerWord) {
         cur_geno_word1 = ProperSubwordLoad(genoarrb_iter, remaining_byte_ct);
         cur_geno_word2 = 0;
       } else {
-        cur_geno_word1 = *genoarrb_iter++;
+        CopyFromUnalignedIncrW(&cur_geno_word1, &genoarrb_iter);
         cur_geno_word2 = ProperSubwordLoad(genoarrb_iter, remaining_byte_ct - kBytesPerWord);
       }
     }
@@ -213,9 +256,9 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
     even_ct += NypsumWord((cur_geno_word1 & mask_word1) + (cur_geno_word2 & mask_word2));
     odd_ct += NypsumWord(cur_geno_word1_high_masked + cur_geno_word2_high_masked);
     bothset_ct += NypsumWord((cur_geno_word1 & cur_geno_word1_high_masked) + (cur_geno_word2 & cur_geno_word2_high_masked));
-#    endif
+#      endif
   }
-#  else  // not __LP64__
+#  else  // not USE_SSE2
   uintptr_t mask_base = 0;
   for (; vec_idx != raw_sample_ctv2; ++vec_idx) {
     uintptr_t mask_word;
@@ -227,7 +270,7 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
     }
     uintptr_t cur_geno_word;
     if (vec_idx < vec_idx_trail) {
-      cur_geno_word = *genoarrb_iter++;
+      CopyFromUnalignedIncrW(&cur_geno_word, &genoarrb_iter);
     } else {
       const uint32_t remaining_byte_ct = NypCtToByteCt(raw_sample_ct) % kBytesPerVec;
       cur_geno_word = ProperSubwordLoad(genoarrb_iter, remaining_byte_ct);
@@ -237,7 +280,7 @@ void GenoarrbCountSubsetFreqs(const unsigned char* genoarrb, const uintptr_t* __
     odd_ct += Popcount01Word(cur_geno_word_high_masked);
     bothset_ct += Popcount01Word(cur_geno_word & cur_geno_word_high_masked);
   }
-#  endif  // not __LP64__
+#  endif  // not USE_SSE2
 #endif  // not USE_AVX2
   genocounts[0] = sample_ct + bothset_ct - even_ct - odd_ct;
   genocounts[1] = even_ct - bothset_ct;
@@ -265,7 +308,7 @@ void GenoarrCountFreqs(const uintptr_t* genoarr, uint32_t sample_ct, STD_ARRAY_R
 void GenovecNonmissingToZeroUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
   // sets 1 and 2 to zero; leaves 3s untouched.
   const uint32_t vec_ct = NypCtToVecCt(sample_ct);
-  assert(VecIsAligned(genovec));
+  assert(IsVecAligned(genovec));
   const VecW m1 = VCONST_W(kMask5555);
   VecW* vptr = R_CAST(VecW*, genovec);
   for (uint32_t vidx = 0; vidx != vec_ct; ++vidx) {
@@ -280,7 +323,7 @@ void GenovecNonmissingToZeroUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
 void GenovecNonzeroToMissingUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
   // converts 1s and 2s to 3s, leaves zeroes untouched.
   const uint32_t vec_ct = NypCtToVecCt(sample_ct);
-  assert(VecIsAligned(genovec));
+  assert(IsVecAligned(genovec));
   const VecW m1 = VCONST_W(kMask5555);
   VecW* vptr = R_CAST(VecW*, genovec);
   for (uint32_t vidx = 0; vidx != vec_ct; ++vidx) {
@@ -295,7 +338,7 @@ void GenovecNonzeroToMissingUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
 void GenovecNontwoToMissingUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
   // 0 -> 3, 1 -> 3.
   const uint32_t vec_ct = NypCtToVecCt(sample_ct);
-  assert(VecIsAligned(genovec));
+  assert(IsVecAligned(genovec));
   const VecW not_m1 = VCONST_W(kMaskAAAA);
   VecW* vptr = R_CAST(VecW*, genovec);
   for (uint32_t vidx = 0; vidx != vec_ct; ++vidx) {
@@ -309,7 +352,7 @@ void GenovecNontwoToMissingUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
 void GenovecNonzeroToMissingThenInvertUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
   // 0 -> 2, 1 -> 3, 2 -> 3
   const uint32_t vec_ct = NypCtToVecCt(sample_ct);
-  assert(VecIsAligned(genovec));
+  assert(IsVecAligned(genovec));
   const VecW not_m1 = VCONST_W(kMaskAAAA);
   VecW* vptr = R_CAST(VecW*, genovec);
   for (uint32_t vidx = 0; vidx != vec_ct; ++vidx) {
@@ -321,7 +364,7 @@ void GenovecNonzeroToMissingThenInvertUnsafe(uint32_t sample_ct, uintptr_t* geno
 void GenovecInvertThenNonzeroToMissingUnsafe(uint32_t sample_ct, uintptr_t* genovec) {
   // 0 -> 3, 1 -> 3, 2 -> 0
   const uint32_t vec_ct = NypCtToVecCt(sample_ct);
-  assert(VecIsAligned(genovec));
+  assert(IsVecAligned(genovec));
   const VecW m1 = VCONST_W(kMask5555);
   VecW* vptr = R_CAST(VecW*, genovec);
   for (uint32_t vidx = 0; vidx != vec_ct; ++vidx) {
@@ -365,20 +408,19 @@ double BiallelicDiploidMinimac3R2(uint64_t alt1_dosage, uint64_t hap_alt1_ssq_x2
 // These two functions do not overread, but may write extra bytes up to the
 // word boundary.
 // They are likely to be moved to plink2_bits.
-void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32_t incr, uintptr_t* __restrict dst) {
+// bugfix (30 Oct 2023): given how we use this function, we have to drop the
+// vector-alignment requirement for dst.
+void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32_t incr, void* __restrict dst) {
   // Tried adding incr == 0 fast path, negligible performance difference in
   // benchmark.
   // GenoarrLookup256x1bx4 takes ~3-4x as long.
+  uint32_t input_byte_ct = DivUp(input_nyp_ct, 4);
+#ifdef USE_SSE2
   const unsigned char* src_iter = S_CAST(const unsigned char*, bytearr);
-  const uint32_t input_byte_ct = DivUp(input_nyp_ct, 4);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in Expand2bitTo8()."
-#endif
-#ifdef __LP64__
   const uint32_t input_vec_ct = input_byte_ct / kBytesPerVec;
-  unsigned char* dst_iter = R_CAST(unsigned char*, dst);
+  uintptr_t* dst_iter = S_CAST(uintptr_t*, dst);
   if (input_vec_ct) {
-    const VecW mincr = R_CAST(VecW, vecuc_set1(incr));
+    const VecW mincr = VecUcToW(vecuc_set1(incr));
     const VecW m03 = VCONST_W(kMask0303);
     for (uint32_t vec_idx = 0; vec_idx != input_vec_ct; ++vec_idx) {
       VecW cur_vec = vecw_loadu(src_iter);
@@ -395,7 +437,7 @@ void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32
       //                          80-81-82-83, ..., 92-93-94-95,
       //                          112-113-114-115, ..., 124-125-126-127}
       // 0xd8: {0, 2, 1, 3}
-      const __m256i midswapped_vec = _mm256_shuffle_epi32(R_CAST(__m256i, cur_vec), 0xd8);
+      const __m256i midswapped_vec = _mm256_shuffle_epi32(WToVec(cur_vec), 0xd8);
       // This operation is also used in FillInterleavedMaskVec().
       // cur_vec now contains {0-1-2-3, 4-5-6-7, 8-9-10-11, 12-13-14-15,
       //                       32-33-34-35, ..., 44-45-46-47,
@@ -405,7 +447,7 @@ void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32
       //                       48-49-50-51, ..., 60-61-62-63,
       //                       80-81-82-83, ..., 92-93-94-95,
       //                       112-113-114-115, ..., 124-125-126-127}
-      cur_vec = vecw_permute0xd8_if_avx2(R_CAST(VecW, midswapped_vec));
+      cur_vec = vecw_permute0xd8_if_avx2(VecToW(midswapped_vec));
 #  endif
       // AVX2:
       //   vec_even contains {0-1, 4-5, 8-9, 12-13, 32-33, ..., 44-45,
@@ -430,6 +472,7 @@ void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32
       // SSE2:
       //   vec01 contains {0-1, 2-3, 4-5, 6-7, ..., 30-31}
       //   vec23 contains {32-33, 34-35, 36-37, 38-39, ..., 62-63}
+      // There's no m4 masking here, so we don't use vecw_lo_and_hi_nybbles.
       const VecW vec01 = vecw_unpacklo8(vec_even, vec_odd);
       const VecW vec23 = vecw_unpackhi8(vec_even, vec_odd);
 
@@ -451,116 +494,99 @@ void Expand2bitTo8(const void* __restrict bytearr, uint32_t input_nyp_ct, uint32
       //   vecw_unpacklo8() contains {0, 1, ..., 15}
       //   vecw_unpachhi8() contains {16, 17, ..., 31}
       vecw_storeu(dst_iter, mincr + vecw_unpacklo8(vec01_even, vec01_odd));
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
       vecw_storeu(dst_iter, mincr + vecw_unpackhi8(vec01_even, vec01_odd));
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
       const VecW vec23_odd = vecw_srli(vec23, 2) & m03;
       const VecW vec23_even = vec23 & m03;
       vecw_storeu(dst_iter, mincr + vecw_unpacklo8(vec23_even, vec23_odd));
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
       vecw_storeu(dst_iter, mincr + vecw_unpackhi8(vec23_even, vec23_odd));
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
     }
   }
-  const uint32_t remainder = input_byte_ct % kBytesPerVec;
-  if (remainder) {
-    const uint32_t full_qw_ct = remainder / sizeof(Quarterword);
-    const Quarterword* src_alias = R_CAST(const Quarterword*, src_iter);
-    const uintptr_t incr_word = kMask0101 * incr;
-    uintptr_t* dstw = R_CAST(uintptr_t*, dst_iter);
-    for (uint32_t uii = 0; uii != full_qw_ct; ++uii) {
-      const uintptr_t cur_2byte = src_alias[uii];
-      dstw[uii] = incr_word + Unpack0303(cur_2byte);
-    }
-    if (input_byte_ct % 2) {
-      uintptr_t cur_byte = src_iter[remainder - 1];
-#  ifdef USE_AVX2
-      cur_byte = _pdep_u64(cur_byte, kMask0303);
-#  else
-      cur_byte = cur_byte | (cur_byte << 12);
-      cur_byte = (cur_byte | (cur_byte << 6)) & kMask0303;
-#  endif
-      dstw[full_qw_ct] = incr_word + cur_byte;
-    }
+  input_byte_ct = input_byte_ct % kBytesPerVec;
+  if (!input_byte_ct) {
+    return;
   }
-#else  // !__LP64__
-  const Quarterword* src_alias = R_CAST(const Quarterword*, src_iter);
+  const unsigned char* src_uc = src_iter;
+  uintptr_t* dstw = dst_iter;
+#else  // !USE_SSE2
+  const unsigned char* src_uc = S_CAST(const unsigned char*, bytearr);
+  uintptr_t* dstw = S_CAST(uintptr_t*, dst);
+#endif
+  const uint32_t full_qw_ct = input_byte_ct / sizeof(Quarterword);
   const uintptr_t incr_word = kMask0101 * incr;
-  uintptr_t* dstw = R_CAST(uintptr_t*, dst);
-  for (uint32_t uii = 0; uii != input_byte_ct; ++uii) {
-    const uintptr_t cur_2byte = src_alias[uii];
-    dstw[uii] = incr_word + Unpack0303(cur_2byte);
+  for (uint32_t uii = 0; uii != full_qw_ct; ++uii) {
+    Quarterword cur_qw;
+    CopyFromUnalignedOffsetQW(&cur_qw, src_uc, uii);
+    dstw[uii] = incr_word + Unpack0303(cur_qw);
+  }
+#ifdef __LP64__
+  if (input_byte_ct % 2) {
+    uintptr_t cur_byte = src_uc[input_byte_ct - 1];
+#  ifdef USE_AVX2
+    cur_byte = _pdep_u64(cur_byte, kMask0303);
+#  else
+    cur_byte = cur_byte | (cur_byte << 12);
+    cur_byte = (cur_byte | (cur_byte << 6)) & kMask0303;
+#  endif
+    dstw[full_qw_ct] = incr_word + cur_byte;
   }
 #endif
 }
 
-void Expand4bitTo8(const void* __restrict bytearr, uint32_t input_nybble_ct, uint32_t incr, uintptr_t* __restrict dst) {
+void Expand4bitTo8(const void* __restrict bytearr, uint32_t input_nybble_ct, uint32_t incr, void* __restrict dst) {
   // Tried adding incr == 0 fast path, negligible performance difference in
   // benchmark.
-  const unsigned char* src_iter = R_CAST(const unsigned char*, bytearr);
-  const uint32_t input_byte_ct = DivUp(input_nybble_ct, 2);
-#ifdef __LP64__
+#ifdef USE_SSE2
+  uint32_t input_byte_ct = DivUp(input_nybble_ct, 2);
+  const unsigned char* src_iter = S_CAST(const unsigned char*, bytearr);
   const uint32_t input_vec_ct = input_byte_ct / kBytesPerVec;
-  unsigned char* dst_iter = R_CAST(unsigned char*, dst);
+  uintptr_t* dst_iter = S_CAST(uintptr_t*, dst);
   if (input_vec_ct) {
-    const VecW mincr = R_CAST(VecW, vecuc_set1(incr));
+    const VecW mincr = VecUcToW(vecuc_set1(incr));
     const VecW m4 = VCONST_W(kMask0F0F);
     for (uint32_t vec_idx = 0; vec_idx != input_vec_ct; ++vec_idx) {
-      VecW cur_vec = vecw_loadu(src_iter);
+      const VecW cur_vec = vecw_loadu(src_iter);
       src_iter = &(src_iter[kBytesPerVec]);
-      cur_vec = vecw_permute0xd8_if_avx2(cur_vec);
-      // AVX2:
-      //   vec_even contains {0, 2, 4, ..., 14, 32, 34, ..., 46,
-      //                      16, 18, ..., 30, 48, ... 62}
-      //   vec_odd contains {1, 3, 5, ..., 15, 33, 35, ..., 47,
-      //                     17, 19, ..., 31, 49, ..., 63}
-      // SSE2:
-      //   vec_even contains {0, 2, 4, ..., 30}
-      //   vec_odd contains {1, 3, 5, ..., 31}
-      const VecW vec_even = cur_vec & m4;
-      const VecW vec_odd = vecw_srli(cur_vec, 4) & m4;
-
-      // AVX2:
-      //   vec_lo contains {0, 1, ..., 31}
-      //   vec_hi contains {32, 33, ..., 63}
-      // SSE2:
-      //   vec_lo contains {0, 1, 2, ..., 15}
-      //   vec_hi contains {16, 17, 18, ..., 31}
-      const VecW vec_lo = vecw_unpacklo8(vec_even, vec_odd);
-      const VecW vec_hi = vecw_unpackhi8(vec_even, vec_odd);
+      VecW vec_lo;
+      VecW vec_hi;
+      vecw_lo_and_hi_nybbles(cur_vec, m4, &vec_lo, &vec_hi);
       vecw_storeu(dst_iter, mincr + vec_lo);
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
       vecw_storeu(dst_iter, mincr + vec_hi);
-      dst_iter = &(dst_iter[kBytesPerVec]);
+      dst_iter = &(dst_iter[kWordsPerVec]);
     }
   }
-  const uint32_t remainder = input_byte_ct % kBytesPerVec;
-  if (remainder) {
-    const Halfword* src_alias = R_CAST(const Halfword*, src_iter);
-    uintptr_t incr_word = kMask0101 * incr;
-    const uint32_t hw_ct_m1 = (remainder - 1) / sizeof(Halfword);
-    uintptr_t* dstw = R_CAST(uintptr_t*, dst_iter);
-    for (uint32_t hwidx = 0; ; ++hwidx) {
-      uint32_t cur_4byte;
-      if (hwidx >= hw_ct_m1) {
-        if (hwidx > hw_ct_m1) {
-          break;
-        }
-        cur_4byte = SubU32Load(&(src_alias[hwidx]), ModNz(remainder, 4));
-      } else {
-        cur_4byte = src_alias[hwidx];
-      }
-      dstw[hwidx] = incr_word + Unpack0F0F(cur_4byte);
-    }
+  input_byte_ct = input_byte_ct % kBytesPerVec;
+  if (!input_byte_ct) {
+    return;
   }
+  const unsigned char* src_uc = src_iter;
+  uintptr_t* dstw = dst_iter;
 #else
-  unsigned char* dst_iter = R_CAST(unsigned char*, dst);
-  for (uint32_t uii = 0; uii < input_byte_ct; ++uii) {
-    uint32_t cur_byte = src_iter[uii];
-    *dst_iter++ = (cur_byte & 15) + incr;
-    *dst_iter++ = (cur_byte >> 4) + incr;
+  if (!input_nybble_ct) {
+    return;
   }
+  const unsigned char* src_uc = S_CAST(const unsigned char*, bytearr);
+  uintptr_t* dstw = S_CAST(uintptr_t*, dst);
+  const uint32_t input_byte_ct = DivUp(input_nybble_ct, 2);
 #endif
+  const uint32_t hw_ct_m1 = (input_byte_ct - 1) / sizeof(Halfword);
+  const uintptr_t incr_word = kMask0101 * incr;
+  for (uint32_t hwidx = 0; ; ++hwidx) {
+    Halfword cur_hw;
+    if (hwidx >= hw_ct_m1) {
+      if (hwidx > hw_ct_m1) {
+        break;
+      }
+      cur_hw = SubHWLoad(&(src_uc[hwidx * sizeof(Halfword)]), ModNz(input_byte_ct, sizeof(Halfword)));
+    } else {
+      CopyFromUnalignedOffsetHW(&cur_hw, src_uc, hwidx);
+    }
+    dstw[hwidx] = incr_word + Unpack0F0F(cur_hw);
+  }
 }
 
 void PreinitPgfi(PgenFileInfo* pgfip) {
@@ -665,6 +691,7 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
   // is preloaded... need to fix this interface.
   pgfip->max_allele_ct = 2;
   // pgfip->max_dosage_allele_ct = 0;
+  pgfip->extensions_present = 0;
 
   pgfip->block_base = nullptr;
   // this should force overflow when value is uninitialized.
@@ -716,7 +743,9 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
       if ((raw_sample_ct != UINT32_MAX) && (raw_variant_ct != UINT32_MAX)) {
         const uint64_t fsize_expected = 3 + S_CAST(uint64_t, raw_sample_ct) * NypCtToByteCt(raw_variant_ct);
         if (fsize != fsize_expected) {
-          snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Unexpected PLINK 1 sample-major .bed file size (%" PRIu64 " bytes expected).\n", fsize_expected);
+          char* write_iter = strcpya_k(errstr_buf, "Error: Unexpected PLINK 1 sample-major .bed file size (");
+          write_iter = i64toa(fsize_expected, write_iter);
+          strcpy_k(write_iter, " bytes expected).\n");
           return kPglRetMalformedInput;
         }
       }
@@ -739,7 +768,9 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
       raw_variant_ct = quotient;
     } else {
       if (unlikely(S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + 3 != fsize)) {
-        snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Unexpected PLINK 1 .bed file size (expected %" PRIu64 " bytes).\n", S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + 3);
+        char* write_iter = strcpya_k(errstr_buf, "Error: Unexpected PLINK 1 .bed file size (expected ");
+        write_iter = i64toa(S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + 3, write_iter);
+        strcpy_k(write_iter, " bytes).\n");
         return kPglRetMalformedInput;
       }
     }
@@ -763,8 +794,8 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
   // This isn't Golang.
   char pgi_fname_buf[kPglFnamesize];
 
-  if (file_type_code != 0x20) {
-    if (unlikely(file_type_code == 0x30)) {
+  if ((file_type_code & 0xfe) != 0x20) {
+    if (unlikely((file_type_code & 0xfe) == 0x30)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: %s is a .pgen.pgi index file, rather than a .pgen file.\n", fname);
       return kPglRetMalformedInput;
     }
@@ -795,7 +826,7 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: %s read failure: %s.\n", header_fname, strerror(errno));
       return kPglRetReadFail;
     }
-    if (unlikely(!memequal_k(small_readbuf, "l\x1b\x30", 3))) {
+    if (unlikely((!memequal_k(small_readbuf, "l\x1b", 2)) || ((small_readbuf[2] & 0xfe) != 0x30))) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: %s is not a .pgen.pgi file (first three bytes don't match the magic number).\n", header_fname);
       return kPglRetMalformedInput;
     }
@@ -806,7 +837,7 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
     snprintf(errstr_buf, kPglErrstrBufBlen, "Error: %s read failure: %s.\n", header_fname, strerror(errno));
     return kPglRetReadFail;
   }
-  PgenHeaderCtrl header_ctrl = *header_ctrl_ptr;
+  const PgenHeaderCtrl header_ctrl = *header_ctrl_ptr;
   if (raw_variant_ct == UINT32_MAX) {
     raw_variant_ct = pgfip->raw_variant_ct;
     // deliberate underflow
@@ -864,7 +895,9 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
       pgfip->gflags |= kfPgenGlobalDosagePresent | kfPgenGlobalDosagePhasePresent;
     }
     if (unlikely(S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + pgfip->const_fpos_offset != fsize)) {
-      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Unexpected .pgen file size (expected %" PRIu64 " bytes).\n", S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + pgfip->const_fpos_offset);
+      char* write_iter = strcpya_k(errstr_buf, "Error: Unexpected .pgen file size (expected ");
+      write_iter = i64toa(S_CAST(uint64_t, raw_variant_ct) * const_vrec_width + pgfip->const_fpos_offset, write_iter);
+      strcpy_k(write_iter, " bytes).\n");
       return kPglRetMalformedInput;
     }
     pgfip->const_vrtype = vrtype;
@@ -872,12 +905,12 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
     *pgfi_alloc_cacheline_ct_ptr = 0;
     return kPglRetSuccess;
   }
-  if (unlikely((file_type_code >= 0x11) && (file_type_code != 0x20))) {
-    // possible todo: 0x11 phase sets (unlikely before 2023, though)
+  if (unlikely((file_type_code >= 0x12) && ((file_type_code & 0xfe) != 0x20))) {
     snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Third byte of %s does not correspond to a storage mode supported by this version of pgenlib.\n", fname);
     return kPglRetNotYetSupported;
   }
   // plink 2 binary, general-purpose
+  pgfip->extensions_present = file_type_code & 1;
   pgfip->const_fpos_offset = 0;
   pgfip->const_vrtype = UINT32_MAX;
   pgfip->const_vrec_width = 0;
@@ -953,8 +986,112 @@ void FillPgenReadErrstr(FILE* ff, char* errstr_buf) {
   FillPgenHeaderReadErrstr(ff, 0, errstr_buf);
 }
 
-static_assert(kPglMaxAlleleCt == 255, "Need to update PgfiInitPhase2().");
-PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_loaded, uint32_t nonref_flags_already_loaded, uint32_t use_blockload, uint32_t vblock_idx_start, uint32_t vidx_end, uint32_t* max_vrec_width_ptr, PgenFileInfo* pgfip, unsigned char* pgfi_alloc, uintptr_t* pgr_alloc_cacheline_ct_ptr, char* errstr_buf) {
+// Assumes ff points to first byte of appropriate extension-set varint.
+// For each exts_iter entry corresponding to a present extension, size is
+// initialized to 0-based relative sequence number of extension.  size is
+// initialized to ~0LLU for each absent extension.
+// If preprocessing header_exts, footer_fpos_ptr must be nullptr, and ff points
+// to first byte of footer-extension-set varint on successful exit.  If
+// preprocessing footer_exts, footer_fpos_ptr must be non-null, will be filled
+// if footer exists, and ff will be advanced past that on successful exit.
+PglErr PgfiInitPhase2PreprocessExts(uint32_t is_pgi, FILE* ff, PgenExtensionLl* exts_iter, uint64_t* footer_fpos_ptr, char* errstr_buf) {
+  uint32_t cur_type_idx = exts_iter? exts_iter->type_idx : UINT32_MAX;
+  uint32_t type_idx_start = 0;
+  uint32_t prev_ct = 0;
+  while (1) {
+    const uint32_t type_idx_stop = type_idx_start + 7;
+    const int32_t ii = getc_unlocked(ff);
+    if (unlikely(ii == EOF)) {
+      if (ferror_unlocked(ff)) {
+        FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+        return kPglRetReadFail;
+      }
+      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+      return kPglRetMalformedInput;
+    }
+    const uint32_t cur_byte = ii;
+    while (cur_type_idx < type_idx_stop) {
+      const uint32_t shifted_bit = 1 << (cur_type_idx - type_idx_start);
+      if (cur_byte & shifted_bit) {
+        exts_iter->size = prev_ct + PopcountByte(cur_byte & (shifted_bit - 1));
+      } else {
+        exts_iter->size = ~0LLU;
+      }
+      exts_iter = exts_iter->next;
+      const uint32_t next_type_idx = exts_iter? exts_iter->type_idx : UINT32_MAX;
+      if (unlikely(next_type_idx <= cur_type_idx)) {
+        snprintf(errstr_buf, kPglErrstrBufBlen, "Error: PgfiInitPhase2Ex() extension linked-lists must be ordered by increasing type_idx.\n");
+        return kPglRetImproperFunctionCall;
+      }
+      cur_type_idx = next_type_idx;
+    }
+    if (unlikely((type_idx_start == 252) && (cur_byte & 0xf0))) {
+      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+      return kPglRetMalformedInput;
+    }
+    if (!(cur_byte & 128)) {
+      if (footer_fpos_ptr) {
+        if (cur_byte || prev_ct) {
+          if (unlikely(!fread_unlocked(footer_fpos_ptr, sizeof(int64_t), 1, ff))) {
+            FillPgenHeaderReadErrstr(ff, is_pgi, errstr_buf);
+            return kPglRetReadFail;
+          }
+        }
+      }
+      break;
+    }
+    type_idx_start = type_idx_stop;
+    prev_ct += PopcountByte(cur_byte) - 1;
+  }
+  if (exts_iter) {
+    while (1) {
+      exts_iter->size = ~0LLU;
+      exts_iter = exts_iter->next;
+      if (!exts_iter) {
+        break;
+      }
+      const uint32_t next_type_idx = exts_iter->type_idx;
+      if (next_type_idx <= cur_type_idx) {
+        snprintf(errstr_buf, kPglErrstrBufBlen, "Error: PgfiInitPhase2Ex() extension linked-lists must be ordered by increasing type_idx.\n");
+        return kPglRetImproperFunctionCall;
+      }
+      cur_type_idx = next_type_idx;
+    }
+  }
+  return kPglRetSuccess;
+}
+
+PglErr PgfiInitPhase2FillExtSizes(uint32_t is_pgi, FILE* ff, PgenExtensionLl* exts_iter, char* errstr_buf) {
+  uint32_t next_seq_idx = 0;
+  for (; exts_iter; exts_iter = exts_iter->next) {
+    if (exts_iter->size == ~0LLU) {
+      continue;
+    }
+    const uint32_t cur_seq_idx = exts_iter->size;
+    for (; next_seq_idx < cur_seq_idx; ++next_seq_idx) {
+      if (unlikely(FSkipVint(ff))) {
+        goto PgfiInitPhase2FillExtSizes_error_or_eof;
+      }
+    }
+    const uint64_t cur_size = FGetVint63(ff);
+    if (unlikely(cur_size == (1LLU << 63))) {
+      goto PgfiInitPhase2FillExtSizes_error_or_eof;
+    }
+    exts_iter->size = cur_size;
+    next_seq_idx = cur_seq_idx + 1;
+  }
+  return kPglRetSuccess;
+ PgfiInitPhase2FillExtSizes_error_or_eof:
+  if (ferror_unlocked(ff)) {
+    FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+    return kPglRetReadFail;
+  }
+  snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+  return kPglRetMalformedInput;
+}
+
+static_assert(kPglMaxAlleleCt == 255, "Need to update PgfiInitPhase2Ex().");
+PglErr PgfiInitPhase2Ex(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_loaded, uint32_t nonref_flags_already_loaded, uint32_t use_blockload, uint32_t vblock_idx_start, uint32_t vidx_end, uint32_t* max_vrec_width_ptr, PgenFileInfo* pgfip, unsigned char* pgfi_alloc, PgenExtensionLl* header_exts, PgenExtensionLl* footer_exts, uintptr_t* pgr_alloc_cacheline_ct_ptr, char* errstr_buf) {
   // *max_vrec_width_ptr technically only needs to be set in single-variant
   // fread() mode, but its computation is not currently optimized out in the
   // other two modes.
@@ -982,7 +1119,7 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
     return kPglRetSuccess;
   }
   const uint32_t nonref_flags_stored = ((header_ctrl >> 6) == 3);
-  unsigned char* nonref_flags_iter = R_CAST(unsigned char*, pgfip->nonref_flags);
+  unsigned char* nonref_flags_iter = DowncastToUc(pgfip->nonref_flags);
   const unsigned char* fread_ptr = nullptr;  // maybe-uninitialized warning
   FILE* header_ff = pgfip->pgi_ff;
   const uint32_t is_pgi = (header_ff != nullptr);
@@ -1079,7 +1216,7 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
   if (alt_allele_ct_byte_ct) {
     assert(alt_allele_ct_byte_ct == 1);
     if (unlikely(!allele_idx_offsets_iter)) {
-      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: pgfip->allele_idx_offsets must be allocated before PgfiInitPhase2() is called.\n");
+      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: pgfip->allele_idx_offsets must be allocated before PgfiInitPhase2Ex() is called.\n");
       return kPglRetImproperFunctionCall;
     }
   }
@@ -1184,15 +1321,12 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
       const uint32_t entry_bit_width = 1 << log2_entry_bit_width;
       const uint32_t entry_mask = (1 << entry_bit_width) - 1;
       const uint32_t cur_byte_ct = 1 + ((cur_vblock_variant_ct - 1) >> (3 - log2_entry_bit_width));
-      const uintptr_t* loadbuf_iter;
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in PgfiInitPhase2()."
-#endif
+      const unsigned char* loadbuf_biter;
       if (unlikely(!fread_unlocked(loadbuf, cur_byte_ct, 1, header_ff))) {
         FillPgenHeaderReadErrstr(header_ff, is_pgi, errstr_buf);
         return kPglRetReadFail;
       }
-      loadbuf_iter = R_CAST(const uintptr_t*, loadbuf);
+      loadbuf_biter = loadbuf;
       const uint32_t log2_entries_per_word = kBitsPerWordLog2 - log2_entry_bit_width;
       const uint32_t block_len = 1 << log2_entries_per_word;
       uint32_t cur_vblock_idx = 0;
@@ -1204,7 +1338,8 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
           }
           cur_vblock_idx_stop = cur_vblock_variant_ct;
         }
-        uintptr_t input_word = *loadbuf_iter++;
+        uintptr_t input_word;
+        CopyFromUnalignedIncrW(&input_word, &loadbuf_biter);
         for (; cur_vblock_idx != cur_vblock_idx_stop; ++cur_vblock_idx) {
           const uint32_t input_word_masked = input_word & entry_mask;
           *vrtypes_iter++ = vrtype_table[input_word_masked];
@@ -1222,7 +1357,7 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
           return kPglRetReadFail;
         }
         fread_ptr = loadbuf;
-        Expand4bitTo8(fread_ptr, cur_vblock_variant_ct, 0, R_CAST(uintptr_t*, vrtypes_iter));
+        Expand4bitTo8(fread_ptr, cur_vblock_variant_ct, 0, vrtypes_iter);
         vrtypes_iter = &(vrtypes_iter[cur_vblock_variant_ct]);
       } else {
         // phase and dosage
@@ -1232,37 +1367,37 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
         }
         vrtypes_iter = &(vrtypes_iter[cur_vblock_variant_ct]);
       }
-      const uint32_t bytes_per_entry = 1 + (vrtype_and_fpos_storage & 3);
-      const uint32_t cur_byte_ct = cur_vblock_variant_ct * bytes_per_entry;
+      const uint32_t vrec_len_byte_ct = 1 + (vrtype_and_fpos_storage & 3);
+      const uint32_t cur_byte_ct = cur_vblock_variant_ct * vrec_len_byte_ct;
       if (unlikely(!fread_unlocked(loadbuf, cur_byte_ct, 1, header_ff))) {
         FillPgenHeaderReadErrstr(header_ff, is_pgi, errstr_buf);
         return kPglRetReadFail;
       }
       fread_ptr = loadbuf;
-      if (bytes_per_entry == 1) {
+      if (vrec_len_byte_ct == 1) {
         for (uint32_t cur_vblock_vidx = 0; cur_vblock_vidx != cur_vblock_variant_ct; ++cur_vblock_vidx) {
           var_fpos_iter[cur_vblock_vidx] = variant_fpos;
           uint32_t cur_vrec_len = fread_ptr[cur_vblock_vidx];
           variant_fpos += cur_vrec_len;
           // no need for correct max_vrec_width
         }
-      } else if (bytes_per_entry == 2) {
+      } else if (vrec_len_byte_ct == 2) {
         for (uint32_t cur_vblock_vidx = 0; cur_vblock_vidx != cur_vblock_variant_ct; ++cur_vblock_vidx) {
           var_fpos_iter[cur_vblock_vidx] = variant_fpos;
           uint16_t cur_vrec_len;
-          memcpy_k(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 2]), 2);
+          CopyFromUnalignedU16(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 2]));
           variant_fpos += cur_vrec_len;
           if (cur_vrec_len > max_vrec_width) {
             // todo: check whether we're better off just assuming 2^16 - 1
             max_vrec_width = cur_vrec_len;
           }
         }
-      } else if (bytes_per_entry == 3) {
+      } else if (vrec_len_byte_ct == 3) {
         for (uint32_t cur_vblock_vidx = 0; cur_vblock_vidx != cur_vblock_variant_ct; ++cur_vblock_vidx) {
           var_fpos_iter[cur_vblock_vidx] = variant_fpos;
           uint32_t cur_vrec_len;
           // safe to read a byte past the end, since that's in loadbuf
-          memcpy(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 3]), sizeof(int32_t));
+          CopyFromUnalignedU32(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 3]));
           cur_vrec_len &= 0xffffff;
           variant_fpos += cur_vrec_len;
           if (cur_vrec_len > max_vrec_width) {
@@ -1273,7 +1408,7 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
         for (uint32_t cur_vblock_vidx = 0; cur_vblock_vidx != cur_vblock_variant_ct; ++cur_vblock_vidx) {
           var_fpos_iter[cur_vblock_vidx] = variant_fpos;
           uint32_t cur_vrec_len;
-          memcpy(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 4]), 4);
+          CopyFromUnalignedU32(&cur_vrec_len, &(fread_ptr[cur_vblock_vidx * 4]));
           variant_fpos += cur_vrec_len;
           if (cur_vrec_len > max_vrec_width) {
             max_vrec_width = cur_vrec_len;
@@ -1356,7 +1491,32 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
     vrtypes_iter[0] = 0;
   }
 
-  if (is_pgi) {
+  uint64_t footer_extensions_fpos = 0;
+  if (pgfip->extensions_present && (header_exts || footer_exts)) {
+    if (vidx_end < raw_variant_ct) {
+      const uint32_t vrec_len_byte_ct = 1 + (vrtype_and_fpos_storage & 3);
+      const uint32_t phase_or_dosage_present = (vrtype_and_fpos_storage >= 4);
+      const uint64_t ext_fpos = PglHeaderBaseEndOffset(raw_variant_ct, vrec_len_byte_ct, phase_or_dosage_present, nonref_flags_stored);
+      if (unlikely(fseeko(header_ff, ext_fpos, SEEK_SET))) {
+        FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+        return kPglRetReadFail;
+      }
+    }
+    PglErr reterr = PgfiInitPhase2PreprocessExts(is_pgi, header_ff, header_exts, nullptr, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+    reterr = PgfiInitPhase2PreprocessExts(is_pgi, header_ff, footer_exts, &footer_extensions_fpos, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+    reterr = PgfiInitPhase2FillExtSizes(is_pgi, header_ff, header_exts, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+  }
+
+  if (is_pgi && (!header_exts) && (!footer_exts)) {
     if (unlikely(fclose_null(&pgfip->pgi_ff))) {
       FillPgenHeaderReadErrstrFromNzErrno(1, errstr_buf);
       return kPglRetReadFail;
@@ -1366,10 +1526,24 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
   const uint64_t actual_fpos = ftello(pgfip->shared_ff);
   if (actual_fpos != pgfip->var_fpos[0]) {
     // now > instead of != to allow additional information to be stored between
-    // header and first variant record
+    // header and first variant record (e.g. mode 0x11).
     if (unlikely(actual_fpos > pgfip->var_fpos[0])) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
       return kPglRetMalformedInput;
+    }
+    if (unlikely(fseeko(pgfip->shared_ff, pgfip->var_fpos[0], SEEK_SET))) {
+      FillPgenReadErrstrFromNzErrno(errstr_buf);
+      return kPglRetReadFail;
+    }
+  }
+  if (footer_extensions_fpos && footer_exts) {
+    if (unlikely(fseeko(pgfip->shared_ff, footer_extensions_fpos, SEEK_SET))) {
+      FillPgenReadErrstrFromNzErrno(errstr_buf);
+      return kPglRetReadFail;
+    }
+    PglErr reterr = PgfiInitPhase2FillExtSizes(0, pgfip->shared_ff, footer_exts, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
     }
     if (unlikely(fseeko(pgfip->shared_ff, pgfip->var_fpos[0], SEEK_SET))) {
       FillPgenReadErrstrFromNzErrno(errstr_buf);
@@ -1498,6 +1672,171 @@ PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_lo
   return kPglRetSuccess;
 }
 
+PglErr PgfiInitReloadExtSet(uint32_t is_pgi, FILE* ff, uintptr_t* ext_bitarr, uint32_t* ext_bitarr_cumulative_popcounts, uint64_t* footer_fpos_ptr, uint32_t* word_ct_ptr, char* errstr_buf) {
+  uintptr_t cur_output_word = 0;
+  uintptr_t nonzero_present = 0;
+  uint32_t write_idx_lowbits = 0;
+  uint32_t widx = 0;
+  ext_bitarr_cumulative_popcounts[0] = 0;
+  while (1) {
+    const int32_t ii = getc_unlocked(ff);
+    if (unlikely(ii == EOF)) {
+      if (ferror_unlocked(ff)) {
+        FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+        return kPglRetReadFail;
+      }
+      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+      return kPglRetMalformedInput;
+    }
+    const uintptr_t cur_masked_bits = ii & 127;
+    cur_output_word |= cur_masked_bits << write_idx_lowbits;
+    uint32_t new_write_idx_lowbits = write_idx_lowbits + 7;
+    if (new_write_idx_lowbits >= kBitsPerWord) {
+      ext_bitarr[widx] = cur_output_word;
+      nonzero_present |= cur_output_word;
+      ++widx;
+      ext_bitarr_cumulative_popcounts[widx] = PopcountWord(cur_output_word);
+      cur_output_word = cur_masked_bits >> (kBitsPerWord - write_idx_lowbits);
+      new_write_idx_lowbits -= kBitsPerWord;
+    }
+    write_idx_lowbits = new_write_idx_lowbits;
+    if (!(ii & 128)) {
+      break;
+    }
+    if (unlikely(widx == (256 / kBitsPerWord))) {
+      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+      return kPglRetMalformedInput;
+    }
+  }
+  ext_bitarr[widx] = cur_output_word;
+  nonzero_present |= cur_output_word;
+  *word_ct_ptr = widx + 1;
+  if (footer_fpos_ptr && nonzero_present) {
+    if (unlikely(!fread_unlocked(footer_fpos_ptr, sizeof(int64_t), 1, ff))) {
+      FillPgenHeaderReadErrstr(ff, is_pgi, errstr_buf);
+      return kPglRetReadFail;
+    }
+  }
+  return kPglRetSuccess;
+}
+
+PglErr PgfiInitFillExts(const uintptr_t* ext_bitarr, const uint32_t* ext_cumulative_popcounts, uint32_t word_ct, uint32_t is_pgi, FILE* ff, PgenExtensionLl* exts, char* errstr_buf) {
+  {
+    const uint32_t ext_ct = ext_cumulative_popcounts[word_ct - 1] + PopcountWord(ext_bitarr[word_ct - 1]);
+    uint64_t sizes[256];
+    for (uint32_t seq_idx = 0; seq_idx != ext_ct; ++seq_idx) {
+      const uint64_t cur_size = FGetVint63(ff);
+      if (unlikely(cur_size == (1LLU << 63))) {
+        goto PgfiInitFillExts_error_or_eof;
+      }
+      sizes[seq_idx] = cur_size;
+    }
+    const uint32_t type_idx_limit = word_ct * kBitsPerWord;
+    uint32_t next_seq_idx = 0;
+    for (PgenExtensionLl* exts_iter = exts; exts_iter; exts_iter = exts_iter->next) {
+      const uint32_t type_idx = exts_iter->type_idx;
+      if (type_idx >= type_idx_limit) {
+        break;
+      }
+      if ((exts_iter->size == ~0LLU) || (!IsSet(ext_bitarr, type_idx))) {
+        continue;
+      }
+      const uint32_t seq_idx = RawToSubsettedPos(ext_bitarr, ext_cumulative_popcounts, type_idx);
+      const uint64_t cur_size = sizes[seq_idx];
+      if (unlikely(cur_size != exts_iter->size)) {
+        snprintf(errstr_buf, kPglErrstrBufBlen, "Error: PgfiInitLoadExts() extension byte-size mismatch.\n");
+        return kPglRetImproperFunctionCall;
+      }
+      if (seq_idx > next_seq_idx) {
+        uint64_t bytes_to_skip = 0;
+        for (uint32_t uii = next_seq_idx; uii != seq_idx; ++uii) {
+          bytes_to_skip += sizes[uii];
+        }
+        if (unlikely(fseeko(ff, bytes_to_skip, SEEK_CUR))) {
+          FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+          return kPglRetReadFail;
+        }
+      }
+      if (unlikely(fread_checked(exts_iter->contents, cur_size, ff))) {
+        FillPgenHeaderReadErrstr(ff, is_pgi, errstr_buf);
+        return kPglRetReadFail;
+      }
+      next_seq_idx = seq_idx + 1;
+    }
+    return kPglRetSuccess;
+  }
+ PgfiInitFillExts_error_or_eof:
+  if (ferror_unlocked(ff)) {
+    FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+    return kPglRetReadFail;
+  }
+  snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid .pgen%s.\n", is_pgi? ".pgi file" : " header");
+  return kPglRetMalformedInput;
+}
+
+PglErr PgfiInitLoadExts(PgenHeaderCtrl header_ctrl, PgenFileInfo* pgfip, PgenExtensionLl* header_exts, PgenExtensionLl* footer_exts, char* errstr_buf) {
+  const uint64_t starting_fpos = ftello(pgfip->shared_ff);
+  FILE* header_ff = pgfip->pgi_ff;
+  const uint32_t is_pgi = (header_ff != nullptr);
+  if (!is_pgi) {
+    header_ff = pgfip->shared_ff;
+    assert(header_ff);
+  }
+  {
+    const uint32_t vrtype_and_fpos_storage = header_ctrl & 15;
+    const uint32_t vrec_len_byte_ct = 1 + (vrtype_and_fpos_storage & 3);
+    const uint32_t phase_or_dosage_present = (vrtype_and_fpos_storage >= 4);
+    const uint32_t nonref_flags_stored = ((header_ctrl >> 6) == 3);
+    const uint64_t ext_fpos = PglHeaderBaseEndOffset(pgfip->raw_variant_ct, vrec_len_byte_ct, phase_or_dosage_present, nonref_flags_stored);
+    if (unlikely(fseeko(header_ff, ext_fpos, SEEK_SET))) {
+      FillPgenHeaderReadErrstrFromNzErrno(is_pgi, errstr_buf);
+      return kPglRetReadFail;
+    }
+  }
+  uintptr_t header_bitarr[(256 / kBitsPerWord) + 1];
+  uint32_t header_bitarr_cumulative_popcounts[(256 / kBitsPerWord) + 1];
+  uint32_t header_ext_word_ct;
+  PglErr reterr = PgfiInitReloadExtSet(is_pgi, header_ff, header_bitarr, header_bitarr_cumulative_popcounts, nullptr, &header_ext_word_ct, errstr_buf);
+  if (unlikely(reterr)) {
+    return reterr;
+  }
+  uintptr_t footer_bitarr[(256 / kBitsPerWord) + 1];
+  uint32_t footer_bitarr_cumulative_popcounts[(256 / kBitsPerWord) + 1];
+  uint32_t footer_ext_word_ct;
+  uint64_t footer_extensions_fpos;
+  reterr = PgfiInitReloadExtSet(is_pgi, header_ff, footer_bitarr, footer_bitarr_cumulative_popcounts, &footer_extensions_fpos, &footer_ext_word_ct, errstr_buf);
+  if (unlikely(reterr)) {
+    return reterr;
+  }
+  if (header_exts) {
+    reterr = PgfiInitFillExts(header_bitarr, header_bitarr_cumulative_popcounts, header_ext_word_ct, is_pgi, header_ff, header_exts, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+  }
+  if (is_pgi) {
+    if (unlikely(fclose_null(&pgfip->pgi_ff))) {
+      FillPgenHeaderReadErrstrFromNzErrno(1, errstr_buf);
+      return kPglRetReadFail;
+    }
+  }
+  if (footer_exts) {
+    if (unlikely(fseeko(pgfip->shared_ff, footer_extensions_fpos, SEEK_SET))) {
+      FillPgenReadErrstrFromNzErrno(errstr_buf);
+      return kPglRetReadFail;
+    }
+    reterr = PgfiInitFillExts(footer_bitarr, footer_bitarr_cumulative_popcounts, footer_ext_word_ct, 0, pgfip->shared_ff, footer_exts, errstr_buf);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+  }
+  if (unlikely(fseeko(pgfip->shared_ff, starting_fpos, SEEK_SET))) {
+    FillPgenReadErrstrFromNzErrno(errstr_buf);
+    return kPglRetReadFail;
+  }
+  return kPglRetSuccess;
+}
+
 uint32_t GetLdbaseVidx(const unsigned char* vrtypes, uint32_t cur_vidx) {
 #ifdef __LP64__
   const VecW* vrtypes_valias = R_CAST(const VecW*, vrtypes);
@@ -1545,6 +1884,16 @@ uint32_t GetLdbaseVidx(const unsigned char* vrtypes, uint32_t cur_vidx) {
     cur_vrtypes_word = vrtypes_walias[--vidx_word_idx];
   }
 #endif
+}
+
+uint64_t GetPgfiLdbaseFpos(const PgenFileInfo* pgfip, uintptr_t vidx) {
+  if (!pgfip->var_fpos) {
+    return pgfip->const_fpos_offset + pgfip->const_vrec_width * S_CAST(uint64_t, vidx);
+  }
+  if (pgfip->vrtypes && ((pgfip->vrtypes[vidx] & 6) == 2)) {
+    vidx = GetLdbaseVidx(pgfip->vrtypes, vidx);
+  }
+  return pgfip->var_fpos[vidx];
 }
 
 uint64_t PgfiMultireadGetCachelineReq(const uintptr_t* variant_include, const PgenFileInfo* pgfip, uint32_t variant_ct, uint32_t block_size) {
@@ -2262,9 +2611,8 @@ PglErr ParseOnebitUnsafe(const unsigned char* fread_end, const unsigned char** f
   const uint32_t read_hw_ct = raw_sample_ct / kBitsPerWordD2;
   if (read_hw_ct >= 2 * kWordsPerVec) {
     const uint32_t read_vec_ct = raw_sample_ct / kBitsPerVec;
-    const VecW* onebit_main_valias = R_CAST(const VecW*, onebit_main_iter);
     const VecW m4 = VCONST_W(kMask0F0F);
-#  ifdef USE_SSE42
+#  ifdef USE_SHUFFLE8
     // 0, 1, 4, 5, 16, 17, 20, 21, 64, 65, 68, 69, 80, 81, 84, 85 if the codes
     // are 0 and 1
     const VecW lookup = {word_base + common_code_delta * 0x1514111005040100LLU,
@@ -2275,14 +2623,12 @@ PglErr ParseOnebitUnsafe(const unsigned char* fread_end, const unsigned char** f
     const VecW vec_base = VCONST_W(word_base);
     const VecW vec_delta = VCONST_W(common_code_delta * kMask5555);
 #  endif
-    VecW* genoarr_valias = R_CAST(VecW*, genoarr);
     for (uint32_t vidx = 0; vidx != read_vec_ct; ++vidx) {
-      const VecW cur_vec = vecw_loadu(&(onebit_main_valias[vidx]));
-      const VecW vec_even = cur_vec & m4;
-      const VecW vec_odd = vecw_srli(cur_vec, 4) & m4;
-      VecW vec_lo = vecw_unpacklo8(vec_even, vec_odd);
-      VecW vec_hi = vecw_unpackhi8(vec_even, vec_odd);
-#  ifdef USE_SSE42
+      const VecW cur_vec = vecw_loadu(&(onebit_main_iter[vidx * kBytesPerVec]));
+      VecW vec_lo;
+      VecW vec_hi;
+      vecw_lo_and_hi_nybbles(cur_vec, m4, &vec_lo, &vec_hi);
+#  ifdef USE_SHUFFLE8
       vec_lo = vecw_shuffle8(lookup, vec_lo);
       vec_hi = vecw_shuffle8(lookup, vec_hi);
 #  else
@@ -2296,18 +2642,14 @@ PglErr ParseOnebitUnsafe(const unsigned char* fread_end, const unsigned char** f
       vec_lo = vec_base + (vec_delta & vec_lo);
       vec_hi = vec_base + (vec_delta & vec_hi);
 #  endif
-      genoarr_valias[2 * vidx] = vec_lo;
-      genoarr_valias[2 * vidx + 1] = vec_hi;
+      vecw_storeu(&(genoarr[kWordsPerVec * 2 * vidx]), vec_lo);
+      vecw_storeu(&(genoarr[kWordsPerVec * (2 * vidx + 1)]), vec_hi);
     }
     genoarr_widx = read_vec_ct * (2 * kWordsPerVec);
   }
 #endif
   const uint32_t genoarr_widx_trail = (raw_sample_ct + 7) / kBitsPerWordD2;
   const uint32_t genoarr_widx_end = NypCtToWordCt(raw_sample_ct);
-#  ifdef NO_UNALIGNED
-#    error "Unaligned accesses in ParseOnebitUnsafe()."
-#  endif
-  const Halfword* onebit_main_alias = R_CAST(const Halfword*, onebit_main_iter);
   for (; ; ++genoarr_widx) {
     uintptr_t ww;
     if (genoarr_widx >= genoarr_widx_trail) {
@@ -2315,9 +2657,11 @@ PglErr ParseOnebitUnsafe(const unsigned char* fread_end, const unsigned char** f
       if (genoarr_widx == genoarr_widx_end) {
         break;
       }
-      ww = ProperSubwordLoad(&(onebit_main_alias[genoarr_widx_trail]), 1 + (((raw_sample_ct - 1) % kBitsPerWordD2) / CHAR_BIT));
+      ww = ProperSubwordLoad(&(onebit_main_iter[genoarr_widx_trail * sizeof(Halfword)]), 1 + (((raw_sample_ct - 1) % kBitsPerWordD2) / CHAR_BIT));
     } else {
-      ww = onebit_main_alias[genoarr_widx];
+      Halfword hw;
+      CopyFromUnalignedOffsetHW(&hw, onebit_main_iter, genoarr_widx);
+      ww = hw;
     }
     // apply middle-out operation
     // 64-bit:
@@ -2913,7 +3257,7 @@ PglErr ReadDifflistOrGenovecSubsetUnsafe(const uintptr_t* __restrict sample_incl
   return kPglRetSuccess;
 }
 
-PglErr PgrGetDifflistOrGenovec(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, PgenReader* pgr_ptr, uintptr_t* __restrict genovec, uint32_t* difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr) {
+PglErr PgrGetDifflistOrGenovec(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, PgenReader* pgr_ptr, uintptr_t* __restrict genovec, uint32_t* __restrict difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr) {
   if (!sample_ct) {
     *difflist_common_geno_ptr = UINT32_MAX;
     return kPglRetSuccess;
@@ -3029,41 +3373,41 @@ PglErr SkipDeltalistIds(const unsigned char* fread_end, const unsigned char* gro
   //   all but last ID block
   // total = (group_ct - 1) * kPglDifflistGroupSize + extra_byte_tot +
   //         (difflist_len + 3) / 4
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in SkipDeltalistIds()."
-#endif
   const unsigned char* iddiff_start = &(extra_byte_cts[(group_ct - 1) * kPglDifflistGroupSize + extra_byte_tot]);
   if (has_genotypes) {
     iddiff_start = &(iddiff_start[NypCtToByteCt(difflist_len)]);
   }
-  const uintptr_t* fread_alias = R_CAST(const uintptr_t*, iddiff_start);
-  const uintptr_t* fread_alias_stop = R_CAST(const uintptr_t*, &(fread_end[-S_CAST(int32_t, kBytesPerWord)]));
+  const unsigned char* fread_ptr = iddiff_start;
+  const unsigned char* fread_loop_stop = &(fread_end[-S_CAST(int32_t, kBytesPerWord)]);
   uint32_t remaining_id_ct = (difflist_len - 1) % kPglDifflistGroupSize;
-#ifdef __LP64__
+#ifdef USE_SSE2
   while (remaining_id_ct >= kBytesPerVec) {
-    if (unlikely(fread_alias > fread_alias_stop)) {
+    if (unlikely(fread_ptr > fread_loop_stop)) {
       return kPglRetMalformedInput;
     }
-    const VecW vv = vecw_loadu(R_CAST(const VecW*, fread_alias));
-    fread_alias = &(fread_alias[kWordsPerVec]);
+    const VecW vv = vecw_loadu(fread_ptr);
+    fread_ptr = &(fread_ptr[kBytesPerVec]);
     const uint32_t highbits = vecw_movemask(vv);
     remaining_id_ct -= kBytesPerVec - PopcountVec8thUint(highbits);
   }
 #endif
   while (remaining_id_ct >= kBytesPerWord) {
     // scan a word at a time, count number of high bits set
-    if (unlikely(fread_alias > fread_alias_stop)) {
+    if (unlikely(fread_ptr > fread_loop_stop)) {
       return kPglRetMalformedInput;
     }
 #ifdef USE_SSE42
-    const uintptr_t ww = (*fread_alias++) & (0x80 * kMask0101);
+    uintptr_t ww;
+    CopyFromUnalignedIncrW(&ww, &fread_ptr);
+    ww &= 0x80 * kMask0101;
     remaining_id_ct -= kBytesPerWord - PopcountWord(ww);
 #else
-    const uintptr_t ww = ((*fread_alias++) >> 7) & kMask0101;
+    uintptr_t ww;
+    CopyFromUnalignedIncrW(&ww, &fread_ptr);
+    ww = (ww >> 7) & kMask0101;
     remaining_id_ct -= kBytesPerWord - ((ww * kMask0101) >> (kBitsPerWord - 8));
 #endif
   }
-  const unsigned char* fread_ptr = R_CAST(const unsigned char*, fread_alias);
   if (!remaining_id_ct) {
     *fread_pp = fread_ptr;
     return kPglRetSuccess;
@@ -3153,9 +3497,6 @@ PglErr CountparseOnebitSubset(const unsigned char* fread_end, const uintptr_t* _
   const uint32_t common2_code = *onebit_main_iter++;
   const uint32_t geno_code_low = common2_code / 4;
   const uint32_t geno_code_high = (common2_code & 3) + geno_code_low;
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in CountparseOnebitSubset()."
-#endif
   uint32_t high_geno_ct;
   if (raw_sample_ct == sample_ct) {
     high_geno_ct = PopcountBytes(onebit_main_iter, initial_bitarray_byte_ct);
@@ -3181,7 +3522,6 @@ PglErr CountparseOnebitSubset(const unsigned char* fread_end, const uintptr_t* _
   }
   const uint32_t subgroup_idx_last = (difflist_len - 1) / kBitsPerWordD2;
   const uint32_t sample_id_byte_ct = BytesToRepresentNzU32(raw_sample_ct);
-  const uintptr_t* onebitarr = R_CAST(const uintptr_t*, onebit_main_iter);
   uintptr_t* raregeno_workspace_iter = raregeno_workspace;
   uintptr_t raw_sample_idx = 0;
   for (uint32_t subgroup_idx = 0; ; ++subgroup_idx) {
@@ -3216,7 +3556,7 @@ PglErr CountparseOnebitSubset(const unsigned char* fread_end, const uintptr_t* _
       if (IsSet(sample_include, raw_sample_idx)) {
         const uintptr_t cur_geno = cur_raregeno_word & 3;
         genocounts[cur_geno] += 1;
-        high_geno_ct -= IsSet(onebitarr, raw_sample_idx);
+        high_geno_ct -= IsSetUnaligned(onebit_main_iter, raw_sample_idx);
       }
       if (!remaining_deltas_in_subgroup) {
         break;
@@ -3331,8 +3671,8 @@ PglErr GetBasicGenotypeCounts(const uintptr_t* __restrict sample_include, const 
       if (PtrAddCk(fread_end, genovec_byte_ct, &fread_ptr)) {
         return kPglRetMalformedInput;
       }
-      const uint32_t genoarrb_is_unaligned = R_CAST(uintptr_t, genoarrb) % kBytesPerVec;
       if (!subsetting_required) {
+        const uint32_t genoarrb_is_unaligned = R_CAST(uintptr_t, genoarrb) % kBytesPerVec;
         if (genoarrb_is_unaligned) {
           GenoarrbCountFreqs(genoarrb, raw_sample_ct, genocounts);
         } else {
@@ -3383,15 +3723,13 @@ PglErr PgrGetCounts(const uintptr_t* __restrict sample_include, const uintptr_t*
   return GetBasicGenotypeCounts(sample_include, sample_include_interleaved_vec, GetSicp(pssi), sample_ct, vidx, pgrp, nullptr, genocounts);
 }
 
-// Ok for nyp_vvec to be unaligned.
-uint32_t CountNypVec6(const VecW* nyp_vvec, uintptr_t nyp_word, uint32_t vec_ct) {
+uint32_t CountNypVec6(const unsigned char* nyp_vvec_biter, uintptr_t nyp_word, uint32_t vec_ct) {
   assert(!(vec_ct % 6));
   const VecW m0 = vecw_setzero();
   const VecW m1 = VCONST_W(kMask5555);
   const VecW m2 = VCONST_W(kMask3333);
   const VecW m4 = VCONST_W(kMask0F0F);
   const VecW xor_vvec = vecw_set1(nyp_word);
-  const VecW* nyp_vvec_iter = nyp_vvec;
   VecW prev_sad_result = vecw_setzero();
   VecW acc = vecw_setzero();
   uintptr_t cur_incr = 60;
@@ -3404,27 +3742,33 @@ uint32_t CountNypVec6(const VecW* nyp_vvec, uintptr_t nyp_word, uint32_t vec_ct)
       cur_incr = vec_ct;
     }
     VecW inner_acc = vecw_setzero();
-    const VecW* nyp_vvec_stop = &(nyp_vvec_iter[cur_incr]);
+    const unsigned char* nyp_vvec_stop = &(nyp_vvec_biter[cur_incr * kBytesPerVec]);
     do {
-      VecW loader1 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
-      VecW loader2 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
+      VecW loader1 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
+      VecW loader2 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
       VecW count1 = vecw_and_notfirst(vecw_srli(loader1, 1) | loader1, m1);
       VecW count2 = vecw_and_notfirst(vecw_srli(loader2, 1) | loader2, m1);
 
-      loader1 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
-      loader2 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
+      loader1 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
+      loader2 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
       count1 = count1 + vecw_and_notfirst(vecw_srli(loader1, 1) | loader1, m1);
       count2 = count2 + vecw_and_notfirst(vecw_srli(loader2, 1) | loader2, m1);
 
-      loader1 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
-      loader2 = vecw_loadu(nyp_vvec_iter++) ^ xor_vvec;
+      loader1 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
+      loader2 = vecw_loadu(nyp_vvec_biter) ^ xor_vvec;
+      nyp_vvec_biter += kBytesPerVec;
       count1 = count1 + vecw_and_notfirst(vecw_srli(loader1, 1) | loader1, m1);
       count2 = count2 + vecw_and_notfirst(vecw_srli(loader2, 1) | loader2, m1);
 
       count1 = (count1 & m2) + (vecw_srli(count1, 2) & m2);
       count1 = count1 + (count2 & m2) + (vecw_srli(count2, 2) & m2);
       inner_acc = inner_acc + (count1 & m4) + (vecw_srli(count1, 4) & m4);
-    } while (nyp_vvec_iter < nyp_vvec_stop);
+    } while (nyp_vvec_biter < nyp_vvec_stop);
     acc = acc + prev_sad_result;
     prev_sad_result = vecw_bytesum(inner_acc, m0);
   }
@@ -3433,18 +3777,19 @@ uint32_t CountNypVec6(const VecW* nyp_vvec, uintptr_t nyp_word, uint32_t vec_ct)
 // Ok for nyparr to be unaligned.  Ok if unsafe to read trailing bytes of
 // nyparr.
 uint32_t CountNyp(const void* nyparr, uintptr_t nyp_word, uint32_t nyp_ct) {
+  const unsigned char* nyparr_uc = S_CAST(const unsigned char*, nyparr);
   const uint32_t fullword_ct = nyp_ct / kBitsPerWordD2;
   uint32_t word_idx = fullword_ct - (fullword_ct % (6 * kWordsPerVec));
-  uint32_t tot = CountNypVec6(S_CAST(const VecW*, nyparr), nyp_word, word_idx / kWordsPerVec);
-  const uintptr_t* nypvec = S_CAST(const uintptr_t*, nyparr);
+  uint32_t tot = CountNypVec6(nyparr_uc, nyp_word, word_idx / kWordsPerVec);
   for (; word_idx != fullword_ct; ++word_idx) {
-    const uintptr_t cur_word = nypvec[word_idx] ^ nyp_word;
-    tot += Popcount01Word(Word00(cur_word));
+    uintptr_t cur_word;
+    CopyFromUnalignedOffsetW(&cur_word, nyparr_uc, word_idx);
+    tot += Popcount01Word(Word00(cur_word ^ nyp_word));
   }
   const uint32_t trailing_nyp_ct = nyp_ct % kBitsPerWordD2;
   if (trailing_nyp_ct) {
     const uint32_t trailing_byte_ct = DivUp(trailing_nyp_ct, (CHAR_BIT / 2));
-    uintptr_t cur_word = SubwordLoad(&(nypvec[fullword_ct]), trailing_byte_ct) ^ nyp_word;
+    uintptr_t cur_word = SubwordLoad(&(nyparr_uc[fullword_ct * kBytesPerWord]), trailing_byte_ct) ^ nyp_word;
     cur_word = bzhi(Word00(cur_word), trailing_nyp_ct * 2);
     tot += Popcount01Word(cur_word);
   }
@@ -3605,69 +3950,6 @@ uint32_t CountNypSubset(const uintptr_t* __restrict nypvec, const uintptr_t* __r
 }
 */
 
-// Ok for nybble_vvec to be unaligned.
-uint32_t CountNybbleVec(const VecW* nybble_vvec, uintptr_t nybble_word, uint32_t vec_ct) {
-  const VecW m0 = vecw_setzero();
-  const VecW alld15 = VCONST_W(kMask1111);
-  const VecW m4 = VCONST_W(kMask0F0F);
-  const VecW xor_vvec = vecw_set1(nybble_word);
-  const VecW* nybble_vvec_iter = nybble_vvec;
-  VecW prev_sad_result = vecw_setzero();
-  VecW acc = vecw_setzero();
-  uintptr_t cur_incr = 15;
-  for (; ; vec_ct -= cur_incr) {
-    if (vec_ct < 15) {
-      if (!vec_ct) {
-        acc = acc + prev_sad_result;
-        return HsumW(acc);
-      }
-      cur_incr = vec_ct;
-    }
-    VecW inner_acc = vecw_setzero();
-    const VecW* nybble_vvec_stop = &(nybble_vvec_iter[cur_incr]);
-    do {
-      VecW loader = vecw_loadu(nybble_vvec_iter++) ^ xor_vvec;
-      // DetectAllZeroNybbles() followed by right-shift-3 is the same number of
-      // operations, can see if that's any faster in practice
-      loader = vecw_srli(loader, 1) | loader;
-      loader = vecw_srli(loader, 2) | loader;
-      inner_acc = inner_acc + vecw_and_notfirst(loader, alld15);
-    } while (nybble_vvec_iter < nybble_vvec_stop);
-    inner_acc = (inner_acc & m4) + (vecw_srli(inner_acc, 4) & m4);
-    acc = acc + prev_sad_result;
-    prev_sad_result = vecw_bytesum(inner_acc, m0);
-  }
-}
-
-uint32_t CountNybble(const void* nybblearr, uintptr_t nybble_word, uintptr_t nybble_ct) {
-  const uint32_t fullword_ct = nybble_ct / kBitsPerWordD4;
-  uint32_t tot = CountNybbleVec(S_CAST(const VecW*, nybblearr), nybble_word, fullword_ct / kWordsPerVec);
-  const uintptr_t* nybblevec = S_CAST(const uintptr_t*, nybblearr);
-#ifdef __LP64__
-  for (uint32_t word_idx = RoundDownPow2(fullword_ct, kWordsPerVec); word_idx != fullword_ct; ++word_idx) {
-    uintptr_t cur_word = nybblevec[word_idx] ^ nybble_word;
-    cur_word = cur_word | (cur_word >> 1);
-    cur_word = cur_word | (cur_word >> 2);
-    tot += Popcount0001Word((~cur_word) & kMask1111);
-  }
-#endif
-  const uint32_t trailing_nybble_ct = nybble_ct % kBitsPerWordD4;
-  if (trailing_nybble_ct) {
-    const uint32_t trailing_byte_ct = DivUp(trailing_nybble_ct, (CHAR_BIT / 4));
-    uintptr_t cur_word = SubwordLoad(&(nybblevec[fullword_ct]), trailing_byte_ct) ^ nybble_word;
-    cur_word = cur_word | (cur_word >> 1);
-    cur_word = cur_word | (cur_word >> 2);
-    cur_word = bzhi((~cur_word) & kMask1111, trailing_nybble_ct * 4);
-#if defined(USE_SSE42) || !defined(__LP64__)
-    tot += Popcount0001Word(cur_word);
-#else
-    // minor optimization, can't overflow
-    tot += (cur_word * kMask1111) >> 60;
-#endif
-  }
-  return tot;
-}
-
 // similar to ParseAndSaveDifflist()
 PglErr ParseAndSaveDeltalist(const unsigned char* fread_end, uint32_t raw_sample_ct, const unsigned char** fread_pp, uint32_t* __restrict deltalist, uint32_t* __restrict deltalist_len_ptr) {
   const unsigned char* group_info_iter;
@@ -3753,7 +4035,7 @@ PglErr CountDeltalistIntersect(const unsigned char* fread_end, const uintptr_t* 
   }
 }
 
-uint32_t CountAux1aDense(const void* patch_01_fvals, uint32_t allele_ct, uint32_t allele_idx, uint32_t raw_01_ct, uint32_t rare01_ct) {
+uint32_t CountAux1aDense(const unsigned char* patch_01_fvals, uint32_t allele_ct, uint32_t allele_idx, uint32_t raw_01_ct, uint32_t rare01_ct) {
   // The 'f' in patch_01_fset/patch_01_fvals is to distinguish the in-file
   // representation from the returned AlleleCode*-based representation.
   if (allele_idx == 1) {
@@ -3851,21 +4133,18 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
     // 01-collapsed bitarray
     const uint32_t fset_byte_ct = DivUp(raw_01_ct, CHAR_BIT);
     const uint32_t rare01_ct = PopcountBytes(*fread_pp, fset_byte_ct);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in CountAux1a()."
-#endif
-    const uintptr_t* patch_01_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fset = *fread_pp;
     *fread_pp += fset_byte_ct;
-    const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
     if (!sample_include) {
-      *het_ctp = CountAux1aDense(patch_01_fvalsw, allele_ct, allele_idx, raw_01_ct, rare01_ct);
+      *het_ctp = CountAux1aDense(patch_01_fvals, allele_ct, allele_idx, raw_01_ct, rare01_ct);
       return kPglRetSuccess;
     }
-    const Halfword* sample_include_hw = R_CAST(const Halfword*, sample_include);
+    const Halfword* sample_include_hw = DowncastKWToHW(sample_include);
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_hets = Word01(raw_genoarr[0]);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
@@ -3881,10 +4160,10 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_01_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_01_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_01_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_01_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_01_fset, fset_widx);
       }
       // format 0, sample_include non-null
       if (ignore_01_fvals) {
@@ -3911,9 +4190,9 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
           if (fset_bits & 1) {
             if (rare01_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_01_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
               }
               fvals_bits = fvals_bits ^ xor_word;
               fvals_bits = (detect_mask_hi & (~(fvals_bits | ((fvals_bits | detect_mask_hi) - detect_mask_lo)))) >> (allele_code_width - 1);
@@ -3986,7 +4265,7 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_01_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -3999,9 +4278,9 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_01_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
     }
     fvals_bits = fvals_bits ^ xor_word;
     fvals_bits = detect_mask_hi & (~(fvals_bits | ((fvals_bits | detect_mask_hi) - detect_mask_lo)));
@@ -4023,7 +4302,7 @@ PglErr CountAux1a(const unsigned char* fread_end, const uintptr_t* __restrict sa
   return kPglRetSuccess;
 }
 
-void CountAux1bDense(const void* patch_10_fvals, uint32_t allele_ct, uint32_t allele_idx_m1, uint32_t raw_10_ct, uint32_t rare10_ct, uint32_t* __restrict het_ctp, uint32_t* __restrict hom_ctp) {
+void CountAux1bDense(const unsigned char* patch_10_fvals, uint32_t allele_ct, uint32_t allele_idx_m1, uint32_t raw_10_ct, uint32_t rare10_ct, uint32_t* __restrict het_ctp, uint32_t* __restrict hom_ctp) {
   uint32_t matching_hom_ct = 0;
   uint32_t het_incr;
   if (allele_ct < 6) {
@@ -4113,21 +4392,18 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
     // 10-collapsed bitarray
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, CHAR_BIT);
     const uint32_t rare10_ct = PopcountBytes(*fread_pp, fset_byte_ct);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in CountAux1b()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     *fread_pp += fset_byte_ct;
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) * code10_width, 8);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
     if (!sample_include) {
-      CountAux1bDense(patch_10_fvalsw, allele_ct, allele_idx_m1, raw_10_ct, rare10_ct, het_ctp, hom_ctp);
+      CountAux1bDense(patch_10_fvals, allele_ct, allele_idx_m1, raw_10_ct, rare10_ct, het_ctp, hom_ctp);
       return kPglRetSuccess;
     }
-    const Halfword* sample_include_hw = R_CAST(const Halfword*, sample_include);
+    const Halfword* sample_include_hw = DowncastKWToHW(sample_include);
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
@@ -4146,10 +4422,10 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
           if (fset_widx > fset_word_ct_m1) {
             break;
           }
-          fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+          fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
           loop_len = ModNz(raw_10_ct, kBitsPerWord);
         } else {
-          fset_bits = patch_10_fsetw[fset_widx];
+          CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
         }
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
           while (!cur_raw_genoarr_xys) {
@@ -4158,9 +4434,9 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // This sets each fvals_bits entry to 1 iff the patch genotype is
               // ALT1-ALTx, i.e. the original low bits were zero.
@@ -4203,10 +4479,10 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       for (uint32_t uii = 0; uii != loop_len; ++uii) {
         while (!cur_raw_genoarr_xys) {
@@ -4215,9 +4491,9 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
         if (fset_bits & 1) {
           if (rare10_lowbits == kBitsPerWord) {
             if (fvals_widx == fvals_word_ct_m1) {
-              fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+              fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
             } else {
-              fvals_bits = patch_10_fvalsw[fvals_widx];
+              CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
             }
             fvals_bits ^= xor_word;
             fvals_bits = (detect_all_mask_hi & (~(fvals_bits | ((fvals_bits | detect_all_mask_hi) - detect_all_mask_lo)))) >> (allele_code_width - 1);
@@ -4272,7 +4548,7 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, CHAR_BIT);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -4289,10 +4565,10 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
         if (fvals_widx > fvals_word_ct_m1) {
           break;
         }
-        fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+        fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
         loop_len = 1 + ((rare10_ct - 1) & ((kBitsPerWord >> code10_logwidth) - 1));
       } else {
-        fvals_bits = patch_10_fvalsw[fvals_widx];
+        CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
       }
       fvals_bits = (detect_alt1_mask_hi & (~(fvals_bits | ((fvals_bits | detect_alt1_mask_hi) - detect_hom_mask_lo)))) >> (allele_code_width - 1);
       const uint32_t* cur_deltalist_base = &(deltalist_workspace[fvals_widx << (kBitsPerWordLog2 - code10_logwidth)]);
@@ -4328,9 +4604,9 @@ PglErr CountAux1b(const unsigned char* fread_end, const uintptr_t* __restrict sa
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     fvals_bits = fvals_bits ^ xor_word;
     fvals_bits = detect_all_mask_hi & (~(fvals_bits | ((fvals_bits | detect_all_mask_hi) - detect_all_mask_lo)));
@@ -4439,17 +4715,14 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
   const uint32_t allele_code_width = GetAux1aConsts(allele_ct, &detect_mask_hi, &detect_mask_lo, &allele_code_logwidth);
   const uintptr_t xor_word = (allele_idx - 2) * detect_mask_lo;
   if (!aux1a_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GenoarrAux1aUpdate()."
-#endif
-    const uintptr_t* patch_01_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_01_ct, 8);
     uint32_t rare01_ct = 0;
     if (allele_ct > 3) {
       rare01_ct = PopcountBytes(*fread_pp, fset_byte_ct);
     }
     *fread_pp += fset_byte_ct;
-    const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fvals = *fread_pp;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_hets = Word01(raw_genoarr[0]);
     uint32_t loop_len = kBitsPerWord;
@@ -4469,10 +4742,10 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
         if (fset_widx > fset_word_ct_m1) {
           return kPglRetSuccess;
         }
-        fset_bits = SubwordLoad(&(patch_01_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_01_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_01_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_01_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_01_fset, fset_widx);
       }
       if (!sample_include) {
         if (ignore_01_fvals) {
@@ -4498,9 +4771,9 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
             if (fset_bits & 1) {
               if (rare01_lowbits == kBitsPerWord) {
                 if (fvals_widx == fvals_word_ct_m1) {
-                  fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                  fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                 } else {
-                  fvals_bits = patch_01_fvalsw[fvals_widx];
+                  CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
                 }
                 fvals_bits = fvals_bits ^ xor_word;
                 fvals_bits = (detect_mask_hi & (~(fvals_bits | ((fvals_bits | detect_mask_hi) - detect_mask_lo)))) >> (allele_code_width - 1);
@@ -4531,7 +4804,7 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
               // the sample word-indexes aligned.  Couldn't justify it given
               // the expected sparsity of this case, though.
               const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_hets) / 2;
-              if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+              if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                 const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                 target_genoarr[sample_idx / kBitsPerWordD2] ^= lshifted_bit << (2 * (sample_idx % kBitsPerWordD2));
               }
@@ -4547,9 +4820,9 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
             if (fset_bits & 1) {
               if (rare01_lowbits == kBitsPerWord) {
                 if (fvals_widx == fvals_word_ct_m1) {
-                  fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                  fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                 } else {
-                  fvals_bits = patch_01_fvalsw[fvals_widx];
+                  CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
                 }
                 fvals_bits = fvals_bits ^ xor_word;
                 fvals_bits = (detect_mask_hi & (~(fvals_bits | ((fvals_bits | detect_mask_hi) - detect_mask_lo)))) >> (allele_code_width - 1);
@@ -4559,7 +4832,7 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
               }
               if (fvals_bits & (k1LU << rare01_lowbits)) {
                 const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_hets) / 2;
-                if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+                if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                   const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                   target_genoarr[sample_idx / kBitsPerWordD2] ^= lshifted_bit << (2 * (sample_idx % kBitsPerWordD2));
                 }
@@ -4581,7 +4854,7 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_01_fvals = *fread_pp;
   const uintptr_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -4615,9 +4888,9 @@ PglErr GenoarrAux1aUpdate(const unsigned char* fread_end, const uintptr_t* __res
       if (fvals_widx > fvals_word_ct_m1) {
         return kPglRetSuccess;
       }
-      fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_01_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
     }
     fvals_bits = fvals_bits ^ xor_word;
     fvals_bits = detect_mask_hi & (~(fvals_bits | ((fvals_bits | detect_mask_hi) - detect_mask_lo)));
@@ -4665,17 +4938,14 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
   const uint32_t code10_width = 1U << code10_logwidth;
   uint32_t rare10_lowbits = kBitsPerWord;
   if (!aux1b_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GenoarrAux1bStandardUpdate()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, 8);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
     const uint32_t rare10_ct = PopcountBytes(*fread_pp, fset_byte_ct);
     *fread_pp += fset_byte_ct;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) * code10_width, CHAR_BIT);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
@@ -4705,10 +4975,10 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
           if (fset_widx > fset_word_ct_m1) {
             break;
           }
-          fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+          fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
           loop_len = ModNz(raw_10_ct, kBitsPerWord);
         } else {
-          fset_bits = patch_10_fsetw[fset_widx];
+          CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
         }
         if (!sample_include) {
           for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -4718,9 +4988,9 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
             if (fset_bits & 1) {
               if (rare10_lowbits == kBitsPerWord) {
                 if (fvals_widx == fvals_word_ct_m1) {
-                  fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                  fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                 } else {
-                  fvals_bits = patch_10_fvalsw[fvals_widx];
+                  CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
                 }
                 // modify to het 1/x = 1, otherwise 0, except in allele_idx ==
                 // 2 special case.
@@ -4748,9 +5018,9 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
             if (fset_bits & 1) {
               if (rare10_lowbits == kBitsPerWord) {
                 if (fvals_widx == fvals_word_ct_m1) {
-                  fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                  fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                 } else {
-                  fvals_bits = patch_10_fvalsw[fvals_widx];
+                  CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
                 }
                 // modify to het 1/x = 1, otherwise 0, except in allele_idx ==
                 // 2 special case
@@ -4762,7 +5032,7 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
                 rare10_lowbits = 0;
               }
               const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-              if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+              if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                 const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                 const uintptr_t cur_lowcode0 = (fvals_bits >> rare10_lowbits) & 1;
                 const uintptr_t shifted_xor_mult = (lowcode_add + cur_lowcode0) << (2 * (sample_idx % kBitsPerWordD2));
@@ -4787,10 +5057,10 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       if (!sample_include) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -4800,9 +5070,9 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // modify to hom = 2, het = 1, neither = 0
               fvals_bits = fvals_bits ^ xor_word;
@@ -4830,9 +5100,9 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // modify to hom = 2, het = 1, neither = 0
               fvals_bits = fvals_bits ^ xor_word;
@@ -4848,7 +5118,7 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
             rare10_lowbits += code10_width;
             if (cur_hit_ct) {
               const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-              if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+              if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                 const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                 target_genoarr[sample_idx / kBitsPerWordD2] ^= cur_hit_ct << (2 * (sample_idx % kBitsPerWordD2));
               }
@@ -4867,7 +5137,7 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, CHAR_BIT);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -4884,10 +5154,10 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
         if (fvals_widx > fvals_word_ct_m1) {
           break;
         }
-        fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+        fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
         loop_len = 1 + ((rare10_ct - 1) & ((kBitsPerWord >> code10_logwidth) - 1));
       } else {
-        fvals_bits = patch_10_fvalsw[fvals_widx];
+        CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
       }
       if (!allele_idx_m1) {
         fvals_bits = (detect_alt1_mask_hi & (~(fvals_bits | ((fvals_bits | detect_alt1_mask_hi) - detect_hom_mask_lo)))) >> (allele_code_width - 1);
@@ -4930,9 +5200,9 @@ PglErr GenoarrAux1bStandardUpdate(const unsigned char* fread_end, const uintptr_
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     fvals_bits = fvals_bits ^ xor_word;
     fvals_bits = detect_all_mask_hi & (~(fvals_bits | ((fvals_bits | detect_all_mask_hi) - detect_all_mask_lo)));
@@ -4984,21 +5254,18 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
   const uint32_t allele_code_width = 1U << allele_code_logwidth;
   const uintptr_t detect_all_mask_lo = detect_hom_mask_lo | (detect_hom_mask_lo << allele_code_width);
   const uintptr_t detect_all_mask_hi = detect_all_mask_lo << (allele_code_width - 1);
-  Halfword* aux1b_hets_alias = R_CAST(Halfword*, aux1b_hets);
+  Halfword* aux1b_hets_alias = DowncastWToHW(aux1b_hets);
   uint32_t rare10_lowbits = kBitsPerWord;
   uint32_t aux1b_het_present = 0;
   if (!aux1b_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GetAux1bHets()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, 8);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
     const uint32_t rare10_ct = PopcountBytes(*fread_pp, fset_byte_ct);
     *fread_pp += fset_byte_ct;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) * code10_width, CHAR_BIT);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
@@ -5013,10 +5280,10 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       for (uint32_t uii = 0; uii != loop_len; ++uii) {
         while (!cur_raw_genoarr_xys) {
@@ -5025,9 +5292,9 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
         if (fset_bits & 1) {
           if (rare10_lowbits == kBitsPerWord) {
             if (fvals_widx == fvals_word_ct_m1) {
-              fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+              fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
             } else {
-              fvals_bits = patch_10_fvalsw[fvals_widx];
+              CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
             }
             // allele_ct == 3: just invert raw fvals_bits
             // allele_ct > 3: shift by allele_code_width, xor with self so that
@@ -5073,7 +5340,7 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, CHAR_BIT);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -5085,9 +5352,9 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     if (allele_ct == 3) {
       fvals_bits = ~fvals_bits;
@@ -5117,10 +5384,16 @@ PglErr GetAux1bHets(const unsigned char* fread_end, const uintptr_t* __restrict 
   return kPglRetSuccess;
 }
 
-PglErr Get1Multiallelic(const uintptr_t* __restrict sample_include, const uint32_t* __restrict sample_include_cumulative_popcounts, uint32_t sample_ct, uint32_t vidx, uint32_t allele_idx, PgenReaderMain* pgrp, const unsigned char** fread_pp, const unsigned char** fread_endp, uintptr_t* __restrict all_hets, uintptr_t* __restrict allele_countvec, uintptr_t** subsetted_10hetp) {
+static inline void SuppressHets00(const uintptr_t* allele_countvec, uintptr_t* subsetted_all_hets, uint32_t sample_ct, uintptr_t* subsetted_suppressed_hets) {
+  const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
+  MaskWordsToHalfwordsInvmatch(allele_countvec, ~k0LU, sample_ctl2, subsetted_all_hets, subsetted_suppressed_hets);
+}
+
+PglErr Get1Multiallelic(const uintptr_t* __restrict sample_include, const uint32_t* __restrict sample_include_cumulative_popcounts, uint32_t sample_ct, uint32_t vidx, uint32_t allele_idx, PgenReaderMain* pgrp, const unsigned char** fread_pp, const unsigned char** fread_endp, uintptr_t* __restrict all_hets, uintptr_t* __restrict allele_countvec, uintptr_t** subsetted_suppressed_hetp) {
   // sample_ct > 0; either allele_idx > 1 or ((allele_idx == 1) &&
   // multiallelic_hc_present)
-  // subsetted_10het assumed to be initialized to nullptr, if present at all
+  // subsetted_suppressed_het assumed to be initialized to nullptr, if present
+  // at all
   const uint32_t raw_sample_ct = pgrp->fi.raw_sample_ct;
   const uint32_t subsetting_required = (sample_ct != raw_sample_ct);
   uintptr_t* raw_genovec = pgrp->workspace_vec;
@@ -5203,13 +5476,22 @@ PglErr Get1Multiallelic(const uintptr_t* __restrict sample_include, const uint32
     }
     if (aux1b_het_present) {
       BitvecOr(aux1b_hets, BitCtToWordCt(raw_sample_ct), all_hets);
-      if (!sample_include) {
-        *subsetted_10hetp = aux1b_hets;
-      } else {
-        // Don't need raw_genovec any more.
-        CopyBitarrSubset(aux1b_hets, sample_include, sample_ct, raw_genovec);
-        *subsetted_10hetp = raw_genovec;
+    }
+    // We now want to make subsetted_suppressed_het flag all hets where neither
+    // allele is equal to allele_idx, i.e. the allele_countvec value is 0 yet
+    // the all_hets bit is set.
+    // This was done incorrectly before 17 Aug 2023.
+    if ((allele_idx > 1) || aux1b_het_present) {
+      // We can now clobber the contents of pgrp->workspace_vec (raw_genovec)
+      // and pgrp->workspace_aux1x_present (aux1b_hets).
+      // We use the former as the subsetted_suppressed_het return buffer.
+      uintptr_t* all_hets_subsetted = all_hets;
+      if (subsetting_required) {
+        all_hets_subsetted = aux1b_hets;
+        CopyBitarrSubset(all_hets, sample_include, sample_ct, all_hets_subsetted);
       }
+      *subsetted_suppressed_hetp = raw_genovec;
+      SuppressHets00(allele_countvec, all_hets_subsetted, sample_ct, raw_genovec);
     }
   }
   return kPglRetSuccess;
@@ -5250,6 +5532,37 @@ PglErr IMPLPgrGetInv1(const uintptr_t* __restrict sample_include, const uint32_t
     }
     return kPglRetSuccess;
   }
+  PglErr reterr = Get1Multiallelic(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, nullptr, nullptr, nullptr, allele_invcountvec, nullptr);
+  GenovecInvertUnsafe(sample_ct, allele_invcountvec);
+  return reterr;
+}
+
+PglErr IMPLPgrGetInv1DifflistOrGenovec(const uintptr_t* __restrict sample_include, const uint32_t* __restrict sample_include_cumulative_popcounts, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, uint32_t allele_idx, PgenReaderMain* pgrp, uintptr_t* __restrict allele_invcountvec, uint32_t* __restrict difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr) {
+  if (!sample_ct) {
+    *difflist_common_geno_ptr = UINT32_MAX;
+    return kPglRetSuccess;
+  }
+  const uint32_t vrtype = GetPgfiVrtype(&(pgrp->fi), vidx);
+  const uint32_t multiallelic_hc_present = VrtypeMultiallelicHc(vrtype);
+  if ((!allele_idx) || ((allele_idx == 1) && (!multiallelic_hc_present))) {
+    PglErr reterr = ReadDifflistOrGenovecSubsetUnsafe(sample_include, sample_include_cumulative_popcounts, sample_ct, max_simple_difflist_len, vidx, pgrp, nullptr, nullptr, allele_invcountvec, difflist_common_geno_ptr, main_raregeno, difflist_sample_ids, difflist_len_ptr);
+    if (unlikely(reterr)) {
+      return reterr;
+    }
+    if (allele_idx) {
+      if (*difflist_common_geno_ptr == UINT32_MAX) {
+        GenovecInvertUnsafe(sample_ct, allele_invcountvec);
+      } else {
+        const uint32_t orig_common_geno = *difflist_common_geno_ptr;
+        GenovecInvertUnsafe(*difflist_len_ptr, main_raregeno);
+        if (orig_common_geno != 3) {
+          *difflist_common_geno_ptr = 2 - orig_common_geno;
+        }
+      }
+    }
+    return kPglRetSuccess;
+  }
+  *difflist_common_geno_ptr = UINT32_MAX;
   PglErr reterr = Get1Multiallelic(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, nullptr, nullptr, nullptr, allele_invcountvec, nullptr);
   GenovecInvertUnsafe(sample_ct, allele_invcountvec);
   return reterr;
@@ -5326,17 +5639,14 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
   xor_word2 = xor_word2 * detect_hom_mask_lo;
   uint32_t rare10_lowbits = kBitsPerWord;
   if (!aux1b_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GenoarrAux1bUpdate2()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, 8);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
     const uint32_t rare10_ct = PopcountBytes(*fread_pp, fset_byte_ct);
     *fread_pp += fset_byte_ct;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) * code10_width, CHAR_BIT);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
@@ -5352,10 +5662,10 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
           if (fset_widx > fset_word_ct_m1) {
             return kPglRetSuccess;
           }
-          fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+          fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
           loop_len = ModNz(raw_10_ct, kBitsPerWord);
         } else {
-          fset_bits = patch_10_fsetw[fset_widx];
+          CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
         }
         if (!sample_include) {
           if (allele_idx1 == 1) {
@@ -5380,9 +5690,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
               if (fset_bits & 1) {
                 if (rare10_lowbits == kBitsPerWord) {
                   if (fvals_widx == fvals_word_ct_m1) {
-                    fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                    fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                   } else {
-                    fvals_bits = patch_10_fvalsw[fvals_widx];
+                    CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
                   }
                   fvals_bits = fvals_bits ^ xor_word2;
                   fvals_bits = (detect_hom_mask_hi & (~(fvals_bits | ((fvals_bits | detect_hom_mask_hi) - detect_hom_mask_lo)))) >> (code10_width - 1);
@@ -5409,7 +5719,7 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
               }
               if (fset_bits & 1) {
                 const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-                if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+                if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                   const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                   target_genoarr[sample_idx / kBitsPerWordD2] ^= k1LU << (2 * (sample_idx % kBitsPerWordD2));
                 }
@@ -5426,9 +5736,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
               if (fset_bits & 1) {
                 if (rare10_lowbits == kBitsPerWord) {
                   if (fvals_widx == fvals_word_ct_m1) {
-                    fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                    fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
                   } else {
-                    fvals_bits = patch_10_fvalsw[fvals_widx];
+                    CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
                   }
                   fvals_bits = fvals_bits ^ xor_word2;
                   fvals_bits = (detect_hom_mask_hi & (~(fvals_bits | ((fvals_bits | detect_hom_mask_hi) - detect_hom_mask_lo)))) >> (code10_width - 1);
@@ -5438,7 +5748,7 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
                 }
                 if (fvals_bits & (k1LU << rare10_lowbits)) {
                   const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-                  if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+                  if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                     const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                     target_genoarr[sample_idx / kBitsPerWordD2] ^= k1LU << (2 * (sample_idx % kBitsPerWordD2));
                   }
@@ -5465,10 +5775,10 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
         if (fset_widx > fset_word_ct_m1) {
           return kPglRetSuccess;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       if (!sample_include) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -5478,9 +5788,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               uintptr_t match0 = fvals_bits ^ xor_word0;
               uintptr_t match1 = fvals_bits ^ xor_word1;
@@ -5513,9 +5823,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               uintptr_t match0 = fvals_bits ^ xor_word0;
               uintptr_t match1 = fvals_bits ^ xor_word1;
@@ -5531,7 +5841,7 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
             const uintptr_t xor_val = (fvals_bits >> rare10_lowbits) & 3;
             if (xor_val) {
               const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-              if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+              if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
                 const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
                 target_genoarr[sample_idx / kBitsPerWordD2] ^= xor_val << (2 * (sample_idx % kBitsPerWordD2));
               }
@@ -5550,7 +5860,7 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, CHAR_BIT);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -5583,9 +5893,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
         if (fvals_widx > fvals_word_ct_m1) {
           return kPglRetSuccess;
         }
-        fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+        fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
       } else {
-        fvals_bits = patch_10_fvalsw[fvals_widx];
+        CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
       }
       fvals_bits = fvals_bits ^ xor_word2;
       fvals_bits = detect_hom_mask_hi & (~(fvals_bits | ((fvals_bits | detect_hom_mask_hi) - detect_hom_mask_lo)));
@@ -5632,9 +5942,9 @@ PglErr GenoarrAux1bUpdate2(const unsigned char* fread_end, const uintptr_t* __re
       if (fvals_widx > fvals_word_ct_m1) {
         return kPglRetSuccess;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     uintptr_t match0 = fvals_bits ^ xor_word0;
     uintptr_t match1 = fvals_bits ^ xor_word1;
@@ -5834,6 +6144,7 @@ PglErr ParseAndSaveDeltalistAsBitarr(const unsigned char* fread_end, uint32_t ra
 }
 
 static_assert(sizeof(AlleleCode) == 1, "GetAux1aCodes() must be updated.");
+// read-buffer patch_01_vals, patch_10_vals, etc. assumed to be word-aligned.
 PglErr GetAux1aCodes(const unsigned char* fread_end, uint32_t rare01_ct, uint32_t allele_ct, const unsigned char** fread_pp, AlleleCode* __restrict patch_01_vals) {
   if (allele_ct == 3) {
     memset(patch_01_vals, 2, rare01_ct);
@@ -5845,7 +6156,7 @@ PglErr GetAux1aCodes(const unsigned char* fread_end, uint32_t rare01_ct, uint32_
     if (PtrAddCk(fread_end, patch_01_fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand1bitTo8(patch_01_fvals, rare01_ct, 2, R_CAST(uintptr_t*, patch_01_vals));
+    Expand1bitTo8(patch_01_fvals, rare01_ct, 2, patch_01_vals);
     return kPglRetSuccess;
   }
   if (allele_ct < 7) {
@@ -5853,7 +6164,7 @@ PglErr GetAux1aCodes(const unsigned char* fread_end, uint32_t rare01_ct, uint32_
     if (PtrAddCk(fread_end, patch_01_fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand2bitTo8(patch_01_fvals, rare01_ct, 2, R_CAST(uintptr_t*, patch_01_vals));
+    Expand2bitTo8(patch_01_fvals, rare01_ct, 2, patch_01_vals);
     return kPglRetSuccess;
   }
   if (allele_ct < 19) {
@@ -5861,7 +6172,7 @@ PglErr GetAux1aCodes(const unsigned char* fread_end, uint32_t rare01_ct, uint32_
     if (PtrAddCk(fread_end, patch_01_fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand4bitTo8(patch_01_fvals, rare01_ct, 2, R_CAST(uintptr_t*, patch_01_vals));
+    Expand4bitTo8(patch_01_fvals, rare01_ct, 2, patch_01_vals);
     return kPglRetSuccess;
   }
   if (PtrAddCk(fread_end, rare01_ct, fread_pp)) {
@@ -5900,17 +6211,14 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
   memset(dst_01_set, 0, BitCtToWordCt(sample_ct) * sizeof(intptr_t));
   AlleleCode* dst_01_vals_iter = dst_01_vals;
   if (!aux1a_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in ExportAux1aProperSubset()."
-#endif
     // similar to GenoarrAux1aUpdate()
-    const uintptr_t* patch_01_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_01_ct, CHAR_BIT);
-    const uint32_t rare01_ct = PopcountBytes(patch_01_fsetw, fset_byte_ct);
+    const uint32_t rare01_ct = PopcountBytes(patch_01_fset, fset_byte_ct);
     if (PtrAddCk(fread_end, fset_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fvals = *fread_pp;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_hets = Word01(raw_genoarr[0]);
     uint32_t loop_len = kBitsPerWord;
@@ -5929,10 +6237,10 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_01_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_01_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_01_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_01_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_01_fset, fset_widx);
       }
       if (allele_ct == 3) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -5941,7 +6249,7 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
           }
           if (fset_bits & 1) {
             const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_hets) / 2;
-            if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+            if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
               const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
               SetBit(sample_idx, dst_01_set);
               *dst_01_vals_iter++ = 2;
@@ -5958,16 +6266,16 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
           if (fset_bits & 1) {
             if (rare01_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_01_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
               rare01_lowbits = 0;
             }
             const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_hets) / 2;
-            if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+            if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
               const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
               SetBit(sample_idx, dst_01_set);
               *dst_01_vals_iter++ = 2 + ((fvals_bits >> rare01_lowbits) & allele_code_mask);
@@ -5988,7 +6296,7 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_01_fvals = *fread_pp;
   const uintptr_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -6018,10 +6326,10 @@ PglErr ExportAux1aProperSubset(const unsigned char* fread_end, const uintptr_t* 
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
       loop_len = 1 + ((rare01_ct - 1) & (loop_len - 1));
     } else {
-      fvals_bits = patch_01_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
     }
     const uint32_t* cur_deltalist_base = &(deltalist_workspace[fvals_widx << (kBitsPerWordLog2 - allele_code_logwidth)]);
     for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -6049,7 +6357,7 @@ PglErr GetAux1bCodes(const unsigned char* fread_end, uint32_t rare10_ct, uint32_
     if (PtrAddCk(fread_end, patch_10_fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand1bitTo16(patch_10_fvals, rare10_ct, 0x0201, R_CAST(uintptr_t*, patch_10_vals));
+    Expand1bitTo16(patch_10_fvals, rare10_ct, 0x0201, patch_10_vals);
     return kPglRetSuccess;
   }
   const uint32_t rare10_ct_x2 = rare10_ct * 2;
@@ -6059,7 +6367,7 @@ PglErr GetAux1bCodes(const unsigned char* fread_end, uint32_t rare10_ct, uint32_
     if (PtrAddCk(fread_end, patch_10_fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand2bitTo8(patch_10_fvals, rare10_ct_x2, 1, R_CAST(uintptr_t*, patch_10_vals));
+    Expand2bitTo8(patch_10_fvals, rare10_ct_x2, 1, patch_10_vals);
     return kPglRetSuccess;
   }
   if (allele_ct < 18) {
@@ -6067,7 +6375,7 @@ PglErr GetAux1bCodes(const unsigned char* fread_end, uint32_t rare10_ct, uint32_
     if (PtrAddCk(fread_end, rare10_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    Expand4bitTo8(patch_10_fvals, rare10_ct_x2, 1, R_CAST(uintptr_t*, patch_10_vals));
+    Expand4bitTo8(patch_10_fvals, rare10_ct_x2, 1, patch_10_vals);
     return kPglRetSuccess;
   }
   if (PtrAddCk(fread_end, rare10_ct_x2, fread_pp)) {
@@ -6110,16 +6418,13 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
   memset(dst_10_set, 0, BitCtToWordCt(sample_ct) * sizeof(intptr_t));
   AlleleCode* dst_10_vals_iter = dst_10_vals;
   if (!aux1b_mode) {
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in ExportAux1bProperSubset()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, CHAR_BIT);
-    const uint32_t rare10_ct = PopcountBytes(patch_10_fsetw, fset_byte_ct);
+    const uint32_t rare10_ct = PopcountBytes(patch_10_fset, fset_byte_ct);
     if (PtrAddCk(fread_end, fset_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
     uint32_t loop_len = kBitsPerWord;
@@ -6138,10 +6443,10 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       if (allele_ct == 3) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -6151,16 +6456,16 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
               rare10_lowbits = 0;
             }
             const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-            if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+            if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
               const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
               SetBit(sample_idx, dst_10_set);
               *dst_10_vals_iter++ = 1 + ((fvals_bits >> rare10_lowbits) & 1);
@@ -6179,16 +6484,16 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
               rare10_lowbits = 0;
             }
             const uint32_t sample_uidx_lowbits = ctzw(cur_raw_genoarr_xys) / 2;
-            if ((R_CAST(const Halfword*, sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
+            if ((DowncastKWToHW(sample_include)[sample_hwidx]) & (1U << sample_uidx_lowbits)) {
               const uint32_t sample_idx = RawToSubsettedPos(sample_include, sample_include_cumulative_popcounts, sample_hwidx * kBitsPerWordD2 + sample_uidx_lowbits);
               SetBit(sample_idx, dst_10_set);
               const uintptr_t cur_code_pair = fvals_bits >> rare10_lowbits;
@@ -6213,7 +6518,7 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uintptr_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -6226,10 +6531,10 @@ PglErr ExportAux1bProperSubset(const unsigned char* fread_end, const uintptr_t* 
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
       loop_len = 1 + ((rare10_ct - 1) & (loop_len - 1));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     const uint32_t* cur_deltalist_base = &(deltalist_workspace[fvals_widx << (kBitsPerWordLog2 - code10_logwidth)]);
     if (allele_ct == 3) {
@@ -6351,21 +6656,11 @@ PglErr PgrGetM(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex 
   return GetMultiallelicCodes(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, pgrp, nullptr, nullptr, nullptr, pgvp);
 }
 
-void DetectGenoarrHetsHw(const uintptr_t*__restrict genoarr, uint32_t raw_sample_ctl2, Halfword* all_hets_hw) {
-  // requires trailing bits of genoarr to be zeroed out.  does not update last
-  // all_hets[] halfword if raw_sample_ctl2 is odd.
-  for (uint32_t widx = 0; widx != raw_sample_ctl2; ++widx) {
-    const uintptr_t cur_word = genoarr[widx];
-    uintptr_t ww = (~(cur_word >> 1)) & cur_word;  // low 1, high 0
-    all_hets_hw[widx] = PackWordToHalfwordMask5555(ww);
-  }
-}
-
 void PgrDetectGenoarrHetsMultiallelic(const uintptr_t* __restrict genoarr, const uintptr_t* __restrict patch_10_set, const AlleleCode* __restrict patch_10_vals, uint32_t raw_sample_ct, uintptr_t* __restrict all_hets) {
-  const Halfword* patch_10_set_alias = R_CAST(const Halfword*, patch_10_set);
+  const Halfword* patch_10_set_alias = DowncastKWToHW(patch_10_set);
   const AlleleCode* patch_10_vals_iter = patch_10_vals;
   const uint32_t word_ct_m1 = (raw_sample_ct - 1) / kBitsPerWordD2;
-  Halfword* all_hets_hw = R_CAST(Halfword*, all_hets);
+  Halfword* all_hets_hw = DowncastWToHW(all_hets);
   for (uint32_t widx = 0; ; ++widx) {
     uintptr_t cur_geno_word;
     if (widx >= word_ct_m1) {
@@ -6440,12 +6735,12 @@ PglErr SkipAux1(const unsigned char* fread_end, const uintptr_t* __restrict raw_
 }
 
 // sample_include assumed to be nullptr if no subsetting required
-// subsetted_10het should only be provided when you explicitly want to exclude
-// those phase entries
+// subsetted_suppressed_het should only be provided when you explicitly want to
+// exclude those phase entries
 // set phasepresent == phaseinfo == nullptr if you want to skip the entire
 // track; ok for phasepresent_ct_ptr to be nullptr too in that case
 // (also see SkipAux2() and GetPhasepresentAndSkipPhaseinfo() below)
-PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restrict sample_include, const uintptr_t* __restrict all_hets, const uintptr_t* __restrict subsetted_10het, uint32_t raw_sample_ct, uint32_t sample_ct, const unsigned char** fread_pp, uintptr_t* __restrict phasepresent, uintptr_t* __restrict phaseinfo, uint32_t* __restrict phasepresent_ct_ptr, uintptr_t* __restrict workspace_subset) {
+PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restrict sample_include, const uintptr_t* __restrict all_hets, const uintptr_t* __restrict subsetted_suppressed_het, uint32_t raw_sample_ct, uint32_t sample_ct, const unsigned char** fread_pp, uintptr_t* __restrict phasepresent, uintptr_t* __restrict phaseinfo, uint32_t* __restrict phasepresent_ct_ptr, uintptr_t* __restrict workspace_subset) {
   const uint32_t raw_sample_ctl = BitCtToWordCt(raw_sample_ct);
   const uint32_t het_ct = PopcountWords(all_hets, raw_sample_ctl);
   if (unlikely(!het_ct)) {
@@ -6467,7 +6762,7 @@ PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restri
     if (!sample_include) {
       memcpy(phasepresent, all_hets, raw_sample_ctl * kBytesPerWord);
       ExpandBytearr(aux2_start, all_hets, raw_sample_ctl, het_ct, 1, phaseinfo);
-      if (!subsetted_10het) {
+      if (!subsetted_suppressed_het) {
         *phasepresent_ct_ptr = het_ct;
         return kPglRetSuccess;
       }
@@ -6481,15 +6776,14 @@ PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restri
       }
       ExpandThenSubsetBytearr(aux2_start, all_hets, sample_include, het_ct, sample_ct, 1, phaseinfo);
     }
-    // bugfix (25 Feb 2020): forgot to mask out subsetted_10het here
+    // bugfix (25 Feb 2020): forgot to mask out subsetted_suppressed_het here
   } else {
     const uint32_t het_ctdl = het_ct / kBitsPerWord;
 
     // explicit phasepresent
-    const uintptr_t* aux2_first_part = R_CAST(const uintptr_t*, aux2_start);
     uintptr_t* aux2_first_part_copy = workspace_subset;
     aux2_first_part_copy[het_ctdl] = 0;
-    memcpy(aux2_first_part_copy, aux2_first_part, 1 + (het_ct / CHAR_BIT));
+    memcpy(aux2_first_part_copy, aux2_start, 1 + (het_ct / CHAR_BIT));
     const uint32_t raw_phasepresent_ct = PopcountWords(aux2_first_part_copy, het_ctdl + 1) - 1;
     if (unlikely(!raw_phasepresent_ct)) {
       // there shouldn't be a hphase track at all in this case
@@ -6505,7 +6799,7 @@ PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restri
     }
     if (!sample_include) {
       ExpandBytearrNested(aux2_second_part, aux2_first_part_copy, all_hets, sample_ctl, raw_phasepresent_ct, 1, phasepresent, phaseinfo);
-      if (!subsetted_10het) {
+      if (!subsetted_suppressed_het) {
         *phasepresent_ct_ptr = raw_phasepresent_ct;
         return kPglRetSuccess;
       }
@@ -6515,8 +6809,8 @@ PglErr ParseAux2Subset(const unsigned char* fread_end, const uintptr_t* __restri
       ExpandThenSubsetBytearrNested(aux2_second_part, aux2_first_part_copy, all_hets, sample_include, sample_ct, raw_phasepresent_ct, 1, phasepresent, phaseinfo);
     }
   }
-  if (subsetted_10het) {
-    BitvecInvmask(subsetted_10het, sample_ctl, phasepresent);
+  if (subsetted_suppressed_het) {
+    BitvecInvmask(subsetted_suppressed_het, sample_ctl, phasepresent);
   }
   *phasepresent_ct_ptr = PopcountWords(phasepresent, sample_ctl);
   return kPglRetSuccess;
@@ -6584,7 +6878,7 @@ PglErr ReadGenovecHphaseSubsetUnsafe(const uintptr_t* __restrict sample_include,
   }
   uintptr_t* all_hets = pgrp->workspace_all_hets;
   PgrDetectGenoarrHets(raw_genovec, raw_sample_ct, all_hets);
-  uintptr_t* subsetted_10het = nullptr;
+  uintptr_t* subsetted_suppressed_het = nullptr;
   if (VrtypeMultiallelicHc(vrtype)) {
     const uint32_t aux1_first_byte = *fread_ptr++;
     const uint32_t aux1a_mode = aux1_first_byte & 15;
@@ -6601,7 +6895,7 @@ PglErr ReadGenovecHphaseSubsetUnsafe(const uintptr_t* __restrict sample_include,
     // 1. fill workspace_aux1x_present with aux1b
     // 2. clear bit for each hom-altx call in aux1b
     // 3. bitvec-or to set new workspace_all_hets bits
-    // 4. if not subsetting, set subsetted_10het := workspace_all_hets
+    // 4. if not subsetting, set subsetted_suppressed_het := workspace_all_hets
     //    if subsetting, copy-subset to pgrp->workspace_vec and set to that
     //    if AllWordsAreZero, keep as nullptr
     uintptr_t* aux1b_hets = pgrp->workspace_aux1x_present;
@@ -6614,15 +6908,15 @@ PglErr ReadGenovecHphaseSubsetUnsafe(const uintptr_t* __restrict sample_include,
     if (aux1b_het_present) {
       BitvecOr(aux1b_hets, BitCtToWordCt(raw_sample_ct), all_hets);
       if (!subsetting_required) {
-        subsetted_10het = aux1b_hets;
+        subsetted_suppressed_het = aux1b_hets;
       } else {
         // Don't need raw_genovec any more.
         CopyBitarrSubset(aux1b_hets, sample_include, sample_ct, raw_genovec);
-        subsetted_10het = raw_genovec;
+        subsetted_suppressed_het = raw_genovec;
       }
     }
   }
-  reterr = ParseAux2Subset(fread_end, subsetting_required? sample_include : nullptr, all_hets, subsetted_10het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
+  reterr = ParseAux2Subset(fread_end, subsetting_required? sample_include : nullptr, all_hets, subsetted_suppressed_het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
   if (fread_pp) {
     *fread_pp = fread_ptr;
     *fread_endp = fread_end;
@@ -6651,15 +6945,15 @@ PglErr Get1MP(const uintptr_t* __restrict sample_include, const uint32_t* __rest
     return IMPLPgrGet1(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, allele_countvec);
   }
   uintptr_t* all_hets = pgrp->workspace_all_hets;
-  uintptr_t* subsetted_10het = nullptr;
+  uintptr_t* subsetted_suppressed_het = nullptr;
   const unsigned char* fread_ptr;
   const unsigned char* fread_end;
-  PglErr reterr = Get1Multiallelic(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, &fread_ptr, &fread_end, all_hets, allele_countvec, &subsetted_10het);
+  PglErr reterr = Get1Multiallelic(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, &fread_ptr, &fread_end, all_hets, allele_countvec, &subsetted_suppressed_het);
   if (unlikely(reterr)) {
     return reterr;
   }
   const uint32_t raw_sample_ct = pgrp->fi.raw_sample_ct;
-  reterr = ParseAux2Subset(fread_end, (sample_ct != raw_sample_ct)? sample_include : nullptr, all_hets, subsetted_10het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
+  reterr = ParseAux2Subset(fread_end, (sample_ct != raw_sample_ct)? sample_include : nullptr, all_hets, subsetted_suppressed_het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
   // bugfix (7 Sep 2018): Need to postprocess phasepresent when collapsing
   // multiple alleles.
   if (reterr || (!(*phasepresent_ct_ptr))) {
@@ -6668,10 +6962,7 @@ PglErr Get1MP(const uintptr_t* __restrict sample_include, const uint32_t* __rest
 
   // Might want to make this its own function.
   const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
-  Halfword* phasepresent_alias = R_CAST(Halfword*, phasepresent);
-  for (uint32_t hwidx = 0; hwidx != sample_ctl2; ++hwidx) {
-    phasepresent_alias[hwidx] &= Pack01ToHalfword(allele_countvec[hwidx]);
-  }
+  MaskWordsToHalfwordsInvmatch(allele_countvec, kMaskAAAA, sample_ctl2, phasepresent, phasepresent);
   *phasepresent_ct_ptr = PopcountWords(phasepresent, BitCtToWordCt(sample_ct));
 
   return kPglRetSuccess;
@@ -6727,6 +7018,11 @@ PglErr IMPLPgrGetInv1P(const uintptr_t* __restrict sample_include, const uint32_
   return kPglRetSuccess;
 }
 
+void SuppressHets11(const uintptr_t* genovec, uintptr_t* subsetted_all_hets, uint32_t sample_ct, uintptr_t* subsetted_suppressed_hets) {
+  const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
+  MaskWordsToHalfwordsInvmatch(genovec, 0, sample_ctl2, subsetted_all_hets, subsetted_suppressed_hets);
+}
+
 PglErr PgrGet2P(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t vidx, uint32_t allele_idx0, uint32_t allele_idx1, PgenReader* pgr_ptr, uintptr_t* __restrict genovec, uintptr_t* __restrict phasepresent, uintptr_t* __restrict phaseinfo, uint32_t* __restrict phasepresent_ct_ptr) {
   PgenReaderMain* pgrp = GetPgrp(pgr_ptr);
   const uint32_t* sample_include_cumulative_popcounts = GetSicp(pssi);
@@ -6780,7 +7076,7 @@ PglErr PgrGet2P(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex
   }
   uintptr_t* all_hets = pgrp->workspace_all_hets;
   PgrDetectGenoarrHets(raw_genovec, raw_sample_ct, all_hets);
-  uintptr_t* subsetted_10het = nullptr;
+  uintptr_t* subsetted_suppressed_het = nullptr;
   if (!subsetting_required) {
     sample_include = nullptr;
   }
@@ -6825,25 +7121,27 @@ PglErr PgrGet2P(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex
     }
     if (aux1b_het_present) {
       BitvecOr(aux1b_hets, BitCtToWordCt(raw_sample_ct), all_hets);
-      if (!subsetting_required) {
-        subsetted_10het = aux1b_hets;
-      } else {
-        // Don't need raw_genovec any more.
-        CopyBitarrSubset(aux1b_hets, sample_include, sample_ct, raw_genovec);
-        subsetted_10het = raw_genovec;
+    }
+    if ((allele_idx0 + allele_idx1 != 1) || aux1b_het_present) {
+      // We can now clobber the contents of pgrp->workspace_vec (raw_genovec)
+      // and pgrp->workspace_aux1x_present (aux1b_hets).
+      // We use the former as the subsetted_suppressed_het return buffer.
+      uintptr_t* all_hets_subsetted = all_hets;
+      if (sample_include) {
+        all_hets_subsetted = aux1b_hets;
+        CopyBitarrSubset(all_hets, sample_include, sample_ct, all_hets_subsetted);
       }
+      subsetted_suppressed_het = raw_genovec;
+      SuppressHets11(genovec, all_hets_subsetted, sample_ct, raw_genovec);
     }
   }
-  reterr = ParseAux2Subset(fread_end, sample_include, all_hets, subsetted_10het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
+  reterr = ParseAux2Subset(fread_end, sample_include, all_hets, subsetted_suppressed_het, raw_sample_ct, sample_ct, &fread_ptr, phasepresent, phaseinfo, phasepresent_ct_ptr, pgrp->workspace_subset);
   if (unlikely(reterr)) {
     return reterr;
   }
   if (VrtypeMultiallelicHc(vrtype) && (*phasepresent_ct_ptr)) {
     const uint32_t sample_ctl2 = NypCtToWordCt(sample_ct);
-    Halfword* phasepresent_alias = R_CAST(Halfword*, phasepresent);
-    for (uint32_t hwidx = 0; hwidx != sample_ctl2; ++hwidx) {
-      phasepresent_alias[hwidx] &= Pack01ToHalfword(genovec[hwidx]);
-    }
+    MaskWordsToHalfwordsInvmatch(genovec, kMaskAAAA, sample_ctl2, phasepresent, phasepresent);
     *phasepresent_ct_ptr = PopcountWords(phasepresent, BitCtToWordCt(sample_ct));
   }
   if (invert) {
@@ -6899,6 +7197,10 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
     if (unlikely(ParseAndSaveDeltalistAsBitarr(fread_end, raw_sample_ct, &fread_ptr, raw_dosage_present, &raw_dosage_ct))) {
       return kPglRetMalformedInput;
     }
+    if ((!raw_dosage_ct) && (!dosage_ct_ptr)) {
+      // bugfix (7 Oct 2024)
+      ZeroWArr(raw_sample_ctl, raw_dosage_present);
+    }
   } else if (is_unconditional_dosage) {
     // case 2: unconditional dosage.  handle separately from other two cases
     // since missing values may be present.
@@ -6929,10 +7231,7 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
     }
     return kPglRetSuccess;
   }
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in ParseDosage16()."
-#endif
-  const uint16_t* dosage_main_read_iter = R_CAST(const uint16_t*, fread_ptr);
+  const unsigned char* dosage_main_read_biter = fread_ptr;
   uint16_t* dosage_main_write_iter = dosage_main;
   uint32_t raw_dphase_ct = 0;
   uint32_t dphase_ct = 0;
@@ -6940,7 +7239,7 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
   if (dphase_present && (vrtype & 0x80)) {
     fread_ptr = &(fread_ptr[raw_dosage_ct * 2]);
     if (!is_unconditional_dosage) {
-      const uintptr_t* file_dphase_present = R_CAST(const uintptr_t*, fread_ptr);
+      const unsigned char* file_dphase_present = fread_ptr;
       fread_ptr = &(fread_ptr[DivUp(raw_dosage_ct, CHAR_BIT)]);
       raw_dphase_present = subsetting_required? pgrp->workspace_dphase_present : dphase_present;
       ExpandBytearr(file_dphase_present, raw_dosage_present, raw_sample_ctl, raw_dosage_ct, 0, raw_dphase_present);
@@ -6960,7 +7259,7 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
     if (allele_ct == 2) {
       if (!is_unconditional_dosage) {
         if (dosage_ct == raw_dosage_ct) {
-          memcpy(dosage_main_write_iter, dosage_main_read_iter, dosage_ct * sizeof(int16_t));
+          memcpy(dosage_main_write_iter, dosage_main_read_biter, dosage_ct * sizeof(int16_t));
         } else {
           // bugfix (22 May 2017): dosage_entry_idx needs to iterate up to
           // raw_dosage_ct, not dosage_ct
@@ -6975,7 +7274,8 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
             do {
               const uintptr_t low_bit = cur_bits & (-cur_bits);
               if (sample_include_word & low_bit) {
-                *dosage_main_write_iter++ = dosage_main_read_iter[dosage_entry_idx];
+                CopyFromUnalignedOffsetU16(dosage_main_write_iter, dosage_main_read_biter, dosage_entry_idx);
+                ++dosage_main_write_iter;
               }
               ++dosage_entry_idx;
               cur_bits ^= low_bit;
@@ -6985,7 +7285,8 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
       } else {
         if (!subsetting_required) {
           for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
-            const uint16_t cur_dosage = *dosage_main_read_iter++;
+            uint16_t cur_dosage;
+            CopyFromUnalignedIncrU16(&cur_dosage, &dosage_main_read_biter);
             if (cur_dosage != 65535) {
               *dosage_main_write_iter++ = cur_dosage;
             } else {
@@ -7001,10 +7302,11 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
               cur_bits = sample_include[++widx];
             } while (!cur_bits);
             const uintptr_t sample_uidx_base = widx * kBitsPerWord;
-            const uint16_t* dosage_main_readp = &(dosage_main_read_iter[sample_uidx_base]);
+            const unsigned char* dosage_main_readp = &(dosage_main_read_biter[sample_uidx_base * sizeof(int16_t)]);
             do {
               const uint32_t sample_uidx_lowbits = ctzw(cur_bits);
-              const uint16_t cur_dosage = dosage_main_readp[sample_uidx_lowbits];
+              uint16_t cur_dosage;
+              CopyFromUnalignedOffsetU16(&cur_dosage, dosage_main_readp, sample_uidx_lowbits);
               if (cur_dosage != 65535) {
                 *dosage_main_write_iter++ = cur_dosage;
               } else {
@@ -7035,12 +7337,10 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
     // phased dosage
     if (allele_ct == 2) {
       if (!is_unconditional_dosage) {
-        if (dphase_ct == raw_dphase_ct) {
-          memcpy(dosage_main_write_iter, dosage_main_read_iter, dosage_ct * sizeof(int16_t));
-          memcpy(dphase_delta, fread_ptr, dphase_ct * sizeof(int16_t));
-          if (dphase_ct_ptr) {
-            *dphase_ct_ptr = dphase_ct;
-          }
+        // bugfix (15 Sep 2023): dphase_ct == raw_dphase_ct doesn't guarantee
+        // dosage_ct == raw_dosage_ct
+        if (dosage_ct == raw_dosage_ct) {
+          memcpy(dosage_main_write_iter, dosage_main_read_biter, dosage_ct * sizeof(int16_t));
         } else {
           uintptr_t widx = ~k0LU;
           uint32_t dosage_entry_idx = 0;
@@ -7053,15 +7353,23 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
             do {
               const uintptr_t low_bit = cur_bits & (-cur_bits);
               if (sample_include_word & low_bit) {
-                *dosage_main_write_iter++ = dosage_main_read_iter[dosage_entry_idx];
+                CopyFromUnalignedOffsetU16(dosage_main_write_iter, dosage_main_read_biter, dosage_entry_idx);
+                ++dosage_main_write_iter;
               }
               ++dosage_entry_idx;
               cur_bits ^= low_bit;
             } while (cur_bits);
           } while (dosage_entry_idx != raw_dosage_ct);
-          widx = ~k0LU;
+        }
+        if (dphase_ct == raw_dphase_ct) {
+          memcpy(dphase_delta, fread_ptr, dphase_ct * sizeof(int16_t));
+          if (dphase_ct_ptr) {
+            *dphase_ct_ptr = dphase_ct;
+          }
+        } else {
+          uintptr_t widx = ~k0LU;
           uint32_t dphase_entry_idx = 0;
-          const int16_t* dphase_delta_read_alias = R_CAST(const int16_t*, fread_ptr);
+          const unsigned char* dphase_delta_read = fread_ptr;
           int16_t* dphase_delta_write_iter = dphase_delta;
           do {
             uintptr_t cur_bits;
@@ -7072,7 +7380,8 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
             do {
               const uintptr_t low_bit = cur_bits & (-cur_bits);
               if (sample_include_word & low_bit) {
-                *dphase_delta_write_iter++ = dphase_delta_read_alias[dphase_entry_idx];
+                CopyFromUnalignedOffsetI16(dphase_delta_write_iter, dphase_delta_read, dphase_entry_idx);
+                ++dphase_delta_write_iter;
               }
               ++dphase_entry_idx;
               cur_bits ^= low_bit;
@@ -7083,14 +7392,16 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
           }
         }
       } else {
-        const int16_t* dphase_delta_read = R_CAST(const int16_t*, fread_ptr);
+        const unsigned char* dphase_delta_read = fread_ptr;
         int16_t* dphase_delta_write_iter = dphase_delta;
         if (!subsetting_required) {
           for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
-            const uint16_t cur_dosage = *dosage_main_read_iter++;
+            uint16_t cur_dosage;
+            CopyFromUnalignedIncrU16(&cur_dosage, &dosage_main_read_biter);
             if (cur_dosage != 65535) {
               *dosage_main_write_iter++ = cur_dosage;
-              const int16_t dphase_delta_val = dphase_delta_read[sample_idx];
+              int16_t dphase_delta_val;
+              CopyFromUnalignedOffsetI16(&dphase_delta_val, dphase_delta_read, sample_idx);
               if (dphase_delta_val) {
                 *dphase_delta_write_iter++ = dphase_delta_val;
               } else {
@@ -7106,10 +7417,12 @@ PglErr ParseDosage16(const unsigned char* fread_ptr, const unsigned char* fread_
           uintptr_t sample_include_bits = sample_include[0];
           for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
             const uintptr_t sample_uidx = BitIter1(sample_include, &sample_uidx_base, &sample_include_bits);
-            const uint16_t cur_dosage = dosage_main_read_iter[sample_uidx];
+            uint16_t cur_dosage;
+            CopyFromUnalignedOffsetU16(&cur_dosage, dosage_main_read_biter, sample_uidx);
             if (cur_dosage != 65535) {
               *dosage_main_write_iter++ = cur_dosage;
-              const int16_t dphase_delta_val = dphase_delta_read[sample_uidx];
+              int16_t dphase_delta_val;
+              CopyFromUnalignedOffsetI16(&dphase_delta_val, dphase_delta_read, sample_uidx);
               if (dphase_delta_val) {
                 *dphase_delta_write_iter++ = dphase_delta_val;
               } else {
@@ -7246,16 +7559,13 @@ PglErr GetAux1bHetIncr(const unsigned char* fread_end, uint32_t aux1b_mode, uint
   uintptr_t detect_hom_mask_lo;
   const uint32_t allele_code_logwidth = GetAux1bConsts(allele_ct, &detect_hom_mask_lo);
   const uint32_t code10_logwidth = allele_code_logwidth + (allele_code_logwidth != 0);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GetAux1bHetIncr()."
-#endif
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, CHAR_BIT);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
   }
   if (allele_ct == 3) {
-    const uint32_t hom22_ct = PopcountBytes(patch_10_fvalsw, fvals_byte_ct);
+    const uint32_t hom22_ct = PopcountBytes(patch_10_fvals, fvals_byte_ct);
     *raw_het_ctp += rare10_ct - hom22_ct;
     return kPglRetSuccess;
   }
@@ -7273,9 +7583,9 @@ PglErr GetAux1bHetIncr(const unsigned char* fread_end, uint32_t aux1b_mode, uint
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     // allele_ct > 3 guaranteed
     fvals_bits = fvals_bits ^ (fvals_bits << allele_code_width);
@@ -7290,7 +7600,7 @@ PglErr GetAux1bHetIncr(const unsigned char* fread_end, uint32_t aux1b_mode, uint
 }
 
 uint64_t U16VecSum(const uint16_t* __restrict uint16_vec, uint32_t entry_ct) {
-#ifdef __LP64__
+#ifdef USE_SSE2
   // UniVecHsum32() could overflow once we exceed this
   const uint32_t max_loop_len = (131072 / kInt32PerVec) - 1;
 
@@ -7306,7 +7616,7 @@ uint64_t U16VecSum(const uint16_t* __restrict uint16_vec, uint32_t entry_ct) {
     if (full_vecs_remaining < max_loop_len) {
       if (!full_vecs_remaining) {
         const uint32_t trail_ct = entry_ct % (kBytesPerVec / sizeof(int16_t));
-        uint16_vec = R_CAST(const uint16_t*, uint16_vvec_iter);
+        uint16_vec = DowncastKVecWToU16(uint16_vvec_iter);
         for (uint32_t uii = 0; uii != trail_ct; ++uii) {
           sum += uint16_vec[uii];
         }
@@ -7560,11 +7870,8 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       // presence of missing values.
       // note that this code will also need to be adjusted when multiallelic
       // support is added.
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in GetBasicGenotypeCountsAndDosage16s()."
-#endif
       STD_ARRAY_FILL0(replaced_genocounts);
-      const uint16_t* dosage_main = R_CAST(const uint16_t*, fread_ptr);
+      const unsigned char* dosage_main_read = fread_ptr;
       if (PtrAddCk(fread_end, raw_sample_ct * sizeof(int16_t), &fread_ptr)) {
         return kPglRetMalformedInput;
       }
@@ -7573,7 +7880,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
         uintptr_t sample_include_bits = sample_include[0];
         for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
           const uintptr_t sample_uidx = BitIter1(sample_include, &sample_uidx_base, &sample_include_bits);
-          const uintptr_t cur_dosage_val = dosage_main[sample_uidx];
+          const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(dosage_main_read, sample_uidx);
           if (cur_dosage_val != 65535) {
             alt1_dosage += cur_dosage_val;
 
@@ -7585,7 +7892,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
         }
       } else {
         for (uint32_t sample_uidx = 0; sample_uidx != sample_ct; ++sample_uidx) {
-          const uintptr_t cur_dosage_val = dosage_main[sample_uidx];
+          const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(dosage_main_read, sample_uidx);
           if (cur_dosage_val != 65535) {
             alt1_dosage += cur_dosage_val;
             alt1_dosage_sq_sum += cur_dosage_val * cur_dosage_val;
@@ -7613,7 +7920,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
         fread_ptr = &(fread_ptr[raw_sample_ctb]);
         raw_dosage_ct = PopcountWords(raw_dosage_present, raw_sample_ctl);
       }
-      const uint16_t* dosage_main_iter = R_CAST(const uint16_t*, fread_ptr);
+      const unsigned char* dosage_main_read = fread_ptr;
       if (PtrAddCk(fread_end, raw_dosage_ct * sizeof(int16_t), &fread_ptr)) {
         return kPglRetMalformedInput;
       }
@@ -7623,7 +7930,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
         for (uint32_t dosage_idx = 0; dosage_idx != raw_dosage_ct; ++dosage_idx) {
           const uintptr_t lowbit = BitIter1y(raw_dosage_present, &sample_widx, &dosage_present_bits);
           if (sample_include[sample_widx] & lowbit) {
-            const uintptr_t cur_dosage_val = dosage_main_iter[dosage_idx];
+            const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(dosage_main_read, dosage_idx);
             alt1_dosage += cur_dosage_val;
             alt1_dosage_sq_sum += cur_dosage_val * cur_dosage_val;
             ++dosage_ct;
@@ -7633,11 +7940,13 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       } else {
         if (!imp_r2_ptr) {
           for (uint32_t dosage_idx = 0; dosage_idx != raw_dosage_ct; ++dosage_idx) {
-            alt1_dosage += dosage_main_iter[dosage_idx];
+            uint16_t cur_dosage_u16;
+            CopyFromUnalignedOffsetU16(&cur_dosage_u16, dosage_main_read, dosage_idx);
+            alt1_dosage += cur_dosage_u16;
           }
         } else {
           for (uint32_t dosage_idx = 0; dosage_idx != raw_dosage_ct; ++dosage_idx) {
-            const uintptr_t cur_dosage_val = dosage_main_iter[dosage_idx];
+            const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(dosage_main_read, dosage_idx);
             alt1_dosage += cur_dosage_val;
             alt1_dosage_sq_sum += cur_dosage_val * cur_dosage_val;
           }
@@ -7695,10 +8004,10 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
     ZeroWArr(raw_sample_ctl, raw_phasepresent);
   }
   uintptr_t* raw_dosage_present = nullptr;
-  const uint16_t* dosage_main;
+  const unsigned char* dosage_main_read;
   uint32_t raw_dosage_ct = 0;
   if (is_unconditional_dosage) {
-    dosage_main = R_CAST(const uint16_t*, fread_ptr);
+    dosage_main_read = fread_ptr;
     if (PtrAddCk(fread_end, raw_sample_ct * sizeof(int16_t), &fread_ptr)) {
       return kPglRetMalformedInput;
     }
@@ -7719,12 +8028,12 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       fread_ptr = &(fread_ptr[raw_sample_ctb]);
       raw_dosage_ct = PopcountWords(raw_dosage_present, raw_sample_ctl);
     }
-    dosage_main = R_CAST(const uint16_t*, fread_ptr);
+    dosage_main_read = fread_ptr;
     if (PtrAddCk(fread_end, raw_dosage_ct * sizeof(int16_t), &fread_ptr)) {
       return kPglRetMalformedInput;
     }
   }
-  const uint16_t* dosage_main_iter = dosage_main;
+  const unsigned char* dosage_main_biter = dosage_main_read;
   uint64_t hap_ssq_x2 = 0;
   uint32_t phased_hc_het_ct = 0;
   if (!(vrtype & 0x80)) {
@@ -7741,7 +8050,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           }
           uintptr_t phasepresent_word = raw_phasepresent[widx];
           for (uint32_t uii = 0; uii != loop_len; ++uii) {
-            const uintptr_t cur_dosage_val = *dosage_main_iter++;
+            const uintptr_t cur_dosage_val = CopyFromUnalignedIncrU16ZX(&dosage_main_biter);
             if (cur_dosage_val != 65535) {
               alt1_dosage += cur_dosage_val;
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
@@ -7763,10 +8072,10 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
             continue;
           }
           const uintptr_t phasepresent_word = raw_phasepresent[widx];
-          const uint16_t* cur_dosage_main = &(dosage_main[widx * kBitsPerWord]);
+          const unsigned char* cur_dosage_main = &(dosage_main_read[widx * kBitsPerWord * sizeof(int16_t)]);
           do {
             const uint32_t sample_idx_lowbits = ctzw(sample_include_word);
-            const uintptr_t cur_dosage_val = cur_dosage_main[sample_idx_lowbits];
+            const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(cur_dosage_main, sample_idx_lowbits);
             const uintptr_t lowbit = sample_include_word & (-sample_include_word);
             if (cur_dosage_val != 65535) {
               alt1_dosage += cur_dosage_val;
@@ -7793,7 +8102,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           if (dosage_present_word) {
             const uintptr_t phasepresent_word = raw_phasepresent[widx];
             do {
-              const uintptr_t cur_dosage_val = *dosage_main_iter++;
+              const uintptr_t cur_dosage_val = CopyFromUnalignedIncrU16ZX(&dosage_main_biter);
               alt1_dosage += cur_dosage_val;
               const uintptr_t lowbit = dosage_present_word & (-dosage_present_word);
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
@@ -7812,7 +8121,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           const uintptr_t sample_include_word = sample_include[widx];
           uintptr_t dosage_present_word = raw_dosage_present[widx];
           if (!sample_include_word) {
-            dosage_main_iter = &(dosage_main_iter[PopcountWord(dosage_present_word)]);
+            dosage_main_biter = &(dosage_main_biter[PopcountWord(dosage_present_word) * sizeof(int16_t)]);
             continue;
           }
           const uintptr_t phasepresent_word = raw_phasepresent[widx];
@@ -7820,7 +8129,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           while (dosage_present_word) {
             const uintptr_t lowbit = dosage_present_word & (-dosage_present_word);
             if (lowbit & sample_include_word) {
-              const uintptr_t cur_dosage_val = *dosage_main_iter;
+              const uintptr_t cur_dosage_val = CopyFromUnalignedU16ZX(dosage_main_biter);
               alt1_dosage += cur_dosage_val;
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
               ++dosage_ct;
@@ -7830,7 +8139,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
               }
             }
             dosage_present_word ^= lowbit;
-            ++dosage_main_iter;
+            dosage_main_biter += sizeof(int16_t);
           }
         }
         GenoarrCountSubsetIntersectFreqs(raw_genovec, raw_dosage_present, sample_include, raw_sample_ct, replaced_genocounts);
@@ -7841,16 +8150,16 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       if (PtrCheck(fread_end, fread_ptr, raw_sample_ct * sizeof(int16_t))) {
         return kPglRetMalformedInput;
       }
-      const int16_t* dphase_delta = R_CAST(const int16_t*, fread_ptr);
+      const unsigned char* dphase_delta_read = fread_ptr;
       if (!subsetting_required) {
         for (uint32_t sample_uidx = 0; sample_uidx != raw_sample_ct; ++sample_uidx) {
-          const uintptr_t cur_dosage_val = dosage_main[sample_uidx];
+          const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(dosage_main_read, sample_uidx);
           if (cur_dosage_val != 65535) {
             alt1_dosage += cur_dosage_val;
             hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
             ++dosage_ct;
             // .pgen specification now requires this value to never be missing.
-            const intptr_t dphase_delta_val = dphase_delta[sample_uidx];
+            const intptr_t dphase_delta_val = CopyFromUnalignedOffsetI16ZX(dphase_delta_read, sample_uidx);
             hap_ssq_x2 += dphase_delta_val * dphase_delta_val;
           }
         }
@@ -7860,16 +8169,16 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           if (!sample_include_word) {
             continue;
           }
-          const uint16_t* cur_dosage_main = &(dosage_main[widx * kBitsPerWord]);
-          const int16_t* cur_dphase_delta = &(dphase_delta[widx * kBitsPerWord]);
+          const unsigned char* cur_dosage_main = &(dosage_main_read[widx * kBitsPerWord * sizeof(int16_t)]);
+          const unsigned char* cur_dphase_delta = &(dphase_delta_read[widx * kBitsPerWord * sizeof(int16_t)]);
           do {
             const uint32_t sample_idx_lowbits = ctzw(sample_include_word);
-            const uintptr_t cur_dosage_val = cur_dosage_main[sample_idx_lowbits];
+            const uintptr_t cur_dosage_val = CopyFromUnalignedOffsetU16ZX(cur_dosage_main, sample_idx_lowbits);
             if (cur_dosage_val != 65535) {
               alt1_dosage += cur_dosage_val;
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
               ++dosage_ct;
-              const intptr_t dphase_delta_val = cur_dphase_delta[sample_idx_lowbits];
+              const intptr_t dphase_delta_val = CopyFromUnalignedOffsetI16ZX(cur_dphase_delta, sample_idx_lowbits);
               hap_ssq_x2 += dphase_delta_val * dphase_delta_val;
             }
             sample_include_word &= sample_include_word - 1;
@@ -7879,7 +8188,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       STD_ARRAY_COPY(genocounts, 4, replaced_genocounts);
       replaced_genocounts[3] = replaced_genocounts[3] + dosage_ct - sample_ct;
     } else {
-      const uintptr_t* file_dphase_present = R_CAST(const uintptr_t*, fread_ptr);
+      const unsigned char* file_dphase_present = fread_ptr;
       const uint32_t raw_dosage_ctb = DivUp(raw_dosage_ct, CHAR_BIT);
       if (PtrAddCk(fread_end, raw_dosage_ctb, &fread_ptr)) {
         return kPglRetMalformedInput;
@@ -7890,7 +8199,7 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
       }
       uintptr_t* raw_dphase_present = pgrp->workspace_dphase_present;
       ExpandBytearr(file_dphase_present, raw_dosage_present, raw_sample_ctl, raw_dosage_ct, 0, raw_dphase_present);
-      const int16_t* dphase_delta_iter = R_CAST(const int16_t*, fread_ptr);
+      const unsigned char* dphase_delta_biter = fread_ptr;
       if (!subsetting_required) {
         phased_hc_het_ct = raw_phasepresent_ct - PopcountWordsIntersect(raw_phasepresent, raw_dosage_present, raw_sample_ctl);
 
@@ -7900,12 +8209,12 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
             const uintptr_t phasepresent_word = raw_phasepresent[widx];
             const uintptr_t dphase_present_word = raw_dphase_present[widx];
             do {
-              const uintptr_t cur_dosage_val = *dosage_main_iter++;
+              const uintptr_t cur_dosage_val = CopyFromUnalignedIncrU16ZX(&dosage_main_biter);
               alt1_dosage += cur_dosage_val;
               const uintptr_t lowbit = dosage_present_word & (-dosage_present_word);
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
               if (lowbit & dphase_present_word) {
-                const intptr_t dphase_delta_val = *dphase_delta_iter++;
+                const intptr_t dphase_delta_val = CopyFromUnalignedIncrI16ZX(&dphase_delta_biter);
                 hap_ssq_x2 += dphase_delta_val * dphase_delta_val;
               } else if (lowbit & phasepresent_word) {
                 const uintptr_t homdist = 16384 - abs_i32(16384 - cur_dosage_val);
@@ -7923,8 +8232,8 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
           const uintptr_t dphase_present_word = raw_dphase_present[widx];
           uintptr_t dosage_present_word = raw_dosage_present[widx];
           if (!sample_include_word) {
-            dosage_main_iter = &(dosage_main_iter[PopcountWord(dosage_present_word)]);
-            dphase_delta_iter = &(dphase_delta_iter[PopcountWord(dphase_present_word)]);
+            dosage_main_biter = &(dosage_main_biter[PopcountWord(dosage_present_word) * sizeof(int16_t)]);
+            dphase_delta_biter = &(dphase_delta_biter[PopcountWord(dphase_present_word) * sizeof(int16_t)]);
             continue;
           }
           const uintptr_t phasepresent_word = raw_phasepresent[widx];
@@ -7933,21 +8242,21 @@ PglErr GetBasicGenotypeCountsAndDosage16s(const uintptr_t* __restrict sample_inc
             const uintptr_t lowbit = dosage_present_word & (-dosage_present_word);
             const uintptr_t dphase_here = lowbit & dphase_present_word;
             if (lowbit & sample_include_word) {
-              const uintptr_t cur_dosage_val = *dosage_main_iter;
+              const uintptr_t cur_dosage_val = CopyFromUnalignedU16ZX(dosage_main_biter);
               alt1_dosage += cur_dosage_val;
               hap_ssq_x2 += cur_dosage_val * cur_dosage_val;
               ++dosage_ct;
               if (dphase_here) {
-                const intptr_t dphase_delta_val = *dphase_delta_iter;
+                const intptr_t dphase_delta_val = CopyFromUnalignedI16ZX(dphase_delta_biter);
                 hap_ssq_x2 += dphase_delta_val * dphase_delta_val;
               } else if (lowbit & phasepresent_word) {
                 const uintptr_t homdist = 16384 - abs_i32(16384 - cur_dosage_val);
                 hap_ssq_x2 += homdist * homdist;
               }
             }
-            dphase_delta_iter += (dphase_here != 0);
+            dphase_delta_biter += (dphase_here != 0) * sizeof(int16_t);
             dosage_present_word ^= lowbit;
-            ++dosage_main_iter;
+            dosage_main_biter += sizeof(int16_t);
           }
         }
         GenoarrCountSubsetIntersectFreqs(raw_genovec, raw_dosage_present, sample_include, raw_sample_ct, replaced_genocounts);
@@ -8024,7 +8333,11 @@ void CountAllAux1aDense(const void* patch_01_fvals, uint32_t allele_ct, uint32_t
   if (allele_ct < 19) {
     if (allele_ct < 7) {
       STD_ARRAY_DECL(uint32_t, 4, rare0het_counts);
-      GenoarrCountFreqs(R_CAST(const uintptr_t*, patch_01_fvals), rare01_ct, rare0het_counts);
+#ifndef NO_UNALIGNED
+      GenoarrCountFreqs(S_CAST(const uintptr_t*, patch_01_fvals), rare01_ct, rare0het_counts);
+#else
+      GenoarrbCountFreqs(S_CAST(const unsigned char*, patch_01_fvals), rare01_ct, rare0het_counts);
+#endif
       for (uint32_t allele_idx_p2 = 2; allele_idx_p2 != allele_ct; ++allele_idx_p2) {
         one_cts[allele_idx_p2] = rare0het_counts[allele_idx_p2 - 2];
       }
@@ -8073,17 +8386,14 @@ PglErr CountAllAux1a(const unsigned char* fread_end, const uintptr_t* __restrict
   if (!aux1a_mode) {
     const uint32_t fset_byte_ct = DivUp(raw_01_ct, CHAR_BIT);
     const uint32_t rare01_ct = PopcountBytes(*fread_pp, fset_byte_ct);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in CountAllAux1a()."
-#endif
-    const uintptr_t* patch_01_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fset = *fread_pp;
     *fread_pp += fset_byte_ct;
-    const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_01_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    const Halfword* sample_include_hw = R_CAST(const Halfword*, sample_include);
+    const Halfword* sample_include_hw = DowncastKWToHW(sample_include);
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_hets = Word01(raw_genoarr[0]);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
@@ -8099,10 +8409,10 @@ PglErr CountAllAux1a(const unsigned char* fread_end, const uintptr_t* __restrict
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_01_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_01_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_01_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_01_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_01_fset, fset_widx);
       }
       if (allele_ct == 3) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -8124,9 +8434,9 @@ PglErr CountAllAux1a(const unsigned char* fread_end, const uintptr_t* __restrict
           if (fset_bits & 1) {
             if (rare01_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_01_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
@@ -8169,7 +8479,7 @@ PglErr CountAllAux1a(const unsigned char* fread_end, const uintptr_t* __restrict
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_01_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_01_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare01_ct) * allele_code_width, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -8184,10 +8494,10 @@ PglErr CountAllAux1a(const unsigned char* fread_end, const uintptr_t* __restrict
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_01_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_01_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
       loop_len = 1 + ((rare01_ct - 1) & (loop_len - 1));
     } else {
-      fvals_bits = patch_01_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_01_fvals, fvals_widx);
     }
     const uint32_t* cur_deltalist_base = &(deltalist_workspace[fvals_widx << (kBitsPerWordLog2 - allele_code_logwidth)]);
     for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -8217,10 +8527,14 @@ void CountAllAux1bDense(const void* __restrict patch_10_fvals, uint32_t allele_c
       return;
     }
     STD_ARRAY_DECL(uint32_t, 4, alt_counts);
-    GenoarrCountFreqs(R_CAST(const uintptr_t*, patch_10_fvals), rare10_ct * 2, alt_counts);
+#ifndef NO_UNALIGNED
+    GenoarrCountFreqs(S_CAST(const uintptr_t*, patch_10_fvals), rare10_ct * 2, alt_counts);
+#else
+    GenoarrbCountFreqs(S_CAST(const unsigned char*, patch_10_fvals), rare10_ct * 2, alt_counts);
+#endif
     one_cts_offset1[0] += alt_counts[0];
     for (uint32_t allele_idx_m1 = 1; allele_idx_m1 != allele_ct_m1; ++allele_idx_m1) {
-      const uint32_t homxx_ct = CountNybble(patch_10_fvals, allele_idx_m1 * kMask5555, rare10_ct);
+      const uint32_t homxx_ct = CountNybble(S_CAST(const unsigned char*, patch_10_fvals), allele_idx_m1 * kMask5555, rare10_ct);
       one_cts_offset1[allele_idx_m1] += alt_counts[allele_idx_m1] - 2 * homxx_ct;
       two_cts_offset1[allele_idx_m1] = homxx_ct;
     }
@@ -8296,17 +8610,14 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
   if (!aux1b_mode) {
     const uint32_t fset_byte_ct = DivUp(raw_10_ct, CHAR_BIT);
     const uint32_t rare10_ct = PopcountBytes(*fread_pp, fset_byte_ct);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in CountAllAux1b()."
-#endif
-    const uintptr_t* patch_10_fsetw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fset = *fread_pp;
     *fread_pp += fset_byte_ct;
-    const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* patch_10_fvals = *fread_pp;
     const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, 8);
     if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
       return kPglRetMalformedInput;
     }
-    const Halfword* sample_include_hw = R_CAST(const Halfword*, sample_include);
+    const Halfword* sample_include_hw = DowncastKWToHW(sample_include);
     uintptr_t sample_hwidx = 0;
     uintptr_t cur_raw_genoarr_xys = Word10(raw_genoarr[0]);
     const uint32_t fset_word_ct_m1 = (fset_byte_ct - 1) / kBytesPerWord;
@@ -8322,10 +8633,10 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
         if (fset_widx > fset_word_ct_m1) {
           break;
         }
-        fset_bits = SubwordLoad(&(patch_10_fsetw[fset_word_ct_m1]), ModNz(fset_byte_ct, kBytesPerWord));
+        fset_bits = SubwordLoad(&(patch_10_fset[fset_word_ct_m1 * kBytesPerWord]), ModNz(fset_byte_ct, kBytesPerWord));
         loop_len = ModNz(raw_10_ct, kBitsPerWord);
       } else {
-        fset_bits = patch_10_fsetw[fset_widx];
+        CopyFromUnalignedOffsetW(&fset_bits, patch_10_fset, fset_widx);
       }
       if (allele_ct_m1 == 2) {
         for (uint32_t uii = 0; uii != loop_len; ++uii) {
@@ -8335,9 +8646,9 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
@@ -8361,9 +8672,9 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
           if (fset_bits & 1) {
             if (rare10_lowbits == kBitsPerWord) {
               if (fvals_widx == fvals_word_ct_m1) {
-                fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+                fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
               } else {
-                fvals_bits = patch_10_fvalsw[fvals_widx];
+                CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
               }
               // unnecessary to apply bzhi here
               ++fvals_widx;
@@ -8403,7 +8714,7 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
   if (unlikely(reterr)) {
     return reterr;
   }
-  const uintptr_t* patch_10_fvalsw = R_CAST(const uintptr_t*, *fread_pp);
+  const unsigned char* patch_10_fvals = *fread_pp;
   const uint32_t fvals_byte_ct = DivUpU64(S_CAST(uint64_t, rare10_ct) << code10_logwidth, 8);
   if (PtrAddCk(fread_end, fvals_byte_ct, fread_pp)) {
     return kPglRetMalformedInput;
@@ -8417,10 +8728,10 @@ PglErr CountAllAux1b(const unsigned char* fread_end, const uintptr_t* __restrict
       if (fvals_widx > fvals_word_ct_m1) {
         break;
       }
-      fvals_bits = SubwordLoad(&(patch_10_fvalsw[fvals_widx]), ModNz(fvals_byte_ct, kBytesPerWord));
+      fvals_bits = SubwordLoad(&(patch_10_fvals[fvals_widx * kBytesPerWord]), ModNz(fvals_byte_ct, kBytesPerWord));
       loop_len = 1 + ((rare10_ct - 1) & (loop_len - 1));
     } else {
-      fvals_bits = patch_10_fvalsw[fvals_widx];
+      CopyFromUnalignedOffsetW(&fvals_bits, patch_10_fvals, fvals_widx);
     }
     const uint32_t* cur_deltalist_base = &(deltalist_workspace[fvals_widx << (kBitsPerWordLog2 - code10_logwidth)]);
     if (allele_ct == 3) {
@@ -8762,7 +9073,7 @@ uintptr_t CountAux1bHets(const AlleleCode* patch_10_vals, uintptr_t rare10_ct) {
     return tot;
 #ifdef __LP64__
   }
-  const unsigned char* bytearr_uc_iter = R_CAST(const unsigned char*, patch_10_vals);
+  const unsigned char* bytearr_uc_iter = DowncastKToUc(patch_10_vals);
   const VecW m0 = vecw_setzero();
   const VecW m8 = VCONST_W(kMask00FF);
   VecW acc = vecw_setzero();
@@ -8771,10 +9082,10 @@ uintptr_t CountAux1bHets(const AlleleCode* patch_10_vals, uintptr_t rare10_ct) {
     for (uint32_t uii = 0; uii != 255; ++uii) {
       const VecUc cur_vvec = vecuc_loadu(bytearr_uc_iter);
       bytearr_uc_iter = &(bytearr_uc_iter[kBytesPerVec]);
-      const VecUc shifted_vvec = R_CAST(VecUc, vecw_srli(R_CAST(VecW, cur_vvec), 8));
+      const VecUc shifted_vvec = VecWToUc(vecw_srli(VecUcToW(cur_vvec), 8));
       inner_acc = inner_acc - (cur_vvec == shifted_vvec);
     }
-    const VecW partial_sums = R_CAST(VecW, inner_acc) & m8;
+    const VecW partial_sums = VecUcToW(inner_acc) & m8;
     acc = acc + vecw_sad(partial_sums, m0);
     byte_ct -= 255 * kBytesPerVec;
   }
@@ -8783,16 +9094,16 @@ uintptr_t CountAux1bHets(const AlleleCode* patch_10_vals, uintptr_t rare10_ct) {
   while (bytearr_uc_iter < bytearr_uc_final) {
     const VecUc cur_vvec = vecuc_loadu(bytearr_uc_iter);
     bytearr_uc_iter = &(bytearr_uc_iter[kBytesPerVec]);
-    const VecUc shifted_vvec = R_CAST(VecUc, vecw_srli(R_CAST(VecW, cur_vvec), 8));
+    const VecUc shifted_vvec = VecWToUc(vecw_srli(VecUcToW(cur_vvec), 8));
     inner_acc = inner_acc - (cur_vvec == shifted_vvec);
   }
   VecUc cur_vvec = vecuc_loadu(bytearr_uc_final);
   const uintptr_t overlap_byte_ct = bytearr_uc_iter - bytearr_uc_final;
-  const VecUc shifted_vvec = R_CAST(VecUc, vecw_srli(R_CAST(VecW, cur_vvec), 8));
+  const VecUc shifted_vvec = VecWToUc(vecw_srli(VecUcToW(cur_vvec), 8));
   const VecUc mask_vvec = vecuc_loadu(&(kLeadMask[kBytesPerVec - overlap_byte_ct]));
   cur_vvec = (cur_vvec == shifted_vvec) & mask_vvec;
   inner_acc = inner_acc - cur_vvec;
-  const VecW partial_sums = R_CAST(VecW, inner_acc) & m8;
+  const VecW partial_sums = VecUcToW(inner_acc) & m8;
   acc = acc + vecw_sad(partial_sums, m0);
   const uintptr_t tot = HsumW(acc);
   return rare10_ct - tot;
@@ -8874,25 +9185,25 @@ PglErr PgrGetRaw(uint32_t vidx, PgenGlobalFlags read_gflags, PgenReader* pgr_ptr
       uintptr_t* patch_01_set = loadbuf_iter;
       loadbuf_iter = &(loadbuf_iter[raw_sample_ctl]);
       // (could decide to vector-align patch_01_vals later)
-      AlleleCode* patch_01_vals = R_CAST(AlleleCode*, loadbuf_iter);
+      AlleleCode* patch_01_vals = DowncastWToAC(loadbuf_iter);
       reterr = ExportAux1a(fread_end, genovec, aux1a_mode, raw_sample_ct, allele_ct, het_ct, &fread_ptr, patch_01_set, patch_01_vals, &rare01_ct);
       if (unlikely(reterr)) {
         return reterr;
       }
       loadbuf_iter = &(loadbuf_iter[DivUp(rare01_ct, kBytesPerWord / sizeof(AlleleCode))]);
-      VecAlignUp64(&loadbuf_iter);
+      AlignWToVec(&loadbuf_iter);
     }
     uint32_t rare10_ct = 0;
     if (aux1b_mode != 15) {
       uintptr_t* patch_10_set = loadbuf_iter;
       loadbuf_iter = &(loadbuf_iter[raw_sample_ctl]);
-      AlleleCode* patch_10_vals = R_CAST(AlleleCode*, loadbuf_iter);
+      AlleleCode* patch_10_vals = DowncastWToAC(loadbuf_iter);
       reterr = ExportAux1b(fread_end, genovec, aux1b_mode, raw_sample_ct, allele_ct, raw_10_ct, &fread_ptr, patch_10_set, patch_10_vals, &rare10_ct);
       if (unlikely(reterr)) {
         return reterr;
       }
       loadbuf_iter = &(loadbuf_iter[DivUp(rare10_ct, kBytesPerWord / (2 * sizeof(AlleleCode)))]);
-      VecAlignUp64(&loadbuf_iter);
+      AlignWToVec(&loadbuf_iter);
       if (hphase_is_present) {
         het_ct += CountAux1bHets(patch_10_vals, rare10_ct);
       }
@@ -8962,7 +9273,7 @@ PglErr PgrGetRaw(uint32_t vidx, PgenGlobalFlags read_gflags, PgenReader* pgr_ptr
       if (!explicit_phasepresent) {
         phaseraw[0] = het_ct;
       }
-      VecAlignUp(&loadbuf_iter);
+      AlignWToVec(&loadbuf_iter);
     }
 #endif
   }
@@ -8973,7 +9284,7 @@ PglErr PgrGetRaw(uint32_t vidx, PgenGlobalFlags read_gflags, PgenReader* pgr_ptr
   uintptr_t* dosage_present = loadbuf_iter;
   const uint32_t raw_sample_ctaw = BitCtToAlignedWordCt(raw_sample_ct);
   loadbuf_iter = &(loadbuf_iter[raw_sample_ctaw]);
-  uint16_t* dosage_main = R_CAST(uint16_t*, loadbuf_iter);
+  uint16_t* dosage_main = DowncastWToU16(loadbuf_iter);
   // probable todo: pack this more tightly in the future
   const uintptr_t dosage_main_aligned_wordct = kWordsPerVec * DivUp(raw_sample_ct, (kBytesPerVec / sizeof(int16_t)));
   loadbuf_iter = &(loadbuf_iter[dosage_main_aligned_wordct]);
@@ -8982,7 +9293,7 @@ PglErr PgrGetRaw(uint32_t vidx, PgenGlobalFlags read_gflags, PgenReader* pgr_ptr
   if (save_dphase) {
     dphase_present = loadbuf_iter;
     loadbuf_iter = &(loadbuf_iter[raw_sample_ctaw]);
-    dphase_delta = R_CAST(int16_t*, loadbuf_iter);
+    dphase_delta = DowncastWToI16(loadbuf_iter);
     loadbuf_iter = &(loadbuf_iter[dosage_main_aligned_wordct]);
   }
   *loadbuf_iter_ptr = loadbuf_iter;
@@ -9106,20 +9417,19 @@ PglErr PgrGetMissingnessD(const uintptr_t* __restrict sample_include, PgrSampleS
   if ((vrtype & 0x60) == 0x40) {
     // unconditional dosage.  spot-check the appropriate entries for equality
     // to 65535.
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in PgrGetMissingnessPD()."
-#endif
-    const uint16_t* dosage_main = R_CAST(const uint16_t*, fread_ptr);
+    const unsigned char* dosage_main_read = fread_ptr;
     // bugfix (18 Feb 2019): sample_include is permitted to be nullptr here
     if (!subsetting_required) {
       // probable todo: faster iteration over set bits
       for (uint32_t widx = 0; widx != raw_sample_ctl; ++widx) {
         uintptr_t missing_dosage_bits = missingness_dosage[widx];
         if (missing_dosage_bits) {
-          const uint16_t* cur_dosage_main = &(dosage_main[widx * kBitsPerWord]);
+          const unsigned char* cur_dosage_main = &(dosage_main_read[widx * kBitsPerWord * sizeof(int16_t)]);
           do {
             uint32_t sample_idx_lowbits = ctzw(missing_dosage_bits);
-            if (cur_dosage_main[sample_idx_lowbits] != 65535) {
+            uint16_t cur_dosage_u16;
+            CopyFromUnalignedOffsetU16(&cur_dosage_u16, cur_dosage_main, sample_idx_lowbits);
+            if (cur_dosage_u16 != 65535) {
               missingness_dosage[widx] ^= missing_dosage_bits & (-missing_dosage_bits);
             }
             missing_dosage_bits &= missing_dosage_bits - 1;
@@ -9134,7 +9444,9 @@ PglErr PgrGetMissingnessD(const uintptr_t* __restrict sample_include, PgrSampleS
         if (!IsSet(missingness_dosage, sample_idx)) {
           continue;
         }
-        if (dosage_main[sample_uidx] != 65535) {
+        uint16_t cur_dosage_u16;
+        CopyFromUnalignedOffsetU16(&cur_dosage_u16, dosage_main_read, sample_uidx);
+        if (cur_dosage_u16 != 65535) {
           ClearBit(sample_idx, missingness_dosage);
         }
       }
@@ -9354,10 +9666,6 @@ BoolErr ValidateOnebit(const unsigned char* fread_end, const unsigned char** fre
   word_base *= kMask5555;
   const uint32_t genoarr_widx_trail = (sample_ct + 7) / kBitsPerWordD2;
   const uint32_t genoarr_widx_end = NypCtToWordCt(sample_ct);
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in ValidateOnebit()."
-#endif
-  const Halfword* onebit_main = R_CAST(const Halfword*, onebit_main_iter);
   for (uint32_t genoarr_widx = 0; ; ++genoarr_widx) {
     uintptr_t ww;
     if (genoarr_widx >= genoarr_widx_trail) {
@@ -9365,7 +9673,7 @@ BoolErr ValidateOnebit(const unsigned char* fread_end, const unsigned char** fre
         break;
       }
       const uint32_t nontrail_byte_ct = ((sample_ct - 1) % kBitsPerWordD2) / CHAR_BIT;
-      ww = ProperSubwordLoad(&(onebit_main[genoarr_widx_trail]), 1 + nontrail_byte_ct);
+      ww = ProperSubwordLoad(&(onebit_main_iter[genoarr_widx_trail * sizeof(Halfword)]), 1 + nontrail_byte_ct);
       const uint32_t sample_ct_mod8 = sample_ct % 8;
       if (sample_ct_mod8) {
         if (unlikely(ww >> (nontrail_byte_ct * 8 + sample_ct_mod8))) {
@@ -9373,7 +9681,9 @@ BoolErr ValidateOnebit(const unsigned char* fread_end, const unsigned char** fre
         }
       }
     } else {
-      ww = onebit_main[genoarr_widx];
+      Halfword hw;
+      CopyFromUnalignedOffsetHW(&hw, onebit_main_iter, genoarr_widx);
+      ww = hw;
     }
     ww = UnpackHalfwordToWord(ww);
     genoarr[genoarr_widx] = word_base + ww * common_code_delta;
@@ -9595,9 +9905,9 @@ BoolErr ValidateMultiallelicHc(const unsigned char* fread_end, const uintptr_t* 
             const uint32_t fullword_ct = fvals_byte_ct / kBytesPerWord;
             uint32_t widx = 0;
             if (fullword_ct) {
-              const uintptr_t* fvals_alias = R_CAST(const uintptr_t*, fvals);
               for (; widx != fullword_ct; ++widx) {
-                const uintptr_t cur_word = fvals_alias[widx];
+                uintptr_t cur_word;
+                CopyFromUnalignedOffsetW(&cur_word, fvals, widx);
                 if (unlikely(cur_word & (cur_word >> 1) & kMask5555)) {
                   snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid multiallelic het-ref hardcall track for (0-based) variant #%u (out-of-range allele code).\n", vidx);
                   return 1;
@@ -9854,17 +10164,15 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
   if ((vrtype & 0x60) == 0x40) {
     // unconditional dosage.  handle separately from other two cases since
     // 65535 is valid.
-#ifdef NO_UNALIGNED
-#  error "Unaligned accesses in ValidateDosage16()."
-#endif
-    const uint16_t* dosage_main = R_CAST(const uint16_t*, *fread_pp);
+    const unsigned char* dosage_main_read = *fread_pp;
     if (PtrAddCk(fread_end, sample_ct * sizeof(int16_t), fread_pp)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid unconditional dosage track for (0-based) variant #%u.\n", vidx);
       return kPglRetMalformedInput;
     }
     // todo: verify genotype and dosage are consistent
     for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
-      uint16_t cur_dosage_val_p1 = dosage_main[sample_idx];
+      uint16_t cur_dosage_val_p1;
+      CopyFromUnalignedOffsetU16(&cur_dosage_val_p1, dosage_main_read, sample_idx);
       cur_dosage_val_p1 += 1;  // intentional overflow on 65535
       if (unlikely(cur_dosage_val_p1 > 32769)) {
         snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid unconditional dosage track for (0-based) variant #%u (dosage is greater than 2).\n", vidx);
@@ -9872,14 +10180,16 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
       }
     }
     if (vrtype & 0x80) {
-      const int16_t* dphase_delta = R_CAST(const int16_t*, *fread_pp);
+      const unsigned char* dphase_delta_read = *fread_pp;
       if (PtrAddCk(fread_end, sample_ct * sizeof(int16_t), fread_pp)) {
         snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid unconditional phased-dosages for (0-based) variant #%u.\n", vidx);
         return kPglRetMalformedInput;
       }
       for (uint32_t sample_idx = 0; sample_idx != sample_ct; ++sample_idx) {
-        const uint16_t dosage_val = dosage_main[sample_idx];
-        const int16_t dphase_delta_val = dphase_delta[sample_idx];
+        uint16_t dosage_val;
+        CopyFromUnalignedOffsetU16(&dosage_val, dosage_main_read, sample_idx);
+        int16_t dphase_delta_val;
+        CopyFromUnalignedOffsetI16(&dphase_delta_val, dphase_delta_read, sample_idx);
         const uint16_t dpiece0_x2 = dosage_val + dphase_delta_val;
         const uint16_t dpiece1_x2 = dosage_val - dphase_delta_val;
         // Update (11 May 2018): parity condition removed.
@@ -9916,19 +10226,21 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
       }
     }
   }
-  const uint16_t* dosage_main = R_CAST(const uint16_t*, *fread_pp);
+  const unsigned char* dosage_main_read = *fread_pp;
   if (PtrAddCk(fread_end, dosage_ct * sizeof(int16_t), fread_pp)) {
     snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid dosage track for (0-based) variant #%u.\n", vidx);
     return kPglRetMalformedInput;
   }
   for (uint32_t dosage_idx = 0; dosage_idx != dosage_ct; ++dosage_idx) {
-    if (unlikely(dosage_main[dosage_idx] > 32768)) {
+    uint16_t cur_dosage_u16;
+    CopyFromUnalignedOffsetU16(&cur_dosage_u16, dosage_main_read, dosage_idx);
+    if (unlikely(cur_dosage_u16 > 32768)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid dosage track for (0-based) variant #%u (dosage is greater than 2).\n", vidx);
       return kPglRetMalformedInput;
     }
   }
   if (vrtype & 0x80) {
-    const uintptr_t* file_dphase_present = R_CAST(const uintptr_t*, *fread_pp);
+    const unsigned char* file_dphase_present = *fread_pp;
     const uint32_t dphase_present_byte_ct = DivUp(dosage_ct, CHAR_BIT);
     if (PtrAddCk(fread_end, dphase_present_byte_ct, fread_pp)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid phased-dosage track for (0-based) variant #%u.\n", vidx);
@@ -9939,8 +10251,8 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid phased-dosage track for (0-based) variant #%u.\n", vidx);
       return kPglRetMalformedInput;
     }
-    const uint16_t* dosage_main_read_iter = dosage_main;
-    const int16_t* dphase_delta_read_iter = R_CAST(const int16_t*, *fread_pp);
+    const unsigned char* dosage_main_read_biter = dosage_main_read;
+    const unsigned char* dphase_delta_read_biter = *fread_pp;
     const uint32_t dphase_widx_last = (dphase_present_byte_ct - 1) / kBytesPerWord;
     uint32_t loop_end = kBitsPerWord;
     for (uint32_t dphase_widx = 0; ; ++dphase_widx) {
@@ -9951,16 +10263,18 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
         }
         loop_end = 1 + ((dosage_ct - 1) % kBitsPerWord);
         const uint32_t final_byte_ct = DivUp(loop_end, CHAR_BIT);
-        ww = SubwordLoad(&(file_dphase_present[dphase_widx]), final_byte_ct);
+        ww = SubwordLoad(&(file_dphase_present[dphase_widx * kBytesPerWord]), final_byte_ct);
       } else {
-        ww = file_dphase_present[dphase_widx];
+        CopyFromUnalignedOffsetW(&ww, file_dphase_present, dphase_widx);
       }
-      for (uint32_t dphase_lowbits = 0; dphase_lowbits != loop_end; ++dphase_lowbits, ++dosage_main_read_iter) {
+      for (uint32_t dphase_lowbits = 0; dphase_lowbits != loop_end; ++dphase_lowbits, dosage_main_read_biter += sizeof(int16_t)) {
         if (!((ww >> dphase_lowbits) & 1)) {
           continue;
         }
-        const uint16_t dosage_val = *dosage_main_read_iter;
-        const int16_t dphase_delta_val = *dphase_delta_read_iter++;
+        uint16_t dosage_val;
+        CopyFromUnalignedU16(&dosage_val, dosage_main_read_biter);
+        int16_t dphase_delta_val;
+        CopyFromUnalignedIncrI16(&dphase_delta_val, &dphase_delta_read_biter);
         const uint16_t dpiece0_x2 = dosage_val + dphase_delta_val;
         const uint16_t dpiece1_x2 = dosage_val - dphase_delta_val;
         if (unlikely((dpiece0_x2 > 32768) || (dpiece1_x2 > 32768))) {
@@ -9969,11 +10283,11 @@ PglErr ValidateDosage16(const unsigned char* fread_end, uint32_t vidx, PgenReade
         }
       }
     }
-    if (unlikely(dphase_delta_read_iter == R_CAST(const int16_t*, *fread_pp))) {
+    if (unlikely(dphase_delta_read_biter == *fread_pp)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid phased-dosage track for (0-based) variant #%u.\n", vidx);
       return kPglRetMalformedInput;
     }
-    *fread_pp = R_CAST(const unsigned char*, dphase_delta_read_iter);
+    *fread_pp = dphase_delta_read_biter;
     if (PtrCheck(fread_end, *fread_pp, 0)) {
       snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Invalid phased-dosage track for (0-based) variant #%u.\n", vidx);
       return kPglRetMalformedInput;
@@ -10038,10 +10352,15 @@ PglErr PgrValidate(PgenReader* pgr_ptr, uintptr_t* genovec_buf, char* errstr_buf
   }
   fsize = ftello(ff);
   pgrp->fp_vidx = 1;  // force fseek when loading first variant
-  // todo: modify this check when phase sets are implemented
-  const uint64_t expected_fsize = pgrp->fi.var_fpos[variant_ct];
-  if (unlikely(expected_fsize != fsize)) {
-    snprintf(errstr_buf, kPglErrstrBufBlen, "Error: .pgen header indicates that file size should be %" PRIu64 " bytes, but actual file size is %" PRIu64 " bytes.\n", expected_fsize, fsize);
+  // todo: verify equality if no mode-0x11 footer; and if there is a footer,
+  // validate it
+  const uint64_t expected_fsize_min = pgrp->fi.var_fpos[variant_ct];
+  if (unlikely(expected_fsize_min > fsize)) {
+    char* write_iter = strcpya_k(errstr_buf, "Error: .pgen header indicates that file size should be at least ");
+    write_iter = i64toa(expected_fsize_min, write_iter);
+    write_iter = strcpya_k(write_iter, " bytes, but actual file size is ");
+    write_iter = i64toa(fsize, write_iter);
+    strcpy_k(write_iter, " bytes.\n");
     return kPglRetMalformedInput;
   }
   const uint32_t vblock_ct = DivUp(variant_ct, kPglVblockSize);
@@ -10172,7 +10491,15 @@ PglErr PgrValidate(PgenReader* pgr_ptr, uintptr_t* genovec_buf, char* errstr_buf
     }
     if (unlikely(fread_ptr != fread_end)) {
       // possible todo: tolerate this at the end of a vblock.
-      snprintf(errstr_buf, kPglErrstrBufBlen, "Error: Extra byte(s) in (0-based) variant record #%u. (record type = %u; expected length = %" PRIuPTR ", actual = %" PRIuPTR ")\n", vidx, vrtype, S_CAST(uintptr_t, fread_ptr - fread_ptr_start), S_CAST(uintptr_t, fread_end - fread_ptr_start));
+      char* write_iter = strcpya_k(errstr_buf, "Error: Extra byte(s) in (0-based) variant record #");
+      write_iter = u32toa(vidx, write_iter);
+      write_iter = strcpya_k(write_iter, ". (record type = ");
+      write_iter = u32toa(vrtype, write_iter);
+      write_iter = strcpya_k(write_iter, "; expected length = ");
+      write_iter = wtoa(S_CAST(uintptr_t, fread_ptr - fread_ptr_start), write_iter);
+      write_iter = strcpya_k(write_iter, ", actual = ");
+      write_iter = wtoa(S_CAST(uintptr_t, fread_end - fread_ptr_start), write_iter);
+      memcpy_k(write_iter, ")\n\0", 4);
       return kPglRetMalformedInput;
     }
   }

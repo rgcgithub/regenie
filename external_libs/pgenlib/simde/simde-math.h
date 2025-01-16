@@ -22,6 +22,7 @@
  *
  * Copyright:
  *   2017-2020 Evan Nemerson <evan@nemerson.com>
+ *   2023      Yi-Yen Chung <eric681@andestech.com> (Copyright owned by Andes Technology)
  */
 
 /* Attempt to find math functions.  Functions may be in <cmath>,
@@ -30,9 +31,18 @@
  * libm, we may need to define our own implementations. */
 
 #if !defined(SIMDE_MATH_H)
+#define SIMDE_MATH_H 1
 
 #include "hedley.h"
 #include "simde-features.h"
+
+#include <stdint.h>
+#if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+  #include <arm_neon.h>
+#endif
+
+HEDLEY_DIAGNOSTIC_PUSH
+SIMDE_DISABLE_UNWANTED_DIAGNOSTICS
 
 /* SLEEF support
  * https://sleef.org/
@@ -120,92 +130,6 @@
   #else
     #define SIMDE_MATH_HAVE_MATH_H
     #include <math.h>
-  #endif
-#endif
-
-/* Try to avoid including <complex> since it pulls in a *lot* of code. */
-#if \
-    HEDLEY_HAS_BUILTIN(__builtin_creal) || \
-    HEDLEY_GCC_VERSION_CHECK(4,7,0) || \
-    HEDLEY_INTEL_VERSION_CHECK(13,0,0)
-  HEDLEY_DIAGNOSTIC_PUSH
-  SIMDE_DIAGNOSTIC_DISABLE_C99_EXTENSIONS_
-    typedef __complex__ float simde_cfloat32;
-    typedef __complex__ double simde_cfloat64;
-  HEDLEY_DIAGNOSTIC_POP
-  #define SIMDE_MATH_CMPLX(x, y) (HEDLEY_STATIC_CAST(double, x) + HEDLEY_STATIC_CAST(double, y) * (__extension__ 1.0j))
-  #define SIMDE_MATH_CMPLXF(x, y) (HEDLEY_STATIC_CAST(float, x) + HEDLEY_STATIC_CAST(float, y) * (__extension__ 1.0fj))
-
-  #if !defined(simde_math_creal)
-    #define simde_math_crealf(z) __builtin_crealf(z)
-  #endif
-  #if !defined(simde_math_crealf)
-    #define simde_math_creal(z) __builtin_creal(z)
-  #endif
-  #if !defined(simde_math_cimag)
-    #define simde_math_cimagf(z) __builtin_cimagf(z)
-  #endif
-  #if !defined(simde_math_cimagf)
-    #define simde_math_cimag(z) __builtin_cimag(z)
-  #endif
-#elif !defined(__cplusplus)
-  #include <complex.h>
-
-  #if !defined(HEDLEY_MSVC_VERSION)
-    typedef float _Complex simde_cfloat32;
-    typedef double _Complex simde_cfloat64;
-  #else
-    typedef _Fcomplex simde_cfloat32;
-    typedef _Dcomplex simde_cfloat64;
-  #endif
-
-  #if defined(HEDLEY_MSVC_VERSION)
-    #define SIMDE_MATH_CMPLX(x, y) ((simde_cfloat64) { (x), (y) })
-    #define SIMDE_MATH_CMPLXF(x, y) ((simde_cfloat32) { (x), (y) })
-  #elif defined(CMPLX) && defined(CMPLXF)
-    #define SIMDE_MATH_CMPLX(x, y) CMPLX(x, y)
-    #define SIMDE_MATH_CMPLXF(x, y) CMPLXF(x, y)
-  #else
-    #define SIMDE_MATH_CMPLX(x, y) (HEDLEY_STATIC_CAST(double, x) + HEDLEY_STATIC_CAST(double, y) * I)
-    #define SIMDE_MATH_CMPLXF(x, y) (HEDLEY_STATIC_CAST(float, x) + HEDLEY_STATIC_CAST(float, y) * I)
-  #endif
-
-  #if !defined(simde_math_creal)
-    #define simde_math_creal(z) creal(z)
-  #endif
-  #if !defined(simde_math_crealf)
-    #define simde_math_crealf(z) crealf(z)
-  #endif
-  #if !defined(simde_math_cimag)
-    #define simde_math_cimag(z) cimag(z)
-  #endif
-  #if !defined(simde_math_cimagf)
-    #define simde_math_cimagf(z) cimagf(z)
-  #endif
-#else
-  HEDLEY_DIAGNOSTIC_PUSH
-  #if defined(HEDLEY_MSVC_VERSION)
-    #pragma warning(disable:4530)
-  #endif
-  #include <complex>
-  HEDLEY_DIAGNOSTIC_POP
-
-  typedef std::complex<float> simde_cfloat32;
-  typedef std::complex<double> simde_cfloat64;
-  #define SIMDE_MATH_CMPLX(x, y) (std::complex<double>(x, y))
-  #define SIMDE_MATH_CMPLXF(x, y) (std::complex<float>(x, y))
-
-  #if !defined(simde_math_creal)
-    #define simde_math_creal(z) ((z).real())
-  #endif
-  #if !defined(simde_math_crealf)
-    #define simde_math_crealf(z) ((z).real())
-  #endif
-  #if !defined(simde_math_cimag)
-    #define simde_math_cimag(z) ((z).imag())
-  #endif
-  #if !defined(simde_math_cimagf)
-    #define simde_math_cimagf(z) ((z).imag())
   #endif
 #endif
 
@@ -299,30 +223,62 @@
 #endif
 
 #if !defined(SIMDE_MATH_FLT_MIN)
-  #if defined(FLT_MIN)
-    #define SIMDE_MATH_FLT_MIN FLT_MIN
-  #elif defined(__FLT_MIN__)
+  #if defined(__FLT_MIN__)
     #define SIMDE_MATH_FLT_MIN __FLT_MIN__
-  #elif defined(__cplusplus)
-    #include <cfloat>
-    #define SIMDE_MATH_FLT_MIN FLT_MIN
   #else
-    #include <float.h>
+    #if !defined(FLT_MIN)
+      #if defined(__cplusplus)
+        #include <cfloat>
+      #else
+        #include <float.h>
+      #endif
+    #endif
     #define SIMDE_MATH_FLT_MIN FLT_MIN
   #endif
 #endif
 
-#if !defined(SIMDE_MATH_DBL_MIN)
-  #if defined(DBL_MIN)
-    #define SIMDE_MATH_DBL_MIN DBL_MIN
-  #elif defined(__DBL_MIN__)
-    #define SIMDE_MATH_DBL_MIN __DBL_MIN__
-  #elif defined(__cplusplus)
-    #include <cfloat>
-    #define SIMDE_MATH_DBL_MIN DBL_MIN
+#if !defined(SIMDE_MATH_FLT_MAX)
+  #if defined(__FLT_MAX__)
+    #define SIMDE_MATH_FLT_MAX __FLT_MAX__
   #else
-    #include <float.h>
+    #if !defined(FLT_MAX)
+      #if defined(__cplusplus)
+        #include <cfloat>
+      #else
+        #include <float.h>
+      #endif
+    #endif
+    #define SIMDE_MATH_FLT_MAX FLT_MAX
+  #endif
+#endif
+
+#if !defined(SIMDE_MATH_DBL_MIN)
+  #if defined(__DBL_MIN__)
+    #define SIMDE_MATH_DBL_MIN __DBL_MIN__
+  #else
+    #if !defined(DBL_MIN)
+      #if defined(__cplusplus)
+        #include <cfloat>
+      #else
+        #include <float.h>
+      #endif
+    #endif
     #define SIMDE_MATH_DBL_MIN DBL_MIN
+  #endif
+#endif
+
+#if !defined(SIMDE_MATH_DBL_MAX)
+  #if defined(__DBL_MAX__)
+    #define SIMDE_MATH_DBL_MAX __DBL_MAX__
+  #else
+    #if !defined(DBL_MAX)
+      #if defined(__cplusplus)
+        #include <cfloat>
+      #else
+        #include <float.h>
+      #endif
+    #endif
+    #define SIMDE_MATH_DBL_MAX DBL_MAX
   #endif
 #endif
 
@@ -399,6 +355,171 @@
   #endif
 #endif
 
+#if !defined(simde_math_issubnormalf)
+  #if SIMDE_MATH_BUILTIN_LIBM(fpclassify)
+    #define simde_math_issubnormalf(v) __builtin_fpclassify(0, 0, 0, 1, 0, v)
+  #elif defined(fpclassify)
+    #define simde_math_issubnormalf(v) (fpclassify(v) == FP_SUBNORMAL)
+  #elif defined(SIMDE_IEEE754_STORAGE)
+    #define simde_math_issubnormalf(v) (((simde_float32_as_uint32(v) & UINT32_C(0x7F800000)) == UINT32_C(0)) && ((simde_float32_as_uint32(v) & UINT32_C(0x007FFFFF)) != UINT32_C(0)))
+  #endif
+#endif
+
+#if !defined(simde_math_issubnormal)
+  #if SIMDE_MATH_BUILTIN_LIBM(fpclassify)
+    #define simde_math_issubnormal(v) __builtin_fpclassify(0, 0, 0, 1, 0, v)
+  #elif defined(fpclassify)
+    #define simde_math_issubnormal(v) (fpclassify(v) == FP_SUBNORMAL)
+  #elif defined(SIMDE_IEEE754_STORAGE)
+    #define simde_math_issubnormal(v) (((simde_float64_as_uint64(v) & UINT64_C(0x7FF0000000000000)) == UINT64_C(0)) && ((simde_float64_as_uint64(v) & UINT64_C(0x00FFFFFFFFFFFFF)) != UINT64_C(0)))
+  #endif
+#endif
+
+#if defined(FP_NAN)
+  #define SIMDE_MATH_FP_NAN FP_NAN
+#else
+  #define SIMDE_MATH_FP_NAN 0
+#endif
+#if defined(FP_INFINITE)
+  #define SIMDE_MATH_FP_INFINITE FP_INFINITE
+#else
+  #define SIMDE_MATH_FP_INFINITE 1
+#endif
+#if defined(FP_ZERO)
+  #define SIMDE_MATH_FP_ZERO FP_ZERO
+#else
+  #define SIMDE_MATH_FP_ZERO 2
+#endif
+#if defined(FP_SUBNORMAL)
+  #define SIMDE_MATH_FP_SUBNORMAL FP_SUBNORMAL
+#else
+  #define SIMDE_MATH_FP_SUBNORMAL 3
+#endif
+#if defined(FP_NORMAL)
+  #define SIMDE_MATH_FP_NORMAL FP_NORMAL
+#else
+  #define SIMDE_MATH_FP_NORMAL 4
+#endif
+
+static HEDLEY_INLINE
+int
+simde_math_fpclassifyf(float v) {
+  #if SIMDE_MATH_BUILTIN_LIBM(fpclassify)
+    return __builtin_fpclassify(SIMDE_MATH_FP_NAN, SIMDE_MATH_FP_INFINITE, SIMDE_MATH_FP_NORMAL, SIMDE_MATH_FP_SUBNORMAL, SIMDE_MATH_FP_ZERO, v);
+  #elif defined(fpclassify)
+    return fpclassify(v);
+  #else
+    return
+      simde_math_isnormalf(v) ? SIMDE_MATH_FP_NORMAL    :
+      (v == 0.0f)             ? SIMDE_MATH_FP_ZERO      :
+      simde_math_isnanf(v)    ? SIMDE_MATH_FP_NAN       :
+      simde_math_isinff(v)    ? SIMDE_MATH_FP_INFINITE  :
+                                SIMDE_MATH_FP_SUBNORMAL;
+  #endif
+}
+
+static HEDLEY_INLINE
+int
+simde_math_fpclassify(double v) {
+  #if SIMDE_MATH_BUILTIN_LIBM(fpclassify)
+    return __builtin_fpclassify(SIMDE_MATH_FP_NAN, SIMDE_MATH_FP_INFINITE, SIMDE_MATH_FP_NORMAL, SIMDE_MATH_FP_SUBNORMAL, SIMDE_MATH_FP_ZERO, v);
+  #elif defined(fpclassify)
+    return fpclassify(v);
+  #else
+    return
+      simde_math_isnormal(v) ? SIMDE_MATH_FP_NORMAL    :
+      (v == 0.0)             ? SIMDE_MATH_FP_ZERO      :
+      simde_math_isnan(v)    ? SIMDE_MATH_FP_NAN       :
+      simde_math_isinf(v)    ? SIMDE_MATH_FP_INFINITE  :
+                               SIMDE_MATH_FP_SUBNORMAL;
+  #endif
+}
+
+#define SIMDE_MATH_FP_QNAN      0x01
+#define SIMDE_MATH_FP_PZERO     0x02
+#define SIMDE_MATH_FP_NZERO     0x04
+#define SIMDE_MATH_FP_PINF      0x08
+#define SIMDE_MATH_FP_NINF      0x10
+#define SIMDE_MATH_FP_DENORMAL  0x20
+#define SIMDE_MATH_FP_NEGATIVE  0x40
+#define SIMDE_MATH_FP_SNAN      0x80
+
+static HEDLEY_INLINE
+uint8_t
+simde_math_fpclassf(float v, const int imm8) {
+  union {
+    float f;
+    uint32_t u;
+  } fu;
+  fu.f = v;
+  uint32_t bits = fu.u;
+  uint8_t NegNum = (bits >> 31) & 1;
+  uint32_t const ExpMask = 0x3F800000; // [30:23]
+  uint32_t const MantMask = 0x007FFFFF; // [22:0]
+  uint8_t ExpAllOnes = ((bits & ExpMask) == ExpMask);
+  uint8_t ExpAllZeros = ((bits & ExpMask) == 0);
+  uint8_t MantAllZeros = ((bits & MantMask) == 0);
+  uint8_t ZeroNumber = ExpAllZeros & MantAllZeros;
+  uint8_t SignalingBit = (bits >> 22) & 1;
+
+  uint8_t result = 0;
+  uint8_t qNaN_res = ExpAllOnes & (!MantAllZeros) & SignalingBit;
+  uint8_t Pzero_res = (!NegNum) & ExpAllZeros & MantAllZeros;
+  uint8_t Nzero_res = NegNum & ExpAllZeros & MantAllZeros;
+  uint8_t Pinf_res = (!NegNum) & ExpAllOnes & MantAllZeros;
+  uint8_t Ninf_res = NegNum & ExpAllOnes & MantAllZeros;
+  uint8_t Denorm_res = ExpAllZeros & (!MantAllZeros);
+  uint8_t FinNeg_res = NegNum & (!ExpAllOnes) & (!ZeroNumber);
+  uint8_t sNaN_res = ExpAllOnes & (!MantAllZeros) & (!SignalingBit);
+  result = (((imm8 >> 0) & qNaN_res)   | \
+            ((imm8 >> 1) & Pzero_res)  | \
+            ((imm8 >> 2) & Nzero_res)  | \
+            ((imm8 >> 3) & Pinf_res)   | \
+            ((imm8 >> 4) & Ninf_res)   | \
+            ((imm8 >> 5) & Denorm_res) | \
+            ((imm8 >> 6) & FinNeg_res) | \
+            ((imm8 >> 7) & sNaN_res));
+  return result;
+}
+
+static HEDLEY_INLINE
+uint8_t
+simde_math_fpclass(double v, const int imm8) {
+  union {
+    double d;
+    uint64_t u;
+  } du;
+  du.d = v;
+  uint64_t bits = du.u;
+  uint8_t NegNum = (bits >> 63) & 1;
+  uint64_t const ExpMask =  0x3FF0000000000000; // [62:52]
+  uint64_t const MantMask = 0x000FFFFFFFFFFFFF; // [51:0]
+  uint8_t ExpAllOnes = ((bits & ExpMask) == ExpMask);
+  uint8_t ExpAllZeros = ((bits & ExpMask) == 0);
+  uint8_t MantAllZeros = ((bits & MantMask) == 0);
+  uint8_t ZeroNumber = ExpAllZeros & MantAllZeros;
+  uint8_t SignalingBit = (bits >> 51) & 1;
+
+  uint8_t result = 0;
+  uint8_t qNaN_res = ExpAllOnes & (!MantAllZeros) & SignalingBit;
+  uint8_t Pzero_res = (!NegNum) & ExpAllZeros & MantAllZeros;
+  uint8_t Nzero_res = NegNum & ExpAllZeros & MantAllZeros;
+  uint8_t Pinf_res = (!NegNum) & ExpAllOnes & MantAllZeros;
+  uint8_t Ninf_res = NegNum & ExpAllOnes & MantAllZeros;
+  uint8_t Denorm_res = ExpAllZeros & (!MantAllZeros);
+  uint8_t FinNeg_res = NegNum & (!ExpAllOnes) & (!ZeroNumber);
+  uint8_t sNaN_res = ExpAllOnes & (!MantAllZeros) & (!SignalingBit);
+  result = (((imm8 >> 0) & qNaN_res)   | \
+            ((imm8 >> 1) & Pzero_res)  | \
+            ((imm8 >> 2) & Nzero_res)  | \
+            ((imm8 >> 3) & Pinf_res)   | \
+            ((imm8 >> 4) & Ninf_res)   | \
+            ((imm8 >> 5) & Denorm_res) | \
+            ((imm8 >> 6) & FinNeg_res) | \
+            ((imm8 >> 7) & sNaN_res));
+  return result;
+}
+
 /*** Manipulation functions ***/
 
 #if !defined(simde_math_nextafter)
@@ -441,13 +562,33 @@
   #endif
 #endif
 
-#if !defined(simde_math_absf)
-  #if SIMDE_MATH_BUILTIN_LIBM(absf)
-    #define simde_math_absf(v) __builtin_absf(v)
+#if !defined(simde_math_labs)
+  #if SIMDE_MATH_BUILTIN_LIBM(labs)
+    #define simde_math_labs(v) __builtin_labs(v)
   #elif defined(SIMDE_MATH_HAVE_CMATH)
-    #define simde_math_absf(v) std::abs(v)
+    #define simde_math_labs(v) std::labs(v)
   #elif defined(SIMDE_MATH_HAVE_MATH_H)
-    #define simde_math_absf(v) absf(v)
+    #define simde_math_labs(v) labs(v)
+  #endif
+#endif
+
+#if !defined(simde_math_llabs)
+  #if SIMDE_MATH_BUILTIN_LIBM(llabs)
+    #define simde_math_llabs(v) __builtin_llabs(v)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_llabs(v) std::llabs(v)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_llabs(v) llabs(v)
+  #endif
+#endif
+
+#if !defined(simde_math_fabsf)
+  #if SIMDE_MATH_BUILTIN_LIBM(fabsf)
+    #define simde_math_fabsf(v) __builtin_fabsf(v)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_fabsf(v) std::abs(v)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_fabsf(v) fabsf(v)
   #endif
 #endif
 
@@ -648,6 +789,20 @@
     #define simde_math_copysignf(x, y) std::copysignf(x, y)
   #elif defined(SIMDE_MATH_HAVE_MATH_H)
     #define simde_math_copysignf(x, y) copysignf(x, y)
+  #endif
+#endif
+
+#if !defined(simde_math_signbit)
+  #if SIMDE_MATH_BUILTIN_LIBM(signbit)
+    #if (!defined(__clang__) || SIMDE_DETECT_CLANG_VERSION_CHECK(7,0,0))
+      #define simde_math_signbit(x) __builtin_signbit(x)
+    #else
+      #define simde_math_signbit(x) __builtin_signbit(HEDLEY_STATIC_CAST(double, (x)))
+    #endif
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_signbit(x) std::signbit(x)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_signbit(x) signbit(x)
   #endif
 #endif
 
@@ -869,6 +1024,26 @@
   #endif
 #endif
 
+#if !defined(simde_math_fmax)
+  #if SIMDE_MATH_BUILTIN_LIBM(fmax)
+    #define simde_math_fmax(x, y) __builtin_fmax(x, y)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_fmax(x, y) std::fmax(x, y)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_fmax(x, y) fmax(x, y)
+  #endif
+#endif
+
+#if !defined(simde_math_fmaxf)
+  #if SIMDE_MATH_BUILTIN_LIBM(fmaxf)
+    #define simde_math_fmaxf(x, y) __builtin_fmaxf(x, y)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_fmaxf(x, y) std::fmax(x, y)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_fmaxf(x, y) fmaxf(x, y)
+  #endif
+#endif
+
 #if !defined(simde_math_hypot)
   #if SIMDE_MATH_BUILTIN_LIBM(hypot)
     #define simde_math_hypot(y, x) __builtin_hypot(y, x)
@@ -989,6 +1164,26 @@
   #endif
 #endif
 
+#if !defined(simde_math_modf)
+  #if SIMDE_MATH_BUILTIN_LIBM(modf)
+    #define simde_math_modf(x, iptr) __builtin_modf(x, iptr)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_modf(x, iptr) std::modf(x, iptr)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_modf(x, iptr) modf(x, iptr)
+  #endif
+#endif
+
+#if !defined(simde_math_modff)
+  #if SIMDE_MATH_BUILTIN_LIBM(modff)
+    #define simde_math_modff(x, iptr) __builtin_modff(x, iptr)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_modff(x, iptr) std::modf(x, iptr)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_modff(x, iptr) modff(x, iptr)
+  #endif
+#endif
+
 #if !defined(simde_math_nearbyint)
   #if SIMDE_MATH_BUILTIN_LIBM(nearbyint)
     #define simde_math_nearbyint(v) __builtin_nearbyint(v)
@@ -1069,6 +1264,46 @@
   #endif
 #endif
 
+#if !defined(simde_math_roundeven)
+  #if \
+     ((!defined(HEDLEY_EMSCRIPTEN_VERSION) || HEDLEY_EMSCRIPTEN_VERSION_CHECK(3, 1, 43)) && HEDLEY_HAS_BUILTIN(__builtin_roundeven)) || \
+      HEDLEY_GCC_VERSION_CHECK(10,0,0)
+    #define simde_math_roundeven(v) __builtin_roundeven(v)
+  #elif defined(simde_math_round) && defined(simde_math_fabs)
+    static HEDLEY_INLINE
+    double
+    simde_math_roundeven(double v) {
+      double rounded = simde_math_round(v);
+      double diff = rounded - v;
+      if (HEDLEY_UNLIKELY(simde_math_fabs(diff) == 0.5) && (HEDLEY_STATIC_CAST(int64_t, rounded) & 1)) {
+        rounded = v - diff;
+      }
+      return rounded;
+    }
+    #define simde_math_roundeven simde_math_roundeven
+  #endif
+#endif
+
+#if !defined(simde_math_roundevenf)
+  #if \
+     ((!defined(HEDLEY_EMSCRIPTEN_VERSION) || HEDLEY_EMSCRIPTEN_VERSION_CHECK(3, 1, 43)) && HEDLEY_HAS_BUILTIN(__builtin_roundevenf)) || \
+      HEDLEY_GCC_VERSION_CHECK(10,0,0)
+    #define simde_math_roundevenf(v) __builtin_roundevenf(v)
+  #elif defined(simde_math_roundf) && defined(simde_math_fabsf)
+    static HEDLEY_INLINE
+    float
+    simde_math_roundevenf(float v) {
+      float rounded = simde_math_roundf(v);
+      float diff = rounded - v;
+      if (HEDLEY_UNLIKELY(simde_math_fabsf(diff) == 0.5f) && (HEDLEY_STATIC_CAST(int32_t, rounded) & 1)) {
+        rounded = v - diff;
+      }
+      return rounded;
+    }
+    #define simde_math_roundevenf simde_math_roundevenf
+  #endif
+#endif
+
 #if !defined(simde_math_sin)
   #if SIMDE_MATH_BUILTIN_LIBM(sin)
     #define simde_math_sin(v) __builtin_sin(v)
@@ -1126,6 +1361,16 @@
     #define simde_math_sqrtf(v) std::sqrt(v)
   #elif defined(SIMDE_MATH_HAVE_MATH_H)
     #define simde_math_sqrtf(v) sqrtf(v)
+  #endif
+#endif
+
+#if !defined(simde_math_sqrtl)
+  #if SIMDE_MATH_BUILTIN_LIBM(sqrtl)
+    #define simde_math_sqrtl(v) __builtin_sqrtl(v)
+  #elif defined(SIMDE_MATH_HAVE_CMATH)
+    #define simde_math_sqrtl(v) std::sqrt(v)
+  #elif defined(SIMDE_MATH_HAVE_MATH_H)
+    #define simde_math_sqrtl(v) sqrtl(v)
   #endif
 #endif
 
@@ -1189,26 +1434,27 @@
   #endif
 #endif
 
-/***  Complex functions ***/
+/*** Comparison macros (which don't raise invalid errors) ***/
 
-#if !defined(simde_math_cexp)
-  #if SIMDE_MATH_BUILTIN_LIBM(cexp)
-    #define simde_math_cexp(v) __builtin_cexp(v)
-  #elif defined(__cplusplus)
-    #define simde_math_cexp(v) std::cexp(v)
-  #elif defined(SIMDE_MATH_HAVE_MATH_H)
-    #define simde_math_cexp(v) cexp(v)
-  #endif
+#if defined(isunordered)
+  #define simde_math_isunordered(x, y) isunordered(x, y)
+#elif HEDLEY_HAS_BUILTIN(__builtin_isunordered)
+  #define simde_math_isunordered(x, y) __builtin_isunordered(x, y)
+#else
+  static HEDLEY_INLINE
+  int simde_math_isunordered(double x, double y) {
+    return (x != y) && (x != x || y != y);
+  }
+  #define simde_math_isunordered simde_math_isunordered
+
+  static HEDLEY_INLINE
+  int simde_math_isunorderedf(float x, float y) {
+    return (x != y) && (x != x || y != y);
+  }
+  #define simde_math_isunorderedf simde_math_isunorderedf
 #endif
-
-#if !defined(simde_math_cexpf)
-  #if SIMDE_MATH_BUILTIN_LIBM(cexpf)
-    #define simde_math_cexpf(v) __builtin_cexpf(v)
-  #elif defined(__cplusplus)
-    #define simde_math_cexpf(v) std::exp(v)
-  #elif defined(SIMDE_MATH_HAVE_MATH_H)
-    #define simde_math_cexpf(v) cexpf(v)
-  #endif
+#if !defined(simde_math_isunorderedf)
+  #define simde_math_isunorderedf simde_math_isunordered
 #endif
 
 /*** Additional functions not in libm ***/
@@ -1263,15 +1509,12 @@
   #define simde_math_cdfnormf simde_math_cdfnormf
 #endif
 
-HEDLEY_DIAGNOSTIC_PUSH
-SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
-
 #if !defined(simde_math_cdfnorminv) && defined(simde_math_log) && defined(simde_math_sqrt)
   /*https://web.archive.org/web/20150910081113/http://home.online.no/~pjacklam/notes/invnorm/impl/sprouse/ltqnorm.c*/
   static HEDLEY_INLINE
   double
   simde_math_cdfnorminv(double p) {
-    static const double a[] = {
+    static const double a[6] = {
       -3.969683028665376e+01,
        2.209460984245205e+02,
       -2.759285104469687e+02,
@@ -1280,7 +1523,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
        2.506628277459239e+00
     };
 
-    static const double b[] = {
+    static const double b[5] = {
       -5.447609879822406e+01,
        1.615858368580409e+02,
       -1.556989798598866e+02,
@@ -1288,7 +1531,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
       -1.328068155288572e+01
     };
 
-    static const double c[] = {
+    static const double c[6] = {
       -7.784894002430293e-03,
       -3.223964580411365e-01,
       -2.400758277161838e+00,
@@ -1297,7 +1540,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
        2.938163982698783e+00
     };
 
-    static const double d[] = {
+    static const double d[4] = {
       7.784695709041462e-03,
       3.224671290700398e-01,
       2.445134137142996e+00,
@@ -1338,7 +1581,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
   static HEDLEY_INLINE
   float
   simde_math_cdfnorminvf(float p) {
-    static const float a[] = {
+    static const float a[6] = {
       -3.969683028665376e+01f,
        2.209460984245205e+02f,
       -2.759285104469687e+02f,
@@ -1346,14 +1589,14 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
       -3.066479806614716e+01f,
        2.506628277459239e+00f
     };
-    static const float b[] = {
+    static const float b[5] = {
       -5.447609879822406e+01f,
        1.615858368580409e+02f,
       -1.556989798598866e+02f,
        6.680131188771972e+01f,
       -1.328068155288572e+01f
     };
-    static const float c[] = {
+    static const float c[6] = {
       -7.784894002430293e-03f,
       -3.223964580411365e-01f,
       -2.400758277161838e+00f,
@@ -1361,7 +1604,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
        4.374664141464968e+00f,
        2.938163982698783e+00f
     };
-    static const float d[] = {
+    static const float d[4] = {
       7.784695709041462e-03f,
       3.224671290700398e-01f,
       2.445134137142996e+00f,
@@ -1448,7 +1691,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
     if(x >= 0.0625 && x < 2.0) {
       return simde_math_erfinv(1.0 - x);
     } else if (x < 0.0625 && x >= 1.0e-100) {
-      double p[6] = {
+      static const double p[6] = {
         0.1550470003116,
         1.382719649631,
         0.690969348887,
@@ -1456,7 +1699,7 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
         0.680544246825,
         -0.16444156791
       };
-      double q[3] = {
+      static const double q[3] = {
         0.155024849822,
         1.385228141995,
         1.000000000000
@@ -1466,13 +1709,13 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
       return (p[0] / t + p[1] + t * (p[2] + t * (p[3] + t * (p[4] + t * p[5])))) /
             (q[0] + t * (q[1] + t * (q[2])));
     } else if (x < 1.0e-100 && x >= SIMDE_MATH_DBL_MIN) {
-      double p[4] = {
+      static const double p[4] = {
         0.00980456202915,
         0.363667889171,
         0.97302949837,
         -0.5374947401
       };
-      double q[3] = {
+      static const double q[3] = {
         0.00980451277802,
         0.363699971544,
         1.000000000000
@@ -1539,8 +1782,6 @@ SIMDE_DIAGNOSTIC_DISABLE_FLOAT_EQUAL_
   #define simde_math_erfcinvf simde_math_erfcinvf
 #endif
 
-HEDLEY_DIAGNOSTIC_POP
-
 static HEDLEY_INLINE
 double
 simde_math_rad2deg(double radians) {
@@ -1564,5 +1805,261 @@ float
 simde_math_deg2radf(float degrees) {
     return degrees * (SIMDE_MATH_PI_OVER_180F);
 }
+
+/***  Saturated arithmetic ***/
+
+static HEDLEY_INLINE
+int8_t
+simde_math_adds_i8(int8_t a, int8_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddb_s8(a, b);
+  #else
+    uint8_t a_ = HEDLEY_STATIC_CAST(uint8_t, a);
+    uint8_t b_ = HEDLEY_STATIC_CAST(uint8_t, b);
+    uint8_t r_ = a_ + b_;
+
+    a_ = (a_ >> ((8 * sizeof(r_)) - 1)) + INT8_MAX;
+    if (HEDLEY_STATIC_CAST(int8_t, ((a_ ^ b_) | ~(b_ ^ r_))) >= 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int8_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int16_t
+simde_math_adds_i16(int16_t a, int16_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddh_s16(a, b);
+  #else
+    uint16_t a_ = HEDLEY_STATIC_CAST(uint16_t, a);
+    uint16_t b_ = HEDLEY_STATIC_CAST(uint16_t, b);
+    uint16_t r_ = a_ + b_;
+
+    a_ = (a_ >> ((8 * sizeof(r_)) - 1)) + INT16_MAX;
+    if (HEDLEY_STATIC_CAST(int16_t, ((a_ ^ b_) | ~(b_ ^ r_))) >= 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int16_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int32_t
+simde_math_adds_i32(int32_t a, int32_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqadds_s32(a, b);
+  #else
+    uint32_t a_ = HEDLEY_STATIC_CAST(uint32_t, a);
+    uint32_t b_ = HEDLEY_STATIC_CAST(uint32_t, b);
+    uint32_t r_ = a_ + b_;
+
+    a_ = (a_ >> ((8 * sizeof(r_)) - 1)) + INT32_MAX;
+    if (HEDLEY_STATIC_CAST(int32_t, ((a_ ^ b_) | ~(b_ ^ r_))) >= 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int32_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int64_t
+simde_math_adds_i64(int64_t a, int64_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddd_s64(a, b);
+  #else
+    uint64_t a_ = HEDLEY_STATIC_CAST(uint64_t, a);
+    uint64_t b_ = HEDLEY_STATIC_CAST(uint64_t, b);
+    uint64_t r_ = a_ + b_;
+
+    a_ = (a_ >> ((8 * sizeof(r_)) - 1)) + INT64_MAX;
+    if (HEDLEY_STATIC_CAST(int64_t, ((a_ ^ b_) | ~(b_ ^ r_))) >= 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int64_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+uint8_t
+simde_math_adds_u8(uint8_t a, uint8_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddb_u8(a, b);
+  #else
+    uint8_t r = a + b;
+    r |= -(r < a);
+    return r;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint16_t
+simde_math_adds_u16(uint16_t a, uint16_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddh_u16(a, b);
+  #else
+    uint16_t r = a + b;
+    r |= -(r < a);
+    return r;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint32_t
+simde_math_adds_u32(uint32_t a, uint32_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqadds_u32(a, b);
+  #else
+    uint32_t r = a + b;
+    r |= -(r < a);
+    return r;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint64_t
+simde_math_adds_u64(uint64_t a, uint64_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqaddd_u64(a, b);
+  #else
+    uint64_t r = a + b;
+    r |= -(r < a);
+    return r;
+  #endif
+}
+
+static HEDLEY_INLINE
+int8_t
+simde_math_subs_i8(int8_t a, int8_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubb_s8(a, b);
+  #else
+    uint8_t a_ = HEDLEY_STATIC_CAST(uint8_t, a);
+    uint8_t b_ = HEDLEY_STATIC_CAST(uint8_t, b);
+    uint8_t r_ = a_ - b_;
+
+    a_ = (a_ >> 7) + INT8_MAX;
+
+    if (HEDLEY_STATIC_CAST(int8_t, (a_ ^ b_) & (a_ ^ r_)) < 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int8_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int16_t
+simde_math_subs_i16(int16_t a, int16_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubh_s16(a, b);
+  #else
+    uint16_t a_ = HEDLEY_STATIC_CAST(uint16_t, a);
+    uint16_t b_ = HEDLEY_STATIC_CAST(uint16_t, b);
+    uint16_t r_ = a_ - b_;
+
+    a_ = (a_ >> 15) + INT16_MAX;
+
+    if (HEDLEY_STATIC_CAST(int16_t, (a_ ^ b_) & (a_ ^ r_)) < 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int16_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int32_t
+simde_math_subs_i32(int32_t a, int32_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubs_s32(a, b);
+  #else
+    uint32_t a_ = HEDLEY_STATIC_CAST(uint32_t, a);
+    uint32_t b_ = HEDLEY_STATIC_CAST(uint32_t, b);
+    uint32_t r_ = a_ - b_;
+
+    a_ = (a_ >> 31) + INT32_MAX;
+
+    if (HEDLEY_STATIC_CAST(int32_t, (a_ ^ b_) & (a_ ^ r_)) < 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int32_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+int64_t
+simde_math_subs_i64(int64_t a, int64_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubd_s64(a, b);
+  #else
+    uint64_t a_ = HEDLEY_STATIC_CAST(uint64_t, a);
+    uint64_t b_ = HEDLEY_STATIC_CAST(uint64_t, b);
+    uint64_t r_ = a_ - b_;
+
+    a_ = (a_ >> 63) + INT64_MAX;
+
+    if (HEDLEY_STATIC_CAST(int64_t, (a_ ^ b_) & (a_ ^ r_)) < 0) {
+      r_ = a_;
+    }
+
+    return HEDLEY_STATIC_CAST(int64_t, r_);
+  #endif
+}
+
+static HEDLEY_INLINE
+uint8_t
+simde_math_subs_u8(uint8_t a, uint8_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubb_u8(a, b);
+  #else
+    uint8_t res = a - b;
+    res &= -(res <= a);
+    return res;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint16_t
+simde_math_subs_u16(uint16_t a, uint16_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubh_u16(a, b);
+  #else
+    uint16_t res = a - b;
+    res &= -(res <= a);
+    return res;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint32_t
+simde_math_subs_u32(uint32_t a, uint32_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubs_u32(a, b);
+  #else
+    uint32_t res = a - b;
+    res &= -(res <= a);
+    return res;
+  #endif
+}
+
+static HEDLEY_INLINE
+uint64_t
+simde_math_subs_u64(uint64_t a, uint64_t b) {
+  #if defined(SIMDE_ARM_NEON_A64V8_NATIVE)
+    return vqsubd_u64(a, b);
+  #else
+    uint64_t res = a - b;
+    res &= -(res <= a);
+    return res;
+  #endif
+}
+
+HEDLEY_DIAGNOSTIC_POP
 
 #endif /* !defined(SIMDE_MATH_H) */

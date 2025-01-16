@@ -1,7 +1,7 @@
 #ifndef __PGENLIB_READ_H__
 #define __PGENLIB_READ_H__
 
-// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -90,13 +90,16 @@ typedef struct PgenFileInfoStruct {
   uint32_t max_allele_ct;
   // uint32_t max_dosage_allele_ct;  // might need this later
 
+  uint32_t extensions_present;
+
   // if using per-variant fread(), this is non-null during PgenFileInfo
   // initialization, but it's then "moved" to the first Pgen_reader and set to
   // nullptr.
   FILE* shared_ff;
 
-  // can only be non-null after PgfiInitPhase1 and before PgfiInitPhase2, and
-  // only if the external-index-file representation is used.
+  // can only be non-null after PgfiInitPhase1 and before PgfiInitPhase2 /
+  // PgfiInitLoadExts, and only if the external-index-file representation is
+  // used.
   FILE* pgi_ff;
 
   const unsigned char* block_base;  // nullptr if using per-variant fread()
@@ -165,9 +168,9 @@ typedef struct PgenReaderMainStruct {
   uintptr_t* workspace_dosage_present;
   uintptr_t* workspace_dphase_present;
 
-  // phase set loading (mode 0x11) unimplemented for now; should be a sequence
-  // of (sample ID, [uint32_t phase set begin, set end), [set begin, set end),
-  // ...).
+  // phase set loading (footer track in mode 0x11) unimplemented for now;
+  // should be a sequence of (sample ID, [uint32_t phase set begin, set end),
+  // [set begin, set end), ...).
 } PgenReaderMain;
 
 typedef struct PgenReaderStruct {
@@ -432,8 +435,23 @@ PglErr PgfiInitPhase1(const char* fname, const char* pgi_fname, uint32_t raw_var
 
 // If allele_cts_already_loaded is set, but they're present in the file,
 // they'll be validated; similarly for nonref_flags_already_loaded.
-PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_loaded, uint32_t nonref_flags_already_loaded, uint32_t use_blockload, uint32_t vblock_idx_start, uint32_t vidx_end, uint32_t* max_vrec_width_ptr, PgenFileInfo* pgfip, unsigned char* pgfi_alloc, uintptr_t* pgr_alloc_cacheline_ct_ptr, char* errstr_buf);
+//
+// If caller is interested in extensions, they should pass in header_exts
+// and/or footer_exts entries with type_idx set to those of the extensions of
+// interest, and type_idx values in increasing order.  On return, .size values
+// of each entry will be filled when the extension is present, and set to ~0LLU
+// when the extension is absent.
+PglErr PgfiInitPhase2Ex(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_loaded, uint32_t nonref_flags_already_loaded, uint32_t use_blockload, uint32_t vblock_idx_start, uint32_t vidx_end, uint32_t* max_vrec_width_ptr, PgenFileInfo* pgfip, unsigned char* pgfi_alloc, PgenExtensionLl* header_exts, PgenExtensionLl* footer_exts, uintptr_t* pgr_alloc_cacheline_ct_ptr, char* errstr_buf);
 
+HEADER_INLINE PglErr PgfiInitPhase2(PgenHeaderCtrl header_ctrl, uint32_t allele_cts_already_loaded, uint32_t nonref_flags_already_loaded, uint32_t use_blockload, uint32_t vblock_idx_start, uint32_t vidx_end, uint32_t* max_vrec_width_ptr, PgenFileInfo* pgfip, unsigned char* pgfi_alloc, uintptr_t* pgr_alloc_cacheline_ct_ptr, char* errstr_buf) {
+  return PgfiInitPhase2Ex(header_ctrl, allele_cts_already_loaded, nonref_flags_already_loaded, use_blockload, vblock_idx_start, vidx_end, max_vrec_width_ptr, pgfip, pgfi_alloc, nullptr, nullptr, pgr_alloc_cacheline_ct_ptr, errstr_buf);
+}
+
+// Expected to be called right after PgfiInitPhase2Ex(), after memory buffers
+// are provided for header_exts / footer_exts entries.
+PglErr PgfiInitLoadExts(PgenHeaderCtrl header_ctrl, PgenFileInfo* pgfip, PgenExtensionLl* header_exts, PgenExtensionLl* footer_exts, char* errstr_buf);
+
+uint64_t GetPgfiLdbaseFpos(const PgenFileInfo* pgfip, uintptr_t vidx);
 
 uint64_t PgfiMultireadGetCachelineReq(const uintptr_t* variant_include, const PgenFileInfo* pgfip, uint32_t variant_ct, uint32_t block_size);
 
@@ -543,7 +561,12 @@ PglErr PgrGet(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex p
 // Note that the returned difflist_len can be much larger than
 // max_simple_difflist_len when the variant is LD-encoded; it's bounded by
 //   2 * (raw_sample_ct / kPglMaxDifflistLenDivisor).
-PglErr PgrGetDifflistOrGenovec(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, PgenReader* pgr_ptr, uintptr_t* __restrict genovec, uint32_t* difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr);
+// (probable todo: this interface has... rather sharp edges, even relative to
+// the rest of this low-level library.  Maybe it shouldn't be deleted, but it
+// would be better if there was a function that took a max_difflist_len
+// parameter, and it was safe for difflist_sample_ids to only be allocated up
+// to that length.)
+PglErr PgrGetDifflistOrGenovec(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, PgenReader* pgr_ptr, uintptr_t* __restrict genovec, uint32_t* __restrict difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr);
 
 // genocounts[0] = # hom ref, [1] = # het ref, [2] = two alts, [3] = missing
 PglErr PgrGetCounts(const uintptr_t* __restrict sample_include, const uintptr_t* __restrict sample_include_interleaved_vec, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t vidx, PgenReader* pgr_ptr, STD_ARRAY_REF(uint32_t, 4) genocounts);
@@ -576,6 +599,14 @@ HEADER_INLINE PglErr PgrGetInv1(const uintptr_t* __restrict sample_include, PgrS
   return IMPLPgrGetInv1(sample_include, sample_include_cumulative_popcounts, sample_ct, vidx, allele_idx, pgrp, allele_invcountvec);
 }
 
+PglErr IMPLPgrGetInv1DifflistOrGenovec(const uintptr_t* __restrict sample_include, const uint32_t* __restrict sample_include_cumulative_popcounts, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, uint32_t allele_idx, PgenReaderMain* pgrp, uintptr_t* __restrict allele_invcountvec, uint32_t* __restrict difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr);
+
+HEADER_INLINE PglErr PgrGetInv1DifflistOrGenovec(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t max_simple_difflist_len, uint32_t vidx, uint32_t allele_idx, PgenReader* pgr_ptr, uintptr_t* __restrict allele_invcountvec, uint32_t* __restrict difflist_common_geno_ptr, uintptr_t* __restrict main_raregeno, uint32_t* __restrict difflist_sample_ids, uint32_t* __restrict difflist_len_ptr) {
+  PgenReaderMain* pgrp = &GET_PRIVATE(*pgr_ptr, m);
+  const uint32_t* sample_include_cumulative_popcounts = GET_PRIVATE(pssi, cumulative_popcounts);
+  return IMPLPgrGetInv1DifflistOrGenovec(sample_include, sample_include_cumulative_popcounts, sample_ct, max_simple_difflist_len, vidx, allele_idx, pgrp, allele_invcountvec, difflist_common_geno_ptr, main_raregeno, difflist_sample_ids, difflist_len_ptr);
+}
+
 PglErr IMPLPgrGet2(const uintptr_t* __restrict sample_include, const uint32_t* __restrict sample_include_cumulative_popcounts, uint32_t sample_ct, uint32_t vidx, uint32_t allele_idx0, uint32_t allele_idx1, PgenReaderMain* pgrp, uintptr_t* __restrict genovec);
 
 HEADER_INLINE PglErr PgrGet2(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex pssi, uint32_t sample_ct, uint32_t vidx, uint32_t allele_idx0, uint32_t allele_idx1, PgenReader* pgr_ptr, uintptr_t* __restrict genovec) {
@@ -593,21 +624,17 @@ PglErr PgrGetM(const uintptr_t* __restrict sample_include, PgrSampleSubsetIndex 
 // low-MAF variants without actually loading the genotype data, since the size
 // of the record puts an upper bound on the alt allele frequency.
 
-// requires trailing bits of genoarr to be zeroed out, AND does not update high
-// bits of last word if raw_sample_ctl2 is odd.
-void DetectGenoarrHetsHw(const uintptr_t*__restrict genoarr, uint32_t raw_sample_ctl2, Halfword* __restrict all_hets_hw);
-
 // requires trailing bits of genoarr to be zeroed out.
 HEADER_INLINE void PgrDetectGenoarrHetsUnsafe(const uintptr_t*__restrict genoarr, uint32_t raw_sample_ctl2, uintptr_t* __restrict all_hets) {
-  Halfword* all_hets_alias = R_CAST(Halfword*, all_hets);
-  DetectGenoarrHetsHw(genoarr, raw_sample_ctl2, all_hets_alias);
+  PackWordsToHalfwordsInvmatch(genoarr, kMaskAAAA, raw_sample_ctl2, all_hets);
   if (raw_sample_ctl2 % 2) {
+    Halfword* __attribute__((may_alias)) all_hets_alias = DowncastWToHW(all_hets);
     all_hets_alias[raw_sample_ctl2] = 0;
   }
 }
 
 HEADER_INLINE void PgrDetectGenoarrHets(const uintptr_t* __restrict genoarr, uint32_t raw_sample_ct, uintptr_t* __restrict all_hets) {
-  DetectGenoarrHetsHw(genoarr, NypCtToWordCt(raw_sample_ct), R_CAST(Halfword*, all_hets));
+  PackWordsToHalfwordsInvmatch(genoarr, kMaskAAAA, NypCtToWordCt(raw_sample_ct), all_hets);
   ZeroTrailingBits(raw_sample_ct, all_hets);
 }
 

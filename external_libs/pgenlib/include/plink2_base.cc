@@ -1,4 +1,4 @@
-// This library is part of PLINK 2.00, copyright (C) 2005-2023 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -21,7 +21,7 @@
 namespace plink2 {
 #endif
 
-uintptr_t g_failed_alloc_attempt_size = 0;
+uint64_t g_failed_alloc_attempt_size = 0;
 
 #if (((__GNUC__ == 4) && (__GNUC_MINOR__ < 7)) || (__GNUC__ >= 11)) && !defined(__APPLE__)
 BoolErr pgl_malloc(uintptr_t size, void* pp) {
@@ -181,7 +181,7 @@ BoolErr ScanIntAbsBounded(const char* str_iter, uint64_t bound, int32_t* valp) {
       return 1;
     }
   }
-  if (unlikely(ScanUintCappedFinish(str_iter, bound, R_CAST(uint32_t*, valp)))) {
+  if (unlikely(ScanUintCappedFinish(str_iter, bound, I32ToU32(valp)))) {
     return 1;
   }
   *valp *= sign;
@@ -297,7 +297,7 @@ BoolErr aligned_malloc(uintptr_t size, uintptr_t alignment, void* aligned_pp) {
   return 0;
 }
 
-#ifdef __LP64__
+#if defined(USE_SSE2) && !defined(NO_UNALIGNED)
 int32_t memequal(const void* m1, const void* m2, uintptr_t byte_ct) {
   const unsigned char* m1_uc = S_CAST(const unsigned char*, m1);
   const unsigned char* m2_uc = S_CAST(const unsigned char*, m2);
@@ -472,11 +472,124 @@ int32_t Memcmp(const void* m1, const void* m2, uintptr_t byte_ct) {
   }
   return 0;
 }
-#endif
+#endif // defined(USE_SSE2) && !defined(NO_UNALIGNED)
 
+const uint16_t kDigitPair[] = {
+  0x3030, 0x3130, 0x3230, 0x3330, 0x3430, 0x3530, 0x3630, 0x3730, 0x3830, 0x3930,
+  0x3031, 0x3131, 0x3231, 0x3331, 0x3431, 0x3531, 0x3631, 0x3731, 0x3831, 0x3931,
+  0x3032, 0x3132, 0x3232, 0x3332, 0x3432, 0x3532, 0x3632, 0x3732, 0x3832, 0x3932,
+  0x3033, 0x3133, 0x3233, 0x3333, 0x3433, 0x3533, 0x3633, 0x3733, 0x3833, 0x3933,
+  0x3034, 0x3134, 0x3234, 0x3334, 0x3434, 0x3534, 0x3634, 0x3734, 0x3834, 0x3934,
+  0x3035, 0x3135, 0x3235, 0x3335, 0x3435, 0x3535, 0x3635, 0x3735, 0x3835, 0x3935,
+  0x3036, 0x3136, 0x3236, 0x3336, 0x3436, 0x3536, 0x3636, 0x3736, 0x3836, 0x3936,
+  0x3037, 0x3137, 0x3237, 0x3337, 0x3437, 0x3537, 0x3637, 0x3737, 0x3837, 0x3937,
+  0x3038, 0x3138, 0x3238, 0x3338, 0x3438, 0x3538, 0x3638, 0x3738, 0x3838, 0x3938,
+  0x3039, 0x3139, 0x3239, 0x3339, 0x3439, 0x3539, 0x3639, 0x3739, 0x3839, 0x3939};
+
+char* u32toa(uint32_t uii, char* start) {
+  // Memory-efficient fast integer writer.  (You can do a bit better sometimes
+  // by using a larger lookup table, but on average I doubt that pays off.)
+  // Returns a pointer to the end of the integer (not null-terminated).
+  //
+  // Nearly identical to 'branchlut' from
+  // https://github.com/miloyip/itoa-benchmark , except that the hardcoded
+  // binary search is more balanced (start by comparing 6+ digits vs. <6,
+  // instead of 9+ digits vs. <8).  This tends to be slightly better unless the
+  // integers are almost uniformly distributed over [0, 2^32).
+  //
+  // Todo: compare against an_itoa in https://github.com/appnexus/acf/ .
+  //
+  // (Making the first comparison 7+ digits vs. <7 would seem to make sense,
+  // but it seems to benchmark slightly worse on my Mac?)
+  //
+  // (Since we want to execute different code depending on the number of
+  // digits, the UintSlen() approach doesn't pay off.)
+  uint32_t quotient;
+  if (uii < 100000) {
+    if (uii < 100) {
+      if (uii >= 10) {
+        goto u32toa_just2;
+      }
+      *start++ = '0' + uii;
+      return start;
+    }
+    if (uii < 10000) {
+      if (uii >= 1000) {
+        goto u32toa_just4;
+      }
+      quotient = uii / 100;
+      *start++ = '0' + quotient;
+      goto u32toa_2left;
+    }
+    quotient = uii / 10000;
+    *start++ = '0' + quotient;
+    goto u32toa_4left;
+  }
+  if (uii < 100000000) {
+    if (uii < 1000000) {
+      goto u32toa_just6;
+    }
+    if (uii >= 10000000) {
+      goto u32toa_just8;
+    }
+    quotient = uii / 1000000;
+    *start++ = '0' + quotient;
+    goto u32toa_6left;
+  }
+  quotient = uii / 100000000;
+  if (uii < 1000000000) {
+    *start++ = '0' + quotient;
+  } else {
+    start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+  }
+  uii -= quotient * 100000000;
+ u32toa_just8:
+  quotient = uii / 1000000;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+ u32toa_6left:
+  uii -= quotient * 1000000;
+ u32toa_just6:
+  quotient = uii / 10000;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+ u32toa_4left:
+  uii -= quotient * 10000;
+ u32toa_just4:
+  quotient = uii / 100;
+  start = memcpya_k(start, &(kDigitPair[quotient]), 2);
+ u32toa_2left:
+  uii -= quotient * 100;
+ u32toa_just2:
+  return memcpya_k(start, &(kDigitPair[uii]), 2);
+}
+
+char* i64toa(int64_t llii, char* start) {
+  uint64_t ullii = llii;
+  uint64_t top_digits;
+  uint32_t bottom_eight;
+  uint32_t middle_eight;
+  if (llii < 0) {
+    *start++ = '-';
+    ullii = -ullii;
+  }
+  if (ullii <= 0xffffffffLLU) {
+    return u32toa(S_CAST(uint32_t, ullii), start);
+  }
+  top_digits = ullii / 100000000;
+  bottom_eight = S_CAST(uint32_t, ullii - (top_digits * 100000000));
+  if (top_digits <= 0xffffffffLLU) {
+    start = u32toa(S_CAST(uint32_t, top_digits), start);
+    return uitoa_z8(bottom_eight, start);
+  }
+  ullii = top_digits / 100000000;
+  middle_eight = S_CAST(uint32_t, top_digits - (ullii * 100000000));
+  start = u32toa(S_CAST(uint32_t, ullii), start);
+  start = uitoa_z8(middle_eight, start);
+  return uitoa_z8(bottom_eight, start);
+}
+
+#if defined(USE_SSE2) && !defined(NO_UNALIGNED)
 uintptr_t FirstUnequal4(const void* arr1, const void* arr2, uintptr_t nbytes) {
   // Similar to memequal().
-#ifdef __LP64__
   if (nbytes < kBytesPerVec) {
     if (nbytes < kBytesPerWord) {
       uint32_t xor_result = (*S_CAST(const uint32_t*, arr1)) ^ (*S_CAST(const uint32_t*, arr2));
@@ -536,28 +649,68 @@ uintptr_t FirstUnequal4(const void* arr1, const void* arr2, uintptr_t nbytes) {
       return final_offset + ctzu32(~eq_result);
     }
   }
-#else  // !__LP64__
-  const uintptr_t* arr1_alias = S_CAST(const uintptr_t*, arr1);
-  const uintptr_t* arr2_alias = S_CAST(const uintptr_t*, arr2);
+  return nbytes;
+}
+#else // !(defined(USE_SSE2) && !defined(NO_UNALIGNED))
+uintptr_t FirstUnequalW(const void* arr1, const void* arr2, uintptr_t nbytes) {
+  const unsigned char* arr1b = S_CAST(const unsigned char*, arr1);
+  const unsigned char* arr2b = S_CAST(const unsigned char*, arr2);
   const uintptr_t word_ct = nbytes / kBytesPerWord;
   for (uintptr_t widx = 0; widx != word_ct; ++widx) {
-    const uintptr_t xor_result = arr1_alias[widx] ^ arr2_alias[widx];
+    uintptr_t arr1_word;
+    uintptr_t arr2_word;
+    CopyFromUnalignedOffsetW(&arr1_word, arr1b, widx);
+    CopyFromUnalignedOffsetW(&arr2_word, arr2b, widx);
+    const uintptr_t xor_result = arr1_word ^ arr2_word;
     if (xor_result) {
       return widx * kBytesPerWord + ctzw(xor_result) / CHAR_BIT;
     }
   }
   if (nbytes % kBytesPerWord) {
     const uintptr_t final_offset = nbytes - kBytesPerWord;
-    const char* s1 = S_CAST(const char*, arr1);
-    const char* s2 = S_CAST(const char*, arr2);
-    const uintptr_t xor_result = (*R_CAST(const uintptr_t*, &(s1[final_offset]))) ^ (*R_CAST(const uintptr_t*, &(s2[final_offset])));
+    uintptr_t arr1_word;
+    uintptr_t arr2_word;
+    CopyFromUnalignedW(&arr1_word, &(arr1b[final_offset]));
+    CopyFromUnalignedW(&arr2_word, &(arr2b[final_offset]));
+    const uintptr_t xor_result = arr1_word ^ arr2_word;
     if (xor_result) {
       return final_offset + ctzw(xor_result) / CHAR_BIT;
     }
   }
-#endif
   return nbytes;
 }
+#endif
+
+#ifdef __LP64__
+uintptr_t CountVintsNonempty(const unsigned char* buf, const unsigned char* buf_end) {
+  const uintptr_t starting_addr = R_CAST(uintptr_t, buf);
+  const VecUc* buf_viter = R_CAST(const VecUc*, RoundDownPow2(starting_addr, kBytesPerVec));
+  const uintptr_t ending_addr = R_CAST(uintptr_t, buf_end);
+  const VecUc* buf_vlast = R_CAST(const VecUc*, RoundDownPow2(ending_addr - 1, kBytesPerVec));
+  const uint32_t leading_byte_ct = starting_addr - R_CAST(uintptr_t, buf_viter);
+  Vec8thUint vint_ends = (UINT32_MAX << leading_byte_ct) & (~vecuc_movemask(*buf_viter));
+  uintptr_t total = 0;
+  while (buf_viter != buf_vlast) {
+    total += PopcountVec8thUint(vint_ends);
+    ++buf_viter;
+    vint_ends = ~vecuc_movemask(*buf_viter);
+  }
+  const uint32_t trailing_byte_ct = ending_addr - R_CAST(uintptr_t, buf_vlast);
+  vint_ends &= (k1LU << trailing_byte_ct) - 1;
+  total += PopcountVec8thUint(vint_ends);
+  return total;
+}
+#else
+uintptr_t CountVints(const unsigned char* buf, const unsigned char* buf_end) {
+  // Could check one word at a time.
+  const uintptr_t len = buf_end - buf;
+  uintptr_t inv_result = 0;
+  for (uintptr_t ulii = 0; ulii != len; ++ulii) {
+    inv_result += buf[ulii] >> 7;
+  }
+  return len - inv_result;
+}
+#endif
 
 #ifdef __cplusplus
 }  // namespace plink2
