@@ -1491,6 +1491,7 @@ double get_chisq_mix_pv(double const& q, const Ref<const VectorXd>& lambdas){
     }
   }
 
+  if((boost::math::isnan)(pv) || !(boost::math::isnormal)(pv)) return -1;
   return pv;
 
 }
@@ -1672,7 +1673,7 @@ double get_spa_pv(const double& root,const double& q, const Ref<const ArrayXd>& 
   if(tmp <= 0) return -1;
   w = sgn(root) * sqrt( tmp );
   tmp = Kpp_lambda(root, lambdas);
-  if(tmp < 0) return -1;
+  if(tmp <= 0) return -1;
   u = root * sqrt( tmp );
   if( fabs(u) < 1e-4 ) return -1;
 
@@ -1693,6 +1694,7 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, const boo
   double val = tstar * cvals(3) + cvals(2);
 
   if(val < 0) return -1;
+  if((boost::math::isnan)(cvals(4)) || !(boost::math::isnormal)(cvals(4))) return -1;
 
   // 0 ncp gives strange behavior with non_central_chi_squared (returns -cdf instead of 1-cdf)
   if(cvals(5) == 0) pv = cdf(complement(chi_squared(cvals(4)), val));
@@ -1720,6 +1722,7 @@ double get_liu_pv(double const& q, const Ref<const VectorXd>& lambdas, double& c
     chival = -1;
     return -1;
   }
+  if((boost::math::isnan)(cvals(4)) || !(boost::math::isnormal)(cvals(4))) return -1;
 
   // 0 ncp gives strange behavior with non_central_chi_squared (returns -cdf instead of 1-cdf)
   if(cvals(5) == 0) get_logp(logpv, val, cvals(4));
@@ -1868,6 +1871,7 @@ double SKATO_integral_fn_liu(double* x){ // variables used beside x are global
   if(skato_state == 1) return 0; // skip if failed for other x values
   if(*x == 0) {skato_state = 1; return 0;} // failed
 
+  if((boost::math::isnan)(skato_dfQ) || !(boost::math::isnormal)(skato_dfQ)) return -1;
   chi_squared chisqL( skato_dfQ );
 
   // get first term in integral
@@ -1893,6 +1897,7 @@ void integrate(double f(double*), double& pv, int const& subd, bool const& debug
 
   dqags_(f, &lower, &upper, &epsabs, &epsrel, &result, &abserr, &neval, &ierror, &ilimit, &lenw, &last, iwork.data(), work.data());
   if(ierror != 0) skato_state = 1;
+  if((boost::math::isnan)(result) || !(boost::math::isnormal)(result)) skato_state = 1;
   if(debug) {
     cerr << "Niter=" << neval << ";integral=" << result << "Abs.error=" << abserr << ";rel.error=" << epsrel <<  ";fail="<< skato_state << "/" << ierror << "\n";
     if(skato_state == 0) for(int i = 1; i < 6; i++) {lower=skato_upper*0.2*i;cerr << "g(" << lower << ")=" << f(&lower) << " ";}
