@@ -241,7 +241,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("vc-tests", "comma separated list of tests to compute for each set of variants included in a mask [skat/skato/skato-acat/acatv/acato]", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("vc-maxAAF", "maximum AAF for variants included in gene-based tests", cxxopts::value<double>(params->vc_maxAAF),"FLOAT(=1)")
     ("weights-col", "column index (1-based) for user-defined weights in annotation file", cxxopts::value<int>(params->vc_weight_col))
-    ("multiply-weights", "multiply the user defined weights by the default SKAT weights in SKAT/ACAT tests")
     ("joint", "comma spearated list of joint tests to perform", cxxopts::value<std::string>(params->burden),"STRING")
     ("singleton-carrier", "define singletons as variants with a single carrier in the sample")
     ("write-mask", "write masks in PLINK bed/bim/fam format")
@@ -314,6 +313,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("l0-pval-thr", "p-value threshold for identifying top SNPs at level 0", cxxopts::value<double>(params->l0_snp_pval_thr),"FLOAT")
     ("select-l0", "file with p-values for each level 0 block (use as flag if with --test-l0)", cxxopts::value<std::string>(params->l0_pvals_file)->implicit_value(""),"FILE")
     ("rm-l0-pct", "remove least x% significant blocks from level 1 models", cxxopts::value<double>(params->rm_l0_pct),"FLOAT(=0)")
+    ("l0-event", "use event status as response in level 0 in time-to-event analysis")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
     ("prop-zero-thr", "min. proportion of zeros needed to sparsify the genotype vector", cxxopts::value<double>(params->prop_zero_thr),"FLOAT(=0.5)")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
@@ -329,6 +329,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("rgc-gene-p", "apply optimal strategy to extract single p-value per gene")
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
+    ("multiply-weights", "multiply the user defined weights by the default SKAT weights in SKAT/ACAT tests")
     ("skip-cf-burden", "skip computing per-mask calibration factor for SKAT tests")
     ("force-mac-filter", "apply a seperate MAC filter on a subset of the SNPs", cxxopts::value<std::string>(), "snpfile,MAC")
     ("use-adam", "use ADAM to fit penalized logistic models")
@@ -358,11 +359,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("multiphen-pseudo-stophalf", "Threshold to stop step-halving in pseudo algorithm [default value is 0.0]", cxxopts::value<double>(params->multiphen_pseudo_stophalf),"FLOAT(=0.0)")
     ("multiphen-reset-start", "reset start values when failed convergence in MultiPhen")
     ("multiphen-offset", "offset mode for MultiPhen", cxxopts::value<std::string>(params->multiphen_offset),"STRING")
-    ("l0-event", "use event status as response in level 0 in time-to-event analysis")
     ("t2e-event-l0", "Use event as reponse in level0 for time-to-event phenotype")
     ("t2e-l1-pi6", "use heritability to get penalty")
     ("coxnofirth", "not using firth in cox model, the test uses likelihood ratio test")
     ("coxscore-exact", "use exact score variance")
+    ("nocov-approx", "skip adjusting for covariates in score test")
    ;
 
   try
@@ -478,6 +479,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("force-ltco") ) params->w_ltco = true;
     if( vm.count("joint") ) params->joint_test = true;
     if( vm.count("joint-only") ) params->p_joint_only = true;
+    if( vm.count("nocov-approx") ) params->skip_cov_res = true;
     if( vm.count("mt") ) params->trait_set = true;
     if( vm.count("mcc") ) params->mcc_test = true;
     if( vm.count("multiphen") ) params->multiphen = true;
@@ -1029,6 +1031,11 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         (vm.count("extract-sets")+vm.count("exclude-sets")+vm.count("extract-setlist")+vm.count("exclude-setlist"))>1 
       )
       throw "must use only one of --extract-sets/--exclude-sets/--extract-setlist/--exclude-setlist.";
+    if( params->w_interaction && params->vc_test ){
+      sout << "WARNING: skipping non-burden gene-based tests for GxG/GxE mode.\n";
+      params->vc_test = 0; params->apply_gene_pval_strategy = params->joint_test = false;
+      valid_args[ "vc-tests" ] = valid_args[ "joint" ] = valid_args[ "sbat-adapt" ] = valid_args[ "rgc-gene-p" ] = valid_args[ "rgc-gene-def" ] = valid_args[ "vc-maxAAF" ] = valid_args[ "vc-MACthr" ] = false;
+    }
 
     if(!params->test_mode && params->setMinMAC){
       sout << "WARNING: option --minMAC only works in step 2 of REGENIE.\n";
@@ -1114,13 +1121,12 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     params->mk_snp_map = params->rm_snps || params->keep_snps || params->rm_or || params->keep_or || params->snp_set || params->getCorMat || (params->forced_MAC > 0);
     params->keep_snp_map = params->rm_or || params->keep_or || params->snp_set || params->getCorMat || (params->forced_MAC > 0);
 
-    // check firth fallback pvalue threshold
-    if(params->firth && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
-      throw "Firth fallback p-value threshold must be in (0,1).";
-    // check SPA fallback pvalue threshold
-    if(params->use_SPA && ((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol)) )
-      throw "SPA fallback p-value threshold must be in (0,1).";
-    if(params->firth_approx && !params->firth) params->firth_approx = false;
+    // check fallback pvalue threshold
+    if((params->alpha_pvalue < params->nl_dbl_dmin) || (params->alpha_pvalue > 1 - params->numtol) )
+      throw "Fallback p-value threshold must be in (0,1).";
+    if(params->firth_approx && !params->firth) {
+      params->firth_approx = false; valid_args[ "approx" ] = false;
+    }
     if( params->skip_cf_burden && !(params->use_SPA || params->firth) ) {
       params->skip_cf_burden = false; valid_args[ "skip-cf-burden" ] = false;
     }
@@ -1501,7 +1507,7 @@ void print_usage_info(struct param const* params, struct in_files* files, mstrea
     // 3P + B
     total_ram = params->n_pheno * 3 + params->block_size + params->ncov * 2; // y, mask, y_resid, g, X, X getbasis projection
     if(params->trait_mode) {
-      total_ram += 2 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, g_resid
+      total_ram += 3 * params->n_pheno + params->block_size + params->n_pheno * params->ncov; // y_raw, gamma_hat, gamma_hat_mask, g_resid
       if(params->use_SPA) total_ram += 0.5 * params->block_size; // non_zero_indices of g (4 bytes)
       if(params->firth_approx) total_ram += params->n_pheno; // cov offset
       if(params->start_block > params->total_n_block)

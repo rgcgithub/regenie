@@ -605,6 +605,13 @@ void covariate_read(struct param* params, struct in_files* files, struct filter*
       filters->cov_colKeep_names[tmp_str_vec[i+2]] = true;
     else keep_cols(i) = in_map(tmp_str_vec[i+2], filters->cov_colKeep_names);
 
+    // ignore covariates who correspond to analyzed phenotypes
+    std::vector<std::string>::iterator it_pheno = std::find(files->pheno_names.begin(), files->pheno_names.end(), tmp_str_vec[i+2]);
+    if(it_pheno != files->pheno_names.end()) {
+      keep_cols(i) = false;
+      filters->cov_colKeep_names.erase(tmp_str_vec[i+2]);
+    }
+
     if(keep_cols(i)){
       covar_names.push_back( tmp_str_vec[i+2] );
       nc_cat += !filters->cov_colKeep_names[ tmp_str_vec[i+2] ];
