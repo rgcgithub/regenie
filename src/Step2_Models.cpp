@@ -1250,7 +1250,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     if(!comp_lrt){
       if( score_max_new > score_max_old ) n_score_inc++; // track consecutive increases
       else n_score_inc = 0;
-      if( n_score_inc > 10 ) return false;
+      if( n_score_inc > 25 ) return false;
     }
 
     // force absolute step size to be less than maxstep for each entry of beta
