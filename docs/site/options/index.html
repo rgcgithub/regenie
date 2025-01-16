@@ -639,6 +639,18 @@ present in this file will be ignored in the analysis of the corresponding trait.
 <td>skip reading the file specified by <code>--pred</code> (corresponds to simple linear/logistic regression)</td>
 </tr>
 <tr>
+<td><code>--htp</code></td>
+<td>STRING</td>
+<td>Optional</td>
+<td>to output the summary statistics file in the <a href="https://rgcgithub.github.io/remeta/file_formats/#-htp">HTP</a> format (string should correspond to cohort name, e.g. 'UKB_450_EUR')</td>
+</tr>
+<tr>
+<td><code>--exact-p</code></td>
+<td>FLAG</td>
+<td>Optional</td>
+<td>avoid capping p-values at 2.2E-307 in the HTP format summary statistics output</td>
+</tr>
+<tr>
 <td><code>--use-relative-path</code></td>
 <td>FLAG</td>
 <td>Optional</td>
@@ -923,6 +935,7 @@ and <script type="math/tex">-\log_{10}</script> p-value. An additional column is
 with the same format as above. Additionaly, an accompanying file with the trait names corresponding to Y1,Y2,... 
 will be generated in ‘file.regenie.Ydict’. Note that allele frequency, sample size and INFO score are computed using
 all analyzed samples.</p>
+<p>With option <code>--htp</code>, the summary statistics file will follow the <a href="https://rgcgithub.github.io/remeta/file_formats/#-htp">HTP</a> format.</p>
 <p>If option <code>--write-samples</code> was used, IDs of samples used for each trait will be written in files
 <code>file_&lt;phenotype1_name&gt;.regenie.ids,...,file_&lt;phenotypeP_name&gt;.regenie.ids</code> (tab separated, no header).</p>
 <p>When using <code>--par-region</code>, the default boundaries used for the chrX PAR regions are:</p>
@@ -1030,6 +1043,12 @@ also categorizes sets into domains (e.g. for gene sets, these would correspond t
 (maximum of 8 per set/gene) in addition 
 to a mask combining across all domains.
 Variants can only be assigned to a single domain for each set/gene.</p>
+<p>Starting with v4.1, you can also specify custom variant weights which will be used in the burden, SKAT/SKAT-O and ACAT-V tests ($w_i$'s in the <a href="../overview/#step-2-gene-based-testing">gene-based testing overview</a>). Multiple weights can be included in the annotation file after the 3rd column, e.g.</p>
+<pre><code class="language-bash">1:55039839:T:C PCSK9 LoF 0.9 0.812 1
+1:55039842:G:A PCSK9 missense 0.4 0.23 0.55
+.
+</code></pre>
+<p>Using <code>--weights-col 4</code> will use weights in the 4-th column for the gene-based tests.</p>
 <h5 id="set-list-file">Set list file</h5>
 <p>This file lists variants within each set/gene to use when 
 building masks. 
@@ -1318,6 +1337,12 @@ listed last in the bim file).</p>
 <td>FLAG</td>
 <td>Optional</td>
 <td>to perform LODO scheme</td>
+</tr>
+<tr>
+<td><code>--weights-col</code></td>
+<td>INT</td>
+<td>Optional</td>
+<td>column index (1-based) in annotation file to use custom weights in gene-based tests</td>
 </tr>
 <tr>
 <td><code>--write-mask-snplist</code></td>
