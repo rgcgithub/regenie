@@ -1655,18 +1655,20 @@ float convertFloat(const string& val, struct param const* params, mstream& sout)
   return dval;
 }
 
-string convert_logp_raw(double const& logp){
+string convert_logp_raw(double const& logp, double const& log_dbl_min){
 
   char pval_str[256];
 
   if(logp <= 3) {
     sprintf(pval_str, "%f", pow(10, -logp));
+  } else if(logp <= log_dbl_min) {
+    sprintf(pval_str, "%g", pow(10, -logp));
   } else {
     double thr = log(9.95)/log(10);
     int base = ceil(logp);
     double res = base - logp;
     if(res>=thr) {res = 0; base++;}
-    sprintf(pval_str, "%.1fE-%d", pow(10, res), base);
+    sprintf(pval_str, "%.1fe-%d", pow(10, res), base);
   }
 
   return( string(pval_str) );
