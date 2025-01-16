@@ -2025,6 +2025,7 @@ void Data::setup_output(Files* ofile, string& out, std::vector<std::shared_ptr<F
   ofile_split.resize( params.n_pheno );
 
   for(int i = 0; i < params.n_pheno; i++) {
+    if( !params.pheno_pass(i) ) continue;
     out_split[i] = files.out_file + "_" + files.pheno_names[i] + ".regenie" + gz_ext;
     ofile_split[i] = std::make_shared<Files>();
     ofile_split[i]->openForWrite( out_split[i], sout );
@@ -3096,7 +3097,13 @@ void Data::getMask(int const& chrom, int const& varset, vector< vector < uchar >
       remeta_sumstats.skat_snplist = &bm.remeta_snplist;
       remeta_sumstats.gene_name = &set_info->ID;
     #endif
+    try {
     compute_vc_masks(vc_sparse_gmat, vc_weights, vc_weights_acat, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, set_info->Jmat, all_snps_info, in_filters.ind_in_analysis, params, remeta_sumstats); 
+    } catch (std::exception const& e) {
+      sout << "WARNING: " << e.what();
+    } catch (...) {
+      sout << "WARNING: error in gene-based tests. Skipping set...";
+    }
 
     set_info->Jmat.resize(0,0);
     set_info->ultra_rare_ind.resize(0);
@@ -3250,7 +3257,13 @@ void Data::getMask_loo(int const& chrom, int const& varset, vector< vector < uch
       vc_weights_chunk.head(vc_weights.size()) = vc_weights;
       vc_weights_acat_chunk.head(vc_weights_acat.size()) = vc_weights_acat;
 
-      compute_vc_masks(vc_sparse_gmat_chunk, vc_weights_chunk, vc_weights_acat_chunk, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, Jmat, all_snps_info, in_filters.ind_in_analysis, params, remeta_sumstats); 
+      try {
+        compute_vc_masks(vc_sparse_gmat_chunk, vc_weights_chunk, vc_weights_acat_chunk, set_info->vc_rare_mask, set_info->vc_rare_mask_non_missing, pheno_data.new_cov, m_ests, firth_est, res, pheno_data.phenotypes_raw, pheno_data.masked_indivs, Jmat, all_snps_info, in_filters.ind_in_analysis, params, remeta_sumstats); 
+      } catch (std::exception const& e) {
+        sout << "WARNING: " << e.what();
+      } catch (...) {
+        sout << "WARNING: error in gene-based tests. Skipping set...";
+      }
 
     }
 
