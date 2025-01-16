@@ -428,17 +428,14 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
     }
 
     MapArXb mask (pheno_data.masked_indivs.col(i).data(), params.n_samples, 1);
-    MapcArXd Wsqrt (m_ests.Gamma_sqrt.col(i).data(), params.n_samples, 1);
     MapcMatXd XWsqrt (m_ests.X_Gamma[i].data(), params.n_samples, m_ests.X_Gamma[i].cols());
 
     // project out covariates from G
     if(dt_thr->is_sparse) {
-      GWs = dt_thr->Gsparse.cwiseProduct( (Wsqrt * mask.cast<double>()).matrix() );
+      GWs = dt_thr->Gsparse.cwiseProduct(m_ests.Gamma_sqrt_mask.col(i));
       XtWG = XWsqrt.transpose() * GWs;
-      dt_thr->Gres = -XWsqrt * XtWG;
-      dt_thr->Gres += GWs;
     } else {
-      GW = (Geno * Wsqrt * mask.cast<double>()).matrix();
+      GW = (Geno * m_ests.Gamma_sqrt_mask.col(i).array()).matrix();
       dt_thr->Gres = GW - XWsqrt * (XWsqrt.transpose() * GW);
     }
 
@@ -447,29 +444,34 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
       dt_thr->denum(i) = GWs.squaredNorm() - XtWG.squaredNorm();
     else
       dt_thr->denum(i) = dt_thr->Gres.squaredNorm();
-    if( dt_thr->denum(i) < params.numtol ){
+
+    double sqrt_denum = sqrt( dt_thr->denum(i) );
+    if( sqrt_denum < params.numtol ){
       block_info->ignored_trait(i) = true;
       if(!params.p_joint_only && !params.split_by_pheno)
         block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
     }
+
     // score test stat for BT
     if(dt_thr->is_sparse) 
-      dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = GWs.dot(yres.col(i)) / sqrt_denum;
     else
-      dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt( dt_thr->denum(i) );
+      dt_thr->stats(i) = dt_thr->Gres.col(0).dot(yres.col(i)) / sqrt_denum;
 
     if(params.htp_out) {
-      dt_thr->scores(i) = dt_thr->stats(i) * sqrt( dt_thr->denum(i) );
+      dt_thr->scores(i) = dt_thr->stats(i) * sqrt_denum;
       dt_thr->skat_var(i) = dt_thr->denum(i);
     }
 
+    if(dt_thr->is_sparse && (fabs(dt_thr->stats(i)) > params.z_thr)){ // no need if correction is not applied
+      dt_thr->Gres = -XWsqrt * XtWG;
+      dt_thr->Gres += GWs;
+    }
     /*
     if(params.debug) {
       cerr << "\ny:\n" << yres.col(i).topRows(2) << endl;
-      cerr << "\nGresid:\n" << dt_thr->Gres.topRows(2) << endl;
-      if(dt_thr->is_sparse) cerr << "\nsum(GW)=" << GWs.sum() << endl;
-      cerr << "\nscore=" << dt_thr->Gres.col(0).dot(yres.col(i)) << " var(score)=" << dt_thr->Gres.squaredNorm() << endl;
+      cerr << "\nscore=" << dt_thr->stats(i) * sqrt_denum << " var(score)=" << dt_thr->denum(i) << endl;
     }
     */
 
@@ -478,7 +480,10 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
 
     dt_thr->bhat(i) /= block_info->scale_fac;
     dt_thr->se_b(i) /= block_info->scale_fac;
-    if(block_info->flipped) dt_thr->bhat(i) *= -1;
+    if(block_info->flipped) {
+      dt_thr->bhat(i) *= -1;
+      if (params.htp_out) dt_thr->scores(i) *= -1;
+    }
 
     // print sum stats
     if(!params.p_joint_only)

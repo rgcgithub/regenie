@@ -34,7 +34,7 @@ struct ests {
 
   Eigen::MatrixXd offset_nullreg;
   Eigen::MatrixXd blups, ltco_prs;
-  Eigen::MatrixXd Gamma_sqrt, Y_hat_p;
+  Eigen::MatrixXd Gamma_sqrt, Gamma_sqrt_mask, Y_hat_p;
   std::vector<Eigen::MatrixXd> X_Gamma;
   Eigen::MatrixXd bhat_start; // for interaction tests
   std::vector<cox_mle> cox_MLE_NULL;

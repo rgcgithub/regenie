@@ -128,7 +128,8 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
-      m_ests->X_Gamma[i] = ( pheno_data->new_cov.array().colwise() * (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()) ).matrix();
+      m_ests->Gamma_sqrt_mask.col(i) = (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix();
+      m_ests->X_Gamma[i] = m_ests->Gamma_sqrt_mask.col(i).asDiagonal() * pheno_data->new_cov;
       getBasis(m_ests->X_Gamma[i], params);
       if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test)) m_ests->bhat_start.col(i) = betaold.matrix();
       if(params->w_interaction) m_ests->offset_nullreg.col(i) = etavec;

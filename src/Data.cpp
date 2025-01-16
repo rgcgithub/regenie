@@ -2186,7 +2186,7 @@ void Data::set_nullreg_mat(){
     }
   } else {
     m_ests.Y_hat_p = MatrixXd::Zero(params.n_samples, params.n_pheno);
-    m_ests.Gamma_sqrt = MatrixXd::Zero(params.n_samples, params.n_pheno);
+    m_ests.Gamma_sqrt = m_ests.Gamma_sqrt_mask = MatrixXd::Zero(params.n_samples, params.n_pheno);
     m_ests.X_Gamma.resize(params.n_pheno);
   }
 
