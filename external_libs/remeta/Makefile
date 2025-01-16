@@ -1,5 +1,5 @@
 #
-# Makefile to compile PGEN library
+# Makefile to compile REMETA library
 #
 AR         ?= ar
 CXX        ?= g++
