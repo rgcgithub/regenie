@@ -9,6 +9,7 @@ Options:
 	--test      test a generated docker image
 	--with-bio  compile with Boost Iostreams library
 	--with-mkl  compile with MKL library
+	--file      custom docker file to use
 	--rg-dir    path to the REGENIE source directory
 "
 
@@ -26,6 +27,7 @@ while [[ "$#" -gt 0 ]]; do
     --test) action=test ;;
     --with-bio) HAS_BOOST_IOSTREAM=1 ;;
     --with-mkl) MKLROOT=/mkl/ ;;
+    --file) CUSTOM_DFILE="$2"; shift ;;
     --rg-dir) RGSRC="$2"; shift ;;
     -h|--help) action="" ; break ;;
     *) echo "Unknown parameter passed: $1"; echo "$help_menu"; exit 1 ;;
@@ -58,6 +60,9 @@ if [ "$action" = "build" ]; then
   if [ "$MKLROOT" != "" ]; then
     echo Compiling with Intel MKL library
     DFILE=Dockerfile_mkl
+  fi
+  if [ "$CUSTOM_DFILE" != "" ]; then
+    DFILE=$CUSTOM_DFILE
   fi
 
 	docker build --rm -f ${DFILE} \
