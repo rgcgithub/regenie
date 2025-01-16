@@ -272,6 +272,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("covarExcludeList", "comma separated list of covariates to ignore (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("nauto", "number of autosomal chromosomes", cxxopts::value<int>(),"INT")
     ("exact-p", "output uncapped p-values in the summary statistic file with HTP format")
+    ("skip-dosage-comp", "skip dosage compensation for males in chrX non-PAR regions")
     ("maxCatLevels", "maximum number of levels for categorical covariates", cxxopts::value<int>(params->max_cat_levels),"INT(=10)")
     ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("nb", "number of blocks to use", cxxopts::value<int>(params->n_block),"INT")
@@ -501,6 +502,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("force-qt") ) params->force_qt_run = true;
     if( vm.count("weights-col") ) params->vc_with_weights = true;
     if( vm.count("multiply-weights") ) params->vc_multiply_weights = true;
+    if( vm.count("skip-dosage-comp") ) params->skip_dosage_comp = true;
     if( vm.count("sbat-verbose") ) params->nnls_out_all = true;
     if( vm.count("sbat-adapt") ) params->nnls_adaptive = true;
     if( vm.count("sbat-mtw") ) params->nnls_mt_weights = true;
@@ -899,6 +901,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       throw "can only use --test in step 2 (association testing).";
     if( (params->test_type > 0) && params->vc_test) 
       throw "cannot use --test with --vc-tests.";
+    if(params->skip_dosage_comp && params->test_type)
+      throw "cannot use --skip-dosage-comp with --test.";
     if( !params->getCorMat && params->joint_test ){
       if( (params->test_type > 0) && !vm.count("rgc-gene-p")) 
         throw "cannot use --test with --joint.";

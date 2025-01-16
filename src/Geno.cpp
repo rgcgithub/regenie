@@ -2018,6 +2018,12 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           // check if carrier
           if(params->build_mask && params->singleton_carriers && (ds >= 0.5)) ncarriers ++;
 
+          if (params->test_mode && non_par && params->skip_dosage_comp && lval){
+            ds /= 2.0; // divide by 2 for males in non-par X
+            if (params->af_cc && masked_indivs.row(index).any()) // n_males_cases
+              snp_data->ns_case_adj += masked_indivs.row(index).array().cast<int>() * phenotypes_raw.row(index).array().cast<int>();
+          }
+
           total += ds;
           mac += mval;
           nmales += lval;
@@ -2041,7 +2047,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
           if (!params->split_by_pheno){
             if(ds >= 1.5) snp_data->n_aa++;
             else if(ds < 0.5) snp_data->n_rr++;
-            else if(non_par && lval){
+            else if(non_par && lval && !(params->test_mode && params->skip_dosage_comp)){
               if (ds < 1) snp_data->n_rr++;
               else snp_data->n_aa++;
             }
@@ -2060,7 +2066,9 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
     }
 
     //sout << "SNP#" << snp + 1 << "AC=" << mac << endl;
-    compute_aaf_info(total, info_num, snp_data, params);
+    if (non_par && params->skip_dosage_comp) 
+      snp_data->ns1_adj = nmales;
+    compute_aaf_info(total, info_num, non_par, snp_data, params);
 
     if(params->test_mode && params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
       snp_data->ignored = true; continue;
@@ -2287,6 +2295,12 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       // check if carrier
       if(params->build_mask && params->singleton_carriers) ncarriers += (int) (Geno(index) >= 0.5); // round dosages
 
+      if (params->test_mode && non_par && params->skip_dosage_comp && lval){
+        Geno(index) /= 2.0; // divide by 2 for males in non-par X
+        if (params->af_cc && masked_indivs.row(index).any()) // n_males_cases
+          snp_data->ns_case_adj += masked_indivs.row(index).array().cast<int>() * phenotypes_raw.row(index).array().cast<int>();
+      }
+
       total += Geno(index);
       mac += mval;
       nmales += lval;
@@ -2310,7 +2324,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
       if (!params->split_by_pheno){
         if(Geno(index) >= 1.5) snp_data->n_aa++;
         else if(Geno(index) < 0.5) snp_data->n_rr++;
-        else if(non_par && lval){
+        else if(non_par && lval && !(params->test_mode && params->skip_dosage_comp)){
           if (Geno(index) < 1) snp_data->n_rr++;
           else snp_data->n_aa++;
         }
@@ -2326,7 +2340,9 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
     if(snp_data->ignored) return;
   }
 
-  compute_aaf_info(total, info_num, snp_data, params);
+  if (non_par && params->skip_dosage_comp) 
+    snp_data->ns1_adj = nmales;
+  compute_aaf_info(total, info_num, non_par, snp_data, params);
 
   // check INFO score
   if( params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
@@ -2424,21 +2440,27 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
       if(params->ref_first && (hc != -3)) hc = 2 - hc;
       Geno(index) = hc;
 
-      if( filters->ind_in_analysis(index) && (hc != -3) ){
+      if( filters->ind_in_analysis(index) && (Geno(index) != -3) ){
         // compute MAC using 0.5*g for males for variants on sex chr (males coded as diploid)
         // sex is 1 for males and 0 o.w.
-        lval = 0, mval = hc;
+        lval = 0, mval = Geno(index);
         if(params->test_mode && non_par) {
           lval = (params->sex(index) == 1);
-          mval = hc * 0.5 * (2 - lval);
+          mval = Geno(index) * 0.5 * (2 - lval);
           // check if not 0/2
-          if( (lval == 1) && (hc == 1) ) cerr << "WARNING: genotype is 1 for a male on chrX at " << infosnp->ID << " (males should coded as diploid).";
+          if( (lval == 1) && (Geno(index) == 1) ) cerr << "WARNING: genotype is 1 for a male on chrX at " << infosnp->ID << " (males should coded as diploid).";
         }
 
         // check if carrier
-        if(params->build_mask && params->singleton_carriers) ncarriers += (int) (hc >= 1); 
+        if(params->build_mask && params->singleton_carriers) ncarriers += (int) (Geno(index) >= 1);
 
-        total += hc;
+        if (params->test_mode && non_par && params->skip_dosage_comp && lval){
+          Geno(index) /= 2.0; // divide by 2 for males in non-par X
+          if (params->af_cc && masked_indivs.row(index).any()) // n_males_cases
+            snp_data->ns_case_adj += masked_indivs.row(index).array().cast<int>() * phenotypes_raw.row(index).array().cast<int>();
+        }
+
+        total += Geno(index);
         mac += mval;
         nmales += lval;
         snp_data->ns1++;
@@ -2455,7 +2477,7 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
         if (!params->split_by_pheno){
           if(Geno(index) >= 1.5) snp_data->n_aa++;
           else if(Geno(index) < 0.5) snp_data->n_rr++;
-          else if(non_par && lval){
+          else if(non_par && lval && !(params->test_mode && params->skip_dosage_comp)){
             if (Geno(index) < 1) snp_data->n_rr++;
             else snp_data->n_aa++;
           }
@@ -2472,7 +2494,9 @@ void parseSnpfromBed(const int& isnp, const int &chrom, const vector<uchar>& bed
     if(snp_data->ignored) return;
   }
 
-  compute_aaf_info(total, 0, snp_data, params);
+  if (non_par && params->skip_dosage_comp) 
+    snp_data->ns1_adj = nmales;
+  compute_aaf_info(total, 0, non_par, snp_data, params);
 
   if( params->htp_out ) 
     compute_genocounts(params->trait_mode==1 || params->trait_mode==3, non_par, mac, Geno, snp_data->genocounts, params->sex, filters->case_control_indices);
@@ -2525,7 +2549,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     thread_num = omp_get_thread_num();
 #endif
 
-    int hc, cur_index, lval, nmales, ncarriers;
+    int hc, cur_index, lval, nmales, ncarriers = 0;
     double total, mac, mval, ival, eij2 = 0, sum_pos;
     ArrayXb keep_index;
 
@@ -2553,6 +2577,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
     keep_index = filters->ind_in_analysis && (Geno != -3.0);
     total = keep_index.select(Geno,0).sum();
     snp_data->ns1 = keep_index.count();
+    if(params->test_mode && !params->build_mask) snp_data->n_zero = filters->ind_in_analysis.size() - params->n_samples;
     //cerr << "ID: " << snp_info->ID << "\nG bounds: " << 
     //  (Geno * keep_index.cast<double>()).minCoeff() << " - " << (Geno * keep_index.cast<double>()).maxCoeff() << "\n\n";
 
@@ -2562,15 +2587,26 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // compute MAC using 0.5*g for males for variants on sex chr non-PAR (males coded as diploid)
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
-        if(params->test_mode && non_par) {
-          lval = (params->sex(index) == 1);
-          mval *= 0.5 * (2 - lval);
-          // check if not 0/2
-          if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
-            het_male_X(j) = true;
+        if(params->test_mode){
+          if(!params->build_mask && (mval == 0)) snp_data->n_zero++;
+          if (mval >= 0.5) ncarriers++;
+
+          if(non_par) {
+            lval = (params->sex(index) == 1);
+            mval *= 0.5 * (2 - lval);
+            // check if not 0/2
+            if( !params->dosage_mode && (lval == 1) && (Geno(index) == 1) )
+              het_male_X(j) = true;
+          }
         }
 
         if( params->dosage_mode ) ival = Geno(index) * Geno(index);
+
+        if (params->test_mode && non_par && params->skip_dosage_comp && lval){
+          Geno(index) /= 2.0; // divide by 2 for males in non-par X
+          if (params->af_cc && masked_indivs.row(index).any()) // n_males_cases
+            snp_data->ns_case_adj += masked_indivs.row(index).array().cast<int>() * phenotypes_raw.row(index).array().cast<int>();
+        }
 
         mac += mval;
         nmales += lval;
@@ -2593,7 +2629,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         if (!params->split_by_pheno){
           if(Geno(index) >= 1.5) snp_data->n_aa++;
           else if(Geno(index) < 0.5) snp_data->n_rr++;
-          else if(non_par && lval){
+          else if(non_par && lval && !(params->test_mode && params->skip_dosage_comp)){
             if (Geno(index) < 1) snp_data->n_rr++;
             else snp_data->n_aa++;
           }
@@ -2604,12 +2640,15 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
 
     // check MAC
     if( params->test_mode){
-      ncarriers = (keep_index && (Geno >= 0.5)).count(); // check carriers
       compute_mac(!non_par, mac, total, nmales, ncarriers, snp_info->MAC_fail_if_checked, snp_info->apply_diff_MAC_filter, snp_data, params);
       if(snp_data->ignored) continue;
     }
 
-    compute_aaf_info(total, eij2, snp_data, params);
+    if (non_par && params->skip_dosage_comp) {
+      total = keep_index.select(Geno, 0).sum();
+      snp_data->ns1_adj = nmales;
+    }
+    compute_aaf_info(total, eij2, non_par, snp_data, params);
 
     // check INFO score
     if( params->dosage_mode && params->setMinINFO && ( snp_data->info1 < params->min_INFO) ) {
@@ -2833,6 +2872,10 @@ void prep_snp_stats(variant_block* snp_data, struct param const* params){
   snp_data->fitHLM = false;
   snp_data->flipped = false;
   snp_data->ns1 = 0, snp_data->n_rr = 0, snp_data->n_aa = 0;
+  if (params->skip_dosage_comp) {
+    snp_data->ns1_adj = 0;
+    if(params->af_cc) snp_data->ns_case_adj = ArrayXi::Zero(params->n_pheno);
+  }
   snp_data->ignored_trait = ArrayXb::Constant(params->n_pheno, false);
 
 }
@@ -3061,23 +3104,27 @@ void compute_mac(bool const& auto_chrom, double& mac, double const& total, int c
 
 }
 
-void compute_aaf_info(double& total, double const& info_num, variant_block* snp_data, struct param const* params){
+void compute_aaf_info(double& total, double const& info_num, bool const& non_par, variant_block* snp_data, struct param const* params){
 
   // get counts by trait 
   snp_data->af += total;
   snp_data->info += info_num;
+  double n_alleles_all = 2 * snp_data->ns1; // all traits
+  ArrayXd n_alleles = 2 * snp_data->ns.cast<double>(); // per trait
+  if(non_par && params->skip_dosage_comp){ n_alleles_all -= snp_data->ns1_adj; n_alleles -= snp_data->nmales.cast<double>(); }
 
   if(params->af_cc){
-    snp_data->af_control = snp_data->af - snp_data->af_case;
-    snp_data->af_case /= 2 * snp_data->ns_case.cast<double>();
+    ArrayXd n_case_alleles;
+    n_case_alleles = 2 * snp_data->ns_case.cast<double>();
+    if(non_par && params->skip_dosage_comp){ n_case_alleles -= snp_data->ns_case_adj.cast<double>();}
     snp_data->ns_control = snp_data->ns - snp_data->ns_case;
-    snp_data->af_control /= 2 * snp_data->ns_control.cast<double>();
+    snp_data->af_case /= n_case_alleles;
+    snp_data->af_control = (snp_data->af - snp_data->af_case) / (n_alleles - n_case_alleles);
   }
 
-  if(params->vc_test) snp_data->ac1 = total; // for skat
+  snp_data->af1 = total / n_alleles_all; // all traits
+  snp_data->af /= n_alleles; // single trait
   total /= snp_data->ns1;
-  snp_data->af1 = total / 2; // all traits
-  snp_data->af /= 2 * snp_data->ns.cast<double>(); // single trait
 
   if(params->test_mode && params->dosage_mode){
 
@@ -3112,12 +3159,16 @@ void flip_geno(double& total, Ref<ArrayXd> Geno, variant_block* snp_data, struct
 }
 
 // for rarer variants, use sparse format
-void check_sparse_G(int const& isnp, int const& thread_num, struct geno_block* gblock, uint32_t const& nsamples, const Ref<const ArrayXb>& mask){
+void check_sparse_G(int const& isnp, int const& thread_num, struct geno_block* gblock, uint32_t const& nsamples, const Ref<const ArrayXb>& mask, int const& n_zero, const double& prop_zero_thr){
 
   data_thread* snp_data = &(gblock->thread_data[thread_num]);
   MapArXd Geno ( gblock->Gmat.col(isnp).data(), nsamples, 1);
 
-  snp_data->is_sparse = (mask && (Geno != 0)).count() <= (nsamples * 0.5);
+  if (n_zero != -1)
+    snp_data->is_sparse = (n_zero >= (nsamples * prop_zero_thr));
+  else
+    snp_data->is_sparse = (mask && (Geno != 0)).count() <= (nsamples * (1 - prop_zero_thr));
+
   if(snp_data->is_sparse) // get nonzero entries
     snp_data->Gsparse = mask.select(Geno,0).matrix().sparseView();
 
@@ -3185,35 +3236,25 @@ void residualize_geno(int const& isnp, int const& thread_num, variant_block* snp
 
 }
 
-int residualize_gmat(bool const& force, const Ref<const MatrixXd>& X, const Ref<const MatrixXd>& Graw, MatrixXd& Gres, struct param const& params){
-  if((params.trait_mode==0) || force){
-    MatrixXd beta = X.transpose() * Graw;
-    Gres = Graw - X * beta;
-  }
-  return (params.n_analyzed - X.cols());
-}
-
-void check_res_geno(int const& isnp, int const& thread_num, variant_block* snp_data, bool const& force, int const& neff, const Ref<const MatrixXd>& Gres, struct geno_block* gblock, struct param const& params){
+void residualize_geno(const Ref<const MatrixXd>& X, Ref<VectorXd> Graw, variant_block* snp_data, struct param const& params){
 
   if(snp_data->ignored) return;
 
-  if((params.trait_mode==0) || force){
+  VectorXd beta = X.transpose() * Graw;
+  Graw -= X * beta;
 
-    // already computed
-    gblock->Gmat.col(isnp) = Gres.col(isnp);
-    if(params.skip_scaleG) return; // don't scale
+  // already computed
+  if(params.skip_scaleG) return; // don't scale
 
-    // scale
-    snp_data->scale_fac = Gres.col(isnp).norm();
-    snp_data->scale_fac /= sqrt( neff );
+  // scale
+  snp_data->scale_fac = Graw.norm();
+  snp_data->scale_fac /= sqrt( params.n_analyzed - X.cols() );
 
-    if( snp_data->scale_fac < params.numtol ) {
-      snp_data->ignored = true;
-      return;
-    }
-    gblock->Gmat.col(isnp).array() /= snp_data->scale_fac;
-
-  } else snp_data->scale_fac = 1;
+  if( snp_data->scale_fac < params.numtol ) {
+    snp_data->ignored = true;
+    return;
+  }
+  Graw /= snp_data->scale_fac;
 
 }
 

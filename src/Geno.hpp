@@ -105,9 +105,9 @@ struct geno_block {
 
 struct variant_block {
   bool ignored, flipped;
-  int n_rr, n_aa;
-  double scale_fac, ac1, mac1, af1, info1, ns1;
-  Eigen::ArrayXi ns, ns_case, ns_control, nmales;
+  int n_rr, n_aa, n_zero = -1;
+  double scale_fac, mac1, af1, info1, ns1, ns1_adj;
+  Eigen::ArrayXi ns, ns_case, ns_control, nmales, ns_case_adj;
   Eigen::ArrayXd af, af_case, af_control, mac, info, cf_burden;
   Eigen::MatrixXi genocounts;
   ArrayXb ignored_trait;
@@ -202,14 +202,13 @@ void update_genocounts(bool const&,bool const&,Eigen::Ref<Eigen::VectorXi>,const
 void update_genocounts_sp(bool const&,bool const&,Eigen::Ref<Eigen::VectorXi>,const Eigen::Ref<const Eigen::ArrayXi>&,const Eigen::Ref<const Eigen::ArrayXd>&,std::vector<Eigen::ArrayXi> const&);
 void update_af_cc(int const&,double const&,variant_block*,const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);
 void compute_mac(bool const&,double&,double const&,int const&,int const&,bool const&,bool const&,variant_block*,struct param const*);
-void compute_aaf_info(double&,double const&,variant_block*,struct param const*);
+void compute_aaf_info(double&,double const&,bool const&,variant_block*,struct param const*);
 void flip_geno(double&,Eigen::Ref<Eigen::ArrayXd>,variant_block*,struct param const*);
-void check_sparse_G(int const&,int const&,struct geno_block*,uint32_t const&,const Eigen::Ref<const ArrayXb>&);
+void check_sparse_G(int const&,int const&,struct geno_block*,uint32_t const&,const Eigen::Ref<const ArrayXb>&,int const&,const double&);
 void mean_impute_g(double &,const double&,const bool&);
 void mean_impute_g(const double&,Eigen::Ref<Eigen::ArrayXd>,const Eigen::Ref<const ArrayXb>&);
 void residualize_geno(int const&,int const&,variant_block*,bool const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,struct param const*);
-int residualize_gmat(bool const&,const Eigen::Ref<const Eigen::MatrixXd>&,const Eigen::Ref<const Eigen::MatrixXd>&,Eigen::MatrixXd&,struct param const&);
-void check_res_geno(int const&,int const&,variant_block*,bool const&,int const&,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block*,struct param const&);
+void residualize_geno(const Eigen::Ref<const Eigen::MatrixXd>&,Eigen::Ref<Eigen::VectorXd>,variant_block*,struct param const&);
 void writeSnplist(std::string const&,int const&,int const&,std::vector<snp> const&,mstream&);
 
 bool in_chrList(const int&,struct filter const*);
