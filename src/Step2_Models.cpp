@@ -342,41 +342,87 @@ void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thre
 // score test stat for QT
 void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, mstream& sout){
 
-  double gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
+  bool run_full_test = true; // disable this for QTs // !params.skip_cov_res;
+  double denum, gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
   string tmpstr; // for sum stats
+  ArrayXd num, denum_arr;
   MapArXd Geno (gblock.Gmat.col(isnp).data(), params.n_samples, 1);
   data_thread* dt_thr = &(gblock.thread_data[thread_num]);
-  double n_sq = sqrt( params.n_analyzed - params.ncov_analyzed );
 
-  if( params.strict_mode ) {
-
-    if(params.skip_blups && dt_thr->is_sparse) // Gsparse is on raw scale (must have yres centered)
-      dt_thr->stats = (yres.transpose() * dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(0).cast<double>()) / gsc) / n_sq;
-    else
-      dt_thr->stats = (yres.transpose() * (Geno * pheno_data.masked_indivs.col(0).cast<double>().array()).matrix()) / n_sq;
-
-    if(params.htp_out) {
-      dt_thr->scores = dt_thr->stats * n_sq * gsc;
-      dt_thr->skat_var = (gsc * n_sq)*(gsc * n_sq);
+  if( !run_full_test ) { // only a single trait (i.e. strict mode) -- covariates are not residualized from G
+    if(dt_thr->is_sparse){
+      num = yres.transpose() * dt_thr->Gsparse;
+      denum = dt_thr->Gsparse.squaredNorm();
+    } else {
+      num = (yres.transpose() * Geno.matrix()).array() * gsc;
+      denum = gsc * gsc * Geno.square().sum(); 
     }
+    dt_thr->stats = num / sqrt(denum);
 
-    // estimate
-    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array() / ( n_sq * gsc );
-
-  } else {
-
-    // compute GtG for each phenotype (different missing patterns)
-    dt_thr->scale_fac_pheno = pheno_data.masked_indivs.transpose().cast<double>() * Geno.square().matrix();
-    dt_thr->stats = (yres.transpose() * Geno.matrix()).array() / dt_thr->scale_fac_pheno.sqrt();
-
-    if(params.htp_out) {
-      dt_thr->scores = dt_thr->stats * dt_thr->scale_fac_pheno.sqrt() * gsc;
-      dt_thr->skat_var = (gsc * n_sq)*(gsc * n_sq);
+    // if stats is above threshold, project out covariates and run the full model
+    if(fabs(dt_thr->stats(0)) > params.z_thr) {
+      run_full_test = true;
+      if(!dt_thr->is_sparse) {
+        residualize_geno(pheno_data.new_cov, gblock.Gmat.col(isnp), block_info, params);
+        gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
+      }
+    } else {
+      if(params.htp_out) {
+        dt_thr->scores = num;
+        dt_thr->skat_var = denum;
+      }
+      dt_thr->bhat = dt_thr->stats / sqrt(denum) * pheno_data.scf_sv;
     }
+  }
 
-    // estimate
-    dt_thr->bhat = dt_thr->stats * ( pheno_data.scale_Y.array() * p_sd_yres.array() ).matrix().transpose().array() / ( sqrt(dt_thr->scale_fac_pheno) * gsc );
+  if( run_full_test ){
+    if( params.strict_mode ) {
 
+      if(dt_thr->is_sparse){
+        ArrayXd XtG = pheno_data.new_cov.transpose() * dt_thr->Gsparse; // k x 1
+        num = yres.transpose() * dt_thr->Gsparse - pheno_data.YtX * XtG.matrix();
+        denum = dt_thr->Gsparse.squaredNorm() - XtG.square().sum();
+      } else {
+        num = (yres.transpose() * Geno.matrix()).array() * gsc;
+        denum = gsc * gsc * (params.n_analyzed - params.ncov_analyzed); 
+      }
+
+      dt_thr->stats = num / sqrt(denum);
+      if(params.htp_out) {
+        dt_thr->scores = num;
+        dt_thr->skat_var = denum;
+      }
+
+      // estimate
+      dt_thr->bhat = dt_thr->stats / sqrt(denum) * pheno_data.scf_sv;
+
+    } else {
+
+      // compute GtG for each phenotype (different missing patterns)
+      if(dt_thr->is_sparse){
+        num = yres.transpose() * dt_thr->Gsparse; // P x 1 
+        denum_arr.resize(params.n_pheno);
+        for (int ph = 0; ph < params.n_pheno; ph++) {
+          SpVec Gm = dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(ph).cast<double>()); // N x 1
+          VectorXd XtG = pheno_data.new_cov.transpose() * Gm; // k x 1
+          num(ph) -= pheno_data.YtX.row(ph).dot(XtG);
+          denum_arr(ph) = Gm.squaredNorm() - XtG.squaredNorm();
+        }
+      } else {
+        num = (yres.transpose() * Geno.matrix()).array() * gsc;
+        denum_arr = gsc * gsc * (pheno_data.masked_indivs.transpose().cast<double>() * Geno.square().matrix()); 
+      }
+
+      dt_thr->stats = num / denum_arr.sqrt();
+      if(params.htp_out) {
+        dt_thr->scores = num;
+        dt_thr->skat_var = denum_arr;
+      }
+
+      // estimate
+      dt_thr->bhat = dt_thr->stats * pheno_data.scf_sv / denum_arr.sqrt();
+
+    }
   }
 
   // SE
@@ -394,7 +440,10 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
         block_info->sum_stats[i].append( print_na_sumstats(i, 1, tmpstr, test_string, block_info, params) );
       continue;
     }
-    if(block_info->flipped) dt_thr->bhat(i) *= -1;
+    if(block_info->flipped) {
+      dt_thr->bhat(i) *= -1;
+      if (params.htp_out) dt_thr->scores(i) *= -1;
+    }
 
     // get pvalue
     get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));

@@ -1102,6 +1102,10 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
 
   if(params->ncov > (int)params->n_samples)
     throw "number of covariates is larger than sample size!";
+  if(params->skip_cov_res && (params->n_pheno != 1)){
+     params->skip_cov_res = false;
+     sout << "WARNING: ignoring '--nocov-approx' for multi-trait analysis\n";
+  }
 
   fit_null_models_nonQT(params, pheno_data, m_ests, files, sout);
 

@@ -2397,7 +2397,9 @@ void Data::compute_res(){
   p_sd_yres = res.colwise().norm();
   p_sd_yres.array() /= sqrt(pheno_data.Neff - params.ncov_analyzed); // if blup is cov
   res.array().rowwise() /= p_sd_yres.array();
+  pheno_data.scf_sv = ( pheno_data.scale_Y.array() * p_sd_yres.array()).matrix().transpose().array();
 
+  if(!params.trait_set && !params.multiphen) pheno_data.YtX = res.transpose() * pheno_data.new_cov;
   if(params.w_interaction && (params.trait_mode==0) && !params.no_robust && !params.force_robust) 
     HLM_fitNull(nullHLM, m_ests, pheno_data, files, params, sout);
 }
@@ -2476,7 +2478,6 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
   size_t const bs = indices.size();
   ArrayXb err_caught = ArrayXb::Constant(bs, false);
 
-  if( !params.build_mask && (((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") ) {
     // start openmp for loop
 #if defined(_OPENMP)
     setNbThreads(1);
@@ -2484,73 +2485,61 @@ void Data::compute_tests_mt(int const& chrom, vector<uint64> indices,vector< vec
 #endif
     for(size_t isnp = 0; isnp < bs; isnp++) {
       uint32_t const snp_index = indices[isnp];
-      // to store variant information
       variant_block* block_info = &(all_snps_info[isnp]);
-      parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+      int thread_num = 0;
+      #if defined(_OPENMP)
+      thread_num = omp_get_thread_num();
+      #endif
+
+      // to store variant information
+      if( !params.build_mask && (((params.file_type == "bgen") && params.streamBGEN) || params.file_type == "bed") )
+        parseSNP(isnp, chrom, &(snp_data_blocks[isnp]), insize[isnp], outsize[isnp], &params, &in_filters, pheno_data.masked_indivs, pheno_data.phenotypes_raw, &snpinfo[snp_index], &Gblock, block_info, sout);
+
+      // to store variant information
+      reset_thread(&(Gblock.thread_data[thread_num]), params);
+
+      // check if g is sparse
+      if (!params.w_interaction)
+        check_sparse_G(isnp, thread_num, &Gblock, params.n_samples, in_filters.ind_in_analysis, block_info->n_zero, params.prop_zero_thr);
+
+      if (params.w_interaction)
+      {
+        if (params.interaction_snp && (snpinfo[snp_index].ID == in_filters.interaction_cov))
+          block_info->skip_int = true;
+        get_interaction_terms(isnp, thread_num, &pheno_data, &Gblock, block_info, nullHLM, &params, sout);
+      }
+
+      // for QTs with non-sparse G: residualize and re-scale
+      if (!params.skip_cov_res && (params.trait_mode == 0) && !Gblock.thread_data[thread_num].is_sparse)
+        residualize_geno(pheno_data.new_cov, Gblock.Gmat.col(isnp), block_info, params);
+      else block_info->scale_fac = 1;
+
+      // skip SNP if fails filters
+      if (block_info->ignored || params.getCorMat)
+        continue;
+
+      reset_stats(block_info, params);
+
+      try
+      {
+        // if ran vc tests, print out results before mask test
+        if ((block_info->sum_stats_vc.size() > 0) && !params.p_joint_only)
+          print_vc_sumstats(snp_index, "ADD", wgr_string, block_info, snpinfo, files, &params);
+
+        compute_score(isnp, snp_index, chrom, thread_num, test_string + params.condtl_suff, model_type + params.condtl_suff, res, p_sd_yres, params, pheno_data, Gblock, block_info, snpinfo, m_ests, firth_est, files, sout);
+
+        // for joint test, store logp
+        if (params.joint_test)
+          block_info->pval_log = Gblock.thread_data[thread_num].pval_log;
+
+        if (params.w_interaction)
+          apply_interaction_tests(snp_index, isnp, thread_num, res, p_sd_yres, model_type, test_string, &pheno_data, nullHLM, &in_filters, &files, &Gblock, block_info, snpinfo, &m_ests, &firth_est, &params, sout);
+      } catch (...) {
+        err_caught(isnp) = true;
+        block_info->sum_stats[0] = boost::current_exception_diagnostic_information();
+        continue;
+      }
     }
-#if defined(_OPENMP)
-    setNbThreads(params.threads);
-#endif
-  }
-
-  // for QTs: project out covariates & scale
-  // do all at once for all variants
-  MatrixXd Gtmp_res;
-  int neff = residualize_gmat(false, pheno_data.new_cov, Gblock.Gmat, Gtmp_res, params);
-
-  // start openmp for loop
-#if defined(_OPENMP)
-  setNbThreads(1);
-#pragma omp parallel for schedule(dynamic)
-#endif
-  for(size_t isnp = 0; isnp < bs; isnp++) {
-    uint32_t const snp_index = indices[isnp];
-
-    int thread_num = 0;
-#if defined(_OPENMP)
-    thread_num = omp_get_thread_num();
-#endif
-
-    // to store variant information
-    variant_block* block_info = &(all_snps_info[isnp]);
-    reset_thread(&(Gblock.thread_data[thread_num]), params);
-
-    // check if g is sparse (not for QT without strict mode)
-    if(params.trait_mode || params.strict_mode)
-      check_sparse_G(isnp, thread_num, &Gblock, params.n_samples, in_filters.ind_in_analysis);
-
-    if(params.w_interaction) {
-      if(params.interaction_snp && (snpinfo[snp_index].ID == in_filters.interaction_cov))
-        block_info->skip_int = true;
-      get_interaction_terms(isnp, thread_num, &pheno_data, &Gblock, block_info, nullHLM, &params, sout);
-    }
-
-    // for QTs: project out covariates & scale
-    check_res_geno(isnp, thread_num, block_info, false, neff, Gtmp_res, &Gblock, params);
-
-    // skip SNP if fails filters
-    if( block_info->ignored || params.getCorMat ) continue;
-
-    reset_stats(block_info, params);
-
-    try {
-      // if ran vc tests, print out results before mask test
-      if((block_info->sum_stats_vc.size() > 0) && !params.p_joint_only)
-        print_vc_sumstats(snp_index, "ADD", wgr_string, block_info, snpinfo, files, &params);
-
-      compute_score(isnp, snp_index, chrom, thread_num, test_string + params.condtl_suff, model_type + params.condtl_suff, res, p_sd_yres, params, pheno_data, Gblock, block_info, snpinfo, m_ests, firth_est, files, sout);
-
-      // for joint test, store logp
-      if( params.joint_test ) block_info->pval_log = Gblock.thread_data[thread_num].pval_log;
-
-      if(params.w_interaction) 
-        apply_interaction_tests(snp_index, isnp, thread_num, res, p_sd_yres, model_type, test_string, &pheno_data, nullHLM, &in_filters, &files, &Gblock, block_info, snpinfo, &m_ests, &firth_est, &params, sout);
-    } catch (...) {
-      err_caught(isnp) = true;
-      block_info->sum_stats[0] = boost::current_exception_diagnostic_information();
-      continue;
-    }
-  }
 
 #if defined(_OPENMP)
   setNbThreads(params.threads);

@@ -315,6 +315,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("select-l0", "file with p-values for each level 0 block (use as flag if with --test-l0)", cxxopts::value<std::string>(params->l0_pvals_file)->implicit_value(""),"FILE")
     ("rm-l0-pct", "remove least x% significant blocks from level 1 models", cxxopts::value<double>(params->rm_l0_pct),"FLOAT(=0)")
     ("l1-full", "use all samples for final L1 model in Step 1 logistic ridge with LOOCV")
+    ("prop-zero-thr", "min. proportion of zeros needed to sparsify the genotype vector", cxxopts::value<double>(params->prop_zero_thr),"FLOAT(=0.5)")
     ("force-robust", "use robust SE instead of HLM for rare variant GxE test with quantitative traits")
     ("force-hc4", "use HC4 instead of HC3 robust SE for rare variant GxE test with quantitative traits")
     ("no-robust", "don't use robust SEs or HLM for GxE test")

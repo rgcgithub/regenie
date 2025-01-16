@@ -34,9 +34,9 @@ struct rank_pair {
 
 struct phenodt {
 
-  Eigen::MatrixXd new_cov, new_cov_raw;
+  Eigen::MatrixXd new_cov, new_cov_raw, YtX;
   Eigen::MatrixXd interaction_cov, interaction_cov_res, interaction_homdev;
-  Eigen::ArrayXd scl_inter_X;
+  Eigen::ArrayXd scl_inter_X, scf_sv;
   std::vector<Eigen::MatrixXd> Hmat;
   std::vector<Eigen::ArrayXd> scf_i;
   Eigen::MatrixXd phenotypes;
