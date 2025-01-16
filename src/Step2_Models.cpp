@@ -2476,14 +2476,16 @@ std::string print_sum_stats_single(const double& af, const double& af_case, cons
 std::string print_sum_stats_htp(const double& beta, const double& se, const double& chisq, const double& lpv, const double& af, const double& info, const double& mac, const Ref<const MatrixXi>& genocounts, const int& ph, const bool& test_pass, const int& df, struct param const* params, const double& score, const double& cal_factor, const double& cal_factor_burden, const double& skat_var) {
 
   std::ostringstream buffer;
+  string outp_val = "-1";
   bool print_beta = test_pass && (se>=0);
   bool print_pv = test_pass && (chisq>=0);
-  double outp_val = -1, effect_val, outse_val;
+  double effect_val, outse_val;
 
 
   if(print_pv) {
-    outp_val = max(params->nl_dbl_dmin, pow(10, -lpv)); // to prevent overflow
-    if(outp_val == 1) outp_val = 1 - 1e-7;
+    if(!params->uncapped_pvals && (lpv > params->log10_nl_dbl_dmin)) outp_val = convert_logp_raw( params->log10_nl_dbl_dmin );
+    else if(lpv > 0) outp_val = convert_logp_raw( lpv );
+    else outp_val = to_string( 1 - 1e-7 );
   } 
 
   // Effect / CI bounds / Pvalue columns

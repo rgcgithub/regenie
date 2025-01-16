@@ -213,6 +213,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("sex-specific", "for sex-specific analyses (male/female)", cxxopts::value<std::string>(),"STRING")
     ("af-cc", "print effect allele frequencies among cases/controls for step 2")
     ("test", "'additive', 'dominant' or 'recessive' (default is additive test)", cxxopts::value<std::string>(),"STRING")
+    ("htp", "output association files in step 2 in HTP format specifying the cohort name)", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("condition-list", "file with list of variants to include as covariates", cxxopts::value<std::string>(files->condition_snps_list),"FILE")
     ("condition-file", "optional genotype file which contains the variants to include as covariates", cxxopts::value<std::string>(),"FORMAT,FILE")
     ("condition-file-sample", "sample file accompanying BGEN file with the conditional variants", cxxopts::value<std::string>(files->condition_snps_info.sample),"FILE")
@@ -271,6 +272,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("phenoExcludeList", "comma separated list of phenotype names to ignore (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("covarExcludeList", "comma separated list of covariates to ignore (can use parameter expansion {i:j})", cxxopts::value<std::string>(),"STRING,..,STRING")
     ("nauto", "number of autosomal chromosomes", cxxopts::value<int>(),"INT")
+    ("exact-p", "output uncapped p-values in the summary statistic file with HTP format")
     ("maxCatLevels", "maximum number of levels for categorical covariates", cxxopts::value<int>(params->max_cat_levels),"INT(=10)")
     ("max-condition-vars", "maximum number of variants to include as covariates", cxxopts::value<uint32_t>(params->max_condition_vars),"INT(=10000)")
     ("nb", "number of blocks to use", cxxopts::value<int>(params->n_block),"INT")
@@ -303,7 +305,6 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
   // extra options
   AllOptions.add_options("Extra")
     ("print", "print estimated effect sizes from level 0 and level 1 models")
-    ("htp", "output association files in step 2 in HTPv4 format", cxxopts::value<std::string>(params->cohort_name),"STRING")
     ("within", "use within-sample predictions as input when fitting model across blocks in step 1")
     ("early-exit", "Exit program after fitting level 0 models (avoid deleting temporary prediction files from level 0)")
     ("print-cov-betas", "Print covariate effects to file (assumes no multi-colinearity)")
@@ -445,6 +446,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("minMAC") ) params->setMinMAC = true;
     if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
+    if( vm.count("exact-p") ) params->uncapped_pvals = true;
     if( vm.count("multiphen") ) params->split_by_pheno = false;
     if( vm.count("af-cc") ) params->af_cc = true;
     if( vm.count("tpheno-file") ) params->transposedPheno = true;
@@ -1048,6 +1050,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("no-split") && vm.count("htp")){
       sout << "WARNING: option --no-split cannot be used with --htp and will be ignored.\n";
       valid_args[ "no-split" ] = false;
+    }
+    if(params->uncapped_pvals && !params->htp_out){
+      sout << "WARNING: option --exact-p must be used with --htp.\n";
+      params->uncapped_pvals = false; valid_args[ "exact-p" ] = false;
     }
     if( (!params->test_mode || (params->trait_mode!=1) || params->htp_out || !params->split_by_pheno) && params->af_cc ) {
       sout << "WARNING: disabling option --af-cc (only for BTs in step 2 in native output format split by trait).\n";

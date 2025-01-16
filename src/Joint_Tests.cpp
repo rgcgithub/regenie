@@ -924,7 +924,12 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   bool test_pass = (pval != -9);
   const string cohort = params->cohort_name;
 
-  if( pval == 1) pval = 1 - 1e-7;
+  string outp_val = "-1";
+  if(test_pass){
+    if(!params->uncapped_pvals && (plog > log10_nl_dbl_dmin)) outp_val = convert_logp_raw( log10_nl_dbl_dmin );
+    else if(plog > 0) outp_val = convert_logp_raw( plog );
+    else outp_val = to_string( 1 - 1e-7 );
+  }
 
   // SNP info
   buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tref\tset\t";
@@ -934,7 +939,7 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   // bhat & 95 CI
   buffer << "\tNA\tNA\tNA\t" ;
   // Pvalue
-  if(test_pass) buffer << pval << "\t";
+  if(test_pass) buffer << outp_val << "\t";
   else buffer << "NA\t";
 
   // print out AF, counts in cases, counts in controls
@@ -1023,7 +1028,12 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   bool test_pass = (pval != -9);
   const string cohort = params->cohort_name;
 
-  if( pval == 1) pval = 1 - 1e-7;
+  string outp_val = "-1";
+  if(test_pass){
+    if(!params->uncapped_pvals && (plog > log10_nl_dbl_dmin)) outp_val = convert_logp_raw( log10_nl_dbl_dmin );
+    else if(plog > 0) outp_val = convert_logp_raw( plog );
+    else outp_val = to_string( 1 - 1e-7 );
+  }
 
   // SNP info
   buffer << setinfo[chrom - 1][block].ID << "\t"<< setinfo[chrom - 1][block].chrom << "\t" << setinfo[chrom - 1][block].physpos << "\tref\tset\t";
@@ -1033,7 +1043,7 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   // bhat & 95 CI
   buffer << "\tNA\tNA\tNA\t" ;
   // Pvalue
-  if(test_pass) buffer << pval << "\t";
+  if(test_pass) buffer << outp_val << "\t";
   else buffer << "NA\t";
 
   // print out AF, counts in cases, counts in controls
