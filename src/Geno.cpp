@@ -1996,6 +1996,7 @@ void readChunkFromBGENFileToG(vector<uint64> const& indices, const int& chrom, v
       if( filters->ind_ignore(i) ) continue;
 
       ds = 0;
+      //cerr << "index " << index << " : " << probs[i][0] << " / " << probs[i][1] << " / " << probs[i][2] << "\n";
       for( std::size_t j = 1; j < probs[i].size(); ++j ) ds += probs[i][j] * j;
 
       if(ds != -3) {
@@ -2272,6 +2273,7 @@ void parseSnpfromBGEN(const int& isnp, const int &chrom, vector<uchar>* geno_blo
     prob0 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
     prob1 = double((*reinterpret_cast< uint8_t const* >( buffer++ ))) / 255.0;
     prob2 = std::max( 1 - prob0 - prob1, 0.0);
+    //cerr << "index " << index << " : " << prob0 << " / " << prob1 << " / " << prob2 << "\n";
 
     if(params->ref_first) 
       Geno(index) = prob1 + 2 * prob2;
@@ -2587,6 +2589,7 @@ void readChunkFromPGENFileToG(vector<uint64> const& indices, const int &chrom, s
         // compute MAC using 0.5*g for males for variants on sex chr non-PAR (males coded as diploid)
         // sex is 1 for males and 0 o.w.
         ival = 0, lval = 0, mval = Geno(index);
+        //cerr << "index (" << params->sex(index)<<") " << index << " : " << mval << "\n";
         if(params->test_mode){
           if(!params->build_mask && (mval == 0)) snp_data->n_zero++;
           if (mval >= 0.5) ncarriers++;

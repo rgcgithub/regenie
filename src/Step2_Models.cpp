@@ -400,13 +400,16 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
       // compute GtG for each phenotype (different missing patterns)
       if(dt_thr->is_sparse){
-        num = yres.transpose() * dt_thr->Gsparse; // P x 1 
+        VectorXd XtG = pheno_data.new_cov.transpose() * dt_thr->Gsparse; // k x 1 - do this for all traits (Geno is only residualized once across traits)
+        num = yres.transpose() * dt_thr->Gsparse - pheno_data.YtX * XtG; // P x 1 
+        double XtG_ss = XtG.squaredNorm();
         denum_arr.resize(params.n_pheno);
         for (int ph = 0; ph < params.n_pheno; ph++) {
           SpVec Gm = dt_thr->Gsparse.cwiseProduct(pheno_data.masked_indivs.col(ph).cast<double>()); // N x 1
-          VectorXd XtG = pheno_data.new_cov.transpose() * Gm; // k x 1
-          num(ph) -= pheno_data.YtX.row(ph).dot(XtG);
-          denum_arr(ph) = Gm.squaredNorm() - XtG.squaredNorm();
+          VectorXd XtGm = pheno_data.new_cov.transpose() * Gm;
+          denum_arr(ph) = Gm.squaredNorm() - 2 * XtGm.dot(XtG) + XtG_ss; // last term is an approximation assuming X'X is same for all traits (=I)
+          //VectorXd vm = (pheno_data.new_cov * XtG).cwiseProduct(pheno_data.masked_indivs.col(ph).cast<double>());
+          //denum_arr(ph) = Gm.squaredNorm() - 2 * XtGm.dot(XtG) + vm.squaredNorm(); // correct callculation but more expensive
         }
       } else {
         num = (yres.transpose() * Geno.matrix()).array() * gsc;
