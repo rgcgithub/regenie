@@ -1188,6 +1188,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: Ignoring option --singleton-carrier when using --set-singletons.\n";
       params->singleton_carriers = false; valid_args[ "singleton-carrier" ] = false;
     }
+    if(params->use_loocv && (params->trait_mode == 3)) {
+      sout << "WARNING: option --loocv cannot be used with option --t2e.\n" ;
+      params->use_loocv = false; valid_args[ "loocv" ] = false;
+    }
 
     //params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
