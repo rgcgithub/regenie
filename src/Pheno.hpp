@@ -80,7 +80,7 @@ void rescale_mat(Eigen::Ref<Eigen::MatrixXd>,struct param const*);
 void prep_run(struct in_files*,struct filter*,struct param*,struct phenodt*,struct ests*,mstream&);
 void check_blup(struct in_files*,struct param*,mstream&);
 bool has_blup(std::string const&,std::map<std::string,std::string> const&,struct param const*,mstream&);
-void blup_read(struct in_files*,struct param*,struct phenodt*,struct ests*,mstream&);
+void blup_read(struct in_files*,struct param*,struct phenodt*,struct ests*,struct filter*,mstream&);
 void extract_interaction_prs(struct param*,struct in_files*,struct filter*,struct phenodt*,Eigen::Ref<ArrayXb>,mstream&);
 void read_prs(Eigen::Ref<Eigen::ArrayXd>,struct in_files*,struct param*,Eigen::Ref<ArrayXb>,mstream&);
 void check_phenos(Eigen::Ref<ArrayXb>,std::vector<std::string> const&,std::string const&,mstream&);

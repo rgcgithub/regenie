@@ -1062,7 +1062,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
   // for step 2, check blup files
   if (params->test_mode && !params->getCorMat){
     // individuals not in blup file will have their phenotypes masked
-    blup_read(files, params, pheno_data, m_ests, sout);
+    blup_read(files, params, pheno_data, m_ests, filters, sout);
     if(params->write_samples) write_ids(files, params, pheno_data, sout);
   }
 
@@ -1229,7 +1229,7 @@ bool has_blup(string const& yname, map<string,string> const& y_read, struct para
 }
 
 // get list of blup files
-void blup_read(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, mstream& sout) {
+void blup_read(struct in_files* files, struct param* params, struct phenodt* pheno_data, struct ests* m_ests, struct filter* filters, mstream& sout) {
 
   int n_masked_prior, n_masked_post;
   uint32_t indiv_index;
@@ -1315,6 +1315,16 @@ void blup_read(struct in_files* files, struct param* params, struct phenodt* phe
     }
 
     if( n_masked_post < n_masked_prior ){
+      if((params->trait_mode==1) || (params->trait_mode==3)){ // re-compute case-control indices
+        int event_index = ph;
+        if (params->trait_mode == 3) { // find event column index
+          std::vector<std::string>::iterator it_event = std::find(files->pheno_names.begin(), files->pheno_names.end(), files->t2e_map[files->pheno_names[ph]]);
+          event_index = std::distance(files->pheno_names.begin(), it_event);
+        }
+        get_both_indices(filters->case_control_indices[ph], pheno_data->phenotypes_raw.col(event_index).array() == 1, pheno_data->masked_indivs.col(ph).array());
+        params->pheno_counts(ph, 0) = filters->case_control_indices[ph][0].size();
+        params->pheno_counts(ph, 1) = filters->case_control_indices[ph][1].size();
+      }
       sout << "    + " << n_masked_prior - n_masked_post <<
         " individuals with missing LOCO predictions will be ignored for the trait\n";
     }

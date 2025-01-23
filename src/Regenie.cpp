@@ -1020,7 +1020,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: must use --write-setlist with --write-mask.\n";
       params->write_setlist = false; valid_args[ "write-setlist" ] = false;
     }
-    if((vm.count("1") || vm.count("cc12")) && (params->trait_mode != 1 || params->trait_mode != 3)) valid_args[ "1" ] = valid_args[ "cc12" ] = false;
+    if((vm.count("1") || vm.count("cc12")) && !(params->trait_mode == 1 || params->trait_mode == 3)) valid_args[ "1" ] = valid_args[ "cc12" ] = false;
     if( vm.count("write-mask-snplist") && (vm.count("mask-lovo") || vm.count("mask-lodo")) ) {
       sout << "WARNING: cannot use --write-mask-snplist with LOVO/LODO.\n";
       params->write_mask_snplist = false; valid_args[ "write-mask-snplist" ] = false;
@@ -1190,6 +1190,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: Ignoring option --singleton-carrier when using --set-singletons.\n";
       params->singleton_carriers = false; valid_args[ "singleton-carrier" ] = false;
     }
+    if( (vm.count("t2e") + vm.count("bt") + vm.count("qt")) > 1)
+      throw "must use only one of --qt/--bt/--t2e";
     if(params->use_loocv && (params->trait_mode == 3)) {
       sout << "WARNING: option --loocv cannot be used with option --t2e.\n" ;
       params->use_loocv = false; valid_args[ "loocv" ] = false;
