@@ -331,6 +331,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("rgc-gene-def", "file with list of mask groups to run single p-value strategy", cxxopts::value<std::string>(params->genep_mask_sets_file))
     ("skip-sbat", "skip running SBAT test for --rgc-gene-p")
     ("multiply-weights", "multiply the user defined weights by the default SKAT weights in SKAT/ACAT tests")
+    ("htp-with-event", "use event name in the Trait column of the HTP sumstats file (instead of TTE)")
     ("skip-cf-burden", "skip computing per-mask calibration factor for SKAT tests")
     ("force-mac-filter", "apply a seperate MAC filter on a subset of the SNPs", cxxopts::value<std::string>(), "snpfile,MAC")
     ("use-adam", "use ADAM to fit penalized logistic models")
@@ -449,6 +450,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("minMAC") ) params->setMinMAC = true;
     if( vm.count("minINFO") ) params->setMinINFO = true;
     if( vm.count("htp") ) params->htp_out = params->split_by_pheno = true;
+    if( vm.count("htp-with-event") ) params->htp_use_eventname= true;
     if( vm.count("exact-p") ) params->uncapped_pvals = true;
     if( vm.count("multiphen") ) params->split_by_pheno = false;
     if( vm.count("af-cc") ) params->af_cc = true;
@@ -1192,6 +1194,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       sout << "WARNING: option --loocv cannot be used with option --t2e.\n" ;
       params->use_loocv = false; valid_args[ "loocv" ] = false;
     }
+    if(params->htp_use_eventname && !(params->htp_out && (params->trait_mode == 3) && params->test_mode)) {
+      sout << "WARNING: option --htp-with-event only works with --t2e in step 2.\n" ;
+      params->htp_use_eventname = false; valid_args[ "htp-with-event" ] = false;
+    }
 
     //params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
@@ -1674,6 +1680,15 @@ float convertFloat(const string& val, struct param const* params, mstream& sout)
     throw "could not convert value to float: '" + val + "'";
 
   return dval;
+}
+
+string convert_double_to_str(double const& val){
+  char val_str[256];
+  if ((val < 5000) && (val > 1e-6))
+    sprintf(val_str, "%.6f", val);
+  else
+    sprintf(val_str, "%g", val);
+  return( string(val_str) );
 }
 
 string convert_logp_raw(double const& logp, double const& log_dbl_min){

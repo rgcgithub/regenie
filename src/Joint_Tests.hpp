@@ -71,7 +71,7 @@ class JTests {
     void prep_nnls_weights(int const&);
 
     // assoc. tests
-    std::vector<std::string> apply_joint_test(const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,std::vector<std::string> const&,struct param const*);
+    std::vector<std::string> apply_joint_test(const int&,const int&,struct phenodt const*,const Eigen::Ref<const Eigen::MatrixXd>&,struct geno_block const*,std::vector<variant_block>&,struct in_files&,struct param const*);
     void compute_minp();
     void compute_acat(const int&,const int&,const std::vector<variant_block>&);
     void compute_ftest(const Eigen::Ref<const MatrixXb>&,const Eigen::Ref<const Eigen::MatrixXd>&);

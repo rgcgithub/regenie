@@ -340,8 +340,9 @@ struct param {
   int maxstep_null = 25; // max step size in null penalized logistic regression
   bool fix_maxstep_null = false; // if user specifies max step size
   bool back_correct_se = false; // for SE with Firth
+  // extra
   bool print_pheno_name = false; // add phenotype name when writing to file with sample IDs
-  bool htp_out = false, uncapped_pvals = false, af_cc = false, skip_cov_res = false; 
+  bool htp_out = false, htp_use_eventname = false, uncapped_pvals = false, af_cc = false, skip_cov_res = false; 
   std::string cohort_name; // Name of cohort to add in HTP output
   bool set_range = false, skip_dosage_comp = false;
   int range_chr; 
@@ -525,6 +526,7 @@ std::vector<std::string> check_name(std::string const&,mstream&);
 void check_build_code(struct param*);
 double convertDouble(const std::string&,struct param const*,mstream&);
 float convertFloat(const std::string&,struct param const*,mstream&);
+std::string convert_double_to_str(double const&);
 std::string convert_logp_raw(double const& logp, double const& log_dbl_min = -log10(std::numeric_limits<double>::min()) - 1);
 double convertNumLevel(const std::string&,std::map<std::string,int>&,struct param const*,mstream&);
 void check_inter_var(std::string&,std::string&,mstream&);

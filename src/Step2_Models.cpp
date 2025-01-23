@@ -216,7 +216,7 @@ void compute_score_qt(vector<uint64> const& indices, int const& chrom, string co
 */
 
 // marginal score test for each snp
-void compute_score(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
+void compute_score(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files& files, mstream& sout){
 
   if(params.trait_mode==1)
     compute_score_bt(isnp, snp_index, chrom, thread_num, test_string, model_type, yres, params, pheno_data, gblock, block_info, snpinfo, m_ests, fest, files, sout);
@@ -234,7 +234,7 @@ void compute_score(int const& isnp, int const& snp_index, int const& chrom, int 
 }
 
 // MCC test stat for QT 
-void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, mstream& sout){
+void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files& files, mstream& sout){
 
   double gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
   string tmpstr; // for sum stats
@@ -340,7 +340,7 @@ void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thre
 
 }
 // score test stat for QT
-void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files const& files, mstream& sout){
+void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files& files, mstream& sout){
 
   bool run_full_test = true; // disable this for QTs // !params.skip_cov_res;
   double denum, gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
@@ -458,7 +458,7 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
 
 }
 
-void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
+void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files& files, mstream& sout){
 
   string tmpstr; 
   VectorXd GW, XtWG;
@@ -548,7 +548,7 @@ void compute_score_bt(int const& isnp, int const& snp_index, int const& chrom, i
 
 
 // poisson
-void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
+void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files& files, mstream& sout){
 
   string tmpstr; 
   MatrixXd GW;
@@ -620,7 +620,7 @@ void compute_score_ct(int const& isnp, int const& snp_index, int const& chrom, i
 
 }
 
-void compute_score_cox(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files const& files, mstream& sout){
+void compute_score_cox(int const& isnp, int const& snp_index, int const& chrom, int const& thread_num, string const& test_string, string const& model_type, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct ests const& m_ests, struct f_ests& fest, struct in_files& files, mstream& sout){
 
   string tmpstr; 
   data_thread* dt_thr = &(gblock.thread_data[thread_num]);
@@ -2413,12 +2413,12 @@ std::string print_sum_stats_head_htp(const int& snp_count, const string& pheno_n
 
 
 // print sum stats row per snp
-std::string  print_sum_stats_line(int const& snp_index, int const& i, string const& tmpstr, string const& test_string, string const& model_type, variant_block* block_info, data_thread* dt_thr, vector<snp> const& snpinfo, struct in_files const& files, struct param const& params){
+std::string  print_sum_stats_line(int const& snp_index, int const& i, string const& tmpstr, string const& test_string, string const& model_type, variant_block* block_info, data_thread* dt_thr, vector<snp> const& snpinfo, struct in_files& files, struct param const& params){
 
   std::ostringstream buffer;
 
   if(params.htp_out) {
-    buffer <<  print_sum_stats_head_htp(snp_index, files.pheno_names[i], model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i), dt_thr->cal_factor(i), -1, dt_thr->skat_var(i));
+    buffer <<  print_sum_stats_head_htp(snp_index, ( params.htp_use_eventname ? files.t2e_map[files.pheno_names[i]] : files.pheno_names[i] ), model_type, snpinfo, &params) << print_sum_stats_htp(dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), block_info->af(i), block_info->info(i), block_info->mac(i), block_info->genocounts, i, !block_info->test_fail(i), 1, &params, dt_thr->scores(i), dt_thr->cal_factor(i), -1, dt_thr->skat_var(i));
   } else {
     buffer << (!params.split_by_pheno && (i>0) ? "" : tmpstr) << print_sum_stats((params.split_by_pheno ? block_info->af(i) : block_info->af1), block_info->af_case(i), block_info->af_control(i), block_info->n_rr, block_info->n_aa, (params.split_by_pheno ? block_info->info(i) : block_info->info1), (params.split_by_pheno ? block_info->ns(i) : block_info->ns1), block_info->ns_case(i), block_info->ns_control(i), test_string, dt_thr->bhat(i), dt_thr->se_b(i), dt_thr->chisq_val(i), dt_thr->pval_log(i), !block_info->test_fail(i), 1, &params, (i+1));
   }
@@ -2537,7 +2537,7 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   if(print_pv) {
     if(!params->uncapped_pvals && (lpv > params->log10_nl_dbl_dmin)) outp_val = convert_logp_raw( params->log10_nl_dbl_dmin );
     else if(lpv > 0) outp_val = convert_logp_raw( lpv );
-    else outp_val = to_string( 1 - 1e-7 );
+    else outp_val = "0.9999999";
   } 
 
   // Effect / CI bounds / Pvalue columns
@@ -2594,30 +2594,30 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   vector<string> infoCol;
   if(print_beta){
     if(params->trait_mode && test_pass){
-      infoCol.push_back( "REGENIE_BETA=" + to_string(beta) );
-      infoCol.push_back( "REGENIE_SE=" + to_string(se) );
+      infoCol.push_back( "REGENIE_BETA=" + convert_double_to_str(beta) );
+      infoCol.push_back( "REGENIE_SE=" + convert_double_to_str(se) );
       // SPA/uncorrected logistic => also print SE from allelic OR
-      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
+      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + convert_double_to_str(outse_val) );
     } else if(params->trait_mode){
       infoCol.push_back( "REGENIE_BETA=NA" );
       infoCol.push_back( "REGENIE_SE=NA");
       // SPA/uncorrected logistic => also print SE from allelic OR
-      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + to_string(outse_val) );
+      if((params->trait_mode==1) && print_pv && !params->firth) infoCol.push_back( "SE=" + convert_double_to_str(outse_val) );
     } else infoCol.push_back( "REGENIE_SE=" + to_string(se) );// fot QTs
   }
   // info score
-  if(!params->build_mask && params->dosage_mode && (info >= 0) ) infoCol.push_back( "INFO=" + to_string(info) );
+  if(!params->build_mask && params->dosage_mode && (info >= 0) ) infoCol.push_back( "INFO=" + convert_double_to_str(info) );
   // mac
   if(mac>=0) infoCol.push_back( "MAC=" + to_string(mac) );
   // score test statistic 
-  if(score != params->missing_value_double) infoCol.push_back( "SCORE=" + to_string(score) );
-  if(skat_var != params->missing_value_double) infoCol.push_back("SKATV=" + to_string(skat_var*abs(cal_factor)));
+  if(score != params->missing_value_double) infoCol.push_back( "SCORE=" + convert_double_to_str(score) );
+  if(skat_var != params->missing_value_double) infoCol.push_back("SKATV=" + convert_double_to_str(skat_var*abs(cal_factor)));
   //if(cal_factor != -1) infoCol.push_back( "CF=" + to_string(cal_factor) );
   if(cal_factor_burden != -1) infoCol.push_back( "CF_BURDEN=" + to_string(cal_factor_burden) );
   // df
   if(params->joint_test) infoCol.push_back("DF=" + to_string(df));
   // log10P
-  infoCol.push_back( "LOG10P=" + (print_pv ? to_string(lpv) : "NA") );
+  infoCol.push_back( "LOG10P=" + (print_pv ? convert_double_to_str(lpv) : "NA") );
   // indicator for no beta printed (joint or vc tests)
   if(se<0) infoCol.push_back( "NO_BETA" );
   // print info column

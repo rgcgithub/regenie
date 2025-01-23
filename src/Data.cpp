@@ -2095,7 +2095,7 @@ void Data::print_test_info(){
     else if((params.trait_mode==1) & params.use_SPA) correction_type = "-SPA";
     else if(params.trait_mode==1) correction_type = "-LOG";
     else if(params.trait_mode==2) correction_type = "-POISSON";
-    else if((params.trait_mode==3) & params.firth) correction_type = "-FIRTH";
+    else if((params.trait_mode==3) & params.firth) correction_type = "-COX-FIRTH";
     else if(params.trait_mode==3) correction_type = "-COX";
     else correction_type = "-LR";
 
@@ -2788,7 +2788,7 @@ void Data::test_joint() {
         sout << "     -computing joint association tests..." << flush;
 
         jt.get_variant_names(chrom, bb, snpinfo);
-        tmp_str = jt.apply_joint_test(chrom, bb, &pheno_data, res, &Gblock, block_info, files.pheno_names, &params);
+        tmp_str = jt.apply_joint_test(chrom, bb, &pheno_data, res, &Gblock, block_info, files, &params);
 
         for(int j = 0; j < params.n_pheno; ++j) {
           if(params.split_by_pheno)

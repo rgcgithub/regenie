@@ -128,7 +128,7 @@ bool JTests::get_test_info(const struct param* params, string const& test_string
   return with_flip;
 }
 
-vector<string> JTests::apply_joint_test(const int& chrom, const int& block, struct phenodt const* pheno_data, const Eigen::Ref<const Eigen::MatrixXd>& res, struct geno_block const* gblock, std::vector<variant_block>& block_info, vector<string> const& ynames, struct param const* params){
+vector<string> JTests::apply_joint_test(const int& chrom, const int& block, struct phenodt const* pheno_data, const Eigen::Ref<const Eigen::MatrixXd>& res, struct geno_block const* gblock, std::vector<variant_block>& block_info, struct in_files& files, struct param const* params){
 
   int print_index, bs = setinfo[chrom - 1][block].snp_indices.size();
   vector<string> out_str(params->n_pheno);
@@ -145,7 +145,7 @@ vector<string> JTests::apply_joint_test(const int& chrom, const int& block, stru
     reset_vals();
 
     MapcMatXd yres (res.col(ph).data(), res.rows(), 1);
-    string pheno_name = ynames[ph];
+    string pheno_name = ( params->htp_use_eventname ? files.t2e_map[files.pheno_names[ph]] : files.pheno_names[ph] );
 
     // keep track of this when not splitting sum stats file
     bool run_tests = params->pheno_pass(ph) && (nvars > 0) && !set_vars(bs, ph, block_info);
@@ -928,7 +928,7 @@ std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, c
   if(test_pass){
     if(!params->uncapped_pvals && (plog > log10_nl_dbl_dmin)) outp_val = convert_logp_raw( log10_nl_dbl_dmin );
     else if(plog > 0) outp_val = convert_logp_raw( plog );
-    else outp_val = to_string( 1 - 1e-7 );
+    else outp_val = "0.9999999";
   }
 
   // SNP info
@@ -1032,7 +1032,7 @@ std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& 
   if(test_pass){
     if(!params->uncapped_pvals && (plog > log10_nl_dbl_dmin)) outp_val = convert_logp_raw( log10_nl_dbl_dmin );
     else if(plog > 0) outp_val = convert_logp_raw( plog );
-    else outp_val = to_string( 1 - 1e-7 );
+    else outp_val = "0.9999999";
   }
 
   // SNP info
