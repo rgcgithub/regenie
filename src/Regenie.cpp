@@ -712,7 +712,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(tmp_str_vec.size()<2)
         throw "invalid option input for --condition-file";
       if((tmp_str_vec[0] != "bgen") && (tmp_str_vec[0] != "bed") && (tmp_str_vec[0] != "pgen"))
-        throw "invalid file format for --condition-file (either bed/bge/pgen)";
+        throw "invalid file format for --condition-file (either bed/bgen/pgen)";
       files->condition_snps_info.format = tmp_str_vec[0];
       files->condition_snps_info.file = tmp_str_vec[1];
       params->condition_file = true;
@@ -722,7 +722,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(tmp_str_vec.size()<2)
         throw "invalid option input for --interaction-file";
       if((tmp_str_vec[0] != "bgen") && (tmp_str_vec[0] != "bed") && (tmp_str_vec[0] != "pgen"))
-        throw "invalid file format for --interaction-file (either bed/bge/pgen)";
+        throw "invalid file format for --interaction-file (either bed/bgen/pgen)";
       files->interaction_snp_info.format = tmp_str_vec[0];
       files->interaction_snp_info.file = tmp_str_vec[1];
       files->interaction_snp_info.ref_first = vm.count("interaction-file-reffirst") && (tmp_str_vec[0] != "pgen");
