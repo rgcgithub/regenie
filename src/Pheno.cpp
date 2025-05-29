@@ -1114,6 +1114,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
      sout << "WARNING: ignoring '--nocov-approx' for multi-trait analysis\n";
   }
 
+  ArrayXb pheno_pass_orig = params->pheno_pass;
   fit_null_models_nonQT(params, pheno_data, m_ests, files, sout);
 
   // with interaction test, remove colinear columns
@@ -1174,6 +1175,7 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
       pheno_data->new_cov_raw.resize(0,0);
     }
     print_cov_betas(params, files, sout);
+    params->pheno_pass = pheno_pass_orig;
   }
 
   // if using step 1 preds as covariate
@@ -1698,7 +1700,7 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
 
   // save SD
   RowVectorXd mu = X(index_in_analysis, all).colwise().mean();
-  params->cov_sds = (X(index_in_analysis, all).rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - X.cols());
+  params->cov_sds = (X(index_in_analysis, all).rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - 1);
 
   // SD=0 should be only for intercept column (set it to 1)
   if((params->cov_sds < params->eigen_val_rel_tol).count() > 1){

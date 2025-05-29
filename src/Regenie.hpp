@@ -538,6 +538,8 @@ void removeCarriageReturn(std::string&);
 Eigen::ArrayXi get_true_indices(const Eigen::Ref<const ArrayXb>&);
 void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&);
 void get_both_indices(std::vector<Eigen::ArrayXi>&,const Eigen::Ref<const ArrayXb>&,const Eigen::Ref<const ArrayXb>&);
+bool is_nan(double const&);
+void get_logp_ttest(double&,const double&,const unsigned int&);
 void get_logp(double&,const double&);
 void get_logp(const double&,double&,double&,const double&);
 void get_logp(double&,const double&,const double&);

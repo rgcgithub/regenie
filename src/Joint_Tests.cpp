@@ -903,7 +903,7 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
   else buffer << "NA ";
 
   // pval
-  if( plog != -9 )  buffer << plog << " ";
+  if( (plog != -9) && !is_nan(plog) )  buffer << plog << " ";
   else buffer << "NA ";
 
   //df (print it out only if split by pheno)
@@ -921,7 +921,7 @@ std::string JTests::print_sum_stats(const string& tname, const int& ipheno, cons
 std::string JTests::print_sum_stats_htp(const string& tname, const int& chrom, const int& block, const string& yname, const int& ipheno, struct param const* params){
 
   std::ostringstream buffer;
-  bool test_pass = (pval != -9);
+  bool test_pass = (pval != -9) && !is_nan(plog);
   const string cohort = params->cohort_name;
 
   string outp_val = "-1";
@@ -1001,7 +1001,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
   else buffer << "NA ";
 
   // pval
-  if( plog != -9 )  buffer << plog << " ";
+  if( (plog != -9) && !is_nan(plog) )  buffer << plog << " ";
   else buffer << "NA ";
 
   //df (print it out only if split by pheno)
@@ -1025,7 +1025,7 @@ std::string JTests::print_sum_stats_gene(const string& mname, const string& max_
 std::string JTests::print_sum_stats_htp_gene(const string& mname, const string& max_name, const int& chrom, const int& block, const string& yname, const int& ipheno, struct param const* params){
 
   std::ostringstream buffer;
-  bool test_pass = (pval != -9);
+  bool test_pass = (pval != -9) && !is_nan(plog);
   const string cohort = params->cohort_name;
 
   string outp_val = "-1";
@@ -1172,7 +1172,7 @@ void JTests::reset_vals(){
 
 void JTests::get_pv(const double& pv){
 
-  if(pv < 0) {reset_vals(); return;}
+  if((pv < 0) || is_nan(pv)) {reset_vals(); return;}
   chi_squared chisq(1);
 
   pval = max(nl_dbl_dmin, pv); // to prevent underflow
@@ -1183,7 +1183,7 @@ void JTests::get_pv(const double& pv){
 
 void JTests::get_chisq(const double& lpv){
 
-  if(lpv < 0) {reset_vals(); return;}
+  if((lpv < 0) || is_nan(lpv))  {reset_vals(); return;}
 
   get_chisq_stat_pv(pval, zval, lpv, nl_dbl_dmin, log10_nl_dbl_dmin);
   plog = lpv;
@@ -1192,5 +1192,5 @@ void JTests::get_chisq(const double& lpv){
 
 
 bool valid_pval(double const& pv){
-  return (pv >= 0) && (pv <= 1);
+  return !is_nan(pv) && (pv >= 0) && (pv <= 1);
 }

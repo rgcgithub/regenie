@@ -2440,8 +2440,8 @@ std::string print_sum_stats(const double& af, const double& af_case, const doubl
 std::string print_sum_stats_all(const double& af, const double& af_case, const double& af_control, const int& n_rr, const int& n_aa, const double& info, const int& n, const int& ns_case, const int& ns_control, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params, int const& ipheno){
 
   std::ostringstream buffer;
-  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0), print_genoc = (n_rr >= 0);
-  bool print_pv = (chisq>=0) && test_pass;
+  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0) && !is_nan(se), print_genoc = (n_rr >= 0);
+  bool print_pv = (chisq>=0) && test_pass && !is_nan(pv);
 
   // AF N INFO TEST
   if(ipheno == 1) {
@@ -2488,8 +2488,8 @@ std::string print_na_sumstats(int const& ph, int const& df, string const& header
 std::string print_sum_stats_single(const double& af, const double& af_case, const double& af_control, const double& info, const int& n, const int& ns_case, const int& ns_control, const string& model, const double& beta, const double& se, const double& chisq, const double& pv, const bool& test_pass, const int& df, struct param const* params){
 
   std::ostringstream buffer;
-  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0);
-  bool print_pv = (chisq>=0) && test_pass;
+  bool print_afs = (af >= 0), print_info = (info >= 0), print_se = (se >= 0) && !is_nan(se);
+  bool print_pv = (chisq>=0) && test_pass && !is_nan(pv);
 
   // AF N INFO TEST
   if(print_afs) buffer << af << " " ;
@@ -2529,10 +2529,9 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
 
   std::ostringstream buffer;
   string outp_val = "-1";
-  bool print_beta = test_pass && (se>=0);
-  bool print_pv = test_pass && (chisq>=0);
+  bool print_beta = test_pass && (se>=0) && !is_nan(se);
+  bool print_pv = test_pass && (chisq>=0) && !is_nan(lpv);
   double effect_val, outse_val;
-
 
   if(print_pv) {
     if(!params->uncapped_pvals && (lpv > params->log10_nl_dbl_dmin)) outp_val = convert_logp_raw( params->log10_nl_dbl_dmin );
@@ -2543,6 +2542,8 @@ std::string print_sum_stats_htp(const double& beta, const double& se, const doub
   // Effect / CI bounds / Pvalue columns
   if(print_pv && !print_beta)
     buffer << "NA\tNA\tNA\t" << outp_val << "\t";
+  else if(!print_pv && !print_beta)
+    buffer << "NA\tNA\tNA\tNA\t";
   else if((params->trait_mode!=1) || ((params->trait_mode==1) && params->firth && test_pass) ){ // non-bt or firth
 
     if(params->trait_mode==0) // QT

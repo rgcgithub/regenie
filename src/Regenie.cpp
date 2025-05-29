@@ -1686,7 +1686,7 @@ float convertFloat(const string& val, struct param const* params, mstream& sout)
 
 string convert_double_to_str(double const& val){
   char val_str[256];
-  if ((val < 5000) && (val > 1e-6))
+  if ((val < 5000) && (val > 1e-5))
     sprintf(val_str, "%.6f", val);
   else
     sprintf(val_str, "%g", val);
@@ -1813,6 +1813,26 @@ void get_both_indices(std::vector<Eigen::ArrayXi>& res, const Eigen::Ref<const A
     }
   }
 
+}
+
+bool is_nan(double const& val){
+  return ((boost::math::isnan)(val) || !(boost::math::isnormal)(val));
+}
+
+// get logp from t-test
+void get_logp_ttest(double& logp, const double& tstat, const unsigned int& df)
+{
+  boost::math::students_t dist(df);
+  double pv = 2*boost::math::cdf(boost::math::complement(dist, std::abs(tstat)));
+  if(pv == 0) {
+    double logbeta = boost::math::lgamma(0.5*df) + boost::math::lgamma(0.5) - boost::math::lgamma(0.5*df + 0.5);
+    double df_tstat = df / tstat / tstat;
+    if (df_tstat<1) // approximation is not suitable when df is too large relative to tstat
+      logp = 0.5 * df * (log10(df) - 2 * log10(tstat) - log1p(df_tstat) / log(10)) - log10(0.5 * df) - logbeta / log(10);
+    else
+      logp = -330;
+    logp *= -1;
+  } else logp = -log10(pv);
 }
 
 // get logp from chisq(1)
