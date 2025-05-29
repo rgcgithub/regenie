@@ -343,7 +343,7 @@ void compute_score_qt_mcc(int const& isnp, int const& snp_index, int const& thre
 void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_num, string const& test_string, string const& model_type, const Ref<const MatrixXd>& yres, const Ref<const RowVectorXd>& p_sd_yres, struct param const& params, struct phenodt& pheno_data, struct geno_block& gblock, variant_block* block_info, vector<snp> const& snpinfo, struct in_files& files, mstream& sout){
 
   bool run_full_test = true; // disable this for QTs // !params.skip_cov_res;
-  double denum, gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
+  double denum = 0, gsc = block_info->flipped ? (4 * params.n_samples + block_info->scale_fac) : block_info->scale_fac;
   string tmpstr; // for sum stats
   ArrayXd num, denum_arr;
   MapArXd Geno (gblock.Gmat.col(isnp).data(), params.n_samples, 1);
@@ -428,6 +428,14 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
     }
   }
 
+  // correction
+  if(params.mse_full) { 
+    unsigned int nk = params.n_analyzed - params.ncov_analyzed;
+    ArrayXd adj_factor = (nk - dt_thr->stats.square()) / (nk - 1);
+    if(params.htp_out) dt_thr->skat_var *= adj_factor;
+    dt_thr->stats /= adj_factor.sqrt();
+  }
+
   // SE
   dt_thr->se_b = dt_thr->bhat / dt_thr->stats;
 
@@ -449,7 +457,8 @@ void compute_score_qt(int const& isnp, int const& snp_index, int const& thread_n
     }
 
     // get pvalue
-    get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));
+    if(params.t_test) get_logp_ttest(dt_thr->pval_log(i), dt_thr->stats(i), params.n_analyzed - params.ncov_analyzed - 1);
+    else get_logp(dt_thr->pval_log(i), dt_thr->chisq_val(i));
 
     if(!params.p_joint_only)
       block_info->sum_stats[i].append( print_sum_stats_line(snp_index, i, tmpstr, test_string, model_type, block_info, dt_thr, snpinfo, files, params) );

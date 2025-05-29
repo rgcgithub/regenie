@@ -423,6 +423,9 @@ struct param {
   double multiphen_pseudo_stophalf = 0.0; // stop step-halving in pseudo model fitting algo.
   bool multiphen_reset_start = false; // reset start when convergence failure & reusing start
   std::string multiphen_offset = "offset_int";
+  // small n correction for QTs
+  bool mse_full = false;
+  bool t_test = false;
 
   // ld computation
   bool getCorMat = false, cor_out_txt = false, cormat_force_vars = false, skip_scaleG = false;

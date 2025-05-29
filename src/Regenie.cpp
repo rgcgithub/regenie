@@ -361,6 +361,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("multiphen-pseudo-stophalf", "Threshold to stop step-halving in pseudo algorithm [default value is 0.0]", cxxopts::value<double>(params->multiphen_pseudo_stophalf),"FLOAT(=0.0)")
     ("multiphen-reset-start", "reset start values when failed convergence in MultiPhen")
     ("multiphen-offset", "offset mode for MultiPhen", cxxopts::value<std::string>(params->multiphen_offset),"STRING")
+    ("mse-full", "calculate MSE for quantitative phenotypes using the full model")
+    ("t-test", "use t-test for qunatitative phenotypes")
     ("t2e-event-l0", "Use event as reponse in level0 for time-to-event phenotype")
     ("t2e-l1-pi6", "use heritability to get penalty")
     ("coxnofirth", "not using firth in cox model, the test uses likelihood ratio test")
@@ -490,6 +492,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("multiphen-strict") ) params->multiphen_strict = true;
     if( vm.count("multiphen-reset-start") ) params->multiphen_reset_start = true;
     if( vm.count("multiphen-strict") ) params->multiphen_strict = true;
+    if( vm.count("mse-full") ) params->mse_full = true;
+    if( vm.count("t-test") ) params->t_test = true;
     if( vm.count("aaf-file") ) params->set_aaf = true;
     if( vm.count("aaf-file") && vm.count("set-singletons") ) params->aaf_file_wSingletons = true;
     if( vm.count("singleton-carrier") ) params->singleton_carriers = true;
@@ -722,7 +726,7 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(tmp_str_vec.size()<2)
         throw "invalid option input for --interaction-file";
       if((tmp_str_vec[0] != "bgen") && (tmp_str_vec[0] != "bed") && (tmp_str_vec[0] != "pgen"))
-        throw "invalid file format for --interaction-file (either bed/bgen/pgen)";
+        throw "invalid file format for --interaction-file (either bed/bge/pgen)";
       files->interaction_snp_info.format = tmp_str_vec[0];
       files->interaction_snp_info.file = tmp_str_vec[1];
       files->interaction_snp_info.ref_first = vm.count("interaction-file-reffirst") && (tmp_str_vec[0] != "pgen");
