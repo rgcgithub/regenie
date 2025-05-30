@@ -5,6 +5,8 @@ on:
     tags:
       - 'v*'
   pull_request:
+    types:
+      - opened
   release:
     types:
       - created
