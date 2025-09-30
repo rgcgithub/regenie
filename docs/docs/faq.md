@@ -93,3 +93,10 @@ We have implemented the same measures as in the `logistf` function in R to avoid
 
     - For the `max` and `comphet` rules, the resulting burden masks take on values in [0,2] just like single variants so we compute A1FREQ the same way as done for single variants (i.e. mean(G)/2 where G is a genotype vector).
     - For the `sum` rule, A1FREQ is computed as the average of the effect allele frequencies across all sites included in the mask.
+
+ <br/>
+
+*    <span style="font-size: large;font-style: italic; color:#404040"> How is missingness handled in the genotype data? 
+</span>
+
+Missing genotypes are imputed with per-SNP averages when performing association tests (note: the genotype summaries reported like AAF, INFO are only based on non-missing genotypes).
