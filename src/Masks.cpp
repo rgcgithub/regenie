@@ -58,6 +58,7 @@ void GenoMask::prep_run(struct param& params, struct in_files const& files){
   vc_collapse_MAC = params.skat_collapse_MAC;
   w_vc_cust_weights = params.vc_with_weights;
   write_masks = params.write_masks;
+  mask_format_pgen = params.mask_format_pgen;
   write_snplist = params.write_mask_snplist;
   force_singleton = params.aaf_file_wSingletons;
   verbose = params.verbose || params.debug;
@@ -701,8 +702,13 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
       tmpsnp.allele2 = buffer.str();
 
       if(write_masks && in_bed(index_start)) {
-        write_genovec(index_start);
-        write_genobim(tmpsnp);
+        if(mask_format_pgen) {
+          write_pgen_variant(index_start);
+          write_pgen_pvar(tmpsnp);
+        } else {
+          write_genovec(index_start);
+          write_genobim(tmpsnp);
+        }
         if(write_setlist) append_setlist(index_start, tmpsnp.ID);
       }
 
@@ -1015,7 +1021,12 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
     maskvec(index++) = ds;
   }
   //cerr << maskvec.matrix().transpose().array().head(5) << endl << endl << maskvec.mean()<<endl;
-  if(write_masks) make_genovec(isnp, maskvec, filters);
+  if(write_masks) {
+    if(mask_format_pgen)
+      make_pgen_dosage(isnp, maskvec, filters);
+    else
+      make_genovec(isnp, maskvec, filters);
+  }
 
   // check MAC
   if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
@@ -1167,6 +1178,72 @@ void GenoMask::write_famfile(struct param* params, struct filter const* filters,
   params->FIDvec.clear();
 }
 
+void GenoMask::write_info_pgen(struct param* params, struct filter const* filters, mstream& sout){
+  using namespace plink2;
+
+  uint32_t sample_ct = filters->ind_in_analysis.count();
+
+  // Write .psam file (PLINK2 sample file with header)
+  string psam_fname = gfile_prefix + ".psam";
+  Files psam_out;
+  psam_out.openForWrite(psam_fname, sout);
+  psam_out << "#FID\tIID\tSEX\n";
+  for (int i = 0; i < filters->ind_in_analysis.size(); i++) {
+    if( filters->ind_in_analysis(i) ){
+      psam_out <<
+        params->FIDvec[i][0] << "\t" <<
+        params->FIDvec[i][1] << "\t" <<
+        params->sex(i) << "\n";
+    }
+  }
+  psam_out.closeFile();
+
+  // Initialize pgen writer
+  PreinitSpgw(&spgw);
+  uintptr_t alloc_cacheline_ct;
+  uint32_t max_vrec_len;
+
+  PglErr reterr = SpgwInitPhase1(
+    (gfile_prefix + ".pgen").c_str(),
+    nullptr,  // allele_idx_offsets (biallelic)
+    nullptr,  // explicit_nonref_flags
+    nmasks_total,  // variant_ct_limit
+    sample_ct,
+    2,  // allele_ct_upper_bound (biallelic)
+    kPgenWriteBackwardSeek,  // write mode
+    kfPgenGlobalDosagePresent,  // phase_dosage_gflags
+    0,  // nonref_flags_storage
+    &spgw,
+    &alloc_cacheline_ct,
+    &max_vrec_len
+  );
+
+  if(reterr != kPglRetSuccess) {
+    throw "failed to initialize pgen writer";
+  }
+
+  // Allocate memory
+  spgw_alloc = (unsigned char*) malloc(alloc_cacheline_ct * kCacheline);
+  SpgwInitPhase2(max_vrec_len, &spgw, spgw_alloc);
+
+  // Initialize dosage storage
+  dosage_vals.resize(nmasks_total);
+  dosage_present.resize(nmasks_total);
+  dosage_counts.resize(nmasks_total);
+
+  size_t dosage_present_size = (sample_ct + kBitsPerWord - 1) / kBitsPerWord;
+  for(int i = 0; i < nmasks_total; i++) {
+    dosage_vals[i].resize(sample_ct);
+    dosage_present[i].resize(dosage_present_size);
+    std::fill(dosage_present[i].begin(), dosage_present[i].end(), 0);
+  }
+
+  // Open .pvar file
+  string fname = gfile_prefix + ".pvar";
+  openStream(&outfile_bim, fname, std::ios::out, sout);
+  outfile_bim << "#CHROM\tPOS\tID\tREF\tALT\n";
+}
+
 void GenoMask::reset_gvec(){
   gvec.resize(nmasks_total);
   for(int i = 0; i < nmasks_total; i++) 
@@ -1177,6 +1254,7 @@ void GenoMask::reset_gvec(){
 void GenoMask::make_genovec(int const& isnp, Ref<const ArrayXd> mask, struct filter const* filters){
 
   int byte, bit_start, hc;
+  static bool warned_clamping = false;
   setAllBitsOne(isnp);
 
   for(int i = 0, index = 0; i < mask.size(); i++){
@@ -1184,7 +1262,16 @@ void GenoMask::make_genovec(int const& isnp, Ref<const ArrayXd> mask, struct fil
     if( !filters->ind_in_analysis(i) ) continue;
 
     // round to nearest int
-    hc = (int) (mask(i) + 0.5); 
+    hc = (int) (mask(i) + 0.5);
+
+    // Warn and clamp if value > 2 (bed format limitation)
+    if(hc > 2) {
+      if(!warned_clamping) {
+        cerr << "WARNING: Mask values > 2 detected (weighted masks with weights > 1). Values will be clamped to 2.\n";
+        warned_clamping = true;
+      }
+      hc = 2;
+    }
 
     // using 'ref-last':
     //  00 -> hom. alt
@@ -1224,6 +1311,94 @@ void GenoMask::write_genovec(int const& isnp){
 
   outfile_bed.write( reinterpret_cast<char*> (&gvec[isnp][0]), gblock_size);
 
+}
+
+void GenoMask::make_pgen_dosage(int const& isnp, Ref<const ArrayXd> mask, struct filter const* filters){
+  using namespace plink2;
+
+  uint32_t dosage_ct = 0;
+  static bool warned_clamping = false;
+
+  for(int i = 0, index = 0; i < mask.size(); i++){
+    if( !filters->ind_in_analysis(i) ) continue;
+
+    double dosage_dbl = mask(i);
+
+    // Clamp to [0, 2] range (pgen format limitation)
+    if(dosage_dbl < 0 || dosage_dbl > 2) {
+      if(!warned_clamping) {
+        cerr << "WARNING: Mask values outside [0,2] range detected (weighted masks with weights > 1). Values will be clamped to [0,2].\n";
+        warned_clamping = true;
+      }
+      if(dosage_dbl < 0) dosage_dbl = 0;
+      if(dosage_dbl > 2) dosage_dbl = 2;
+    }
+
+    // Convert double to uint16_t dosage (0-32768 range, 16384 = 1.0)
+    uint16_t dosage_val = (uint16_t)(dosage_dbl * 16384.0 + 0.5);
+    dosage_vals[isnp][index] = dosage_val;
+
+    // Set dosage_present bit if non-zero
+    if(dosage_val > 0) {
+      size_t word_idx = index / kBitsPerWord;
+      size_t bit_idx = index % kBitsPerWord;
+      dosage_present[isnp][word_idx] |= (1ULL << bit_idx);
+      dosage_ct++;
+    }
+
+    index++;
+  }
+
+  dosage_counts[isnp] = dosage_ct;
+}
+
+void GenoMask::write_pgen_variant(int const& isnp){
+  using namespace plink2;
+
+  // Create hardcall genovec (all missing for now - can optimize later)
+  uint32_t sample_ct = SpgwGetSampleCt(&spgw);
+  size_t genovec_size = NypCtToVecCt(sample_ct) * kBytesPerVec;
+  uintptr_t* genovec = (uintptr_t*) calloc(genovec_size, 1); // Initialize to zero
+
+  // Set all sample bits to missing (0b11), but leave trailing bits zero
+  // Each sample is 2 bits (nybble), so sample_ct samples = sample_ct nybbles
+  uint32_t full_word_ct = sample_ct / kBitsPerWordD2;
+  uint32_t remainder_nyp = sample_ct % kBitsPerWordD2;
+
+  // Set full words to all missing (all bits = 1, so 0b11 for each sample)
+  for(uint32_t i = 0; i < full_word_ct; i++) {
+    genovec[i] = ~k0LU; // All bits set
+  }
+
+  // Set remainder samples to missing, but clear trailing bits beyond sample_ct
+  if(remainder_nyp > 0) {
+    // Create mask: lower (remainder_nyp * 2) bits set to 1 (0b11 for each sample), rest zero
+    // This ensures bits beyond sample_ct are zero (required by pgenlib assertion)
+    uintptr_t mask = (~k0LU) >> (kBitsPerWord - (2 * remainder_nyp));
+    genovec[full_word_ct] = mask;
+  }
+
+  PglErr reterr = SpgwAppendBiallelicGenovecDosage16(
+    genovec,
+    dosage_present[isnp].data(),
+    dosage_vals[isnp].data(),
+    dosage_counts[isnp],
+    &spgw
+  );
+
+  free(genovec);
+
+  if(reterr != kPglRetSuccess) {
+    throw "failed to write pgen variant";
+  }
+}
+
+void GenoMask::write_pgen_pvar(struct snp const& tsnp){
+  // Write variant info to pvar file
+  // Format: #CHROM POS ID REF ALT
+  outfile_bim << tsnp.chrom << "\t" << tsnp.physpos << "\t"
+              << tsnp.ID << "\t" << tsnp.allele1 << "\t"
+              << tsnp.allele2 << endl;
 }
 
 // get list of indices for each mask (across all AAF bins)
@@ -1367,8 +1542,20 @@ void GenoMask::make_setlist(string const& sname, int const& chr, uint32_t const&
 }
 
 void GenoMask::closeFiles(){
+  using namespace plink2;
+
   outfile_bim.close();
-  outfile_bed.close();
+  if(mask_format_pgen) {
+    PglErr reterr = kPglRetSuccess;
+    SpgwFinish(&spgw);
+    CleanupSpgw(&spgw, &reterr);
+    if(spgw_alloc) {
+      free(spgw_alloc);
+      spgw_alloc = nullptr;
+    }
+  } else {
+    outfile_bed.close();
+  }
   if(write_setlist){
     for(size_t i = 0; i < setfiles.size(); i++) 
       setfiles[i]->closeFile();
