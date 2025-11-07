@@ -54,7 +54,7 @@ class GenoMask {
     std::vector<std::vector<uint16_t>> dosage_vals; // dosages in pgen format
     std::vector<std::vector<uintptr_t>> dosage_present; // bitarray for dosages
     std::vector<uint32_t> dosage_counts; // count per mask
-
+    uint32_t pgen_variant_ct = 0; // actual number of variants written to pgen
     double tol = 1e-6;
     double minAAF = 1e-7, default_aaf = .01;
     int n_aaf_bins, max_aaf_bins = 12, nmasks_total;

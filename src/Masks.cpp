@@ -705,6 +705,7 @@ void GenoMask::computeMasks(struct param* params, struct filter* filters, const 
         if(mask_format_pgen) {
           write_pgen_variant(index_start);
           write_pgen_pvar(tmpsnp);
+          pgen_variant_ct++;
         } else {
           write_genovec(index_start);
           write_genobim(tmpsnp);
@@ -965,7 +966,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
   if(take_comphet) maskvec = maskvec.min(2);
 
   // if dosages were given and writing to PLINK bed, convert dosages to hardcalls
-  if(params->dosage_mode && write_masks) maskvec = maskvec.round();
+  if(params->dosage_mode && write_masks && !mask_format_pgen) maskvec = maskvec.round();
 
   // get counts
   for (int i = 0, index = 0; i < filters->ind_ignore.size(); i++) {
@@ -1254,7 +1255,6 @@ void GenoMask::reset_gvec(){
 void GenoMask::make_genovec(int const& isnp, Ref<const ArrayXd> mask, struct filter const* filters){
 
   int byte, bit_start, hc;
-  static bool warned_clamping = false;
   setAllBitsOne(isnp);
 
   for(int i = 0, index = 0; i < mask.size(); i++){
@@ -1263,15 +1263,6 @@ void GenoMask::make_genovec(int const& isnp, Ref<const ArrayXd> mask, struct fil
 
     // round to nearest int
     hc = (int) (mask(i) + 0.5);
-
-    // Warn and clamp if value > 2 (bed format limitation)
-    if(hc > 2) {
-      if(!warned_clamping) {
-        cerr << "WARNING: Mask values > 2 detected (weighted masks with weights > 1). Values will be clamped to 2.\n";
-        warned_clamping = true;
-      }
-      hc = 2;
-    }
 
     // using 'ref-last':
     //  00 -> hom. alt
@@ -1317,34 +1308,24 @@ void GenoMask::make_pgen_dosage(int const& isnp, Ref<const ArrayXd> mask, struct
   using namespace plink2;
 
   uint32_t dosage_ct = 0;
-  static bool warned_clamping = false;
 
+  // Build densely packed dosage array (only non-missing samples)
   for(int i = 0, index = 0; i < mask.size(); i++){
     if( !filters->ind_in_analysis(i) ) continue;
 
     double dosage_dbl = mask(i);
 
-    // Clamp to [0, 2] range (pgen format limitation)
-    if(dosage_dbl < 0 || dosage_dbl > 2) {
-      if(!warned_clamping) {
-        cerr << "WARNING: Mask values outside [0,2] range detected (weighted masks with weights > 1). Values will be clamped to [0,2].\n";
-        warned_clamping = true;
-      }
-      if(dosage_dbl < 0) dosage_dbl = 0;
-      if(dosage_dbl > 2) dosage_dbl = 2;
-    }
-
-    // Convert double to uint16_t dosage (0-32768 range, 16384 = 1.0)
+    // Convert double to uint16_t dosage (0-32768 range, 16384 = 1.0, 32768 = 2.0)
     uint16_t dosage_val = (uint16_t)(dosage_dbl * 16384.0 + 0.5);
-    dosage_vals[isnp][index] = dosage_val;
 
-    // Set dosage_present bit if non-zero
-    if(dosage_val > 0) {
-      size_t word_idx = index / kBitsPerWord;
-      size_t bit_idx = index % kBitsPerWord;
-      dosage_present[isnp][word_idx] |= (1ULL << bit_idx);
-      dosage_ct++;
-    }
+    // Set dosage_present bit for all samples (including 0 dosages)
+    size_t word_idx = index / kBitsPerWord;
+    size_t bit_idx = index % kBitsPerWord;
+    dosage_present[isnp][word_idx] |= (1ULL << bit_idx);
+
+    // Store in packed array at position dosage_ct
+    dosage_vals[isnp][dosage_ct] = dosage_val;
+    dosage_ct++;
 
     index++;
   }
@@ -1546,6 +1527,9 @@ void GenoMask::closeFiles(){
 
   outfile_bim.close();
   if(mask_format_pgen) {
+    // Update variant count to actual number written (fixes assertion in SpgwFinish)
+    PgenWriterCommon* pwcp = &GET_PRIVATE(spgw, pwc);
+    pwcp->variant_ct_limit = pgen_variant_ct;
     PglErr reterr = kPglRetSuccess;
     SpgwFinish(&spgw);
     CleanupSpgw(&spgw, &reterr);
