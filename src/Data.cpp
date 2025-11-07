@@ -2040,11 +2040,16 @@ void Data::print_test_info(){
 
   if(params.write_masks) {
 
-    bm.write_info(&params, &in_filters, sout);
-    sout << " * user specified to write masks (in PLINK bed format)\n";
-    if(params.dosage_mode) 
-      sout << "   +dosages will be converted to hardcalls\n";
-    if(params.write_setlist) 
+    if(params.mask_format_pgen) {
+      bm.write_info_pgen(&params, &in_filters, sout);
+      sout << " * user specified to write masks (in PLINK2 pgen format with dosage support)\n";
+    } else {
+      bm.write_info(&params, &in_filters, sout);
+      sout << " * user specified to write masks (in PLINK bed format)\n";
+      if(params.dosage_mode)
+        sout << "   +dosages will be converted to hardcalls\n";
+    }
+    if(params.write_setlist)
       bm.prep_setlists(files.new_sets, files.out_file, sout);
 
   }

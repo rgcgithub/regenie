@@ -1,7 +1,7 @@
 #ifndef __PLINK2_BITS_H__
 #define __PLINK2_BITS_H__
 
-// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2025 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -19,6 +19,10 @@
 
 
 // Bitarray support.  (Inline single-word operations are in plink2_base.h.)
+
+#include <assert.h>
+#include <limits.h>
+#include <string.h>
 
 #include "plink2_base.h"
 
@@ -106,8 +110,10 @@ uintptr_t AdvTo0Bit(const uintptr_t* bitarr, uintptr_t loc);
 
 // uintptr_t NextNonmissingUnsafe(const uintptr_t* genoarr, uintptr_t loc);
 
+// Can overread a single word if loc == ceil.
 uint32_t AdvBoundedTo1Bit(const uintptr_t* bitarr, uint32_t loc, uint32_t ceil);
 
+// Can overread a single word if loc == ceil.
 uintptr_t AdvBoundedTo0Bit(const uintptr_t* bitarr, uintptr_t loc, uintptr_t ceil);
 
 uintptr_t FindLast1BitBefore(const uintptr_t* bitarr, uintptr_t loc);
@@ -283,6 +289,35 @@ uintptr_t PopcountWordsIntersect(const uintptr_t* __restrict bitvec1_iter, const
 uintptr_t PopcountWordsXor(const uintptr_t* __restrict bitvec1_iter, const uintptr_t* __restrict bitvec2_iter, uintptr_t word_ct);
 
 // uintptr_t PopcountWordsIntersect3(const uintptr_t* __restrict bitvec1_iter, const uintptr_t* __restrict bitvec2_iter, const uintptr_t* __restrict bitvec3_iter, uintptr_t word_ct);
+
+#ifdef __LP64__
+HEADER_INLINE uintptr_t PopcountWordsNzbase(const uintptr_t* bitvec, uintptr_t start_idx, uintptr_t end_idx) {
+  uintptr_t prefix_ct = 0;
+#  ifdef USE_AVX2
+  while (start_idx & 3) {
+    if (end_idx == start_idx) {
+      return prefix_ct;
+    }
+    prefix_ct += PopcountWord(bitvec[start_idx++]);
+  }
+#  else
+  if (start_idx & 1) {
+    if (end_idx == start_idx) {
+      return 0;
+    }
+    prefix_ct = PopcountWord(bitvec[start_idx++]);
+  }
+#  endif  // USE_AVX2
+  return prefix_ct + PopcountWords(&(bitvec[start_idx]), end_idx - start_idx);
+}
+#else
+HEADER_INLINE uintptr_t PopcountWordsNzbase(const uintptr_t* bitvec, uintptr_t start_idx, uintptr_t end_idx) {
+  return PopcountWords(&(bitvec[start_idx]), end_idx - start_idx);
+}
+#endif
+
+// start_idx == end_idx ok
+uintptr_t PopcountBitRange(const uintptr_t* bitvec, uintptr_t start_idx, uintptr_t end_idx);
 
 // requires positive word_ct
 // stay agnostic a bit longer re: word_ct := DIV_UP(entry_ct, kBitsPerWord)
@@ -635,6 +670,15 @@ HEADER_INLINE void AssignNybblearrEntry(uint32_t idx, uintptr_t newval, uintptr_
 // 'Unsafe' because it assumes high bits of every byte are 0 and entry_ct is
 // positive.
 void Reduce8to4bitInplaceUnsafe(uintptr_t entry_ct, uintptr_t* mainvec);
+
+// forward_ct must be positive.  Stays put if forward_ct == 1 and current bit
+// is set.
+// In usual 64-bit case, also assumes bitvec is vector aligned.
+uintptr_t FindNth1BitFrom(const uintptr_t* bitvec, uintptr_t cur_pos, uintptr_t forward_ct);
+
+// This function assumes (bit_ct * (thread_ct - 1)) < 2^64.
+// bit_ct must be positive, but can be smaller than thread_ct
+void FillU32SubsetStarts(const uintptr_t* subset, uint32_t thread_ct, uint32_t start, uint64_t bit_ct, uint32_t* starts);
 
 #ifdef __cplusplus
 }  // namespace plink2

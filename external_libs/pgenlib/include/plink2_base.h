@@ -1,7 +1,7 @@
 #ifndef __PLINK2_BASE_H__
 #define __PLINK2_BASE_H__
 
-// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2025 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -77,10 +77,11 @@
 //   valid input types, NOT counting VecW*.
 
 
-// gcc 8.3.0 has been miscompiling the ParseOnebitUnsafe() function in
-// pgenlib_read.cc for the last several years.  gcc 8.4 does not have this
-// problem, and neither does any other gcc major version I've tested to date.
-#ifndef __clang__
+// gcc 8.3.0 has been miscompiling the vector code in the ParseOnebitUnsafe()
+// function in pgenlib_read.cc for the last several years.  gcc 8.4 does not
+// have this problem, and neither does any other gcc major version I've tested
+// to date.
+#if !defined(__clang__) && defined(__LP64__)
 #  if (__GNUC__ == 8) && (__GNUC_MINOR__ < 4)
 #    error "gcc 8.3 is known to have a miscompilation bug that was fixed in 8.4."
 #  endif
@@ -106,24 +107,33 @@
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access
 // to this value.  Named with all caps as a consequence.
-#define PLINK2_BASE_VERNUM 815
+#define PLINK2_BASE_VERNUM 822
 
+// We now try to adhere to include-what-you-use in simple cases.  However,
+// we don't want to repeat either platform-specific ifdefs, or stuff like
+// "#define _FILE_OFFSET_BITS 64" before "#include <stdio.h>", so we use
+// "IWYU pragma: export" for those cases.
+// TODO: unfortunately, there is no straightforward way to tell IWYU to stop
+// looking behind the likes of <stdio.h> or "../simde/x86/sse2.h".  I'm
+// manually ignoring the associated false-positives for now, but this should be
+// systematized.
 
 #define _FILE_OFFSET_BITS 64
+#ifdef __USE_MINGW_ANSI_STDIO
+#  undef __USE_MINGW_ANSI_STDIO
+#endif
+#define __USE_MINGW_ANSI_STDIO 1
 
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stddef.h>  // offsetof()
-#include <stdint.h>
+#include <assert.h>
 #ifndef __STDC_FORMAT_MACROS
 #  define __STDC_FORMAT_MACROS 1
 #endif
-#include <inttypes.h>
+#include <inttypes.h>  // IWYU pragma: export
 #include <limits.h>  // CHAR_BIT, PATH_MAX
-
-// #define NDEBUG
-#include <assert.h>
+#include <stddef.h>  // offsetof()
+#include <stdio.h>  // IWYU pragma: export
+#include <stdlib.h>
+#include <string.h>
 
 #ifdef _WIN32
   // needed for EnterCriticalSection, etc.
@@ -135,19 +145,21 @@
 #  ifndef WIN32_LEAN_AND_MEAN
 #    define WIN32_LEAN_AND_MEAN
 #  endif
-#  include <windows.h>
+#  include <windows.h>  // IWYU pragma: export
 #endif
 
 #if __cplusplus >= 201103L
-#  include <array>
+#  include <array>  // IWYU pragma: export
 #endif
 
 #ifdef __LP64__
-// TODO: working no-SSE2 fallback on 64-bit little-endian platforms unsupported
-// by simde.  Can perform early test by compiling on M1/M2 without simde.
+// Possible todo: working no-SSE2 fallback on 64-bit little-endian platforms
+// unsupported by simde.  Can perform early test by compiling on arm64 without
+// simde.
+// (But not yet aware of a use case that matters.)
 #  define USE_SSE2
 #  ifdef __x86_64__
-#    include <emmintrin.h>
+#    include <emmintrin.h>  // IWYU pragma: export
 #  else
 #    define SIMDE_ENABLE_NATIVE_ALIASES
 // Since e.g. an old zstd system header breaks the build, and plink2 is
@@ -156,9 +168,9 @@
 // are manually updated as necessary.
 // To use system headers, define IGNORE_BUNDLED_{ZSTD,LIBDEFLATE.SIMDE}.
 #    ifdef IGNORE_BUNDLED_SIMDE
-#      include <simde/x86/sse2.h>
+#      include <simde/x86/sse2.h>  // IWYU pragma: export
 #    else
-#      include "../simde/x86/sse2.h"
+#      include "../simde/x86/sse2.h"  // IWYU pragma: export
 #    endif
 #    ifdef SIMDE_ARM_NEON_A32V8_NATIVE
 // For Apple M1, we effectively use SSE2 + constrained _mm_shuffle_epi8().
@@ -218,6 +230,8 @@ namespace plink2 {
 // RoundUpPow2()...), or (ii) it allows a useful static_assert to be inserted
 // for a hardcoded constant.
 #  if __cplusplus >= 201103L
+#    define HAS_CONSTEXPR
+#    define PREFER_CONSTEXPR constexpr
 #    define HEADER_CINLINE constexpr
 #    define CSINLINE static constexpr
 #    if __cplusplus > 201103L
@@ -228,6 +242,7 @@ namespace plink2 {
 #      define CSINLINE2 static inline
 #    endif
 #  else
+#    define PREFER_CONSTEXPR const
 #    define HEADER_CINLINE inline
 #    define HEADER_CINLINE2 inline
 #    define CSINLINE static inline
@@ -241,6 +256,7 @@ namespace plink2 {
 #    endif
 #  endif
 #else
+#  define PREFER_CONSTEXPR const
 #  define HEADER_INLINE static inline
 #  define HEADER_CINLINE static inline
 #  define HEADER_CINLINE2 static inline
@@ -352,7 +368,13 @@ HEADER_INLINE unsigned char* CToUc(char* pp) {
 // * IntErr allows implicit conversion from int, but conversion back to
 //   int32_t requires an explicit cast.  It mainly serves as a holding pen for
 //   C standard library error return values, which can be negative.
-#if __cplusplus >= 201103L
+#if __cplusplus >= 201103L && !defined(NO_CPP11_TYPE_ENFORCEMENT)
+// Cython doesn't support these, and the previous workaround of forcing C++98
+// is breaking down.  So allow this C++11 feature to be selectively disabled.
+#  define CPP11_TYPE_ENFORCEMENT
+#endif
+
+#ifdef CPP11_TYPE_ENFORCEMENT
 struct PglErr {
   enum class ec
 #else
@@ -397,7 +419,7 @@ typedef enum
   kPglRetHelp = 125,
   kPglRetLongLine = 126,
   kPglRetEof = 127}
-#if __cplusplus >= 201103L
+#ifdef CPP11_TYPE_ENFORCEMENT
   ;
 
   PglErr() {}
@@ -466,7 +488,7 @@ const PglErr kPglRetEof = PglErr::ec::kPglRetEof;
   PglErr;
 #endif
 
-#if __cplusplus >= 201103L
+#ifdef CPP11_TYPE_ENFORCEMENT
 // allow efficient arithmetic on these, but force them to require explicit
 // int32_t/uint32_t casts; only permit implicit assignment from
 // int32_t/uint32_t by default.
@@ -511,6 +533,13 @@ private:
 typedef int32_t IntErr;
 typedef uint32_t BoolErr;
 #endif
+
+extern const char kErrprintfFopen[];
+extern const char kErrprintfFread[];
+extern const char kErrprintfRewind[];
+extern const char kErrstrNomem[];
+extern const char kErrstrWrite[];
+extern const char kErrprintfDecompress[];
 
 // make this work on 32-bit as well as 64-bit systems, across
 // Windows/OS X/Linux
@@ -557,16 +586,9 @@ typedef uint32_t BoolErr;
 #  endif
 #endif
 
-#ifdef _WIN32
-#  undef PRId64
-#  undef PRIu64
-#  define PRId64 "I64d"
-#  define PRIu64 "I64u"
-#else
-#  ifdef __cplusplus
-#    ifndef PRId64
-#      define PRId64 "lld"
-#    endif
+#ifdef __cplusplus
+#  ifndef PRId64
+#    define PRId64 "lld"
 #  endif
 #endif
 
@@ -633,26 +655,13 @@ HEADER_INLINE uint32_t bsrw(unsigned long ulii) {
 #endif
 
 #ifdef __LP64__
-#  ifdef _WIN32 // i.e. Win64
-
-#    undef PRIuPTR
-#    undef PRIdPTR
-#    define PRIuPTR PRIu64
-#    define PRIdPTR PRId64
-#    define PRIxPTR2 "016I64x"
-
-#  else  // not _WIN32
-
-#    ifndef PRIuPTR
-#      define PRIuPTR "lu"
-#    endif
-#    ifndef PRIdPTR
-#      define PRIdPTR "ld"
-#    endif
-#    define PRIxPTR2 "016lx"
-
-#  endif  // Win64
-
+#  ifndef PRIuPTR
+#    define PRIuPTR "lu"
+#  endif
+#  ifndef PRIdPTR
+#    define PRIdPTR "ld"
+#  endif
+#  define PRIxPTR2 "016lx"
 #else  // not __LP64__
 
   // without this, we get ridiculous warning spew...
@@ -663,6 +672,15 @@ HEADER_INLINE uint32_t bsrw(unsigned long ulii) {
 #    undef PRIdPTR
 #    define PRIuPTR "lu"
 #    define PRIdPTR "ld"
+#  endif
+
+#  ifdef _WIN32
+#    ifndef PRIuPTR
+#      define PRIuPTR "u"
+#    endif
+#    ifndef PRIdPTR
+#      define PRIdPTR "d"
+#    endif
 #  endif
 
 #  define PRIxPTR2 "08lx"
@@ -943,8 +961,6 @@ HEADER_INLINE VecI8 veci8_set1(char cc) {
   return VecToI8( _mm256_set1_epi8(cc));
 }
 
-// TODO: on ARM, replace most movemask uses:
-// https://community.arm.com/arm-community-blogs/b/infrastructure-solutions-blog/posts/porting-x86-vector-bitmask-optimizations-to-arm-neon
 HEADER_INLINE uint32_t vecw_movemask(VecW vv) {
   return _mm256_movemask_epi8(WToVec(vv));
 }
@@ -1160,8 +1176,16 @@ HEADER_INLINE VecW vecw_sad(VecW v1, VecW v2) {
   return VecToW(_mm256_sad_epu8(WToVec(v1), WToVec(v2)));
 }
 
+HEADER_INLINE VecUc vecuc_add(VecUc v1, VecUc v2) {
+  return VecToUc(_mm256_add_epi8(UcToVec(v1), UcToVec(v2)));
+}
+
 HEADER_INLINE VecUc vecuc_adds(VecUc v1, VecUc v2) {
   return VecToUc(_mm256_adds_epu8(UcToVec(v1), UcToVec(v2)));
+}
+
+HEADER_INLINE VecUc vecuc_signed_cmpgt(VecUc v1, VecUc v2) {
+  return VecToUc(_mm256_cmpgt_epi8(UcToVec(v1), UcToVec(v2)));
 }
 
 HEADER_INLINE VecU16 vecu16_min8(VecU16 v1, VecU16 v2) {
@@ -1554,15 +1578,16 @@ HEADER_INLINE VecUc vecuc_gather_odd(VecUc src_lo, VecUc src_hi) {
 #    ifdef USE_SHUFFLE8
 #      ifdef SIMDE_ARM_NEON_A64V8_NATIVE
 // See simde_mm_shuffle_epi8().
-// In the future, this may need to be written more carefully in the
-// IGNORE_BUNDLED_SIMDE case.  But this is compatible with simde v0.7.x and
-// v0.8.x.
-SIMDE_FUNCTION_ATTRIBUTES simde__m128i _mm_shuffle_epi8(simde__m128i a, simde__m128i b) {
-  simde__m128i_private a_ = simde__m128i_to_private(a);
-  simde__m128i_private b_ = simde__m128i_to_private(b);
-  simde__m128i_private r_;
-  r_.neon_i8 = vqtbl1q_s8(a_.neon_i8, b_.neon_u8);
-  return simde__m128i_from_private(r_);
+HEADER_INLINE __m128i _mm_shuffle_epi8(__m128i a, __m128i b) {
+  SIMDE_ALIGN_TO_16 int8x16_t a_;
+  SIMDE_ALIGN_TO_16 uint8x16_t b_;
+  SIMDE_ALIGN_TO_16 int8x16_t r_;
+  memcpy(&a_, &a, sizeof(a_));
+  memcpy(&b_, &b, sizeof(b_));
+  r_ = vqtbl1q_s8(a_, b_);
+  __m128i r;
+  memcpy(&r, &r_, sizeof(r));
+  return r;
 }
 #      endif
 HEADER_INLINE VecW vecw_shuffle8(VecW table, VecW indexes) {
@@ -1643,8 +1668,16 @@ HEADER_INLINE VecW vecw_sad(VecW v1, VecW v2) {
   return VecToW(_mm_sad_epu8(WToVec(v1), WToVec(v2)));
 }
 
+HEADER_INLINE VecUc vecuc_add(VecUc v1, VecUc v2) {
+  return VecToUc(_mm_add_epi8(UcToVec(v1), UcToVec(v2)));
+}
+
 HEADER_INLINE VecUc vecuc_adds(VecUc v1, VecUc v2) {
   return VecToUc(_mm_adds_epu8(UcToVec(v1), UcToVec(v2)));
+}
+
+HEADER_INLINE VecUc vecuc_signed_cmpgt(VecUc v1, VecUc v2) {
+  return VecToUc(_mm_cmpgt_epi8(UcToVec(v1), UcToVec(v2)));
 }
 
 HEADER_INLINE VecU16 vecu16_min8(VecU16 v1, VecU16 v2) {
@@ -1906,7 +1939,6 @@ CONSTI32(kFloatPerFVec, kBytesPerFVec / 4);
 CONSTI32(kDoublePerDVec, kBytesPerDVec / 8);
 
 #if defined(__APPLE__) && defined(__LP64__) && !defined(__x86_64__)
-// TODO: make this 128 once that stops breaking code
 #  define CACHELINE128
 CONSTI32(kCacheline, 128);
 #else
@@ -1987,7 +2019,7 @@ HEADER_INLINE void PrintVecD(const VecD* vv_ptr, const char* preprint) {
   fputs("\n", stdout);
 }
 
-#if __cplusplus >= 201103L
+#ifdef CPP11_TYPE_ENFORCEMENT
 // Main application of std::array in this codebase is enforcing length when
 // passing references between functions.  Conversely, if the array type has
 // different lengths in different functions (e.g. col_skips[]/col_types[]), we
@@ -2806,6 +2838,115 @@ HEADER_INLINE uint32_t PopcountVec8thUint(uint32_t val) {
 #  endif
 #endif
 
+#ifdef USE_SSE2
+// On ARM, emulated movemask isn't great.  But there are alternative
+// instructions that efficiently perform what you usually want to do with
+// movemasks:
+//   https://community.arm.com/arm-community-blogs/b/infrastructure-solutions-blog/posts/porting-x86-vector-bitmask-optimizations-to-arm-neon
+
+#  ifndef SIMDE_ARM_NEON_A32V8_NATIVE
+// vec0255 refers to a VecUc where all bytes are equal to 0 or 255.
+// (possible todo: define this as its own type, with automatic downcast to
+// VecUc but not the other way around.)
+//
+// Return value in nonzero case is architecture-dependent (though always
+// nonzero).  So, best to only use this in other architecture-specific code;
+// hence the leading underscore in the function name.
+HEADER_INLINE uint64_t _vec0255_is_nonzero(VecUc vv) {
+  return vecuc_movemask(vv);
+}
+
+HEADER_INLINE uint32_t vec0255_set_ct(VecUc vv) {
+  return PopcountVec8thUint(vecuc_movemask(vv));
+}
+
+HEADER_INLINE uint32_t vec0255_is_all_set(VecUc vv) {
+  return (vecuc_movemask(vv) == kVec8thUintMax);
+}
+
+HEADER_INLINE uint32_t vec0255u16_is_all_set(VecU16 vv) {
+  return (vecu16_movemask(vv) == kVec8thUintMax);
+}
+
+HEADER_INLINE uint32_t m128is_are_equal(__m128i v1, __m128i v2) {
+  return (_mm_movemask_epi8(_mm_cmpeq_epi8(v1, v2)) == 65535);
+}
+#  else
+HEADER_INLINE uint64_t arm_shrn4_uc(VecUc vv) {
+  uint16x8_t vv_;
+  memcpy(&vv_, &vv, sizeof(vv_));
+  return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vv_, 4)), 0);
+}
+
+HEADER_INLINE uint64_t arm_shrn4_i8(VecI8 vv) {
+  uint16x8_t vv_;
+  memcpy(&vv_, &vv, sizeof(vv_));
+  return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vv_, 4)), 0);
+}
+
+HEADER_INLINE uint64_t arm_shrn4_u16(VecU16 vv) {
+  uint16x8_t vv_;
+  memcpy(&vv_, &vv, sizeof(vv_));
+  return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vv_, 4)), 0);
+}
+
+HEADER_INLINE uint64_t arm_shrn4_m128i(__m128i vv) {
+  uint16x8_t vv_;
+  memcpy(&vv_, &vv, sizeof(vv_));
+  return vget_lane_u64(vreinterpret_u64_u8(vshrn_n_u16(vv_, 4)), 0);
+}
+
+HEADER_INLINE uint64_t _vec0255_is_nonzero(VecUc vv) {
+  return arm_shrn4_uc(vv);
+}
+
+// set_bits4 must only have bits in 0, 4, ..., 60 set.
+// move this out of ARM-only ifdef if we ever want this elsewhere.
+HEADER_INLINE uint32_t popcount_bits4(uint64_t set_bits4) {
+  // Branchlessly count the number of set bits, taking advantage of the limited
+  // set of positions they can be in.
+  // Multiplication by the magic constant kMask1111 usually puts the sum of
+  // all 16 bits of interest in the high nybble of the result... except that
+  // the nybble overflows when all 16 bits are set.  We work around this by
+  // (i) multiplying by (kMask1111 >> 4) instead, which excludes the lowest bit
+  //     from the high-nybble sum, and
+  // (ii) then adding the lowest bit afterward.
+  const uint32_t set_ct_excluding_lowest = (set_bits4 * (kMask1111 >> 4)) >> 60;
+  return set_ct_excluding_lowest + (set_bits4 & 1);
+}
+
+// xx must have all nybbles equal to 0 or 15.
+HEADER_INLINE uint32_t count_set_nybbles(uint64_t xx) {
+  return popcount_bits4(xx & kMask1111);
+}
+
+HEADER_INLINE uint32_t vec0255_set_ct(VecUc vv) {
+  return count_set_nybbles(arm_shrn4_uc(vv));
+}
+
+HEADER_INLINE uint32_t vec0255_is_all_set(VecUc vv) {
+  return (arm_shrn4_uc(vv) == UINT64_MAX);
+}
+
+HEADER_INLINE uint32_t vec0255u16_is_all_set(VecU16 vv) {
+  return (arm_shrn4_u16(vv) == UINT64_MAX);
+}
+
+HEADER_INLINE uint32_t m128is_are_equal(__m128i v1, __m128i v2) {
+  const uint64_t set_nybbles = arm_shrn4_m128i(_mm_cmpeq_epi8(v1, v2));
+  return (set_nybbles == UINT64_MAX);
+}
+#  endif
+
+HEADER_INLINE uint32_t vecucs_are_equal(VecUc v1, VecUc v2) {
+  return vec0255_is_all_set(v1 == v2);
+}
+
+HEADER_INLINE uint32_t vecu16s_are_equal(VecU16 v1, VecU16 v2) {
+  return vec0255u16_is_all_set(v1 == v2);
+}
+#endif
+
 // Downcasts don't risk alignment issues.
 HEADER_INLINE unsigned char* DowncastToUc(void* pp) {
   return S_CAST(unsigned char*, pp);
@@ -3167,7 +3308,12 @@ HEADER_INLINE void aligned_free_cond(void* aligned_ptr) {
   }
 }
 
-// C spec is slightly broken here
+// Common pattern is to initialize a data structure, then use it without
+// mutating it, then free it.
+// Yes, in principle you should have a non-const pointer to the data structure
+// to free it.  But my experience is that that makes too many beneficial uses
+// of const less ergonomic, without offering enough in return.  So we cheat a
+// bit, in a way that can be systematically cleaned up later if necessary.
 HEADER_INLINE void free_const(const void* memptr) {
   free(K_CAST(void*, memptr));
 }
@@ -3314,7 +3460,7 @@ template <> struct MemequalKImpl<16> {
   static int32_t MemequalK(const void* m1, const void* m2) {
     const __m128i v1 = _mm_loadu_si128(S_CAST(const __m128i*, m1));
     const __m128i v2 = _mm_loadu_si128(S_CAST(const __m128i*, m2));
-    return (_mm_movemask_epi8(_mm_cmpeq_epi8(v1, v2)) == 65535);
+    return m128is_are_equal(v1, v2);
   }
 };
 
@@ -3325,7 +3471,7 @@ template <uint32_t N> struct MemequalKImpl<N, TRange<(17 <= N) && (N <= 24)> > {
     const __m128i v1 = _mm_loadu_si128(S_CAST(const __m128i*, m1));
     const __m128i v2 = _mm_loadu_si128(S_CAST(const __m128i*, m2));
     return
-      (_mm_movemask_epi8(_mm_cmpeq_epi8(v1, v2)) == 65535) &&
+      m128is_are_equal(v1, v2) &&
       ((*R_CAST(const uint64_t*, &(m1_uc[N - 8]))) == (*R_CAST(const uint64_t*, &(m2_uc[N - 8]))));
   }
 };
@@ -3334,14 +3480,14 @@ template <uint32_t N> struct MemequalKImpl<N, TRange<(25 <= N) && (N <= 31)> > {
   static int32_t MemequalK(const void* m1, const void* m2) {
     __m128i v1 = _mm_loadu_si128(S_CAST(const __m128i*, m1));
     __m128i v2 = _mm_loadu_si128(S_CAST(const __m128i*, m2));
-    if (_mm_movemask_epi8(_mm_cmpeq_epi8(v1, v2)) != 65535) {
+    if (!m128is_are_equal(v1, v2)) {
       return 0;
     }
     const unsigned char* m1_uc = S_CAST(const unsigned char*, m1);
     const unsigned char* m2_uc = S_CAST(const unsigned char*, m2);
     v1 = _mm_loadu_si128(R_CAST(const __m128i*, &(m1_uc[N - 16])));
     v2 = _mm_loadu_si128(R_CAST(const __m128i*, &(m2_uc[N - 16])));
-    return (_mm_movemask_epi8(_mm_cmpeq_epi8(v1, v2)) == 65535);
+    return m128is_are_equal(v1, v2);
   }
 };
 
@@ -3578,7 +3724,7 @@ HEADER_INLINE char* strcpya(char* __restrict dst, const void* __restrict src) {
   return memcpya(dst, src, slen);
 }
 
-#if defined(__LP64__) && (__cplusplus >= 201103L)
+#if __cplusplus >= 201103L
 constexpr uint32_t CompileTimeSlen(const char* k_str) {
   return k_str[0]? (1 + CompileTimeSlen(&(k_str[1]))) : 0;
 }
@@ -3900,10 +4046,28 @@ HEADER_INLINE void ZeroHwArr(uintptr_t entry_ct, Halfword* hwarr) {
   memset(hwarr, 0, entry_ct * sizeof(Halfword));
 }
 
+HEADER_INLINE void ZeroFArr(uintptr_t entry_ct, float* farr) {
+  for (uintptr_t ulii = 0; ulii != entry_ct; ulii++) {
+    *farr++ = 0.0;
+  }
+}
+
+HEADER_INLINE void ZeroDArr(uintptr_t entry_ct, double* darr) {
+  for (uintptr_t ulii = 0; ulii != entry_ct; ulii++) {
+    *darr++ = 0.0;
+  }
+}
+
 HEADER_INLINE void SetAllWArr(uintptr_t entry_ct, uintptr_t* warr) {
   // todo: test this against vecset()
   for (uintptr_t idx = 0; idx != entry_ct; ++idx) {
     warr[idx] = ~k0LU;
+  }
+}
+
+HEADER_INLINE void SetAllU32Arr(uintptr_t entry_ct, uint32_t* u32arr) {
+  for (uintptr_t ulii = 0; ulii != entry_ct; ulii++) {
+    *u32arr++ = ~0U;
   }
 }
 
@@ -4157,7 +4321,7 @@ HEADER_INLINE uint32_t VintBytect(uintptr_t ulii) {
 //   enum base type to make it safe for the enum to serve as the flagset type.
 // * Implicit conversion to int is not prevented for now, since I'm trying to
 //   keep PglErr-style code duplication to a minimum.
-#if __cplusplus >= 201103L
+#ifdef CPP11_TYPE_ENFORCEMENT
 
   // could avoid the typedef here, but that leads to a bit more verbosity.
 #  define FLAGSET_DEF_START() typedef enum : uint32_t {
@@ -4269,7 +4433,7 @@ private: \
 #  define ENUM_U31_DEF_START() typedef enum : uint32_t {
 #  define ENUM_U31_DEF_END(tname) } tname
 
-#else  // !__cplusplus >= 201103L
+#else  // !CPP11_TYPE_ENFORCEMENT
 
 #  define FLAGSET_DEF_START() enum {
 #  define FLAGSET_DEF_END(tname) } ; \

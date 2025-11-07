@@ -1,7 +1,7 @@
 #ifndef __PGENLIB_MISC_H__
 #define __PGENLIB_MISC_H__
 
-// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2025 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -74,15 +74,95 @@
 //   on the fly, since that tends to be faster than having to access twice as
 //   much memory.
 
+#include <assert.h>
+#ifndef NDEBUG
+#  include <stdarg.h> // va_start()
+#endif
+#include <stdlib.h>
+#include <string.h>
+
+#include "plink2_base.h"
 #include "plink2_bits.h"
 
 // 10000 * major + 100 * minor + patch
 // Exception to CONSTI32, since we want the preprocessor to have access to this
 // value.  Named with all caps as a consequence.
-#define PGENLIB_INTERNAL_VERNUM 2003
+#define PGENLIB_INTERNAL_VERNUM 2100
 
 #ifdef __cplusplus
 namespace plink2 {
+#endif
+
+#ifdef NDEBUG
+HEADER_INLINE BoolErr PglInitLog(__attribute__((unused)) uintptr_t log_capacity) {
+  return 0;
+}
+
+HEADER_INLINE void PglLogprintf(__attribute__((unused)) const char* fmt, ...) {
+}
+
+HEADER_INLINE char* PglReturnLog() {
+  return nullptr;
+}
+
+HEADER_INLINE void PglResetLog() {
+}
+#else
+extern char* g_pgl_errbuf;
+extern char* g_pgl_errbuf_write_iter;
+extern char* g_pgl_errbuf_end;
+
+HEADER_INLINE BoolErr PglInitLog(uintptr_t log_capacity) {
+  if (g_pgl_errbuf) {
+    if (log_capacity <= S_CAST(uintptr_t, g_pgl_errbuf_end - g_pgl_errbuf)) {
+      // existing allocation is fine.  no need to shrink
+      g_pgl_errbuf_write_iter = g_pgl_errbuf;
+      *g_pgl_errbuf_write_iter = '\0';
+      return 0;
+    }
+    free(g_pgl_errbuf);
+  }
+  // 128 extra bytes to make WordWrapMultiline() safe.
+  g_pgl_errbuf = S_CAST(char*, malloc(log_capacity + 128));
+  if (!g_pgl_errbuf) {
+    g_pgl_errbuf_write_iter = nullptr;
+    g_pgl_errbuf_end = nullptr;
+    // in the unlikely event this comes up, caller is free to ignore the error,
+    // logging just won't happen.  though, if malloc is failing, something else
+    // is likely to fail...
+    return 1;
+  }
+  g_pgl_errbuf_write_iter = g_pgl_errbuf;
+  *g_pgl_errbuf_write_iter = '\0';
+  g_pgl_errbuf_end = &(g_pgl_errbuf[log_capacity]);
+  return 0;
+}
+
+HEADER_INLINE void PglLogprintf(const char* fmt, ...) {
+  // possible todo: log levels
+  if (g_pgl_errbuf_write_iter != nullptr) {
+    va_list args;
+    va_start(args, fmt);
+    const uintptr_t remaining_space = g_pgl_errbuf_end - g_pgl_errbuf_write_iter;
+    const uintptr_t intended_slen = vsnprintf(g_pgl_errbuf_write_iter, remaining_space, fmt, args);
+    if (intended_slen < remaining_space) {
+      g_pgl_errbuf_write_iter = &(g_pgl_errbuf_write_iter[intended_slen]);
+    } else {
+      g_pgl_errbuf_write_iter = g_pgl_errbuf_end;
+    }
+  }
+}
+
+HEADER_INLINE char* PglReturnLog() {
+  return g_pgl_errbuf;
+}
+
+HEADER_INLINE void PglResetLog() {
+  if (g_pgl_errbuf) {
+    g_pgl_errbuf_write_iter = g_pgl_errbuf;
+    g_pgl_errbuf_write_iter[0] = '\0';
+  }
+}
 #endif
 
 // other configuration-ish values needed by plink2_common subset
@@ -573,8 +653,6 @@ HEADER_INLINE uint32_t GenoIter1x(const uintptr_t* __restrict genoarr, uintptr_t
 // For every missing entry in genoarr, clear the corresponding subset and
 // sparse_vals entries.
 void ClearGenoarrMissing1bit8Unsafe(const uintptr_t* __restrict genoarr, uint32_t* subset_sizep, uintptr_t* __restrict subset, void* __restrict sparse_vals);
-
-void ClearGenoarrMissing1bit16Unsafe(const uintptr_t* __restrict genoarr, uint32_t* subset_sizep, uintptr_t* __restrict subset, void* __restrict sparse_vals);
 
 // See EasyasPi's answer to
 //   https://stackoverflow.com/questions/25095741/how-can-i-multiply-64-bit-operands-and-get-128-bit-result-portably
