@@ -3121,8 +3121,8 @@ void compute_aaf_info(double& total, double const& info_num, bool const& non_par
     n_case_alleles = 2 * snp_data->ns_case.cast<double>();
     if(non_par && params->skip_dosage_comp){ n_case_alleles -= snp_data->ns_case_adj.cast<double>();}
     snp_data->ns_control = snp_data->ns - snp_data->ns_case;
-    snp_data->af_case /= n_case_alleles;
     snp_data->af_control = (snp_data->af - snp_data->af_case) / (n_alleles - n_case_alleles);
+    snp_data->af_case /= n_case_alleles;
   }
 
   snp_data->af1 = total / n_alleles_all; // all traits
