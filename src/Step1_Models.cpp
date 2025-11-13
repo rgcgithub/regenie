@@ -79,7 +79,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
     // starting values
     betaold = 0;
-    if(params->print_cov_betas) {betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0))) - loco_offset.mean();}
+    if(params->print_cov_betas) {betaold(0) = (0.5 + mask.select(Y,0).sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0))) - loco_offset.mean();}
     get_pvec(etavec, pivec, betaold, loco_offset, pheno_data->new_cov, params->numtol_eps);
 
     // check if model converged
@@ -94,7 +94,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
         etavec = mask.select( log(pivec/ (1-pivec)), 0);
         betaold = 0;
         if(params->print_cov_betas) {
-          betaold(0) = (0.5 + Y.sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0)));
+          betaold(0) = (0.5 + mask.select(Y,0).sum()) / (pheno_data->Neff(i) + 1); betaold(0) = log( betaold(0) / (1 - betaold(0)));
           get_pvec(etavec, pivec, betaold, loco_dummy, pheno_data->new_cov, params->numtol_eps);
         }
         if( fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, true, params->numtol) || fit_logistic(Y, pheno_data->new_cov, loco_dummy, mask, pivec, etavec, betaold, params, sout, false, params->numtol) ){ 
