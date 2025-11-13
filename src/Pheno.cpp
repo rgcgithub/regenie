@@ -1716,16 +1716,23 @@ int scale_mat(MatrixXd& X, const Eigen::Ref<const ArrayXb>& ind_in_analysis, str
   params->cov_sds = (X(index_in_analysis, all).rowwise() - mu).colwise().norm().array() / sqrt(params->n_analyzed - 1);
 
   // SD=0 should be only for intercept column (set it to 1)
-  if((params->cov_sds < params->eigen_val_rel_tol).count() > 1){
-    if(params->debug) {
-      cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
-      cerr << "X top 2 rows:\n" << X.topRows(2) << "\n";
-      cerr << "SDs:\n" << params->cov_sds.matrix().transpose() << "\n";
-      cerr << "eig. tol: " << params->eigen_val_rel_tol << "\n";
+  // get indices where SD < tol
+  ArrayXb zero_sd = (params->cov_sds < params->eigen_val_rel_tol);
+  ArrayXi zero_sd_indices = get_true_indices(zero_sd);
+  for (auto const& index: zero_sd_indices) {
+    if( params->covar_names[index] == "Intercept"){
+      params->cov_sds(index) = 1;
+      continue;
+    } else {
+      if(params->debug) {
+        cerr << "cov_names: " << print_sv(params->covar_names,"\t") << "\n";
+        cerr << "X top 2 rows:\n" << X.topRows(2) << "\n";
+        cerr << "SDs:\n" << params->cov_sds.matrix().transpose() << "\n";
+        cerr << "eig. tol: " << params->eigen_val_rel_tol << "\n";
+      }
+      throw "SD=0 found for covariate '" + params->covar_names[index] + "'; please remove this covariate and re-run.";
     }
-    throw "more than 1 covariates have SD = 0";
   }
-  params->cov_sds = (params->cov_sds < params->eigen_val_rel_tol).select(1, params->cov_sds);
 
   // re-scale X (better for logistic reg convergence)
   X.array().rowwise() /= params->cov_sds.matrix().transpose().array();
