@@ -155,6 +155,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
 
 bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, struct param const* params, mstream& sout, bool const& check_hs_dev, double const& numtol) {
 
+  bool small_score_reached = false;
   int niter_cur = 0, niter_search;
   double dev_old, dev_new=0, diff_dev;
   ArrayXd score, betanew, wvec, zvec;
@@ -198,9 +199,12 @@ bool fit_logistic(const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, c
     // stopping criterion
     score = X1.transpose() * mask.select(Y1 - pivec, 0).matrix();
     if( score.abs().maxCoeff() < numtol ) break; // prefer for score to be below tol
+    // check for failed convergence early on
+    if(!small_score_reached && (niter_cur < 20) && (score.abs().maxCoeff() < 1)) small_score_reached = true;
+    if(small_score_reached && (niter_cur > 20) && (score.abs().maxCoeff() > 5)) return false; // score should get closer to 0 after this many iters
 
     diff_dev = abs(dev_new - dev_old)/(0.1 + abs(dev_new));
-    if(params->debug) cerr << "#" << niter_cur << ": score_max=" << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << diff_dev << "\n";
+    if(params->debug) cerr << "#" << niter_cur << ": score_max=" << score.abs().maxCoeff() << ";dev_diff=" << setprecision(16) << diff_dev << "; beta.head=" << betanew.head(5).matrix().transpose() << "\n";
 
     betavec = betanew;
     dev_old = dev_new;
