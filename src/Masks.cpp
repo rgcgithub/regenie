@@ -977,7 +977,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
 
       if( ds >= 0 ){
         lval = 0, mval = ds;
-        if(params->test_mode && (chrom == params->nChrom)) {
+        if(params->test_mode && non_par) {
           lval = (params->sex(index) == 1);
           mval = ds * 0.5 * (2 - lval);
         }
@@ -1018,7 +1018,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
   if(write_masks) make_genovec(isnp, maskvec, filters);
 
   // check MAC
-  if(chrom != params->nChrom) mac = total; // use MAC assuming diploid coding
+  if(!non_par) mac = total; // use MAC assuming diploid coding
   // get counts by trait 
   snp_data->mac += mac; // aac
   snp_data->ns += snp_data->ns1; // ns
@@ -1028,7 +1028,7 @@ void GenoMask::buildMask(int const& isnp, int const& chrom, uint32_t const& phys
     // get counts by trait 
     snp_data->nmales += nmales; // nmales
 
-    if(chrom != params->nChrom) {
+    if(!non_par) {
       mac = min( mac, 2 * snp_data->ns1 - mac );
       snp_data->mac = snp_data->mac.min( 2 * snp_data->ns.cast<double>() - snp_data->mac );
     } else {
