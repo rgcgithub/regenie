@@ -898,7 +898,7 @@ void fit_firth_cox_snp_fast(int const& chrom, int const& ph, int const& isnp, st
 // Firth (currently only used for null approximate firth)
 bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const* pheno_data, struct ests const* m_ests, Ref<ArrayXd> betavec, struct param* params, bool const& save_se) {
 
-  bool success, set_start = true;
+  bool success, set_start = true, check_score_inc = true;
   int col_incl;
   int maxstep = params->maxstep_null;
   int niter = params->niter_max_firth_null;
@@ -918,7 +918,7 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
   // with firth approx. => trial 1: use maxstep_null
   // trial=1+ => start at 0 (update maxstep & niter)
   // trial=2+ => use fallback options (update maxstep & niter)
-  for(int trial = 0; trial < 3; trial++){
+  for(int trial = 0; trial < 4; trial++){
 
     // starting values
     if(set_start){
@@ -932,8 +932,12 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
           betaold(0) -= mask.select(offset,0).mean();
         }
     }
+    if(trial == 3) {
+      betaold = betavec.head(Xmat.cols()); // try again with original ests
+      check_score_inc = false;
+    }
 
-    success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params);
+    success = fit_firth(ph, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params, check_score_inc);
 
     if(!params->fix_maxstep_null) { // don't retry with user-given settings
       if( !success ){ // if failed to converge
@@ -942,7 +946,7 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
         // try fitting pseudo-data representation with IRLS
         double dev0 = 0;
         if(
-            fit_firth_pseudo(dev0, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params)
+            fit_firth_pseudo(dev0, Y, Xmat, offset, mask, pivec, etavec, betaold, se, col_incl, dev, false, lrt, maxstep, niter, tol, params, check_score_inc)
           ){
           success = true;
           break;
@@ -1247,7 +1251,7 @@ void fit_firth_logistic_snp_fast(int const& chrom, int const& ph, int const& isn
 }
 
 // use NR or ADAM for Firth
-bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params, bool const& check_score_inc) {
 
   double dev0 = 0;
 
@@ -1255,12 +1259,12 @@ bool fit_firth(int const& ph, const Ref<const ArrayXd>& Y1, const Ref<const Matr
   if(!comp_lrt && params->use_adam) 
     fit_firth_adam(ph, dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, params);
 
-  return fit_firth_nr(dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, maxstep_firth, niter_firth, tol, params);
+  return fit_firth_nr(dev0, Y1, X1, offset, mask, pivec, etavec, betavec, sevec, cols_incl, dev, comp_lrt, lrt, maxstep_firth, niter_firth, tol, params, check_score_inc);
 
 }
 
 // fit based on penalized log-likelihood using NR
-bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params, bool const& check_score_inc) {
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
@@ -1311,7 +1315,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
     if(!comp_lrt){
       if( score_max_new > score_max_old ) n_score_inc++; // track consecutive increases
       else n_score_inc = 0;
-      if( n_score_inc > 25 ) return false;
+      if(check_score_inc && (n_score_inc > 25) ) return false;
     }
 
     // force absolute step size to be less than maxstep for each entry of beta
@@ -1379,7 +1383,7 @@ bool fit_firth_nr(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const Ma
 }
 
 // using pseudo-data representation with unpenalized logistic (strategy from brglm)
-bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params) {
+bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<const MatrixXd>& X1, const Ref<const ArrayXd>& offset, const Ref<const ArrayXb>& mask, ArrayXd& pivec, ArrayXd& etavec, ArrayXd& betavec, ArrayXd& sevec, int const& cols_incl, double& dev, bool const& comp_lrt, double& lrt, int const& maxstep_firth, int const& niter_firth, double const& tol, struct param const* params, bool const& apply_early_checks) {
   // fit with first cols_incl columns of X1 (non-used entries of betavec should be 0)
   // else assuming using all columns 
 
@@ -1432,10 +1436,11 @@ bool fit_firth_pseudo(double& dev0, const Ref<const ArrayXd>& Y1, const Ref<cons
     }
     if(params->debug) cerr << "[" << niter_cur <<setprecision(16)<< "] beta.head=(" << betavec.head(min(5,cols_incl)).matrix().transpose() << "...); score.max=" << score_max_new << "\n";
     // to catch convergence failure sooner
-    if( (niter_cur > 2) && (fabs(betavec(0)) > 1e13) ) return false;
-    if(niter_score_max_unchanged > 3) return false;
-    if( (niter_cur > 50) && ((score_max_new > 1000) || (betavec.abs().maxCoeff() > 1e12)) ) return false;
-
+    if(apply_early_checks){
+      if( (niter_cur > 2) && (fabs(betavec(0)) > 1e13) ) return false;
+      if(niter_score_max_unchanged > 3) return false;
+      if( (niter_cur > 50) && ((score_max_new > 1000) || (betavec.abs().maxCoeff() > 1e12)) ) return false;
+    }
     // fit unpenalized logistic on transformed Y
     niter_log = 0;
     bdiff = 1e16;
