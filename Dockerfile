@@ -65,7 +65,7 @@ FROM public.ecr.aws/ubuntu/ubuntu:22.04
 ARG LIB_INSTALL2
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      libgomp1 gfortran-9 $LIB_INSTALL2 \
+      libgomp1 libcurl4 gfortran-9 $LIB_INSTALL2 \
       && rm -rf /var/lib/apt/lists/*
 
 COPY --from=builder /src/regenie/regenie /usr/local/bin
