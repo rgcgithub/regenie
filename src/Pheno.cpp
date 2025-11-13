@@ -1075,8 +1075,6 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
     pheno_data->new_cov.rightCols(pheno_data->interaction_cov.cols()) = pheno_data->interaction_cov.array().square().matrix();
   }
 
-  // orthonormal basis (save number of lin. indep. covars.)
-  if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
   if (params->trait_mode == 3) {
     // check constant covariates
     // std::cout << "new_cov: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
@@ -1089,17 +1087,26 @@ void prep_run (struct in_files* files, struct filter* filters, struct param* par
       }
     }
 
-    params->ncov = nonConstantColumns.size();
-    Eigen::ArrayXd filtered_cov_sds(params->ncov);
-    Eigen::MatrixXd new_cov_mtx(pheno_data->new_cov.rows(), params->ncov);
-    for (int i = 0; i < params->ncov; ++i) {
-        new_cov_mtx.col(i) = pheno_data->new_cov.col(nonConstantColumns[i]);
-        filtered_cov_sds(i) = params->cov_sds(nonConstantColumns[i]);
+    if(nonConstantColumns.size() != (size_t)pheno_data->new_cov.cols()) {
+      params->ncov = nonConstantColumns.size();
+      Eigen::ArrayXd filtered_cov_sds(params->ncov);
+      Eigen::MatrixXd new_cov_mtx(pheno_data->new_cov.rows(), params->ncov);
+      vector<string> filtered_cov_names(params->ncov);
+      for (int i = 0; i < params->ncov; ++i) {
+          new_cov_mtx.col(i) = pheno_data->new_cov.col(nonConstantColumns[i]);
+          filtered_cov_sds(i) = params->cov_sds(nonConstantColumns[i]);
+          if(params->print_cov_betas) filtered_cov_names[i] = params->covar_names[nonConstantColumns[i]];
+      }
+      pheno_data->new_cov = std::move(new_cov_mtx);
+      params->cov_sds = filtered_cov_sds;
+      if(params->print_cov_betas) params->covar_names = filtered_cov_names;
+      // std::cout << "new_cov after filter: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
     }
-    pheno_data->new_cov = std::move(new_cov_mtx);
-    params->cov_sds = filtered_cov_sds;
-    // std::cout << "new_cov after filter: " << pheno_data->new_cov.block(0,0,5,pheno_data->new_cov.cols());
   }
+
+  // orthonormal basis (save number of lin. indep. covars.)
+  if(params->print_cov_betas && params->trait_mode) pheno_data->new_cov_raw = pheno_data->new_cov;
+
   if (pheno_data->new_cov.cols() > 0) {
     params->ncov = (params->print_cov_betas ? scale_mat(pheno_data->new_cov, filters->ind_in_analysis, params) : getBasis(pheno_data->new_cov, params));
     // params->ncov = pheno_data->new_cov.cols();
