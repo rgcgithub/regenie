@@ -1586,6 +1586,12 @@ void fit_null_models_nonQT(struct param* params, struct phenodt* pheno_data, str
     // need to get betas for non-QTs in step 2
     if(params->trait_mode==1) { // BT
       fit_null_logistic(true, 0, params, pheno_data, m_ests, files, sout, true);// null logistic
+      // if it fails, try a less stringent convergence criterion
+      if(params->n_pheno == 1 && !params->pheno_pass(0)){
+        params->numtol = 2 * params->numtol_firth; params->pheno_pass(0) = true;
+        fit_null_logistic(true, 0, params, pheno_data, m_ests, files, sout, true);// null logistic
+        params->numtol = 1e-6;
+      }
       if(params->firth) // null firth
         for( int ph = 0; ph < params->n_pheno; ++ph ) 
           if(params->pheno_pass(ph))
