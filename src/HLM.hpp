@@ -61,7 +61,7 @@ class HLM
     void get_beta_approx(Eigen::VectorXd&);
     void store_null_est(int const&);
     void residualize(int const&,Eigen::Ref<Eigen::MatrixXd>,Eigen::Ref<Eigen::MatrixXd>);
-
+    bool check_gradient();
 
     // functor to minimize
     double operator()(Eigen::VectorXd const& beta, Eigen::VectorXd& gradient){

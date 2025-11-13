@@ -131,14 +131,16 @@ void HLM_fitNull(HLM& nullHLM, struct ests const& m_ests, struct phenodt const& 
       // LBFGS
       solver.minimize(nullHLM, beta, fx);
       nullHLM.store_null_est(i);
+      if(params.debug) nullHLM.check_gradient();
 
     } catch(...){
 
       // redo with higher number of line search trials
       try {
 
+        if(params.debug) nullHLM.check_gradient();
         if(params.verbose) 
-          sout << "Retrying HLM null model fitting for " << files.pheno_names[i] << endl;
+          sout << "Retrying HLM null model fitting for " << files.pheno_names[i] << "...";
 
         LBFGSParam<double> bfgs_param_retry;
         bfgs_param_retry.max_iterations = nullHLM.max_iter_retry;
@@ -146,16 +148,38 @@ void HLM_fitNull(HLM& nullHLM, struct ests const& m_ests, struct phenodt const& 
         bfgs_param_retry.max_step = nullHLM.max_step_retry; 
         LBFGSSolver<double> solver_retry(bfgs_param_retry);
 
-        // get starting value for b
-        beta.array() = 0;
+        // set starting value for b
+        beta.array() = 0.01;
         nullHLM.get_alpha(beta);
         nullHLM.get_beta_approx(beta);
         // LBFGS
         solver_retry.minimize(nullHLM, beta, fx);
         nullHLM.store_null_est(i);
+        if(params.debug) nullHLM.check_gradient();
 
       } catch(...){
-        throw "LFBGS could not fit HLM null model for trait " + files.pheno_names[i];
+        
+        // Final fallback with very conservative parameters
+        try {
+
+          if(params.debug) nullHLM.check_gradient();
+          if(params.verbose)
+            sout << "Final fallback attempt for HLM null model fitting for " << files.pheno_names[i] << "...";
+
+          LBFGSParam<double> bfgs_param_fallback;
+          bfgs_param_fallback.epsilon = 1e-4;      // Relax convergence
+          LBFGSSolver<double> solver_fallback(bfgs_param_fallback);
+
+          // set starting value for b
+          beta.array() = 0.02;
+          solver_fallback.minimize(nullHLM, beta, fx);
+          nullHLM.store_null_est(i);
+          if(params.debug) nullHLM.check_gradient();
+          
+        } catch(...){
+          if( nullHLM.check_gradient() ) continue; // if gradient is ok, then just continue
+          throw "LBFGS could not fit HLM null model for trait " + files.pheno_names[i] + " even with fallback methods";
+        }
       }
 
     }
@@ -216,4 +240,14 @@ void HLM::residualize(int const& ph, Ref<MatrixXd> mat_orig, Ref<MatrixXd> mat_r
    // "\nm:\n" << print_mat_dims(m) << "\nPx:\n" << print_mat_dims(Px[ph]) << endl;
   mat_res = m -  Px[ph] * (Px[ph].transpose() * m);
 
+}
+
+bool HLM::check_gradient() {
+  // This function is for debugging purposes to check the gradient after fitting the null model.
+  if( (Dinv == 0).all() ) return false; // will cause Xd = 0
+  Eigen::ArrayXd esq = ((y - X * alpha).array()).square();
+  VectorXd gradient = V.transpose() * ( ((1 - esq * Dinv) * mask.cast<double>()) / n ).matrix();
+  double max_grad = gradient.array().abs().maxCoeff();
+  cerr << "max_grad : " << max_grad << "\n";
+  return max_grad < 2.5e-4;
 }
