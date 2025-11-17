@@ -2688,8 +2688,12 @@ std::string print_summary(Files* ofile, string const& out, std::vector<std::shar
     buffer << ": " << snp_tally.n_ignored_snps * params.n_tests_per_variant * params.n_pheno + snp_tally.n_ignored_tests * params.n_tests_per_variant << endl;
   }
 
-  if(params.write_masks)
-    buffer << "\nMasks written to : [" << files.out_file << "_masks.{bed,bim,fam}]\n";
+  if(params.write_masks) {
+    if(params.mask_format_pgen)
+      buffer << "\nMasks written to : [" << files.out_file << "_masks.{pgen,pvar,psam}]\n";
+    else
+      buffer << "\nMasks written to : [" << files.out_file << "_masks.{bed,bim,fam}]\n";
+  }
 
   if(params.write_null_firth){ // store file names with null ests
     buffer << "List of files with null Firth estimates written to: [" 
