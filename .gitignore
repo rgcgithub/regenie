@@ -1,5 +1,9 @@
 src/*.o
-external_libs/pgenlib/*.o
-external_libs/pgenlib/include/*.o
+external_libs/*/*.[oa]
+external_libs/*/*/*.o
+external_libs/*/*/*/*.o
 docs/nature.csl
 build/
+.claude/
+.claudeignore
+CLAUDE.md
