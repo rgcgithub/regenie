@@ -929,7 +929,7 @@ bool fit_approx_firth_null(int const& chrom, int const& ph, struct phenodt const
           //betaold(0) = ( 0.5 + mask.select(Y,0).sum())  / (pheno_data->Neff(ph) + 1);
           //betaold(0) = log( betaold(0) / (1 - betaold(0) ));
           // LOCO prediction is offset
-          betaold(0) -= mask.select(offset,0).mean();
+          betaold(0) -= mask.select(offset,0).sum() / pheno_data->Neff(ph);
         }
     }
     if(trial == 3) {
@@ -1103,7 +1103,7 @@ void fit_firth_logistic_snp(int const& chrom, int const& ph, int const& isnp, bo
       betaold(0) = log( betaold(0) / (1 - betaold(0) ));
 
       // LOCO prediction is offset
-      betaold(0) -= mask.select(offset,0).mean();
+      betaold(0) -= mask.select(offset,0).sum() / pheno_data->Neff(ph);
     } else betaold.head(col_incl) = params->cov_betas.col(ph); // start at estimates from null firth with no snp column
       
   } else {
