@@ -37,6 +37,7 @@ struct ests {
   Eigen::MatrixXd Gamma_sqrt, Gamma_sqrt_mask, Y_hat_p;
   std::vector<Eigen::MatrixXd> X_Gamma;
   Eigen::MatrixXd bhat_start; // for interaction tests
+  ArrayXb logreg_has_sep; // per-phenotype: null logistic reg produced fitted p at 0/1 boundary
   std::vector<cox_mle> cox_MLE_NULL;
   std::vector<survival_data> survival_data_pheno;
 

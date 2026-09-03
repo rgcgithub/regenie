@@ -61,6 +61,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
   MatrixXd XtW;
   if(params->w_interaction || params->firth || (params->use_SPA && params->vc_test) || params->write_null_firth) m_ests->bhat_start.resize(pheno_data->new_cov.cols(), params->n_pheno);
   if(params->w_interaction) m_ests->offset_nullreg.resize(pheno_data->new_cov.rows(), params->n_pheno);
+  m_ests->logreg_has_sep = ArrayXb::Constant(params->n_pheno, false);
   betaold = ArrayXd::Zero(pheno_data->new_cov.cols());
 
   for(int i = 0; i < params->n_pheno; ++i ){
@@ -112,8 +113,10 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       }
     } 
     
-    if( !silent && (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() )
-      sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
+    if( (mask && (pivec < params->numtol_eps || pivec > 1 - params->numtol_eps)).any() ) {
+      m_ests->logreg_has_sep(i) = true;
+      if(!silent) sout << "\n     WARNING: Fitted probabilities numerically 0/1 occurred (phenotype '" << files->pheno_names[i] <<"').";
+    }
 
     if(params->test_mode){
       if(save_betas && params->print_cov_betas) {
@@ -127,6 +130,7 @@ void fit_null_logistic(bool const& silent, const int& chrom, struct param* param
       }
       m_ests->Y_hat_p.col(i) = pivec.matrix() ;
       get_wvec(pivec, wvec, mask, params->l1_ridge_eps);
+      if(m_ests->logreg_has_sep(i)) wvec = wvec.max(params->l1_ridge_eps);
       m_ests->Gamma_sqrt.col(i) = wvec.sqrt().matrix();
       m_ests->Gamma_sqrt_mask.col(i) = (m_ests->Gamma_sqrt.col(i).array() * mask.cast<double>()).matrix();
       m_ests->X_Gamma[i] = m_ests->Gamma_sqrt_mask.col(i).asDiagonal() * pheno_data->new_cov;
