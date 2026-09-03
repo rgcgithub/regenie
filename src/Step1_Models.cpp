@@ -1844,7 +1844,7 @@ double get_poisson_dev(const Ref<const ArrayXd>& Y, const Ref<const ArrayXd>& pi
 
 double compute_log_lik_bern(const double& y, const double& p){
   // negative log likelihood for bernoulli
-  return -((y==0) ? log(1-p) : log(p));
+  return -((y == 0) ? log1p(-p) : log(p));
 }
 
 double compute_log_lik_poisson(const double& y, const double& p){
