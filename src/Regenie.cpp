@@ -1208,6 +1208,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     //params->use_max_bsize = params->mask_loo;
     if( (params->trait_mode==2) && params->w_interaction)
       throw "cannot use interaction tests with count phenotypes.";
+    if( (params->trait_mode==3) && params->w_interaction)
+      throw "cannot use interaction tests with time-to-event phenotypes.";
     if( params->interaction_prs && !(vm.count("use-prs") || vm.count("pred")) )
       throw "must supply step 1 predictions.";
 
