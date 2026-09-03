@@ -689,7 +689,10 @@ void compute_score_cox(int const& isnp, int const& snp_index, int const& chrom, 
 
     dt_thr->bhat(i) /= block_info->scale_fac;
     dt_thr->se_b(i) /= block_info->scale_fac;
-    if(block_info->flipped) dt_thr->bhat(i) *= -1;
+    if(block_info->flipped) {
+      dt_thr->bhat(i) *= -1;
+      if (params.htp_out) dt_thr->scores(i) *= -1;
+    }
 
     // print sum stats
     if(!params.p_joint_only) {
