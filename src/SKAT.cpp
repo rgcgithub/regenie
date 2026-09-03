@@ -761,7 +761,7 @@ void compute_vc_masks_bt_fixed_rho(SpMat& mat, const Ref<const ArrayXd>& weights
     compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), mat2, GWs, GtWX);
 
     // apply firth/spa corrections (set R=0 if failed)
-    masked_sites = (weights(snp_indices) > 0);
+    masked_sites = ((weights(snp_indices) > 0) && (Kmat.diagonal().array() > 0)); // ignore sites with 0 variance
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction)
       correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
@@ -936,7 +936,7 @@ void compute_vc_masks_bt(SpMat& mat, const Ref<const ArrayXd>& weights, const Re
     compute_vc_mats_bt(Svals, Kmat, XWsqrt, Wsqrt * mask.cast<double>(), yres.col(ph), mat2, GWs, GtWX);
 
     // apply firth/spa corrections (set R=0 if failed)
-    masked_sites = (weights(snp_indices) > 0);
+    masked_sites = ((weights(snp_indices) > 0) && (Kmat.diagonal().array() > 0)); // ignore sites with 0 variance
     Rvec_sqrt = masked_sites.cast<double>();
     if(apply_correction) {
       correct_vcov(ph, snp_indices, weights(snp_indices), masked_sites, Rvec_sqrt, Svals, Kmat, mat2, GtWX, XWsqrt, GWs, Wsqrt, phat, Y, mask, fest, params);
