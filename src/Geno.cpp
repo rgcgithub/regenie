@@ -940,8 +940,8 @@ uint32_t read_pvar(map<string, vector<uint64>>& index_map, geno_file_info* ext_f
 
 void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
-  int lineread = 0, sex_col = 0;
-  bool col_found = false;
+  int lineread = 0, iid_col = 1, sex_col = 0;
+  bool col_found = false, has_fid = true;
   string line, tmp_id, fname;
   std::vector<int> sex;
   std::vector< string > tmp_str_vec, IDvec;
@@ -960,15 +960,23 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in psam file.";
 
-    if( tmp_str_vec[0] == "#IID" ) 
-      throw "invalid header (must start with #FID [not #IID]).";
-
-    if( tmp_str_vec[0] == "#FID" ) 
+    if( tmp_str_vec[0] == "#IID" ) {
+      has_fid = false;
+      iid_col = 0;
       break;
+    }
+
+    if( tmp_str_vec[0] == "#FID" ) {
+      has_fid = true;
+      iid_col = 1;
+      break;
+    }
   }
 
   // check header
-  if( (tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID"))
+  if( has_fid && ((tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID")) )
+    throw "header does not have the correct format.";
+  if( !has_fid && ((tmp_str_vec.size() < 1) || (tmp_str_vec[0] != "#IID")) )
     throw "header does not have the correct format.";
 
   // find if sex column is present
@@ -979,10 +987,16 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
   while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
 
-    if( tmp_str_vec.size() < 3 )
+    if( has_fid && (tmp_str_vec.size() < 2) )
+      throw "incorrectly formatted psam file at line " + to_string( lineread + 1 ) ;
+    if( !has_fid && (tmp_str_vec.size() < 1) )
+      throw "incorrectly formatted psam file at line " + to_string( lineread + 1 ) ;
+    if( col_found && ((int)tmp_str_vec.size() <= sex_col) )
       throw "incorrectly formatted psam file at line " + to_string( lineread + 1 ) ;
 
-    tmp_id = tmp_str_vec[0] + "_" + tmp_str_vec[1];
+    const string FID = has_fid ? tmp_str_vec[0] : "0";
+    const string IID = tmp_str_vec[iid_col];
+    tmp_id = FID + "_" + IID;
 
     // check duplicates -- if not, store in map
     if (in_map(tmp_id, params->FID_IID_to_ind)) 
@@ -990,8 +1004,8 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 
     params->FID_IID_to_ind[ tmp_id ] = lineread;
     if(params->write_samples || params->write_masks) {
-      IDvec[0] = tmp_str_vec[0];
-      IDvec[1] = tmp_str_vec[1];
+      IDvec[0] = FID;
+      IDvec[1] = IID;
       params->FIDvec.push_back(IDvec);
     }
 
@@ -1015,6 +1029,8 @@ void read_psam(struct in_files* files, struct param* params, mstream& sout) {
 uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, Ref<ArrayXb> mask, struct param* params, mstream& sout) {
 
   uint32_t position;
+  int iid_col = 1;
+  bool has_fid = true;
   string line, fname;
   std::vector< string > tmp_str_vec, tmp_ids;
   Files myfile;
@@ -1028,21 +1044,31 @@ uint32_t read_psam(struct ext_geno_info& ginfo, geno_file_info* ext_file_info, R
     tmp_str_vec = string_split(line,"\t ");
     if( tmp_str_vec.size() < 1 )
       throw "no blank lines should be before the header line in psam file.";
-    if( tmp_str_vec[0] == "#IID" ) 
-      throw "invalid header (must start with #FID [not #IID]).";
-    if( tmp_str_vec[0] == "#FID" ) 
+    if( tmp_str_vec[0] == "#IID" ) {
+      has_fid = false;
+      iid_col = 0;
       break;
+    }
+    if( tmp_str_vec[0] == "#FID" ) {
+      has_fid = true;
+      iid_col = 1;
+      break;
+    }
   }
 
   // check header
-  if( (tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID"))
+  if( has_fid && ((tmp_str_vec.size() < 2) || (tmp_str_vec[1] != "IID")) )
+    throw "header does not have the correct format.";
+  if( !has_fid && ((tmp_str_vec.size() < 1) || (tmp_str_vec[0] != "#IID")) )
     throw "header does not have the correct format.";
 
   while (myfile.readLine(line)) {
     tmp_str_vec = string_split(line,"\t ");
-    if( tmp_str_vec.size() < 2 )
+    if( has_fid && (tmp_str_vec.size() < 2) )
       throw "incorrectly formatted psam file at line " + to_string( tmp_ids.size() + 1 ) ;
-    tmp_ids.push_back(tmp_str_vec[0] + "_" + tmp_str_vec[1]);
+    if( !has_fid && (tmp_str_vec.size() < 1) )
+      throw "incorrectly formatted psam file at line " + to_string( tmp_ids.size() + 1 ) ;
+    tmp_ids.push_back((has_fid ? tmp_str_vec[0] : "0") + "_" + tmp_str_vec[iid_col]);
   }
 
   myfile.closeFile();
