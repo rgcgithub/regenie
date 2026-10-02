@@ -1,6 +1,9 @@
 FLAG=-O2 -DNDEBUG -fPIC -std=legacy
 AR   ?= ar
-FC   ?= gfortran
+# make defines FC as `f77` itself, so `?=` would never take effect here.
+ifeq ($(origin FC),default)
+FC   := gfortran
+endif
 
 UNAME_S := $(shell uname -s)
 UNAME_M := $(shell uname -m)
