@@ -243,7 +243,8 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     ("weights-col", "column index (1-based) for user-defined weights in annotation file", cxxopts::value<int>(params->vc_weight_col))
     ("joint", "comma spearated list of joint tests to perform", cxxopts::value<std::string>(params->burden),"STRING")
     ("singleton-carrier", "define singletons as variants with a single carrier in the sample")
-    ("write-mask", "write masks in PLINK bed/bim/fam format")
+    ("write-mask", "write masks to file")
+    ("mask-format", "format for writing masks: 'bed' (PLINK bed/bim/fam, default) or 'pgen' (PLINK2 pgen/pvar/psam with dosage support)", cxxopts::value<std::string>(), "STRING")
     ("mask-lovo", "apply Leave-One-Variant-Out (LOVO) scheme when building masks (<set_name>,<mask_name>,<aaf_cutoff>)", cxxopts::value<std::string>(),"STRING")
     ("mask-lodo", "apply Leave-One-Domain-Out (LODO) scheme when building masks (<set_name>,<mask_name>,<aaf_cutoff>)", cxxopts::value<std::string>(),"STRING")
     ("skip-test", "skip computing association tests after building masks")
@@ -500,6 +501,16 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
     if( vm.count("mask-lovo") ) params->mask_loo = true;
     if( vm.count("mask-lodo") ) params->mask_lodo = true;
     if( vm.count("write-mask") ) params->write_masks = true;
+    if( vm.count("mask-format") ) {
+      std::string format = vm["mask-format"].as<std::string>();
+      if(format == "pgen") {
+        params->mask_format_pgen = true;
+      } else if(format == "bed") {
+        params->mask_format_pgen = false;
+      } else {
+        throw "invalid value for --mask-format: must be 'bed' or 'pgen'";
+      }
+    }
     if( vm.count("write-setlist") ) params->write_setlist = true;
     if( vm.count("write-mask-snplist") ) params->write_mask_snplist = true;
     if( vm.count("skip-test") ) params->skip_test = true;
@@ -971,7 +982,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         }
         if(params->write_masks){
           sout << "WARNING: cannot use --write-mask with --mask-lovo.\n";
-          params->write_masks = false; valid_args[ "write-mask" ] = false;
+          params->write_masks = false;
+          params->mask_format_pgen = false;
+          valid_args[ "write-mask" ] = false;
+          valid_args[ "mask-format" ] = false;
         }
         if(params->joint_test)
           throw "cannot use --joint with --mask-lovo";
@@ -996,7 +1010,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
         }
         if(params->write_masks){
           sout << "WARNING: cannot use --write-mask with --mask-lodo.\n";
-          params->write_masks = false; valid_args[ "write-mask" ] = false;
+          params->write_masks = false;
+          params->mask_format_pgen = false;
+          valid_args[ "write-mask" ] = false;
+          valid_args[ "mask-format" ] = false;
         }
         valid_args[ "vc-maxAAF" ] = valid_args[ "aaf-bins" ] = false;
       }
@@ -1014,6 +1031,10 @@ void read_params_and_check(int& argc, char *argv[], struct param* params, struct
       if(params->build_mask) throw "option --force-mac-filter cannot be used when building masks";
     } else valid_args[ "force-mac-filter" ] = false;
 
+    if(vm.count("mask-format") && !params->write_masks){
+      sout << "ERROR: --mask-format can only be used with --write-mask.\n";
+      exit(EXIT_FAILURE);
+    }
     if(!params->build_mask && params->write_masks) {params->write_masks = false; valid_args[ "write-mask" ] = false;}
     if(!params->build_mask && params->check_mask_files) {params->check_mask_files = false; valid_args[ "check-burden-files" ] = false;}
     if(!params->build_mask && params->strict_check_burden) {params->strict_check_burden = false; valid_args[ "strict-check-burden" ] = false;}

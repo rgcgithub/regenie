@@ -383,7 +383,7 @@ struct param {
   bool aaf_file_wSingletons = false;//for choosing snps in singleton masks
   bool singleton_carriers = false; // carrier count used to define singletons
   uint64 max_bsize = 0; // number of SNPs per variant set
-  bool write_masks = false, write_setlist = false, write_mask_snplist = false; //write masks to bed file
+  bool write_masks = false, mask_format_pgen = false, write_setlist = false, write_mask_snplist = false; //write masks to bed/pgen file
   bool mask_loo = false, mask_lodo = false;
   bool use_max_bsize = false; // set bsize to max set size
   bool p_joint_only = false;

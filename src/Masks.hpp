@@ -27,6 +27,7 @@
 #ifndef MASK_H
 #define MASK_H
 
+#include "../external_libs/pgenlib/include/pgenlib_write.h"
 
 class GenoMask {
 
@@ -46,6 +47,14 @@ class GenoMask {
     Files snplist_out;
     std::vector <std::vector <std::string>> list_snps;//contains snplist
 
+    // For pgen output
+    plink2::STPgenWriter spgw;
+    unsigned char* spgw_alloc;
+    bool mask_format_pgen = false;
+    std::vector<std::vector<uint16_t>> dosage_vals; // dosages in pgen format
+    std::vector<std::vector<uintptr_t>> dosage_present; // bitarray for dosages
+    std::vector<uint32_t> dosage_counts; // count per mask
+    uint32_t pgen_variant_ct = 0; // actual number of variants written to pgen
     double tol = 1e-6;
     double minAAF = 1e-7, default_aaf = .01;
     int n_aaf_bins, max_aaf_bins = 12, nmasks_total;
@@ -93,6 +102,10 @@ class GenoMask {
     void write_genobim(struct snp const&);
     void setAllBitsZero(const int&);
     void setAllBitsOne(const int&);
+    void write_info_pgen(struct param*, struct filter const*, mstream&);
+    void make_pgen_dosage(const int&, Eigen::Ref<const Eigen::ArrayXd>, struct filter const*);
+    void write_pgen_variant(const int&);
+    void write_pgen_pvar(struct snp const&);
     std::string build_header();
     void build_map(std::map<std::string,std::vector<int>>&);
     void prep_snplist(const std::string&,mstream& sout);

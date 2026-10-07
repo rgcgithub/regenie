@@ -1,4 +1,4 @@
-// This library is part of PLINK 2.0, copyright (C) 2005-2024 Shaun Purcell,
+// This library is part of PLINK 2.0, copyright (C) 2005-2025 Shaun Purcell,
 // Christopher Chang.
 //
 // This library is free software: you can redistribute it and/or modify it
@@ -14,11 +14,18 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with this library.  If not, see <http://www.gnu.org/licenses/>.
 
-
 #include "pgenlib_misc.h"
+
+#include <limits.h>
 
 #ifdef __cplusplus
 namespace plink2 {
+#endif
+
+#ifndef NDEBUG
+char* g_pgl_errbuf = nullptr;
+char* g_pgl_errbuf_write_iter = nullptr;
+char* g_pgl_errbuf_end = nullptr;
 #endif
 
 #ifdef USE_AVX2
@@ -1244,6 +1251,7 @@ void TransposeNypblock64(const uintptr_t* read_iter, uint32_t read_ul_stride, ui
       // and target_4567 to
       //   _ (4, 0) _ (5, 0) _ (6, 0) _ (7, 0) _ (4, 1) _ (5, 1) _ (6, 1) ...
       // This is perfectly arranged for movemask.
+      // todo: better ARM implementation
       VecW target_4567 = vecw_blendv(loader, vecw_srli(loader, 7), m8);
       target_iter7[vidx] = vecw_movemask(target_4567);
       target_4567 = vecw_slli(target_4567, 2);
@@ -3248,77 +3256,6 @@ void ClearGenoarrMissing1bit8Unsafe(const uintptr_t* __restrict genoarr, uint32_
           }
 #endif
           sparse_vals_uc[write_idx++] = sparse_vals_uc[read_idx];
-        }
-        subset_alias[read_widx] = subset_bits_write;
-        *subset_sizep = write_idx;
-        return;
-      }
-    }
-    read_idx += PopcountWord(subset_bits);
-    if (read_idx == orig_subset_size) {
-      return;
-    }
-  }
-}
-
-void ClearGenoarrMissing1bit16Unsafe(const uintptr_t* __restrict genoarr, uint32_t* subset_sizep, uintptr_t* __restrict subset, void* __restrict sparse_vals) {
-  const uint32_t orig_subset_size = *subset_sizep;
-  Halfword* subset_alias = DowncastWToHW(subset);
-  uint32_t read_idx = 0;
-  // deliberate overflow
-  for (uint32_t read_widx = UINT32_MAX; ; ) {
-    uint32_t subset_bits;
-    do {
-      subset_bits = subset_alias[++read_widx];
-    } while (!subset_bits);
-    uintptr_t detect_11 = genoarr[read_widx];
-    detect_11 = detect_11 & (detect_11 >> 1) & kMask5555;
-    if (detect_11) {
-      uint32_t detect_11_hw = PackWordToHalfword(detect_11);
-      const uint32_t joint_u32 = subset_bits & detect_11_hw;
-      if (joint_u32) {
-        uintptr_t lowbit = joint_u32 & (-joint_u32);
-        uint32_t write_idx = read_idx + PopcountWord(subset_bits & (lowbit - 1));
-        read_idx = write_idx + 1;
-        uint32_t subset_bits_write = subset_bits ^ lowbit;
-        uint16_t* sparse_vals_u16 = S_CAST(uint16_t*, sparse_vals);
-        subset_bits &= -(2 * lowbit);
-        for (; read_idx != orig_subset_size; ++read_idx) {
-#ifdef USE_AVX2
-          if (!subset_bits) {
-            subset_alias[read_widx] = subset_bits_write;
-            do {
-              subset_bits = subset_alias[++read_widx];
-            } while (!subset_bits);
-            subset_bits_write = subset_bits;
-            detect_11 = genoarr[read_widx];
-            detect_11 = detect_11 & (detect_11 >> 1);
-            detect_11_hw = PackWordToHalfwordMask5555(detect_11);
-          }
-          lowbit = subset_bits & (-subset_bits);
-          subset_bits ^= lowbit;
-          if (lowbit & detect_11_hw) {
-            subset_bits_write ^= lowbit;
-            continue;
-          }
-#else
-          if (!subset_bits) {
-            subset_alias[read_widx] = subset_bits_write;
-            do {
-              subset_bits = subset_alias[++read_widx];
-            } while (!subset_bits);
-            subset_bits_write = subset_bits;
-            detect_11 = genoarr[read_widx];
-            detect_11 = detect_11 & (detect_11 >> 1);
-          }
-          lowbit = subset_bits & (-subset_bits);
-          subset_bits ^= lowbit;
-          if ((lowbit * lowbit) & detect_11) {
-            subset_bits_write ^= lowbit;
-            continue;
-          }
-#endif
-          sparse_vals_u16[write_idx++] = sparse_vals_u16[read_idx];
         }
         subset_alias[read_widx] = subset_bits_write;
         *subset_sizep = write_idx;
