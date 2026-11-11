@@ -772,7 +772,10 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
   bhat_s(beg) = bhat.tail(1)(0);
   bhat_s.tail(1)(0) = 0;
 
-  if(!fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params))
+  bool marginal_fit_ok = fit_firth(ipheno, Y, pheno_data->Hmat[thread], offset, mask, pivec, etavec, bhat_s, se_s, beg+np-1, dev_s, false, tstat, params->maxstep, params->niter_max_firth, params->numtol_firth, params);
+  // put back G in correct column before any early return: Hmat[thread] is reused for the remaining traits of this variant
+  pheno_data->Hmat[thread].col(beg).swap( pheno_data->Hmat[thread].rightCols(1) );
+  if(!marginal_fit_ok)
     return "";
   // T, beta, se & pv
   tstat = dev_s - dev;
@@ -792,7 +795,6 @@ std::string apply_interaction_tests_firth(const int& index, const int& isnp, con
 
   ///////////////////////
   //////  interaction tests
-  pheno_data->Hmat[thread].col(beg).swap( pheno_data->Hmat[thread].rightCols(1) ); // put back G in correct column
   if(params->ncov_interaction > 1){
 
     // print b/se for each interaction term (from full model)
